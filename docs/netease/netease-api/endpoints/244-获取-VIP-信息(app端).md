@@ -1,0 +1,19 @@
+# 获取 VIP 信息(app端)
+
+> **接口路径（摘自原文）:** `/vip/info/v2`
+
+**文档说明:** 接口与 [NeteaseCloudMusicApi](https://gitlab.com/Binaryify/NeteaseCloudMusicApi) 约定一致；正文来自仓库内 `docs/raw/home.md` 的离线副本并按章节拆分。API 基地址由应用配置提供，本仓库不包含任何服务端点。
+
+---
+
+
+说明: 登录后调用此接口，可获取当前 VIP 信息。
+
+**可选参数 :** `uid` : 用户 id
+
+**接口地址 :** `/vip/info/v2`
+
+**调用例子 :** `/vip/info/v2`, `/vip/info/v2?uid=32953014`
+
+
+

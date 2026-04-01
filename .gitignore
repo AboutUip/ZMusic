@@ -1,0 +1,7 @@
+/build
+.idea
+Android/app/build
+Android/app/src/androidTest
+Android/app/src/test
+Android/dev
+.kotlin

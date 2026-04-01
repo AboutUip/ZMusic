@@ -1,0 +1,5 @@
+# 复制为 local.properties 后按需修改（local.properties 勿提交到 Git）
+# sdk.dir=...
+
+# 可选：覆盖默认网易云 API 服务基地址（无末尾斜杠）
+# ncm.api.base.url=http://你的主机:端口
