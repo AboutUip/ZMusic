@@ -8,7 +8,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import com.kite.zmusic.ui.splash.SplashScreen
+import com.kite.zmusic.navigation.ZMusicNavHost
+import com.kite.zmusic.ui.orientation.ZMusicOrientationHost
 import com.kite.zmusic.ui.theme.ZMusicTheme
 
 class MainActivity : ComponentActivity() {
@@ -21,7 +22,9 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = Color.Black,
                 ) {
-                    SplashScreen()
+                    ZMusicOrientationHost(modifier = Modifier.fillMaxSize()) {
+                        ZMusicNavHost(modifier = Modifier.fillMaxSize())
+                    }
                 }
             }
         }

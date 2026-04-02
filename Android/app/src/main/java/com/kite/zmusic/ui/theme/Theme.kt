@@ -6,7 +6,6 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
@@ -30,8 +29,9 @@ fun ZMusicTheme(content: @Composable () -> Unit) {
     val view = LocalView.current
     SideEffect {
         val window = (view.context as Activity).window
-        window.statusBarColor = OledBlack.toArgb()
-        window.navigationBarColor = OledBlack.toArgb()
+        // 透明系统栏：背景可铺满全屏，避免「留白条」；内容由 windowInsetsPadding 避让刘海/状态栏/导航条
+        window.statusBarColor = android.graphics.Color.TRANSPARENT
+        window.navigationBarColor = android.graphics.Color.TRANSPARENT
         WindowCompat.getInsetsController(window, view).apply {
             isAppearanceLightStatusBars = false
             isAppearanceLightNavigationBars = false

@@ -14,7 +14,7 @@ val localProperties = Properties().apply {
 /** 可覆盖；默认见下方常量。勿在仓库中提交含密钥的 local.properties。 */
 val ncmApiBaseUrl: String =
     localProperties.getProperty("ncm.api.base.url")?.trim()?.takeIf { it.isNotEmpty() }
-        ?: "http://47.108.183.165:3000"
+        ?: "http://47.110.72.65:3000"
 
 android {
     namespace = "com.kite.zmusic"
@@ -63,11 +63,16 @@ dependencies {
     implementation(libs.compose.foundation)
     implementation(libs.compose.material3)
     implementation(libs.activity.compose)
+    implementation(libs.navigation.compose)
 
     implementation(libs.appcompat)
     implementation(libs.material)
     implementation(libs.androidx.core)
     implementation(libs.lifecycle.service)
+    implementation(libs.lifecycle.viewmodel.compose)
+    implementation(libs.lifecycle.runtime.compose)
+    implementation(libs.okhttp)
+    implementation(libs.security.crypto)
 
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.session)
