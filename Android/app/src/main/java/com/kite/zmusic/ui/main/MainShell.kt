@@ -58,6 +58,9 @@ import kotlinx.coroutines.delay
 
 private val MainPagerDestinations = MainDestination.entries
 
+/** 横屏迷你条叠在内容之上，需为列表/详情预留底部空间（与 MiniPlayerBar 高度对齐）。 */
+private val LandscapeMiniPlayerContentInset = 72.dp
+
 /**
  * 主界面壳：科幻背景 + 按方向的 Dock + 内容区；展开 HUD 与登录页 SciFiPanelFrame 一致。
  * 竖屏与横屏均支持水平跟手滑动切换模块（与 HUD 选页同步）。
@@ -158,6 +161,8 @@ fun MainShell(
         // 角框与主内容共用 safeDrawing；仅收纳键交互会重置 2s 空闲（滑动 Pager 不展开 Dock）
         Box(Modifier.fillMaxSize().safeDrawingPadding()) {
             if (landscape) {
+                val contentBottomInset =
+                    if (playingTrack != null) LandscapeMiniPlayerContentInset else 0.dp
                 Row(
                     Modifier.fillMaxSize(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -181,7 +186,8 @@ fun MainShell(
                         state = pagerState,
                         modifier = Modifier
                             .weight(1f)
-                            .fillMaxHeight(),
+                            .fillMaxHeight()
+                            .padding(bottom = contentBottomInset),
                         beyondViewportPageCount = 1,
                         userScrollEnabled = !dockExpanded && !libraryPlaylistFullScreen,
                     ) { page ->

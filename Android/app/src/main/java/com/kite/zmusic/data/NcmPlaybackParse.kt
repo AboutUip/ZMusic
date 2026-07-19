@@ -16,8 +16,10 @@ internal object NcmPlaybackParse {
         return null
     }
 
+    /** 优先读 `lrc.lyric`；无 code/非 200 时仍尝试解析（部分代理响应缺顶层 code）。 */
     fun lrcText(json: JSONObject): String? {
-        if (NcmJson.apiCode(json) != 200) return null
+        val code = NcmJson.apiCode(json)
+        if (code != 200 && code != -1 && !json.has("lrc")) return null
         val lrc = json.optJSONObject("lrc") ?: return null
         return lrc.optString("lyric").takeIf { it.isNotBlank() }
     }

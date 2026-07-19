@@ -1,6 +1,8 @@
 # Android Architecture
 
-本文描述 `ZMusic` Android 客户端当前可维护的主链路：从 UI 交互到播放内核，再到接口请求与缓存。
+本文描述 `ZMusic` **Android** 客户端当前可维护的主链路：从 UI 交互到播放内核，再到接口请求与缓存。
+
+**与 Windows 的关系**：Windows 客户端为**独立工程**（`Windows/`），实现方式不必与本文一致。若需对齐**项目核心**（播放状态语义、接口与缓存链路），可将下文中的 **数据层、播放协调层、缓存与配置** 当作**行为级参考**；具体类名与 UI 仅适用于 Android。
 
 ---
 
@@ -81,14 +83,15 @@
 
 ## 6. 配置与环境
 
-- API 地址通过 `local.properties` 注入：
+- Android 默认 API 基址为 `http://47.110.72.65:3000`（`app/build.gradle.kts`）；可选通过 `local.properties` 覆盖：
 
 ```properties
 ncm.api.base.url=http://你的主机:端口
 ```
 
 - 构建注入字段：`BuildConfig.NCM_API_BASE_URL`
-- 业务读取入口：`com.kite.zmusic.config.NcmApiConfig.baseUrl`
+- 业务读取入口：`com.kite.zmusic.config.NcmApiConfig.baseUrl`（运行期可被用户配置覆盖）
+- 启动流程：Splash → `GET /inner/version` 连通性探测；失败进入服务器 IP/端口配置页，成功后加密持久化并继续主流程
 
 ---
 

@@ -80,6 +80,24 @@ class NcmUserClient(
             )
         }
 
+    /** 新版音质接口；旧版 `/song/url` 上游偶发 502 时作回退。 */
+    suspend fun songUrlV1(
+        ids: List<Long>,
+        cookie: String,
+        level: String = "exhigh",
+    ): JSONObject = withContext(Dispatchers.IO) {
+        val idStr = ids.joinToString(",")
+        get(
+            "/song/url/v1",
+            mapOf(
+                "id" to idStr,
+                "level" to level,
+                "cookie" to cookie,
+                "timestamp" to ts(),
+            ),
+        )
+    }
+
     suspend fun lyric(songId: Long, cookie: String): JSONObject = withContext(Dispatchers.IO) {
         get(
             "/lyric",

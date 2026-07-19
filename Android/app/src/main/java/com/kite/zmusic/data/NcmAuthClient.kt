@@ -7,7 +7,9 @@ import okhttp3.FormBody
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import org.json.JSONException
 import org.json.JSONObject
+import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 /**
@@ -103,7 +105,19 @@ class NcmAuthClient(
     private fun executeJson(req: Request): JSONObject {
         client.newCall(req).execute().use { resp ->
             val text = resp.body?.string().orEmpty()
-            return JSONObject(text)
+            if (!resp.isSuccessful) {
+                throw IOException(
+                    "HTTP ${resp.code} ${resp.message} @ ${req.url} · ${text.take(200)}",
+                )
+            }
+            if (text.isBlank()) {
+                throw IOException("空响应 @ ${req.url}")
+            }
+            return try {
+                JSONObject(text)
+            } catch (e: JSONException) {
+                throw IOException("非 JSON 响应 @ ${req.url}: ${text.take(300)}", e)
+            }
         }
     }
 

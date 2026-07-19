@@ -1,17 +1,25 @@
 # ZMusic
 
-> 一个面向沉浸式播放体验的音乐客户端（当前主线：`Android`）。
-> UI 采用 Jetpack Compose，播放内核基于 Media3（ExoPlayer），接口形态兼容 [NeteaseCloudMusicApi](https://gitlab.com/Binaryify/NeteaseCloudMusicApi)。
+> 面向**沉浸式播放**的音乐客户端；后端接口形态兼容 [NeteaseCloudMusicApi](https://gitlab.com/Binaryify/NeteaseCloudMusicApi)。  
+> **Android** 与 **Windows** 为**相互独立**的工程与代码库，不要求 UI 或功能一一对应。
+
+---
+
+## 项目核心（双端共同把握）
+
+无论哪一平台，实现上都应围绕同一条产品主线，避免散落成“杂功能集合”：
+
+1. **播放体验**：以全屏/低干扰的收听流程为中心（布局与交互各端可自行设计）。
+2. **播放状态**：队列、当前曲目、播放模式、进度与恢复要**可靠、可推理**（各端技术栈不同，但语义应对齐）。
+3. **数据链路**：接口基址**可配置**；依赖 `docs/` 中离线 API 说明理解契约；封面/歌词等缓存策略应**可追踪、可维护**。
+
+**Windows 开发可参考 Android**：不要求一致，但在**请求路径、Cookie/会话、解析字段、播放与缓存链路**上，`Android/` 里的 `data/*`、`playback/*` 与 `docs/ARCHITECTURE.md` 是已落地的对照实现，可用来减少踩坑。
 
 ---
 
 ## 为什么是这个项目
 
-`ZMusic` 的目标不是“功能堆叠”，而是把以下三件事做到顺滑、统一、可持续迭代：
-
-- 全屏播放体验（横竖屏差异化布局 + 低干扰交互）
-- 轻量但可靠的播放状态管理（队列、模式、恢复）
-- 可控的数据链路（接口地址可配置、文档离线化、缓存可追踪）
+`ZMusic` 的目标不是“功能堆叠”，而是落实上节「项目核心」三件事，并做到顺滑、统一、可持续迭代。
 
 ---
 
@@ -29,9 +37,9 @@
 2. 等待 Gradle Sync 完成
 3. 运行 `app` 模块
 
-### 3) 配置 API 地址（推荐先做）
+### 3) 配置 API 地址
 
-在 `Android/local.properties`（已 git ignore）加入：
+Android 端**默认固定**为 `http://47.110.72.65:3000`（见 `Android/app/build.gradle.kts`）。若需连本机或其它环境，可在 `Android/local.properties`（已 git ignore）覆盖：
 
 ```properties
 ncm.api.base.url=http://你的主机:端口
@@ -42,6 +50,7 @@ ncm.api.base.url=http://你的主机:端口
 - 不要带结尾 `/`
 - 编译时会注入到 `BuildConfig.NCM_API_BASE_URL`
 - 代码统一通过 `com.kite.zmusic.config.NcmApiConfig.baseUrl` 读取
+- 本地调试示例：模拟器访问开发机可用 `http://10.0.2.2:3000`；真机请用电脑局域网 IP
 
 ---
 
@@ -76,15 +85,18 @@ ncm.api.base.url=http://你的主机:端口
 
 | 路径 | 说明 |
 |---|---|
-| `Android/` | Android 客户端工程（Compose + Media3 + OkHttp） |
-| `Android/app/src/main/java/com/kite/zmusic/ui` | UI 层：主壳、歌单、播放器、通用组件 |
+| `Android/` | Android 客户端（Compose + Media3 + OkHttp），**可参考的完整业务实现** |
+| `Android/app/src/main/java/com/kite/zmusic/ui` | UI：主壳、歌单、播放器、通用组件 |
 | `Android/app/src/main/java/com/kite/zmusic/playback` | 播放状态与 ExoPlayer 协调 |
 | `Android/app/src/main/java/com/kite/zmusic/data` | API 请求、解析、会话与数据模型 |
-| `docs/` | 文档中心（入门、架构、接口离线说明） |
+| `Windows/` | Windows 客户端（WinUI 3 + C++/WinRT + Windows App SDK），与 Android **独立演进** |
+| `docs/` | 文档中心（架构说明、接口离线资料）；详见 `docs/README.md` |
 
 ---
 
 ## 常用开发命令
+
+### Android
 
 在 `Android/` 目录：
 
@@ -92,6 +104,10 @@ ncm.api.base.url=http://你的主机:端口
 ./gradlew :app:compileDebugKotlin
 ./gradlew :app:assembleDebug
 ```
+
+### Windows
+
+使用 **Visual Studio 2022** 打开 `Windows/ZMusic.sln`，还原 NuGet 后编译；输出与中间文件见 `.gitignore` 说明。
 
 ---
 
@@ -114,4 +130,4 @@ ncm.api.base.url=http://你的主机:端口
 
 ## License
 
-如需开源发布，建议在仓库根目录补充明确的 `LICENSE` 文件并在此处声明。
+本项目以 [GNU General Public License v2.0](LICENSE)（GPL-2.0）发布，许可证全文见仓库根目录 `LICENSE`。

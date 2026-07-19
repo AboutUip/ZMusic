@@ -82,10 +82,15 @@ class LoginViewModel(
                 qrUnikey = key
                 val create = api.loginQrCreate(key)
                 if (NcmJson.apiCode(create) != 200) {
-                    bannerError = create.optString("msg", "二维码生成失败")
+                    bannerError = create.optString("msg", create.optString("message", "二维码生成失败"))
                     return@launch
                 }
-                qrImageBase64 = NcmJson.qrImgBase64(create)
+                val img = NcmJson.qrImgBase64(create)
+                if (img.isNullOrBlank()) {
+                    bannerError = "二维码数据为空（请确认服务端 /login/qr/create 返回 data.qrimg）"
+                    return@launch
+                }
+                qrImageBase64 = img
                 qrHint = "使用网易云音乐 App 扫描"
             } catch (e: CancellationException) {
                 throw e

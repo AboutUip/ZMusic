@@ -12,13 +12,18 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.kite.zmusic.data.ServerConfigRepository
 import com.kite.zmusic.data.SessionRepository
 import com.kite.zmusic.ui.login.LoginScreen
 import com.kite.zmusic.ui.main.MainPlaceholderScreen
+import com.kite.zmusic.ui.server.ServerBootGate
+import com.kite.zmusic.ui.server.ServerConfigScreen
 import com.kite.zmusic.ui.splash.SplashScreen
 
 private object Routes {
     const val Splash = "splash"
+    const val ServerBoot = "server_boot"
+    const val ServerConfig = "server_config"
     const val MainPlaceholder = "main_placeholder"
     const val Login = "login"
 }
@@ -27,7 +32,9 @@ private object Routes {
 fun ZMusicNavHost(modifier: Modifier = Modifier) {
     val navController = rememberNavController()
     val context = LocalContext.current
-    val sessionRepository = remember { SessionRepository(context.applicationContext) }
+    val appContext = context.applicationContext
+    val sessionRepository = remember { SessionRepository(appContext) }
+    val serverConfigRepository = remember { ServerConfigRepository(appContext) }
 
     NavHost(
         navController = navController,
@@ -37,8 +44,50 @@ fun ZMusicNavHost(modifier: Modifier = Modifier) {
         composable(Routes.Splash) {
             SplashScreen(
                 onFinished = {
-                    navController.navigate(Routes.MainPlaceholder) {
+                    navController.navigate(Routes.ServerBoot) {
                         popUpTo(Routes.Splash) { inclusive = true }
+                        launchSingleTop = true
+                    }
+                },
+            )
+        }
+        composable(Routes.ServerBoot) {
+            ServerBootGate(
+                serverConfigRepository = serverConfigRepository,
+                onReady = {
+                    navController.navigate(Routes.MainPlaceholder) {
+                        popUpTo(Routes.ServerBoot) { inclusive = true }
+                        launchSingleTop = true
+                    }
+                },
+                onNeedConfig = {
+                    navController.navigate(Routes.ServerConfig) {
+                        popUpTo(Routes.ServerBoot) { inclusive = true }
+                        launchSingleTop = true
+                    }
+                },
+            )
+        }
+        composable(
+            route = Routes.ServerConfig,
+            enterTransition = {
+                fadeIn(animationSpec = tween(380)) + slideInVertically(
+                    animationSpec = tween(380),
+                    initialOffsetY = { it / 12 },
+                )
+            },
+            exitTransition = {
+                fadeOut(animationSpec = tween(280)) + slideOutVertically(
+                    animationSpec = tween(280),
+                    targetOffsetY = { it / 16 },
+                )
+            },
+        ) {
+            ServerConfigScreen(
+                serverConfigRepository = serverConfigRepository,
+                onConfigured = {
+                    navController.navigate(Routes.MainPlaceholder) {
+                        popUpTo(Routes.ServerConfig) { inclusive = true }
                         launchSingleTop = true
                     }
                 },

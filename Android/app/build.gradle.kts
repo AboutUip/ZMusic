@@ -11,7 +11,9 @@ val localProperties = Properties().apply {
     if (f.exists()) f.inputStream().use { load(it) }
 }
 
-/** 可覆盖；默认见下方常量。勿在仓库中提交含密钥的 local.properties。 */
+/**
+ * 默认固定为线上 API 基址；若本地调试可在 `Android/local.properties` 设置 `ncm.api.base.url`（无末尾 `/`）覆盖。
+ */
 val ncmApiBaseUrl: String =
     localProperties.getProperty("ncm.api.base.url")?.trim()?.takeIf { it.isNotEmpty() }
         ?: "http://47.110.72.65:3000"

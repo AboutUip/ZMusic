@@ -1,5 +1,8 @@
 # 复制为 local.properties 后按需修改（local.properties 勿提交到 Git）
 # sdk.dir=...
 
-# 可选：覆盖默认网易云 API 服务基地址（无末尾斜杠）
-# ncm.api.base.url=http://你的主机:端口
+# 网易云兼容 API 基地址（编译期默认），无末尾斜杠；不设则使用构建脚本默认 http://47.110.72.65:3000
+# 运行期用户可在 App 内「服务器配置」覆盖并持久化；此处仅影响首次未配置时的默认值。
+# ncm.api.base.url=http://47.110.72.65:3000
+# 本地调试示例（模拟器访问开发机）：
+# ncm.api.base.url=http://10.0.2.2:3000

@@ -1,7 +1,55 @@
+# --- Android ---
+.gradle/
+Android/.gradle/
+Android/**/build/
+Android/local.properties
+Android/captures/
+Android/*.iml
+*.iml
+.kotlin
+
 /build
-.idea
-Android/app/build
 Android/app/src/androidTest
 Android/app/src/test
 Android/dev
-.kotlin
+
+# --- Windows (Visual Studio / WinUI / C++/WinRT / NuGet) ---
+Windows/.vs/
+Windows/packages/
+Windows/Generated Files/
+
+# MSBuild & 本机输出目录
+Windows/**/[Dd]ebug/
+Windows/**/[Rr]elease/
+Windows/**/x64/
+Windows/**/x86/
+Windows/**/ARM64/
+Windows/**/Win32/
+Windows/**/[Bb]in/
+Windows/**/[Oo]bj/
+Windows/**/[Ll]og/
+Windows/**/[Ll]ogs/
+
+# MSIX / 打包
+Windows/AppPackages/
+Windows/**/BundleArtifacts/
+Windows/**/*.appx
+Windows/**/*.msix
+Windows/**/*.msixbundle
+
+# VS 用户与本地数据库
+Windows/**/*.user
+Windows/**/*.rsuser
+Windows/**/*.VC.db
+Windows/**/*.VC.VC.opendb
+Windows/**/*.suo
+
+# --- IDE / 系统 ---
+.idea
+.vscode/*
+!.vscode/c_cpp_properties.json
+!.vscode/settings.json
+*.swp
+*~
+.DS_Store
+Thumbs.db

@@ -110,8 +110,9 @@ class LibraryViewModel(
                 }
                 val likeN = likeJson?.let { NcmLibraryParse.likeIdsCount(it) } ?: 0
 
+                // 只更新首页字段，勿整表重建，避免冲掉正在加载的 sheet
                 _ui.update {
-                    LibraryUiState(
+                    it.copy(
                         loading = false,
                         refreshing = false,
                         error = null,
@@ -120,7 +121,6 @@ class LibraryViewModel(
                         subcount = sub,
                         playlists = playlists,
                         likedTrackCount = likeN,
-                        sheet = it.sheet,
                     )
                 }
             } catch (e: Exception) {

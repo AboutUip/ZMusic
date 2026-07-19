@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Application
+    x:Class="ZMusic.App"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:ZMusic">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Light">
+                    <!-- 浅色：接近 macOS「音乐」侧栏与内容区层次 -->
+                    <SolidColorBrush x:Key="ZMusicPageBrush" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="ZMusicSurfaceBrush" Color="#F5F5F7" />
+                    <SolidColorBrush x:Key="ZMusicElevatedBrush" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="ZMusicSidebarBrush" Color="#F5F5F7" />
+                    <SolidColorBrush x:Key="ZMusicSidebarHairlineBrush" Color="#D8D8DC" />
+                    <SolidColorBrush x:Key="ZMusicPlayerBarBrush" Color="#F2F2F7" />
+                    <SolidColorBrush x:Key="ZMusicSegmentedBgBrush" Color="#E5E5EA" />
+                    <SolidColorBrush x:Key="ZMusicLoginBackdropBrush" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="ZMusicAppleAccentBrush" Color="#FA243C" />
+                    <SolidColorBrush x:Key="ZMusicBorderBrush" Color="#D1D1D6" />
+                    <SolidColorBrush x:Key="ZMusicHairlineBrush" Color="#D8D8DC" />
+                    <SolidColorBrush x:Key="ZMusicChromeTextBrush" Color="#1D1D1F" />
+                    <SolidColorBrush x:Key="ZMusicMutedTextBrush" Color="#6E6E73" />
+                    <SolidColorBrush x:Key="ZMusicHeadingBrush" Color="#1D1D1F" />
+                    <SolidColorBrush x:Key="ZMusicQrMatBrush" Color="#FFFFFF" />
+                    <CornerRadius x:Key="ZMusicCardRadius">12</CornerRadius>
+                    <CornerRadius x:Key="ZMusicControlRadius">8</CornerRadius>
+                    <x:Double x:Key="ZMusicSectionSpacing">22</x:Double>
+                    <SolidColorBrush x:Key="ApplicationPageBackgroundThemeBrush" Color="#FFFFFF" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Dark">
+                    <SolidColorBrush x:Key="ZMusicPageBrush" Color="#000000" />
+                    <SolidColorBrush x:Key="ZMusicSurfaceBrush" Color="#1C1C1E" />
+                    <SolidColorBrush x:Key="ZMusicElevatedBrush" Color="#2C2C2E" />
+                    <SolidColorBrush x:Key="ZMusicSidebarBrush" Color="#1C1C1E" />
+                    <SolidColorBrush x:Key="ZMusicSidebarHairlineBrush" Color="#38383A" />
+                    <SolidColorBrush x:Key="ZMusicPlayerBarBrush" Color="#1C1C1E" />
+                    <SolidColorBrush x:Key="ZMusicSegmentedBgBrush" Color="#3A3A3C" />
+                    <SolidColorBrush x:Key="ZMusicLoginBackdropBrush" Color="#000000" />
+                    <SolidColorBrush x:Key="ZMusicAppleAccentBrush" Color="#FA243C" />
+                    <SolidColorBrush x:Key="ZMusicBorderBrush" Color="#38383A" />
+                    <SolidColorBrush x:Key="ZMusicHairlineBrush" Color="#48484A" />
+                    <SolidColorBrush x:Key="ZMusicChromeTextBrush" Color="#F5F5F7" />
+                    <SolidColorBrush x:Key="ZMusicMutedTextBrush" Color="#A1A1A6" />
+                    <SolidColorBrush x:Key="ZMusicHeadingBrush" Color="#F5F5F7" />
+                    <SolidColorBrush x:Key="ZMusicQrMatBrush" Color="#2C2C2E" />
+                    <CornerRadius x:Key="ZMusicCardRadius">12</CornerRadius>
+                    <CornerRadius x:Key="ZMusicControlRadius">8</CornerRadius>
+                    <x:Double x:Key="ZMusicSectionSpacing">22</x:Double>
+                    <SolidColorBrush x:Key="ApplicationPageBackgroundThemeBrush" Color="#000000" />
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+
+            <CornerRadius x:Key="ControlCornerRadius">8</CornerRadius>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

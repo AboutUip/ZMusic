@@ -154,6 +154,36 @@ class PlaybackViewModel(
         }
     }
 
+    /** `/song/url` 偶发 502 时回退 `/song/url/v1`（与 Windows 端一致）。 */
+    private suspend fun resolvePlayUrl(trackId: Long, cookie: String): String? {
+        val primary = withContext(Dispatchers.IO) {
+            userClient.songUrl(listOf(trackId), cookie)
+        }
+        NcmPlaybackParse.songUrlForId(primary, trackId)?.let { return it }
+
+        val v1 = withContext(Dispatchers.IO) {
+            userClient.songUrlV1(listOf(trackId), cookie, level = "exhigh")
+        }
+        return NcmPlaybackParse.songUrlForId(v1, trackId)
+    }
+
+    private suspend fun loadLyricsBestEffort(songId: Long, cookie: String): List<LrcLine> {
+        loadLyricsLinesFromCache(songId, cookie)?.let { return it }
+        return try {
+            val lyricJson = withContext(Dispatchers.IO) {
+                userClient.lyric(songId, cookie)
+            }
+            val raw = NcmPlaybackParse.lrcText(lyricJson)
+            val lines = raw?.let(LrcParser::parse).orEmpty()
+            if (raw != null) {
+                saveLyricsToCache(songId, cookie, raw, lines)
+            }
+            lines
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
     private var loadJob: Job? = null
     private var tickerJob: Job? = null
 
@@ -314,14 +344,11 @@ class PlaybackViewModel(
             _ui.update { it.copy(error = null) }
             val cookie = sessionRepository.session.value?.cookie.orEmpty()
             try {
-                val urlJson = withContext(Dispatchers.IO) {
-                    userClient.songUrl(listOf(track.id), cookie)
-                }
-                val url = NcmPlaybackParse.songUrlForId(urlJson, track.id)
+                val url = resolvePlayUrl(track.id, cookie)
                 if (url.isNullOrBlank()) {
                     _ui.update {
                         it.copy(
-                            error = "暂无播放链接",
+                            error = "暂无播放链接（/song/url 与 /song/url/v1 均失败）",
                             loadPending = false,
                             buffering = false,
                         )
@@ -329,32 +356,14 @@ class PlaybackViewModel(
                     return@launch
                 }
 
-                // 歌词：优先读缓存，没命中才请求解析
-                val cachedLines = loadLyricsLinesFromCache(songId = track.id, cookie = cookie)
-                if (cachedLines != null) {
-                    _ui.update {
-                        it.copy(
-                            lyricLines = cachedLines,
-                            error = null,
-                            loadPending = false,
-                        )
-                    }
-                } else {
-                    val lyricJson = withContext(Dispatchers.IO) {
-                        userClient.lyric(track.id, cookie)
-                    }
-                    val raw = NcmPlaybackParse.lrcText(lyricJson)
-                    val lines = raw?.let(LrcParser::parse).orEmpty()
-                    if (raw != null) {
-                        saveLyricsToCache(songId = track.id, cookie = cookie, raw = raw, lines = lines)
-                    }
-                    _ui.update {
-                        it.copy(
-                            lyricLines = lines,
-                            error = null,
-                            loadPending = false,
-                        )
-                    }
+                // 歌词失败不影响起播：优先缓存，否则请求；异常则空歌词继续播放
+                val lyricLines = loadLyricsBestEffort(track.id, cookie)
+                _ui.update {
+                    it.copy(
+                        lyricLines = lyricLines,
+                        error = null,
+                        loadPending = false,
+                    )
                 }
                 withContext(Dispatchers.Main) {
                     player.setMediaItem(MediaItem.fromUri(url))

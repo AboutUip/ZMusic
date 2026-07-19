@@ -385,20 +385,23 @@ fun LibraryScreen(
                 }
             }
             else -> {
+                // contentKey 在 Loading→Ready 间不变时，入场快照会冻住；详情读最新 ui.sheet
+                val live = ui.sheet
+                val detailSheet = if (live is LibrarySheet.Hidden) sheet else live
                 LibraryPlaylistDetailPage(
-                    sheet = sheet,
+                    sheet = detailSheet,
                     onBack = vm::dismissSheet,
                     isLandscape = isLandscape,
                     horizontalPadding = padH,
                     verticalPadding = padV,
                     playbackState = playbackState,
                     onPlayTrack = { index ->
-                        when (sheet) {
+                        when (val s = detailSheet) {
                             is LibrarySheet.Ready -> onPlayTracks(
-                                sheet.tracks,
+                                s.tracks,
                                 index,
-                                sheet.id,
-                                sheet.title,
+                                s.id,
+                                s.title,
                             )
                             else -> Unit
                         }
