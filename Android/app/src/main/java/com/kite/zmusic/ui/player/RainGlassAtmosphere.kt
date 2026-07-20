@@ -10,9 +10,11 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -21,14 +23,22 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import kotlin.math.cos
+import kotlin.math.pow
 import kotlin.math.sin
 import kotlin.random.Random
 
 /**
- * 窗户雨效：窗外斜雨（朝向 = 速度向量，全屏覆盖）→ 磨砂玻璃。
+ * 窗户雨效：窗外斜雨 → 磨砂玻璃雾气。
+ * [intensity] 0→1 开启、1→0 关闭（雾散、雨变短变淡直至消失）。
  */
 @Composable
-fun RainGlassAtmosphere(modifier: Modifier = Modifier) {
+fun RainGlassAtmosphere(
+    modifier: Modifier = Modifier,
+    intensity: Float = 1f,
+) {
+    val t = intensity.coerceIn(0f, 1f)
+    if (t <= 0.001f) return
+
     val density = LocalDensity.current
 
     val windAngleRad = Math.toRadians(18.0).toFloat()
@@ -43,6 +53,7 @@ fun RainGlassAtmosphere(modifier: Modifier = Modifier) {
     }
 
     var tick by remember { mutableFloatStateOf(0f) }
+    val intensityRef = rememberUpdatedState(t)
 
     LaunchedEffect(Unit) {
         var last = 0L
@@ -55,6 +66,7 @@ fun RainGlassAtmosphere(modifier: Modifier = Modifier) {
                 val dt = ((now - last).coerceAtMost(33_000_000L) / 1_000_000_000f)
                 last = now
                 tick += dt
+                val speedMul = 0.22f + 0.78f * intensityRef.value
 
                 fun stepStreaks(list: List<RainStreak>, speedScale: Float) {
                     list.forEach { s ->
@@ -66,8 +78,8 @@ fun RainGlassAtmosphere(modifier: Modifier = Modifier) {
                         }
                     }
                 }
-                stepStreaks(farStreaks, 0.72f)
-                stepStreaks(nearStreaks, 1.15f)
+                stepStreaks(farStreaks, 0.72f * speedMul)
+                stepStreaks(nearStreaks, 1.15f * speedMul)
             }
         }
     }
@@ -75,15 +87,26 @@ fun RainGlassAtmosphere(modifier: Modifier = Modifier) {
     @Suppress("UNUSED_VARIABLE")
     val frame = tick
 
-    Box(modifier.fillMaxSize()) {
+    // 雨丝长度随强度收缩；雾气略快于雨消散
+    val lengthMul = 0.15f + 0.85f * t.pow(0.85f)
+    val rainAlpha = t.pow(1.15f)
+    val fogAlpha = t.pow(0.75f)
+
+    Box(
+        modifier
+            .fillMaxSize()
+            .alpha(0.15f + 0.85f * t),
+    ) {
         if (Build.VERSION.SDK_INT >= 31) {
-            Canvas(Modifier.fillMaxSize().blur(2.5.dp)) {
+            Canvas(Modifier.fillMaxSize().blur(2.5.dp * t)) {
                 drawStreakLayer(
                     streaks = farStreaks,
                     windX = windX,
                     windY = windY,
                     densityScale = density.density,
-                    alphaMul = 0.55f,
+                    alphaMul = 0.55f * rainAlpha,
+                    lengthMul = lengthMul,
+                    thicknessMul = 0.35f + 0.65f * t,
                 )
             }
         } else {
@@ -93,7 +116,9 @@ fun RainGlassAtmosphere(modifier: Modifier = Modifier) {
                     windX = windX,
                     windY = windY,
                     densityScale = density.density,
-                    alphaMul = 0.45f,
+                    alphaMul = 0.45f * rainAlpha,
+                    lengthMul = lengthMul,
+                    thicknessMul = 0.35f + 0.65f * t,
                 )
             }
         }
@@ -104,36 +129,66 @@ fun RainGlassAtmosphere(modifier: Modifier = Modifier) {
                 windX = windX,
                 windY = windY,
                 densityScale = density.density,
-                alphaMul = 1f,
+                alphaMul = rainAlpha,
+                lengthMul = lengthMul,
+                thicknessMul = 0.35f + 0.65f * t,
             )
         }
 
-        FrostedWindowPane()
+        FrostedWindowPane(intensity = fogAlpha.coerceIn(0f, 1f))
+
+        // 关雨时额外一层雾气上飘消散
+        if (t < 0.92f) {
+            val dissipate = (1f - t).coerceIn(0f, 1f)
+            Canvas(Modifier.fillMaxSize()) {
+                drawRect(
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            Color(0xFFD8E4F0).copy(alpha = 0.10f * dissipate),
+                            Color(0xFFA8BBC8).copy(alpha = 0.06f * dissipate),
+                            Color.Transparent,
+                        ),
+                    ),
+                )
+                val rnd = Random(7)
+                repeat((48 * dissipate).toInt().coerceAtLeast(0)) {
+                    val px = rnd.nextFloat() * size.width
+                    val py = rnd.nextFloat() * size.height * (0.35f + 0.65f * dissipate)
+                    drawCircle(
+                        color = Color.White.copy(alpha = 0.018f * dissipate + rnd.nextFloat() * 0.02f),
+                        radius = (3f + rnd.nextFloat() * 14f) * (0.6f + dissipate),
+                        center = Offset(px, py - dissipate * size.height * 0.08f),
+                    )
+                }
+            }
+        }
     }
 }
 
 @Composable
-private fun FrostedWindowPane() {
+private fun FrostedWindowPane(intensity: Float) {
+    val a = intensity.coerceIn(0f, 1f)
+    if (a <= 0.001f) return
     Box(
         Modifier
             .fillMaxSize()
             .background(
                 Brush.verticalGradient(
                     colors = listOf(
-                        Color(0xFF9BB0C4).copy(alpha = 0.11f),
-                        Color(0xFF6E849A).copy(alpha = 0.15f),
-                        Color(0xFF3E4E60).copy(alpha = 0.18f),
+                        Color(0xFF9BB0C4).copy(alpha = 0.11f * a),
+                        Color(0xFF6E849A).copy(alpha = 0.15f * a),
+                        Color(0xFF3E4E60).copy(alpha = 0.18f * a),
                     ),
                 ),
             )
-            .background(Color.White.copy(alpha = 0.05f)),
+            .background(Color.White.copy(alpha = 0.05f * a)),
     )
     if (Build.VERSION.SDK_INT < 31) {
         Canvas(Modifier.fillMaxSize()) {
             val rnd = Random(42)
             repeat(720) {
                 drawCircle(
-                    color = Color.White.copy(alpha = 0.012f + rnd.nextFloat() * 0.024f),
+                    color = Color.White.copy(alpha = (0.012f + rnd.nextFloat() * 0.024f) * a),
                     radius = 0.6f + rnd.nextFloat() * 2.0f,
                     center = Offset(rnd.nextFloat() * size.width, rnd.nextFloat() * size.height),
                 )
@@ -145,7 +200,7 @@ private fun FrostedWindowPane() {
             brush = Brush.radialGradient(
                 colors = listOf(
                     Color.Transparent,
-                    Color.Black.copy(alpha = 0.26f),
+                    Color.Black.copy(alpha = 0.26f * a),
                 ),
                 center = Offset(size.width * 0.5f, size.height * 0.45f),
                 radius = size.maxDimension * 0.78f,
@@ -160,14 +215,17 @@ private fun DrawScope.drawStreakLayer(
     windY: Float,
     densityScale: Float,
     alphaMul: Float,
+    lengthMul: Float = 1f,
+    thicknessMul: Float = 1f,
 ) {
     val w = size.width
     val h = size.height
     streaks.forEach { s ->
         val near = s.depth
         val a = s.alpha * alphaMul * (0.4f + near * 0.75f)
-        val thick = s.thickness * (0.5f + near * 1.15f) * densityScale
-        val lenPx = s.length * h * (0.75f + near * 0.7f)
+        if (a < 0.004f) return@forEach
+        val thick = s.thickness * (0.5f + near * 1.15f) * densityScale * thicknessMul
+        val lenPx = s.length * h * (0.75f + near * 0.7f) * lengthMul
         val x0 = s.x * w
         val y0 = s.y * h
         val x1 = x0 + windX * lenPx
@@ -184,7 +242,7 @@ private fun DrawScope.drawStreakLayer(
             ),
             start = Offset(x0, y0),
             end = Offset(x1, y1),
-            strokeWidth = thick,
+            strokeWidth = thick.coerceAtLeast(0.35f),
         )
     }
 }

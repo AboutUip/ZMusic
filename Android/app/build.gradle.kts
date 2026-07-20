@@ -66,6 +66,7 @@ dependencies {
     implementation(libs.compose.material3)
     implementation(libs.activity.compose)
     implementation(libs.navigation.compose)
+    implementation(libs.haze)
 
     implementation(libs.appcompat)
     implementation(libs.material)

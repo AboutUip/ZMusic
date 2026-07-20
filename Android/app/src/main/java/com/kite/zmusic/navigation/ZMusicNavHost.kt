@@ -13,12 +13,12 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.kite.zmusic.data.ServerConfigRepository
-import com.kite.zmusic.data.SessionRepository
 import com.kite.zmusic.ui.login.LoginScreen
 import com.kite.zmusic.ui.main.MainPlaceholderScreen
 import com.kite.zmusic.ui.server.ServerBootGate
 import com.kite.zmusic.ui.server.ServerConfigScreen
 import com.kite.zmusic.ui.splash.SplashScreen
+import com.kite.zmusic.ZMusicApplication
 
 private object Routes {
     const val Splash = "splash"
@@ -33,7 +33,8 @@ fun ZMusicNavHost(modifier: Modifier = Modifier) {
     val navController = rememberNavController()
     val context = LocalContext.current
     val appContext = context.applicationContext
-    val sessionRepository = remember { SessionRepository(appContext) }
+    val app = appContext as ZMusicApplication
+    val sessionRepository = remember { app.sessionRepository }
     val serverConfigRepository = remember { ServerConfigRepository(appContext) }
 
     NavHost(

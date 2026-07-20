@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -58,6 +59,7 @@ fun ZMusicOrientationHost(
     val activity = context as? Activity
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val rotationLock = rememberSessionRotationLock()
 
     DisposableEffect(activity, isLandscape) {
         val act = activity
@@ -97,18 +99,20 @@ fun ZMusicOrientationHost(
         orientationSwitchOverlay = false
     }
 
-    Box(modifier = modifier.fillMaxSize()) {
-        content()
+    CompositionLocalProvider(LocalSessionRotationLock provides rotationLock) {
+        Box(modifier = modifier.fillMaxSize()) {
+            content()
 
-        AnimatedVisibility(
-            visible = orientationSwitchOverlay,
-            modifier = Modifier
-                .fillMaxSize()
-                .zIndex(10_000f),
-            enter = fadeIn(animationSpec = tween(120)),
-            exit = fadeOut(animationSpec = tween(220)),
-        ) {
-            OrientationSwitchMask()
+            AnimatedVisibility(
+                visible = orientationSwitchOverlay,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .zIndex(10_000f),
+                enter = fadeIn(animationSpec = tween(120)),
+                exit = fadeOut(animationSpec = tween(220)),
+            ) {
+                OrientationSwitchMask()
+            }
         }
     }
 }

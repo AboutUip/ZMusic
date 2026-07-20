@@ -57,14 +57,20 @@ fun MiniPlayerBar(
     onOpenFull: () -> Unit,
     onTogglePlay: () -> Unit,
     onClose: () -> Unit,
+    loadPending: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     var dragX by remember { mutableFloatStateOf(0f) }
     val dismissReveal = (-dragX / 120f).coerceIn(0f, 1f)
     val haptic = LocalHapticFeedback.current
+    val displayPos = rememberSeekDisplayPositionMs(
+        trackId = track.id,
+        positionMs = positionMs,
+        loadPending = loadPending,
+    )
 
     val progress = if (durationMs > 0) {
-        (positionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
+        (displayPos.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
     } else {
         0f
     }

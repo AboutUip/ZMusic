@@ -29,9 +29,7 @@ fun ZMusicTheme(content: @Composable () -> Unit) {
     val view = LocalView.current
     SideEffect {
         val window = (view.context as Activity).window
-        // 透明系统栏：背景可铺满全屏，避免「留白条」；内容由 windowInsetsPadding 避让刘海/状态栏/导航条
-        window.statusBarColor = android.graphics.Color.TRANSPARENT
-        window.navigationBarColor = android.graphics.Color.TRANSPARENT
+        // 透明系统栏由 MainActivity.enableEdgeToEdge() 处理；此处只配置图标对比度
         WindowCompat.getInsetsController(window, view).apply {
             isAppearanceLightStatusBars = false
             isAppearanceLightNavigationBars = false

@@ -27,10 +27,10 @@ import kotlin.math.cos
 import kotlin.math.min
 import kotlin.math.sin
 
-private val IconTint = Color(0xFFB8C5D4)
+private val IconTint = Color(0xFFE8EEF5)
 
 /**
- * 简约矢量播放模式图标：列表循环 / 单曲循环 / 随机。
+ * 1:1 复刻 Apple Music（SF Symbols `repeat` / `repeat.1` / `shuffle`）。
  */
 @Composable
 fun PlaybackModeControl(
@@ -51,94 +51,155 @@ fun PlaybackModeControl(
             ),
         contentAlignment = Alignment.Center,
     ) {
-        Canvas(Modifier.size(circleSize * 0.52f)) {
-            val stroke = Stroke(
-                width = size.minDimension * 0.11f,
-                cap = StrokeCap.Round,
-                join = StrokeJoin.Round,
-            )
+        Canvas(Modifier.size(circleSize * 0.70f)) {
+            val sw = size.minDimension * 0.100f
+            val stroke = Stroke(width = sw, cap = StrokeCap.Round, join = StrokeJoin.Round)
             when (mode) {
-                PlaybackMode.ORDER -> drawRepeatAll(tint, stroke)
-                PlaybackMode.REPEAT_ONE -> drawRepeatOne(tint, stroke)
-                PlaybackMode.SHUFFLE -> drawShuffle(tint, stroke)
+                PlaybackMode.ORDER -> drawAppleRepeat(tint, stroke, showOne = false)
+                PlaybackMode.REPEAT_ONE -> drawAppleRepeat(tint, stroke, showOne = true)
+                PlaybackMode.SHUFFLE -> drawAppleShuffle(tint, stroke)
             }
         }
     }
 }
 
-private fun DrawScope.drawRepeatAll(color: Color, stroke: Stroke) {
-    val r = size.minDimension * 0.38f
-    val c = Offset(size.width / 2f, size.height / 2f)
-    // 上弧 + 右箭头
-    drawArc(
-        color = color,
-        startAngle = 200f,
-        sweepAngle = 200f,
-        useCenter = false,
-        topLeft = Offset(c.x - r, c.y - r),
-        size = Size(r * 2f, r * 2f),
-        style = stroke,
-    )
-    val tip = Offset(c.x + r * 0.15f, c.y - r)
-    drawArrowHead(tip, angleDeg = -20f, color, stroke.width * 2.2f)
-}
-
-private fun DrawScope.drawRepeatOne(color: Color, stroke: Stroke) {
-    drawRepeatAll(color, stroke)
-    // 中心「1」
+/**
+ * 列表循环 / 单曲循环：四向箭头闭环（上→ 右↓ 下← 左↑），角上留缝不粘连。
+ * 单曲循环仅在中心加更小的「1」。
+ */
+private fun DrawScope.drawAppleRepeat(color: Color, stroke: Stroke, showOne: Boolean) {
+    val m = size.minDimension
     val cx = size.width / 2f
     val cy = size.height / 2f
-    val h = size.minDimension * 0.28f
-    val w = size.minDimension * 0.06f
+    val sw = stroke.width
+    val hw = m * 0.32f
+    val hh = m * 0.26f
+    // 箭头缩短 + 四角留缝，避免首尾相连成闭环实线
+    val arrow = sw * 1.45f
+    val gap = m * 0.11f
+
+    val left = cx - hw
+    val right = cx + hw
+    val top = cy - hh
+    val bot = cy + hh
+
+    // 上：左 → 右
     drawLine(
-        color = color,
-        start = Offset(cx - w * 0.8f, cy - h * 0.35f),
-        end = Offset(cx, cy - h * 0.55f),
-        strokeWidth = w,
-        cap = StrokeCap.Round,
+        color,
+        Offset(left + gap, top),
+        Offset(right - gap - arrow * 0.35f, top),
+        sw,
+        StrokeCap.Round,
     )
+    drawFilledChevron(Offset(right - gap * 0.22f, top), 0f, color, arrow)
+
+    // 右：上 → 下
     drawLine(
-        color = color,
-        start = Offset(cx, cy - h * 0.55f),
-        end = Offset(cx, cy + h * 0.55f),
-        strokeWidth = w,
-        cap = StrokeCap.Round,
+        color,
+        Offset(right, top + gap),
+        Offset(right, bot - gap - arrow * 0.35f),
+        sw,
+        StrokeCap.Round,
     )
+    drawFilledChevron(Offset(right, bot - gap * 0.22f), 90f, color, arrow)
+
+    // 下：右 → 左
+    drawLine(
+        color,
+        Offset(right - gap, bot),
+        Offset(left + gap + arrow * 0.35f, bot),
+        sw,
+        StrokeCap.Round,
+    )
+    drawFilledChevron(Offset(left + gap * 0.22f, bot), 180f, color, arrow)
+
+    // 左：下 → 上
+    drawLine(
+        color,
+        Offset(left, bot - gap),
+        Offset(left, top + gap + arrow * 0.35f),
+        sw,
+        StrokeCap.Round,
+    )
+    drawFilledChevron(Offset(left, top + gap * 0.22f), 270f, color, arrow)
+
+    if (showOne) {
+        val oneSw = sw * 0.88f
+        val ox = cx + m * 0.01f
+        val top1 = cy - m * 0.11f
+        val bot1 = cy + m * 0.125f
+        drawLine(color, Offset(ox - m * 0.045f, top1 + m * 0.04f), Offset(ox, top1), oneSw, StrokeCap.Round)
+        drawLine(color, Offset(ox, top1), Offset(ox, bot1), oneSw, StrokeCap.Round)
+        drawLine(
+            color,
+            Offset(ox - m * 0.055f, bot1),
+            Offset(ox + m * 0.055f, bot1),
+            oneSw * 0.92f,
+            StrokeCap.Round,
+        )
+    }
 }
 
-private fun DrawScope.drawShuffle(color: Color, stroke: Stroke) {
-    val pad = size.minDimension * 0.08f
-    val left = pad
-    val right = size.width - pad
-    val top = size.height * 0.28f
-    val bot = size.height * 0.72f
-    val midX = size.width * 0.5f
+/**
+ * Apple Music `shuffle`：左两水平 stub，中段交叉换轨，右端两实心箭头。
+ */
+private fun DrawScope.drawAppleShuffle(color: Color, stroke: Stroke) {
+    val w = size.width
+    val h = size.height
+    val sw = stroke.width
+    val arrow = sw * 2.45f
 
-    // 上交叉
-    drawLine(color, Offset(left, top), Offset(midX - pad * 0.4f, top), stroke.width, StrokeCap.Round)
-    drawLine(color, Offset(midX + pad * 0.4f, bot), Offset(right - pad, bot), stroke.width, StrokeCap.Round)
-    drawLine(color, Offset(midX - pad * 0.4f, top), Offset(midX + pad * 0.4f, bot), stroke.width, StrokeCap.Round)
-    drawArrowHead(Offset(right - pad * 0.15f, bot), 0f, color, stroke.width * 2.1f)
+    fun x(v: Float) = v / 24f * w
+    fun y(v: Float) = v / 24f * h
 
-    // 下交叉
-    drawLine(color, Offset(left, bot), Offset(midX - pad * 0.4f, bot), stroke.width, StrokeCap.Round)
-    drawLine(color, Offset(midX + pad * 0.4f, top), Offset(right - pad, top), stroke.width, StrokeCap.Round)
-    drawLine(color, Offset(midX - pad * 0.4f, bot), Offset(midX + pad * 0.4f, top), stroke.width, StrokeCap.Round)
-    drawArrowHead(Offset(right - pad * 0.15f, top), 0f, color, stroke.width * 2.1f)
+    val topY = y(7f)
+    val botY = y(17f)
+    val left = x(2.5f)
+    val midA = x(8.5f)
+    val midB = x(15.5f)
+    val right = x(18.5f)
+
+    // 上路 → 右下
+    val upper = Path().apply {
+        moveTo(left, topY)
+        lineTo(midA, topY)
+        cubicTo(
+            midA + (midB - midA) * 0.28f, topY,
+            midB - (midB - midA) * 0.28f, botY,
+            midB, botY,
+        )
+        lineTo(right, botY)
+    }
+    drawPath(upper, color, style = stroke)
+    drawFilledChevron(Offset(x(21.8f), botY), 0f, color, arrow)
+
+    // 下路 → 右上
+    val lower = Path().apply {
+        moveTo(left, botY)
+        lineTo(midA, botY)
+        cubicTo(
+            midA + (midB - midA) * 0.28f, botY,
+            midB - (midB - midA) * 0.28f, topY,
+            midB, topY,
+        )
+        lineTo(right, topY)
+    }
+    drawPath(lower, color, style = stroke)
+    drawFilledChevron(Offset(x(21.8f), topY), 0f, color, arrow)
 }
 
-private fun DrawScope.drawArrowHead(
+private fun DrawScope.drawFilledChevron(
     tip: Offset,
     angleDeg: Float,
     color: Color,
     sizePx: Float,
 ) {
     val rad = angleDeg * (PI.toFloat() / 180f)
-    val back = sizePx * 0.85f
-    val spread = sizePx * 0.55f
+    val back = sizePx * 0.92f
+    val spread = sizePx * 0.56f
     val dir = Offset(cos(rad), sin(rad))
     val perp = Offset(-dir.y, dir.x)
-    val base = tip - dir * back
+    val base = Offset(tip.x - dir.x * back, tip.y - dir.y * back)
     val path = Path().apply {
         moveTo(tip.x, tip.y)
         lineTo(base.x + perp.x * spread, base.y + perp.y * spread)
@@ -148,7 +209,6 @@ private fun DrawScope.drawArrowHead(
     drawPath(path, color)
 }
 
-/** 上一首 / 下一首简约三角图标 */
 @Composable
 fun TransportSkipIcon(
     forward: Boolean,
@@ -167,27 +227,18 @@ fun TransportSkipIcon(
             path.lineTo(w * 0.58f, h * 0.5f)
             path.close()
             drawPath(path, tint)
-            drawRect(
-                color = tint,
-                topLeft = Offset(w * 0.68f, h * 0.18f),
-                size = Size(bar, h * 0.64f),
-            )
+            drawRect(tint, Offset(w * 0.68f, h * 0.18f), Size(bar, h * 0.64f))
         } else {
             path.moveTo(w * 0.88f, h * 0.18f)
             path.lineTo(w * 0.88f, h * 0.82f)
             path.lineTo(w * 0.42f, h * 0.5f)
             path.close()
             drawPath(path, tint)
-            drawRect(
-                color = tint,
-                topLeft = Offset(w * 0.18f, h * 0.18f),
-                size = Size(bar, h * 0.64f),
-            )
+            drawRect(tint, Offset(w * 0.18f, h * 0.18f), Size(bar, h * 0.64f))
         }
     }
 }
 
-/** 播放 / 暂停简约图标 */
 @Composable
 fun TransportPlayPauseIcon(
     playing: Boolean,

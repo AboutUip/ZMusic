@@ -1,8 +1,6 @@
 package com.kite.zmusic.ui.common
 
-import android.content.Context
 import android.graphics.BitmapFactory
-import android.util.LruCache
 import androidx.compose.foundation.Image
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -19,30 +17,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import java.io.File
-import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 
 private val UrlImageClient by lazy {
     OkHttpClient.Builder()
         .callTimeout(15, TimeUnit.SECONDS)
         .build()
-}
-
-private const val MEMORY_MAX_ENTRIES = 20
-
-private val memoryCache = object : LruCache<String, ImageBitmap>(MEMORY_MAX_ENTRIES) {}
-
-private fun sha256Hex(input: String): String {
-    val md = MessageDigest.getInstance("SHA-256")
-    val bytes = md.digest(input.toByteArray(Charsets.UTF_8))
-    return bytes.joinToString("") { "%02x".format(it) }
-}
-
-private fun diskFileFor(context: Context, url: String): File {
-    val dir = File(context.cacheDir, "zmusic_image_cache")
-    if (!dir.exists()) dir.mkdirs()
-    return File(dir, "${sha256Hex(url)}.img")
 }
 
 /** 不依赖 Coil，用 OkHttp 拉取图片（与工程现有网络栈一致）。 */
@@ -54,14 +34,21 @@ fun UrlImage(
     contentScale: ContentScale = ContentScale.Fit,
 ) {
     val context = LocalContext.current
-    var bitmap by remember { mutableStateOf<ImageBitmap?>(null) }
-    LaunchedEffect(url) {
-        bitmap = null
-        if (url.isNullOrBlank()) return@LaunchedEffect
-        val key = url.trim()
+    val urlKey = url?.trim().orEmpty()
+    // 同步吃内存缓存，避免重组首帧空白闪一下
+    var bitmap by remember(urlKey) {
+        mutableStateOf(
+            urlKey.takeIf { it.isNotEmpty() }?.let { UrlImageCache.memoryGet(it) },
+        )
+    }
+    LaunchedEffect(urlKey) {
+        if (urlKey.isEmpty()) {
+            bitmap = null
+            return@LaunchedEffect
+        }
 
-        // 1) 内存缓存
-        memoryCache.get(key)?.let {
+        // 1) 内存缓存：直接命中，切勿先清空
+        UrlImageCache.memoryGet(urlKey)?.let {
             bitmap = it
             return@LaunchedEffect
         }
@@ -69,33 +56,33 @@ fun UrlImage(
         // 2) 磁盘缓存
         val fromDisk: ImageBitmap? = withContext(Dispatchers.IO) {
             runCatching {
-                val file = diskFileFor(context, key)
+                val file = UrlImageCache.diskFile(context, urlKey)
                 if (!file.exists()) return@runCatching null
                 val bytes = file.readBytes()
                 BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
             }.getOrNull()
         }
         if (fromDisk != null) {
-            memoryCache.put(key, fromDisk)
+            UrlImageCache.memoryPut(urlKey, fromDisk)
             bitmap = fromDisk
             return@LaunchedEffect
         }
 
-        // 3) 网络获取 + 写入缓存
+        // 3) 网络：仅此时允许短暂空白
+        bitmap = null
         bitmap = withContext(Dispatchers.IO) {
             runCatching {
-                val req = Request.Builder().url(key).get().build()
+                val req = Request.Builder().url(urlKey).get().build()
                 UrlImageClient.newCall(req).execute().use { resp ->
                     if (!resp.isSuccessful) return@use null
                     val bytes = resp.body?.bytes() ?: return@use null
-                    val file = diskFileFor(context, key)
+                    val file = UrlImageCache.diskFile(context, urlKey)
                     runCatching { file.writeBytes(bytes) }
+                    UrlImageCache.trimDisk(context)
                     BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
                 }
             }.getOrNull()
-        }?.also { bmp ->
-            if (bmp != null) memoryCache.put(key, bmp)
-        }
+        }?.also { UrlImageCache.memoryPut(urlKey, it) }
     }
     val b = bitmap
     if (b != null) {

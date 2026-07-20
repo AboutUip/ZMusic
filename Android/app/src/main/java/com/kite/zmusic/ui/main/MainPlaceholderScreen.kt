@@ -1,6 +1,5 @@
 package com.kite.zmusic.ui.main
 
-import android.app.Application
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -34,6 +33,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.style.TextAlign
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.kite.zmusic.ZMusicApplication
 import com.kite.zmusic.data.NcmAuthClient
 import com.kite.zmusic.data.NcmJson
 import com.kite.zmusic.data.SessionRepository
@@ -60,15 +60,16 @@ fun MainPlaceholderScreen(
 ) {
     val session by sessionRepository.session.collectAsStateWithLifecycle()
     var gate by remember { mutableStateOf(MainGate.Checking) }
-    val app = LocalContext.current.applicationContext as Application
-    val playbackFactory = remember(sessionRepository) {
-        PlaybackViewModelFactory(app, sessionRepository)
+    val app = LocalContext.current.applicationContext as ZMusicApplication
+    val playbackFactory = remember(app.playbackBridge) {
+        PlaybackViewModelFactory(app.playbackBridge)
     }
     val playback: PlaybackViewModel = viewModel(factory = playbackFactory)
 
     LaunchedEffect(session) {
         val s = session
         if (s == null) {
+            app.playbackBridge.stopForLogout()
             gate = MainGate.NeedLogin
             onRequireLogin()
             return@LaunchedEffect
@@ -91,6 +92,7 @@ fun MainPlaceholderScreen(
             }
         }
         if (!stillValid) {
+            app.playbackBridge.stopForLogout()
             sessionRepository.clear()
             gate = MainGate.NeedLogin
             onRequireLogin()
@@ -113,6 +115,9 @@ fun MainPlaceholderScreen(
                 )
             }
             MainGate.Ready -> {
+                LaunchedEffect(Unit) {
+                    app.playbackBridge.hydrateForUi()
+                }
                 AnimatedVisibility(
                     visible = true,
                     enter = fadeIn(tween(520)),

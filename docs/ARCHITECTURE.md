@@ -9,10 +9,11 @@
 ## 1. 技术栈
 
 - UI: Jetpack Compose
-- 播放: Media3 / ExoPlayer
+- 播放: Media3 ExoPlayer + **MediaSessionService**（通知 / 前台服务由 Media3 独占）
+- UI 控制: `MediaController` 拉起 Service；业务命令经进程内 `PlaybackBridge`
 - 网络: OkHttp
-- 状态: `StateFlow` + `ViewModel`
-- 安全存储: `EncryptedSharedPreferences`
+- 状态: `StateFlow` + ViewModel + Bridge
+- 安全存储: `EncryptedSharedPreferences`（会话）；播放队列快照用普通 `SharedPreferences`
 
 ---
 
@@ -20,83 +21,61 @@
 
 ## UI 层（`ui/*`）
 
-- `ui/main`：主壳、导航、Dock、迷你播放器挂载
-- `ui/library`：歌单列表与详情页
-- `ui/player`：全屏播放器、歌词视图、控制条、播放模式按钮
-- `ui/common`：公共组件（如 `UrlImage`）
+- `ui/main`：主壳、Dock、迷你条；点播前请求 `POST_NOTIFICATIONS`（拒绝仍可播，并提示后台可能受限）
+- `ui/library` / `ui/player`：歌单与全屏播放器
+- `ui/common`：`UrlImage` 等
 
-## 状态与播放协调层（`playback/*`）
+## 播放层（`playback/*`）
 
-- `PlaybackViewModel` 负责：
-  - 队列与索引
-  - 播放状态（播放中、缓冲、时长、进度）
-  - 播放模式（顺序/单曲循环/随机）
-  - 歌词加载与缓存
-  - 最近播放恢复
+| 组件 | 职责 |
+|------|------|
+| `PlaybackService` | 薄 `MediaSessionService`：持有 Session + Coordinator；**不**手写 `startForeground` |
+| `PlaylistCoordinator` | 队列、NCM URL **按需解析**、歌词、模式、短 TTL 预取 |
+| `PlaybackBridge` | Application 单例：MediaController 启服、注册 Coordinator、UI `StateFlow`；**禁止空队列冲掉迷你条快照** |
+| `PlaybackStateStore` | 唯一队列持久化（恢复迷你条） |
+| `PlaybackViewModel` | UI 薄封装 |
 
 ## 数据层（`data/*`）
 
-- `NcmUserClient`：接口请求
-- `NcmLibraryParse` / `NcmPlaybackParse`：JSON 解析
-- `LrcParser`：歌词文本解析为时间轴行
-- `SessionRepository`：会话状态与 cookie 来源
+- `NcmUserClient` / parsers / `SessionRepository`（Application 单例）
 
 ---
 
 ## 3. 核心播放数据流
 
-1. UI 触发点播（歌单 or 单曲）
-2. `PlaybackViewModel.playQueue()` 写入队列和起始索引
-3. `loadAndPlayIndex()` 拉取播放链接
-4. 歌词优先命中缓存，未命中再请求并落盘
-5. ExoPlayer `setMediaItem` -> `prepare` -> `playWhenReady=true`
-6. `Player.Listener` 回写播放状态到 `StateFlow`
-7. Compose UI 订阅状态并重组
+1. UI `playQueue` → `PlaybackBridge`（若无 Coordinator 则 `MediaController` 连接以启动 Service）
+2. Service `onCreate` 创建 `PlaylistCoordinator` 并 `bridge.attachCoordinator`
+3. Coordinator `resolvePlayUrl`（`/song/url` → `/song/url/v1`）→ ExoPlayer `setMediaItem` / `prepare` / `play`
+4. Media3 根据 Player 状态自动维护媒体通知与 mediaPlayback 前台服务
+5. 结束前约 30s 预取下一首 URL（TTL ≤ 2min）；切歌仍以新鲜 resolve 为准
+6. 歌词异步，不阻塞起播
+7. Compose 订阅 `Bridge.ui`
 
 ---
 
 ## 4. 缓存设计
 
-## 封面缓存（`ui/common/UrlImage.kt`）
-
-- 内存：`LruCache<String, ImageBitmap>`
-- 磁盘：`cacheDir/zmusic_image_cache`
-- 读取顺序：内存 -> 磁盘 -> 网络
-
-## 歌词缓存（`playback/PlaybackViewModel.kt`）
-
-- 内存：`LruCache<String, List<LrcLine>>`
-- 磁盘：`cacheDir/zmusic_lyrics_cache`
-- Key 组成：`songId + cookie hash`
-- 读取顺序：缓存 -> 网络 -> 回写缓存
+- 封面：`UrlImage` + `ArtworkLoader`（通知），磁盘目录 `zmusic_image_cache`
+- 歌词：Coordinator 内存 + `zmusic_lyrics_cache`
 
 ---
 
-## 5. UI/UX 设计要点（当前版本）
+## 5. UI/UX 要点
 
-- 竖屏：信息头 + 封面区 + 歌词预览 + 紧凑控制区
-- 横屏：封面与歌词左右分区 + 底部密集控制条
-- 全屏交互：弱化冗余按钮，保留手势和关键操作
-- 播放模式按钮：仅在展开播放器显示，不在迷你播放器显示
+- 竖屏 / 横屏播放器布局不变
+- 播放模式按钮仅在展开播放器
 
 ---
 
 ## 6. 配置与环境
 
-- Android 默认 API 基址为 `http://47.110.72.65:3000`（`app/build.gradle.kts`）；可选通过 `local.properties` 覆盖：
-
-```properties
-ncm.api.base.url=http://你的主机:端口
-```
-
-- 构建注入字段：`BuildConfig.NCM_API_BASE_URL`
-- 业务读取入口：`com.kite.zmusic.config.NcmApiConfig.baseUrl`（运行期可被用户配置覆盖）
-- 启动流程：Splash → `GET /inner/version` 连通性探测；失败进入服务器 IP/端口配置页，成功后加密持久化并继续主流程
+- 默认 API：`http://47.110.72.65:3000`；`local.properties` 可覆盖 `ncm.api.base.url`
+- Splash → 连通性探测 → 主流程
 
 ---
 
 ## 7. 后续建议
 
-- 为缓存增加 TTL 与版本策略（避免长期陈旧）
-- 补充关键链路测试（歌词缓存命中/失效、恢复播放）
-- 为 UI 关键参数建立可调试配置（便于不同机型快速调优）
+- 缓存 TTL / 版本策略
+- 关键链路仪器测试（息屏连播、通知 play/pause 同步）
+- 国产 ROM 后台白名单引导（产品决策后再做）

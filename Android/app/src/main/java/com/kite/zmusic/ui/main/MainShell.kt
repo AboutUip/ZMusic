@@ -1,6 +1,11 @@
 package com.kite.zmusic.ui.main
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import android.content.res.Configuration
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -23,14 +28,17 @@ import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -38,6 +46,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -45,6 +54,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kite.zmusic.data.SessionRepository
 import com.kite.zmusic.data.TrackRow
@@ -55,6 +65,7 @@ import com.kite.zmusic.ui.player.NowPlayingScreen
 import com.kite.zmusic.ui.scifi.SciFiBackdrop
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 private val MainPagerDestinations = MainDestination.entries
 
@@ -77,6 +88,49 @@ fun MainShell(
     val playingTrack = playbackState.currentTrack
     var pendingLibraryOpen by remember { mutableStateOf<Pair<Long, String>?>(null) }
 
+    val context = LocalContext.current
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    var pendingPlay by remember { mutableStateOf<PendingPlayRequest?>(null) }
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        val pending = pendingPlay
+        pendingPlay = null
+        if (pending != null) {
+            playback.playQueue(pending.tracks, pending.startIndex, pending.playlistId, pending.playlistTitle)
+            showFullPlayer = true
+            if (!granted) {
+                scope.launch {
+                    snackbarHostState.showSnackbar(
+                        "未开启通知时，系统可能在息屏后限制后台播放",
+                    )
+                }
+            }
+        }
+    }
+
+    fun playTracksWithNotificationPermission(
+        list: List<TrackRow>,
+        idx: Int,
+        plId: Long?,
+        plTitle: String?,
+    ) {
+        if (Build.VERSION.SDK_INT >= 33) {
+            val granted = ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS,
+            ) == PackageManager.PERMISSION_GRANTED
+            if (!granted) {
+                pendingPlay = PendingPlayRequest(list, idx, plId, plTitle)
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                return
+            }
+        }
+        playback.playQueue(list, idx, plId, plTitle)
+        showFullPlayer = true
+    }
+
     LaunchedEffect(playingTrack) {
         if (playingTrack == null) showFullPlayer = false
     }
@@ -94,6 +148,13 @@ fun MainShell(
 
     LaunchedEffect(libraryPlaylistFullScreen) {
         if (libraryPlaylistFullScreen) dockExpanded = false
+    }
+
+    LaunchedEffect(showFullPlayer, landscape) {
+        if (showFullPlayer && landscape) {
+            dockExpanded = false
+            quickSwitchPreview = null
+        }
     }
 
     BackHandler(enabled = dockExpanded && !showFullPlayer && !libraryPlaylistFullScreen) {
@@ -167,7 +228,8 @@ fun MainShell(
                     Modifier.fillMaxSize(),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    if (!libraryPlaylistFullScreen) {
+                    // 横屏全屏播放页不显示 Dock
+                    if (!libraryPlaylistFullScreen && !showFullPlayer) {
                         MainDockLandscape(
                             expanded = dockExpanded,
                             onExpandedChange = { dockExpanded = it },
@@ -201,8 +263,7 @@ fun MainShell(
                             onConsumePendingLibraryOpen = { pendingLibraryOpen = null },
                             onLibraryPlaylistFullScreenChange = { libraryPlaylistFullScreen = it },
                             onPlayTracks = { list: List<TrackRow>, idx: Int, plId: Long?, plTitle: String? ->
-                                playback.playQueue(list, idx, plId, plTitle)
-                                showFullPlayer = true
+                                playTracksWithNotificationPermission(list, idx, plId, plTitle)
                             },
                             modifier = Modifier.fillMaxSize(),
                         )
@@ -228,8 +289,7 @@ fun MainShell(
                             onConsumePendingLibraryOpen = { pendingLibraryOpen = null },
                             onLibraryPlaylistFullScreenChange = { libraryPlaylistFullScreen = it },
                             onPlayTracks = { list: List<TrackRow>, idx: Int, plId: Long?, plTitle: String? ->
-                                playback.playQueue(list, idx, plId, plTitle)
-                                showFullPlayer = true
+                                playTracksWithNotificationPermission(list, idx, plId, plTitle)
                             },
                         )
                     }
@@ -253,6 +313,7 @@ fun MainShell(
                             buffering = playbackState.buffering || playbackState.loadPending,
                             positionMs = playbackState.positionMs,
                             durationMs = playbackState.durationMs,
+                            loadPending = playbackState.loadPending,
                             onOpenFull = { showFullPlayer = true },
                             onTogglePlay = { playback.togglePlayPause() },
                             onClose = { playback.clearQueue() },
@@ -278,7 +339,7 @@ fun MainShell(
         }
 
         val tipDest = quickSwitchPreview
-        if (tipDest != null) {
+        if (tipDest != null && !(landscape && showFullPlayer)) {
             Box(
                 Modifier
                     .fillMaxSize()
@@ -309,7 +370,7 @@ fun MainShell(
         }
 
         MainDockExpandedOverlay(
-            visible = dockExpanded && !libraryPlaylistFullScreen,
+            visible = dockExpanded && !libraryPlaylistFullScreen && !(landscape && showFullPlayer),
             isLandscape = landscape,
             destination = destination,
             onDestination = { destination = it },
@@ -318,7 +379,7 @@ fun MainShell(
         )
 
         AnimatedVisibility(
-            visible = landscape && playingTrack != null,
+            visible = landscape && playingTrack != null && !showFullPlayer,
             modifier = Modifier
                 .fillMaxSize()
                 .zIndex(24f),
@@ -334,10 +395,10 @@ fun MainShell(
                 ),
         ) {
             val tr = playingTrack ?: return@AnimatedVisibility
+            // 横屏沉浸式下勿用 safeDrawing 的 start（会把状态栏/挖孔 inset 顶到左侧）
             Box(
                 Modifier
                     .fillMaxSize()
-                    .safeDrawingPadding()
                     .padding(bottom = 8.dp),
                 contentAlignment = Alignment.BottomCenter,
             ) {
@@ -347,6 +408,7 @@ fun MainShell(
                             buffering = playbackState.buffering || playbackState.loadPending,
                             positionMs = playbackState.positionMs,
                             durationMs = playbackState.durationMs,
+                            loadPending = playbackState.loadPending,
                             onOpenFull = { showFullPlayer = true },
                             onTogglePlay = { playback.togglePlayPause() },
                             onClose = { playback.clearQueue() },
@@ -394,15 +456,8 @@ fun MainShell(
                     onSkipPrev = { playback.skipPrevious() },
                     onCyclePlaybackMode = playback::cyclePlaybackMode,
                     modifier = Modifier.fillMaxSize(),
-                    landscapeStartInset = if (landscape) {
-                        if (libraryPlaylistFullScreen) {
-                            10.dp
-                        } else {
-                            (if (dockMenuLayoutExpanded) MainDockRailWidth else MainDockCompactCircleDp) + 6.dp
-                        }
-                    } else {
-                        0.dp
-                    },
+                    // 横屏播放页无 Dock，不再预留左侧占位
+                    landscapeStartInset = 0.dp,
                     onOpenSourcePlaylist = if (st.sourcePlaylistId != null) {
                         {
                             val title = st.sourcePlaylistTitle ?: "歌单"
@@ -416,11 +471,26 @@ fun MainShell(
                 )
             }
         }
+
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .safeDrawingPadding()
+                .padding(bottom = 96.dp),
+        )
     }
 }
 
 private val TipCyan = Color(0xFF00FFD1)
 private val TipDim = Color(0xFF8FA8B8)
+
+private data class PendingPlayRequest(
+    val tracks: List<TrackRow>,
+    val startIndex: Int,
+    val playlistId: Long?,
+    val playlistTitle: String?,
+)
 
 @Composable
 private fun MainDockQuickSwitchTip(

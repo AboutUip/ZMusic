@@ -12,12 +12,15 @@ import androidx.compose.ui.graphics.Color
 import com.kite.zmusic.config.NcmApiConfig
 import com.kite.zmusic.data.ServerConfigRepository
 import com.kite.zmusic.navigation.ZMusicNavHost
+import com.kite.zmusic.ui.orientation.SessionRotationLockStore
 import com.kite.zmusic.ui.orientation.ZMusicOrientationHost
 import com.kite.zmusic.ui.theme.ZMusicTheme
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // 尽早重套旋转锁：通知冷启动时系统可能已变成竖屏，不能等 Compose 再锁
+        SessionRotationLockStore.applyTo(this)
         // 尽早应用已持久化的服务器地址，供后续 OkHttp 请求读取
         ServerConfigRepository(applicationContext)
         if (BuildConfig.DEBUG) {
@@ -36,5 +39,22 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        SessionRotationLockStore.applyTo(this)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        SessionRotationLockStore.applyTo(this)
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        // 通知 / singleTop 回前台
+        SessionRotationLockStore.applyTo(this)
     }
 }

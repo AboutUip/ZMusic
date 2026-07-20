@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">ZMusic</string>
+    <string name="playback_notification_channel_name">正在播放</string>
+    <string name="playback_notification_channel_desc">音乐播放控制与状态</string>
 </resources>
