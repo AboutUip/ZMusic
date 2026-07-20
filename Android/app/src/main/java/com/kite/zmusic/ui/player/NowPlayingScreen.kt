@@ -1707,24 +1707,24 @@ private fun LandscapeProjectionLyrics(
 
     val listState = rememberLazyListState()
     var browsing by remember { mutableStateOf(false) }
+    /** 首滑手势进行中：保持手势 overlay，避免 browsing=true 后中途卸掉导致首次滚动失败 */
+    var dragSession by remember { mutableStateOf(false) }
     var idleGen by remember { mutableIntStateOf(0) }
     var suppressBrowseDetect by remember { mutableStateOf(false) }
+    /** 递增以作废进行中的跟滚，避免与用户拖动手势抢滚动 */
+    var followGen by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
+    val density = LocalDensity.current
 
     // 槽高 = 字高 + 行间距×2；间距=0 时贴紧，调大则行距与区域高度同步变大（仍恰好 N 行）
     val slotHeight = (38f * fs).dp + linePad * 2
     val bandHeight = slotHeight * visibleCount
     val haloBleed = 96.dp
-    val maxWindowStart = (lines.size - visibleCount).coerceAtLeast(0)
-
-    fun windowStartForFocus(focus: Int): Int {
-        val f = focus.coerceIn(0, lines.lastIndex)
-        return when {
-            f < played -> 0
-            f > lines.lastIndex - upcoming -> maxWindowStart
-            else -> f - played
-        }
-    }
+    // 上下垫白，使任意一行（含仅 1～2 行）都能滚到视口绝对垂直中心
+    val slotHeightPx = with(density) { slotHeight.roundToPx() }
+    val bandHeightPx = with(density) { bandHeight.roundToPx() }
+    val centerPadPx = ((bandHeightPx - slotHeightPx) / 2).coerceAtLeast(0)
+    val centerPad = with(density) { centerPadPx.toDp() }
 
     val browseCenterIndex by remember {
         derivedStateOf {
@@ -1770,37 +1770,44 @@ private fun LandscapeProjectionLyrics(
     )
     val drawnHalo = if (halo > 0.01f) halo * (0.94f + 0.06f * breathAmp) else 0f
 
-    suspend fun scrollToWindowStart(start: Int, animated: Boolean) {
+    suspend fun scrollToCenteredIndex(index: Int, animated: Boolean) {
+        val gen = followGen
         suppressBrowseDetect = true
         try {
-            val target = start.coerceIn(0, maxWindowStart)
+            val target = index.coerceIn(0, lines.lastIndex)
+            // scrollOffset>0 会把该行继续滚过顶部；取负值才能停在视口垂直中心
+            val offset = -centerPadPx
             if (animated) {
-                listState.animateScrollToItem(target)
+                listState.animateScrollToItem(target, scrollOffset = offset)
             } else {
-                listState.scrollToItem(target)
+                listState.scrollToItem(target, scrollOffset = offset)
             }
         } finally {
-            suppressBrowseDetect = false
+            if (followGen == gen) {
+                suppressBrowseDetect = false
+            }
         }
     }
 
     suspend fun scrollToPlayFocus(animated: Boolean) {
-        scrollToWindowStart(windowStartForFocus(playFocus), animated)
+        scrollToCenteredIndex(playFocus, animated)
     }
 
     suspend fun snapToFullLines() {
         val info = listState.layoutInfo
-        val first = info.visibleItemsInfo.firstOrNull() ?: return
-        // 已接近整行对齐则不二次动画，减少「黏住」感
-        if (abs(first.offset) <= 2) return
-        val next = when {
-            first.offset < -first.size / 2 -> first.index + 1
-            else -> first.index
-        }
-        scrollToWindowStart(next.coerceIn(0, maxWindowStart), animated = true)
+        if (info.visibleItemsInfo.isEmpty()) return
+        val mid = (info.viewportStartOffset + info.viewportEndOffset) / 2
+        val closest = info.visibleItemsInfo.minByOrNull { item ->
+            abs((item.offset + item.size / 2) - mid)
+        } ?: return
+        val itemMid = closest.offset + closest.size / 2
+        // 已接近垂直居中则不二次动画
+        if (abs(itemMid - mid) <= 2) return
+        scrollToCenteredIndex(closest.index, animated = true)
     }
 
     fun exitBrowseAndFollow(animated: Boolean = true) {
+        dragSession = false
         browsing = false
         scope.launch { scrollToPlayFocus(animated) }
     }
@@ -1819,7 +1826,7 @@ private fun LandscapeProjectionLyrics(
             }
     }
 
-    LaunchedEffect(playFocus, browsing, lines.size, played, upcoming) {
+    LaunchedEffect(playFocus, browsing, lines.size, centerPadPx) {
         if (!browsing) {
             scrollToPlayFocus(animated = true)
         }
@@ -1905,7 +1912,6 @@ private fun LandscapeProjectionLyrics(
                 )
             }
 
-            val density = LocalDensity.current
             val textMeasurer = rememberTextMeasurer()
             // 按歌词文本固有宽度取最长行（不按列宽撑满测量），再上限裁到可用宽度
             val maxLyricW = remember(lines, fs, boxW) {
@@ -1961,8 +1967,9 @@ private fun LandscapeProjectionLyrics(
                     modifier = Modifier
                         .fillMaxSize()
                         .clip(RectangleShape),
+                    contentPadding = PaddingValues(vertical = centerPad),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    userScrollEnabled = browsing,
+                    userScrollEnabled = browsing && !dragSession,
                 ) {
                     itemsIndexed(
                         items = lines,
@@ -1994,8 +2001,9 @@ private fun LandscapeProjectionLyrics(
                                 {
                                     val i = index
                                     browsing = false
+                                    dragSession = false
                                     scope.launch {
-                                        scrollToWindowStart(windowStartForFocus(i), animated = true)
+                                        scrollToCenteredIndex(i, animated = true)
                                     }
                                     onSeekToMs(line.timeMs)
                                 }
@@ -2004,11 +2012,13 @@ private fun LandscapeProjectionLyrics(
                     }
                 }
 
-                if (!browsing) {
+                // 跟滚态用 overlay 做「点到文字才拖」；首滑过程中即使已进入 browsing 也要留住 overlay，
+                // 否则中途卸掉会打断手势，表现为首次滚动失败并被吸回播放行。
+                if (!browsing || dragSession) {
                     Box(
                         Modifier
                             .fillMaxSize()
-                            .pointerInput(lines, fs, playFocus, slotHeight, maxLyricW) {
+                            .pointerInput(lines, fs, playFocus, slotHeight, maxLyricW, centerPadPx) {
                                 val touchSlop = viewConfiguration.touchSlop
                                 val centerStyle = TextStyle(
                                     fontFamily = FontFamily.SansSerif,
@@ -2056,38 +2066,59 @@ private fun LandscapeProjectionLyrics(
                                     val start = down.position
                                     var lastY = start.y
                                     var dragging = false
+                                    var flingLaunched = false
                                     val tracker = VelocityTracker()
                                     tracker.addPosition(down.uptimeMillis, down.position)
-                                    while (true) {
-                                        val event = awaitPointerEvent(PointerEventPass.Main)
-                                        val change = event.changes.find { it.id == pointerId } ?: break
-                                        tracker.addPosition(change.uptimeMillis, change.position)
-                                        if (!dragging) {
-                                            val dy = change.position.y - start.y
-                                            val dx = change.position.x - start.x
-                                            if (abs(dy) > touchSlop && abs(dy) > abs(dx) * 0.75f) {
-                                                dragging = true
-                                                if (!suppressBrowseDetect) browsing = true
-                                                change.consume()
-                                            } else if (!change.pressed) {
-                                                break
+                                    try {
+                                        while (true) {
+                                            val event = awaitPointerEvent(PointerEventPass.Main)
+                                            val change = event.changes.find { it.id == pointerId } ?: break
+                                            tracker.addPosition(change.uptimeMillis, change.position)
+                                            if (!dragging) {
+                                                val dy = change.position.y - start.y
+                                                val dx = change.position.x - start.x
+                                                if (abs(dy) > touchSlop && abs(dy) > abs(dx) * 0.75f) {
+                                                    dragging = true
+                                                    // 作废跟滚并进入浏览；即使当时正在 animateScroll 也要抢过来
+                                                    followGen++
+                                                    suppressBrowseDetect = false
+                                                    dragSession = true
+                                                    browsing = true
+                                                    change.consume()
+                                                } else if (!change.pressed) {
+                                                    break
+                                                }
                                             }
-                                        }
-                                        if (dragging) {
-                                            val step = change.position.y - lastY
-                                            lastY = change.position.y
-                                            listState.dispatchRawDelta(-step)
-                                            change.consume()
-                                            if (!change.pressed) {
-                                                val velocityY = tracker.calculateVelocity().y
-                                                scope.launch {
-                                                    listState.scroll {
-                                                        with(flingBehavior) {
-                                                            performFling(-velocityY)
+                                            if (dragging) {
+                                                val step = change.position.y - lastY
+                                                lastY = change.position.y
+                                                listState.dispatchRawDelta(-step)
+                                                change.consume()
+                                                if (!change.pressed) {
+                                                    val velocityY = tracker.calculateVelocity().y
+                                                    flingLaunched = true
+                                                    scope.launch {
+                                                        try {
+                                                            listState.scroll {
+                                                                with(flingBehavior) {
+                                                                    performFling(-velocityY)
+                                                                }
+                                                            }
+                                                        } finally {
+                                                            dragSession = false
                                                         }
                                                     }
+                                                    break
                                                 }
-                                                break
+                                            }
+                                        }
+                                    } finally {
+                                        // dispatchRawDelta 不一定会驱动 isScrollInProgress；无 fling 时需手动对齐
+                                        if (dragSession && !flingLaunched) {
+                                            dragSession = false
+                                            if (dragging) {
+                                                idleGen++
+                                                scope.launch { snapToFullLines() }
                                             }
                                         }
                                     }
