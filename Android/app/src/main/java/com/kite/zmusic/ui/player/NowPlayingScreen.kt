@@ -28,10 +28,12 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.ScrollableDefaults
 import androidx.compose.foundation.gestures.FlingBehavior
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -577,6 +579,10 @@ private fun lyricHaloStrength(progress: Float, lineSpanMs: Long): Float {
 /** 歌词过渡通用缓动：慢起慢收，偏温柔。 */
 private val LyricSoftEasing = CubicBezierEasing(0.33f, 0.0f, 0.2f, 1f)
 private val LyricSofterEasing = CubicBezierEasing(0.4f, 0.0f, 0.15f, 1f)
+/** 松手对齐：偏慢、无回弹，避免「被抢走选中」的生硬感 */
+private val LyricSnapEasing = CubicBezierEasing(0.22f, 0.1f, 0.18f, 1f)
+private val LyricSnapScrollSpec = tween<Float>(durationMillis = 620, easing = LyricSnapEasing)
+private val LyricFollowScrollSpec = tween<Float>(durationMillis = 420, easing = LyricSoftEasing)
 
 /** 短于此间隔的歌词跳过出场，直接入场下一句。 */
 private const val LyricSkipExitSpanMs = 480L
@@ -595,8 +601,9 @@ private fun StableCenterLyricText(
     lineSpanMs: Long,
     style: TextStyle,
     modifier: Modifier = Modifier,
-    maxLines: Int = 2,
+    maxLines: Int = 6,
     fillWidth: Boolean = true,
+    overflow: TextOverflow = TextOverflow.Clip,
 ) {
     var shownFocus by remember { mutableIntStateOf(-1) }
     var shownText by remember { mutableStateOf("") }
@@ -648,7 +655,8 @@ private fun StableCenterLyricText(
     Text(
         text = shownText,
         maxLines = maxLines,
-        overflow = TextOverflow.Ellipsis,
+        softWrap = true,
+        overflow = overflow,
         style = style,
         modifier = modifier
             .then(if (fillWidth) Modifier.fillMaxWidth() else Modifier.wrapContentWidth())
@@ -1347,7 +1355,8 @@ private fun PortraitCinemaLyrics(
                         text = lines.getOrNull(focus)?.text.orEmpty(),
                         animMs = animMs,
                         lineSpanMs = lyricLineSpanMs(lines, focus, trackDurationMs),
-                        maxLines = 1,
+                        maxLines = 4,
+                        overflow = TextOverflow.Clip,
                         style = TextStyle(
                             color = LyricCurrent.copy(alpha = 0.55f + 0.45f * emphasis),
                             fontFamily = FontFamily.Serif,
@@ -1362,8 +1371,9 @@ private fun PortraitCinemaLyrics(
                 } else {
                     Text(
                         text = lines[i].text,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                        maxLines = 2,
+                        softWrap = true,
+                        overflow = TextOverflow.Clip,
                         style = TextStyle(
                             color = LyricDim.copy(
                                 alpha = (0.4f - abs(offset) * 0.1f).coerceIn(0.18f, 0.4f),
@@ -1770,17 +1780,36 @@ private fun LandscapeProjectionLyrics(
     )
     val drawnHalo = if (halo > 0.01f) halo * (0.94f + 0.06f * breathAmp) else 0f
 
-    suspend fun scrollToCenteredIndex(index: Int, animated: Boolean) {
+    suspend fun scrollToCenteredIndex(
+        index: Int,
+        animated: Boolean,
+        /** 松手吸附用更慢的缓动；跟滚/回播放行用稍快但仍柔和的过渡 */
+        softSnap: Boolean = false,
+    ) {
         val gen = followGen
         suppressBrowseDetect = true
         try {
             val target = index.coerceIn(0, lines.lastIndex)
-            // scrollOffset>0 会把该行继续滚过顶部；取负值才能停在视口垂直中心
-            val offset = -centerPadPx
-            if (animated) {
-                listState.animateScrollToItem(target, scrollOffset = offset)
-            } else {
-                listState.scrollToItem(target, scrollOffset = offset)
+            // 先保证目标行可见，再按像素差滚到视口绝对垂直中心。
+            // 不用负 scrollOffset：会滚飞，歌词整块沉底。
+            if (listState.layoutInfo.visibleItemsInfo.none { it.index == target }) {
+                listState.scrollToItem(target)
+            }
+            val layout = listState.layoutInfo
+            val item = layout.visibleItemsInfo.firstOrNull { it.index == target } ?: return
+            val viewportCenter =
+                (layout.viewportStartOffset + layout.viewportEndOffset) / 2f
+            val itemCenter = item.offset + item.size / 2f
+            val delta = itemCenter - viewportCenter
+            if (abs(delta) > 1f) {
+                if (animated) {
+                    listState.animateScrollBy(
+                        delta,
+                        animationSpec = if (softSnap) LyricSnapScrollSpec else LyricFollowScrollSpec,
+                    )
+                } else {
+                    listState.scrollBy(delta)
+                }
             }
         } finally {
             if (followGen == gen) {
@@ -1803,7 +1832,7 @@ private fun LandscapeProjectionLyrics(
         val itemMid = closest.offset + closest.size / 2
         // 已接近垂直居中则不二次动画
         if (abs(itemMid - mid) <= 2) return
-        scrollToCenteredIndex(closest.index, animated = true)
+        scrollToCenteredIndex(closest.index, animated = true, softSnap = true)
     }
 
     fun exitBrowseAndFollow(animated: Boolean = true) {
@@ -1912,48 +1941,9 @@ private fun LandscapeProjectionLyrics(
                 )
             }
 
+            // 歌词列尽量用满可用宽度，长句才能在列内折行；短句仍居中显示
+            val maxLyricW = boxW.coerceAtLeast(48.dp)
             val textMeasurer = rememberTextMeasurer()
-            // 按歌词文本固有宽度取最长行（不按列宽撑满测量），再上限裁到可用宽度
-            val maxLyricW = remember(lines, fs, boxW) {
-                with(density) {
-                    val capPx = boxW.roundToPx().coerceAtLeast(1)
-                    val padPx = 16.dp.roundToPx()
-                    val centerStyle = TextStyle(
-                        fontFamily = FontFamily.SansSerif,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = (26f * fs).sp,
-                        lineHeight = (38f * fs).sp,
-                    )
-                    val sideStyle = TextStyle(
-                        fontFamily = FontFamily.SansSerif,
-                        fontSize = (16.5f * fs).sp,
-                        lineHeight = (26f * fs).sp,
-                    )
-                    var widest = 0
-                    for (line in lines) {
-                        val t = line.text.ifBlank { " " }
-                        // softWrap=false：量真实字形宽度，避免长句被列宽约束后「量出来≈整列」
-                        val cw = textMeasurer.measure(
-                            text = t,
-                            style = centerStyle,
-                            maxLines = 1,
-                            softWrap = false,
-                            overflow = TextOverflow.Clip,
-                            constraints = Constraints(),
-                        ).size.width
-                        val sw = textMeasurer.measure(
-                            text = t,
-                            style = sideStyle,
-                            maxLines = 1,
-                            softWrap = false,
-                            overflow = TextOverflow.Clip,
-                            constraints = Constraints(),
-                        ).size.width
-                        widest = max(widest, max(cw, sw))
-                    }
-                    (widest + padPx).coerceIn(48.dp.roundToPx(), capPx).toDp()
-                }
-            }
             val flingBehavior = ScrollableDefaults.flingBehavior()
 
             Box(
@@ -2037,10 +2027,11 @@ private fun LandscapeProjectionLyrics(
                                     return textMeasurer.measure(
                                         text = t,
                                         style = style,
-                                        maxLines = 1,
-                                        softWrap = false,
+                                        softWrap = true,
                                         overflow = TextOverflow.Clip,
-                                        constraints = Constraints(),
+                                        constraints = Constraints(
+                                            maxWidth = size.width.toInt().coerceAtLeast(1),
+                                        ),
                                     ).size.width.toFloat()
                                 }
                                 fun hitLyricText(pos: Offset): Boolean {
@@ -2155,9 +2146,9 @@ private fun LandscapeScrollLyricLine(
     val ix = remember { MutableInteractionSource() }
     Box(
         Modifier
-            .height(slotHeight)
-            .then(if (expandHitWidth) Modifier.fillMaxWidth() else Modifier.wrapContentWidth())
-            .clip(RectangleShape)
+            .heightIn(min = slotHeight)
+            .wrapContentHeight()
+            .fillMaxWidth()
             .then(
                 if (onSeekClick != null) {
                     Modifier.clickable(
@@ -2190,7 +2181,7 @@ private fun LandscapeScrollLyricLine(
                         animMs = animMs.coerceAtLeast(280),
                         compact = true,
                         lineSpacing = lineSpacing,
-                        fillWidth = false,
+                        fillWidth = true,
                     )
                 }
                 1 -> {
@@ -2205,11 +2196,12 @@ private fun LandscapeScrollLyricLine(
                             letterSpacing = 0.35.sp,
                             textAlign = TextAlign.Center,
                         ),
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
+                        maxLines = 4,
+                        softWrap = true,
+                        overflow = TextOverflow.Clip,
                         textAlign = TextAlign.Center,
                         modifier = Modifier
-                            .wrapContentWidth()
+                            .fillMaxWidth()
                             .padding(vertical = lineSpacing, horizontal = 10.dp),
                     )
                 }
@@ -2222,7 +2214,7 @@ private fun LandscapeScrollLyricLine(
                         fontScale = fontScale,
                         animMs = animMs.coerceAtLeast(240),
                         verticalPadding = lineSpacing,
-                        fillWidth = false,
+                        fillWidth = true,
                     )
                 }
             }
@@ -2311,6 +2303,8 @@ private fun LandscapeCenterLyricLine(
             animMs = animMs,
             lineSpanMs = span,
             fillWidth = fillWidth,
+            maxLines = 6,
+            overflow = TextOverflow.Clip,
             style = TextStyle(
                 color = Color(0xFFF8FAFC).copy(alpha = textAlpha),
                 fontFamily = FontFamily.SansSerif,
@@ -2375,8 +2369,9 @@ private fun LandscapeSideLyricLine(
                 letterSpacing = 0.35.sp,
                 textAlign = TextAlign.Center,
             ),
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
+            maxLines = 4,
+            softWrap = true,
+            overflow = TextOverflow.Clip,
             modifier = Modifier
                 .then(if (fillWidth) Modifier.fillMaxWidth() else Modifier.wrapContentWidth())
                 .padding(vertical = verticalPadding, horizontal = 10.dp),
