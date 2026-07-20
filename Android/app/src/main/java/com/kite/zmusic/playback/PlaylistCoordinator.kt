@@ -11,8 +11,13 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.audio.AudioSink
+import androidx.media3.exoplayer.audio.DefaultAudioSink
+import com.kite.zmusic.data.LikedPlaylistRepository
 import com.kite.zmusic.data.LyricRepository
+import com.kite.zmusic.data.NcmLibraryParse
 import com.kite.zmusic.data.NcmPlaybackParse
 import com.kite.zmusic.data.NcmUserClient
 import com.kite.zmusic.data.SessionRepository
@@ -45,12 +50,35 @@ class PlaylistCoordinator(
     private val sessionRepository: SessionRepository,
     private val stateStore: PlaybackStateStore,
     private val lyricRepository: LyricRepository,
+    private val likedPlaylistRepository: LikedPlaylistRepository,
     private val userClient: NcmUserClient = NcmUserClient(),
     private val onClearAndStopService: (() -> Unit)? = null,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
-    private val exoPlayer: ExoPlayer = ExoPlayer.Builder(context).build().apply {
+    private val _spectrum = MutableStateFlow(AudioSpectrumBands.ZERO)
+    val spectrum: StateFlow<AudioSpectrumBands> = _spectrum.asStateFlow()
+
+    private val spectrumProcessor = SpectrumTapAudioProcessor { bands ->
+        // StateFlow 线程安全；音频线程直写，少一帧主线程 post 延迟
+        _spectrum.value = bands
+    }
+
+    private val renderersFactory = object : DefaultRenderersFactory(context) {
+        override fun buildAudioSink(
+            context: Context,
+            enableFloatOutput: Boolean,
+            enableAudioOutputPlaybackParams: Boolean,
+        ): AudioSink {
+            return DefaultAudioSink.Builder(context)
+                .setEnableFloatOutput(enableFloatOutput)
+                .setEnableAudioOutputPlaybackParameters(enableAudioOutputPlaybackParams)
+                .setAudioProcessors(arrayOf(spectrumProcessor))
+                .build()
+        }
+    }
+
+    private val exoPlayer: ExoPlayer = ExoPlayer.Builder(context, renderersFactory).build().apply {
         setAudioAttributes(
             AudioAttributes.Builder()
                 .setUsage(C.USAGE_MEDIA)
@@ -73,6 +101,8 @@ class PlaylistCoordinator(
     private var lyricJob: Job? = null
     private var prefetchJob: Job? = null
     private var tickerJob: Job? = null
+    private var noticeJob: Job? = null
+    private var errorRetryJob: Job? = null
 
     /**
      * 音源短缓存：当前曲 + 邻曲常驻；切走后仍可作为「上一首」命中（不 remove-on-play）。
@@ -117,9 +147,21 @@ class PlaylistCoordinator(
         override fun onPlayerError(error: PlaybackException) {
             Log.w(TAG, "player error ${error.errorCodeName}", error)
             val idx = _ui.value.index
-            _ui.update { it.copy(error = error.localizedMessage ?: "播放出错", buffering = false) }
-            scope.launch {
-                delay(300)
+            val trackId = _ui.value.currentTrack?.id
+            // 失效坏链，进入加载态后台重试；不展示 Source error 文案
+            if (trackId != null) urlCache.remove(trackId)
+            _ui.update {
+                it.copy(
+                    error = null,
+                    buffering = true,
+                    loadPending = true,
+                    isPlaying = false,
+                    transportWakeToken = it.transportWakeToken + 1,
+                )
+            }
+            errorRetryJob?.cancel()
+            errorRetryJob = scope.launch {
+                delay(280)
                 if (idx == _ui.value.index && _ui.value.hasQueue) {
                     loadAndPlayIndex(idx, isRetry = true)
                 }
@@ -216,9 +258,39 @@ class PlaylistCoordinator(
         }
     }
 
+    private var volumeFadeJob: Job? = null
+    /** Exo 逻辑音量目标（与系统音量无关）；seek 渐起后回到此值。 */
+    private var playbackVolume = 1f
+
     fun seekTo(ms: Long) {
-        exoPlayer.seekTo(ms.coerceAtLeast(0L))
-        _ui.update { it.copy(positionMs = ms) }
+        val target = ms.coerceAtLeast(0L)
+        val from = exoPlayer.currentPosition.coerceAtLeast(0L)
+        val jumped = kotlin.math.abs(target - from) > 400L
+        exoPlayer.seekTo(target)
+        _ui.update { it.copy(positionMs = target) }
+        // 大幅跳转且正在播放：1s 声音渐起，避免位置硬切
+        if (jumped && exoPlayer.isPlaying) {
+            fadeVolumeIn(durationMs = 1_000L)
+        }
+    }
+
+    private fun fadeVolumeIn(durationMs: Long) {
+        volumeFadeJob?.cancel()
+        val end = playbackVolume.coerceIn(0f, 1f)
+        volumeFadeJob = scope.launch {
+            exoPlayer.volume = 0f
+            val steps = 24
+            val stepDelay = (durationMs / steps).coerceAtLeast(1L)
+            for (i in 1..steps) {
+                if (!isActive) return@launch
+                delay(stepDelay)
+                // ease-out：前段更快可闻，尾段柔和贴合
+                val t = i / steps.toFloat()
+                val eased = 1f - (1f - t) * (1f - t)
+                exoPlayer.volume = end * eased
+            }
+            exoPlayer.volume = end
+        }
     }
 
     fun skipNext() {
@@ -257,8 +329,12 @@ class PlaylistCoordinator(
     fun release() {
         cancelLoads()
         tickerJob?.cancel()
+        volumeFadeJob?.cancel()
+        volumeFadeJob = null
+        exoPlayer.volume = playbackVolume
         exoPlayer.removeListener(playerListener)
         exoPlayer.release()
+        _spectrum.value = AudioSpectrumBands.ZERO
     }
 
     private fun applyRepeatMode() {
@@ -429,6 +505,34 @@ class PlaylistCoordinator(
                                 add(async { lyricRepository.prefetch(t.id, cookie) })
                             }
                         }
+                        // 邻曲 + 当前：预热 like 状态（有完整红心歌单缓存则跳过网络）
+                        if (cookie.isNotEmpty()) {
+                            val likeTargets = buildList {
+                                current?.let { add(it) }
+                                addAll(neighbors)
+                            }.distinctBy { it.id }
+                            val needCheck = likeTargets.filter {
+                                likedPlaylistRepository.isLiked(it.id) == null
+                            }
+                            if (needCheck.isNotEmpty()) {
+                                add(
+                                    async {
+                                        runCatching {
+                                            val json = userClient.songLikeCheck(
+                                                needCheck.map { it.id },
+                                                cookie,
+                                            )
+                                            val likedIds =
+                                                NcmLibraryParse.likedIdsFromLikeCheck(json)
+                                            likedPlaylistRepository.recordLikeStatuses(
+                                                needCheck,
+                                                likedIds,
+                                            )
+                                        }
+                                    },
+                                )
+                            }
+                        }
                     }
                     jobs.awaitAll()
                 }
@@ -503,6 +607,7 @@ class PlaylistCoordinator(
             retryCount++
             if (retryCount > MAX_RETRIES) {
                 markUnplayable(track.id)
+                postUnplayableNotice()
                 advanceAfterFailure(idx)
                 return
             }
@@ -538,20 +643,19 @@ class PlaylistCoordinator(
                         _ui.update { it.copy(lyricLines = diskOrNet) }
                     }
                 }
-                // 保留缓存条目：切回上一首时仍可命中（prune 管淘汰）
-                val cached = urlCache[track.id]?.takeIf { it.isFresh() }?.url
+                // 重试时强制重新解析；否则可命中邻曲预热缓存
+                val cached = if (isRetry) {
+                    null
+                } else {
+                    urlCache[track.id]?.takeIf { it.isFresh() }?.url
+                }
+                if (isRetry) urlCache.remove(track.id)
                 val url = cached ?: resolvePlayUrl(track.id, cookie)?.also {
                     urlCache[track.id] = CachedUrl(it, System.currentTimeMillis())
                 }
                 if (url.isNullOrBlank()) {
                     markUnplayable(track.id)
-                    _ui.update {
-                        it.copy(
-                            error = "暂无播放链接（/song/url 与 /song/url/v1 均失败）",
-                            loadPending = false,
-                            buffering = false,
-                        )
-                    }
+                    postUnplayableNotice()
                     advanceAfterFailure(idx)
                     return@launch
                 }
@@ -566,10 +670,30 @@ class PlaylistCoordinator(
                 loadLyricsAsync(track.id, cookie)
             } catch (e: Exception) {
                 Log.w(TAG, "loadAndPlayIndex failed", e)
-                _ui.update {
-                    it.copy(error = e.message ?: "加载失败", loadPending = false, buffering = false)
-                }
+                markUnplayable(track.id)
+                postUnplayableNotice()
                 advanceAfterFailure(idx)
+            }
+        }
+    }
+
+    /** 右上角短通知 + 唤醒底部控件；3 秒后自动清除。 */
+    private fun postUnplayableNotice() {
+        val token = System.currentTimeMillis()
+        noticeJob?.cancel()
+        _ui.update {
+            it.copy(
+                error = null,
+                notice = PlaybackNotice(token = token, message = "该歌曲不可播放"),
+                transportWakeToken = it.transportWakeToken + 1,
+                loadPending = true,
+                buffering = true,
+            )
+        }
+        noticeJob = scope.launch {
+            delay(NOTICE_VISIBLE_MS)
+            _ui.update { cur ->
+                if (cur.notice?.token == token) cur.copy(notice = null) else cur
             }
         }
     }
@@ -581,19 +705,19 @@ class PlaylistCoordinator(
             PlaybackMode.ORDER -> {
                 val ni = nextPlayableIndex(failedIndex)
                 if (ni != null) loadAndPlayIndex(ni) else {
-                    _ui.update { it.copy(loadPending = false, isPlaying = false) }
+                    _ui.update { it.copy(loadPending = false, isPlaying = false, buffering = false) }
                 }
             }
             PlaybackMode.SHUFFLE -> {
                 preparedShuffleNext = null
                 val ni = nextPlayableIndex(failedIndex)
                 if (ni != null) loadAndPlayIndex(ni) else {
-                    _ui.update { it.copy(loadPending = false, isPlaying = false) }
+                    _ui.update { it.copy(loadPending = false, isPlaying = false, buffering = false) }
                 }
             }
             PlaybackMode.REPEAT_ONE -> {
                 if (retryCount <= MAX_RETRIES) loadAndPlayIndex(failedIndex, isRetry = true)
-                else _ui.update { it.copy(loadPending = false, isPlaying = false) }
+                else _ui.update { it.copy(loadPending = false, isPlaying = false, buffering = false) }
             }
         }
     }
@@ -625,7 +749,11 @@ class PlaylistCoordinator(
     private fun cancelLoads(keepPrefetch: Boolean = false) {
         loadJob?.cancel()
         lyricJob?.cancel()
+        errorRetryJob?.cancel()
         if (!keepPrefetch) prefetchJob?.cancel()
+        volumeFadeJob?.cancel()
+        volumeFadeJob = null
+        exoPlayer.volume = playbackVolume
     }
 
     private fun persistSnapshot() {
@@ -687,6 +815,7 @@ class PlaylistCoordinator(
     companion object {
         private const val TAG = "PlaylistCoordinator"
         private const val MAX_RETRIES = 2
+        private const val NOTICE_VISIBLE_MS = 3_000L
         private const val URL_TTL_MS = 10 * 60 * 1000L
         private const val UNPLAYABLE_TTL_MS = 15 * 60 * 1000L
         private const val UNPLAYABLE_MAX = 64

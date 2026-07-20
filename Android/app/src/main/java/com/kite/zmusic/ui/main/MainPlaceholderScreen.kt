@@ -70,6 +70,8 @@ fun MainPlaceholderScreen(
         val s = session
         if (s == null) {
             app.playbackBridge.stopForLogout()
+            app.likedPlaylistRepository.clear()
+            app.playlistTracksCache.clear()
             gate = MainGate.NeedLogin
             onRequireLogin()
             return@LaunchedEffect
@@ -93,6 +95,8 @@ fun MainPlaceholderScreen(
         }
         if (!stillValid) {
             app.playbackBridge.stopForLogout()
+            app.likedPlaylistRepository.clear()
+            app.playlistTracksCache.clear()
             sessionRepository.clear()
             gate = MainGate.NeedLogin
             onRequireLogin()
@@ -117,6 +121,7 @@ fun MainPlaceholderScreen(
             MainGate.Ready -> {
                 LaunchedEffect(Unit) {
                     app.playbackBridge.hydrateForUi()
+                    app.likedPlaylistRepository.prefetchOnAppReady()
                 }
                 AnimatedVisibility(
                     visible = true,

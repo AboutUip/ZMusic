@@ -37,6 +37,8 @@ android {
 
     buildTypes {
         release {
+            // 正式包暂用调试密钥签名，便于安装验证
+            signingConfig = signingConfigs.getByName("debug")
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

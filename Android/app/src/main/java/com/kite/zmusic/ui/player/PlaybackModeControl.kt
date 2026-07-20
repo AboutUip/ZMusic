@@ -239,6 +239,63 @@ fun TransportSkipIcon(
     }
 }
 
+private val LikeFilledRed = Color(0xFFFF3B5C)
+
+/**
+ * 喜欢：空心描边 / 满红心。
+ */
+@Composable
+fun TransportLikeIcon(
+    liked: Boolean,
+    modifier: Modifier = Modifier,
+    size: Dp = 18.dp,
+    outlineTint: Color = IconTint,
+    filledTint: Color = LikeFilledRed,
+) {
+    Canvas(modifier.size(size)) {
+        val w = this.size.width
+        val h = this.size.height
+        val path = Path().apply {
+            // 经典心形：顶中凹点 → 右叶 → 底尖 → 左叶
+            moveTo(w * 0.50f, h * 0.32f)
+            cubicTo(
+                w * 0.50f, h * 0.18f,
+                w * 0.22f, h * 0.12f,
+                w * 0.18f, h * 0.36f,
+            )
+            cubicTo(
+                w * 0.14f, h * 0.58f,
+                w * 0.38f, h * 0.78f,
+                w * 0.50f, h * 0.90f,
+            )
+            cubicTo(
+                w * 0.62f, h * 0.78f,
+                w * 0.86f, h * 0.58f,
+                w * 0.82f, h * 0.36f,
+            )
+            cubicTo(
+                w * 0.78f, h * 0.12f,
+                w * 0.50f, h * 0.18f,
+                w * 0.50f, h * 0.32f,
+            )
+            close()
+        }
+        if (liked) {
+            drawPath(path, filledTint)
+        } else {
+            drawPath(
+                path,
+                outlineTint,
+                style = Stroke(
+                    width = min(w, h) * 0.11f,
+                    cap = StrokeCap.Round,
+                    join = StrokeJoin.Round,
+                ),
+            )
+        }
+    }
+}
+
 @Composable
 fun TransportPlayPauseIcon(
     playing: Boolean,

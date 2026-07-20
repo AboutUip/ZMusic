@@ -45,6 +45,37 @@ class NcmUserClient(
         get("/likelist", mapOf("uid" to uid.toString(), "cookie" to cookie, "timestamp" to ts()))
     }
 
+    /**
+     * 批量检查歌曲是否已喜爱。
+     * `ids` 按文档传方括号列表，如 `[2058263032,1497529942]`。
+     */
+    suspend fun songLikeCheck(ids: List<Long>, cookie: String): JSONObject =
+        withContext(Dispatchers.IO) {
+            val idsParam = ids.joinToString(separator = ",", prefix = "[", postfix = "]")
+            get(
+                "/song/like/check",
+                mapOf(
+                    "ids" to idsParam,
+                    "cookie" to cookie,
+                    "timestamp" to ts(),
+                ),
+            )
+        }
+
+    /** 喜欢 / 取消喜欢；[like]=false 为取消。 */
+    suspend fun likeSong(id: Long, like: Boolean, cookie: String): JSONObject =
+        withContext(Dispatchers.IO) {
+            get(
+                "/like",
+                mapOf(
+                    "id" to id.toString(),
+                    "like" to like.toString(),
+                    "cookie" to cookie,
+                    "timestamp" to ts(),
+                ),
+            )
+        }
+
     suspend fun playlistDetail(playlistId: Long, cookie: String, limit: Int = 1000): JSONObject =
         withContext(Dispatchers.IO) {
             get(

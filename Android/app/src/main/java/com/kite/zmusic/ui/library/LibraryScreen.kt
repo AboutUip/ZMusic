@@ -51,6 +51,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -58,6 +59,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.kite.zmusic.ZMusicApplication
 import com.kite.zmusic.playback.PlaybackUiState
 import com.kite.zmusic.data.PlaylistSummary
 import com.kite.zmusic.data.SessionRepository
@@ -256,7 +258,14 @@ fun LibraryScreen(
     onConsumePendingLibraryOpen: () -> Unit = {},
     onPlayTracks: (List<TrackRow>, Int, Long?, String?) -> Unit = { _, _, _, _ -> },
 ) {
-    val vm: LibraryViewModel = viewModel(factory = LibraryViewModelFactory(sessionRepository))
+    val app = LocalContext.current.applicationContext as ZMusicApplication
+    val vm: LibraryViewModel = viewModel(
+        factory = LibraryViewModelFactory(
+            sessionRepository,
+            app.likedPlaylistRepository,
+            app.playlistTracksCache,
+        ),
+    )
     val ui by vm.ui.collectAsStateWithLifecycle()
     val padH = if (isLandscape) 24.dp else 28.dp
     val padV = if (isLandscape) 16.dp else 22.dp
@@ -395,6 +404,9 @@ fun LibraryScreen(
                     horizontalPadding = padH,
                     verticalPadding = padV,
                     playbackState = playbackState,
+                    showRefresh = true,
+                    refreshing = ui.sheetRefreshing,
+                    onRefresh = vm::refreshOpenPlaylist,
                     onPlayTrack = { index ->
                         when (val s = detailSheet) {
                             is LibrarySheet.Ready -> onPlayTracks(
@@ -850,6 +862,9 @@ private fun LibraryPlaylistDetailPage(
     verticalPadding: Dp,
     playbackState: PlaybackUiState,
     onPlayTrack: (Int) -> Unit,
+    showRefresh: Boolean = false,
+    refreshing: Boolean = false,
+    onRefresh: () -> Unit = {},
 ) {
     val dismissFn by rememberUpdatedState(onBack)
     val title = when (sheet) {
@@ -863,7 +878,7 @@ private fun LibraryPlaylistDetailPage(
 
     @Composable
     fun PlaylistDetailHeader(modifier: Modifier = Modifier) {
-        Column(
+        Row(
             modifier
                 .fillMaxWidth()
                 .pointerInput(dismissFn) {
@@ -879,7 +894,10 @@ private fun LibraryPlaylistDetailPage(
                         onDragCancel = { acc = 0f },
                     )
                 },
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.Top,
         ) {
+            Column(Modifier.weight(1f)) {
                 Text(
                     text = "PLAYLIST // DETAIL",
                     style = TextStyle(
@@ -902,6 +920,13 @@ private fun LibraryPlaylistDetailPage(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
+            }
+            if (showRefresh) {
+                SciFiHudTextAction(
+                    text = if (refreshing) "刷新中" else "刷新",
+                    onClick = { if (!refreshing) onRefresh() },
+                )
+            }
         }
     }
 

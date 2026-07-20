@@ -84,6 +84,7 @@ fun MainShell(
     modifier: Modifier = Modifier,
 ) {
     val playbackState by playback.ui.collectAsStateWithLifecycle()
+    val spectrum by playback.spectrum.collectAsStateWithLifecycle()
     var showFullPlayer by rememberSaveable { mutableStateOf(false) }
     val playingTrack = playbackState.currentTrack
     var pendingLibraryOpen by remember { mutableStateOf<Pair<Long, String>?>(null) }
@@ -455,6 +456,7 @@ fun MainShell(
                     onSkipNext = { playback.skipNext() },
                     onSkipPrev = { playback.skipPrevious() },
                     onCyclePlaybackMode = playback::cyclePlaybackMode,
+                    spectrum = spectrum,
                     modifier = Modifier.fillMaxSize(),
                     // 横屏播放页无 Dock，不再预留左侧占位
                     landscapeStartInset = 0.dp,

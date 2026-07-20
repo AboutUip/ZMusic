@@ -2,13 +2,17 @@
 
 package com.kite.zmusic.ui.player
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,8 +20,10 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -28,7 +34,12 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -38,18 +49,25 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kite.zmusic.data.PlayerDisplayPrefs
+import com.kite.zmusic.data.TitleAlignMode
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeStyle
 import dev.chrisbanes.haze.HazeTint
 import dev.chrisbanes.haze.hazeEffect
 import kotlin.math.cos
+import kotlin.math.roundToInt
 import kotlin.math.sin
+import kotlinx.coroutines.launch
 
 private val LabelColor = Color(0xFFFFFFFF)
 private val HintColor = Color(0xFFE8F0F8)
@@ -64,20 +82,20 @@ private val ChromeShape = RoundedCornerShape(8.dp)
 private val PanelShape = RoundedCornerShape(18.dp)
 private val RowShape = RoundedCornerShape(12.dp)
 private val TextShadow = Shadow(color = Color.Black.copy(alpha = 0.7f), blurRadius = 10f)
-private val GlassBg = Color(0xFF070B12)
+private val GlassBg = Color(0xFF03060A)
 /** 与底部播放条一致：半透明黑底，无描边。 */
 private val ChromeBarBg = Color.Black.copy(alpha = 0.22f)
-/** 弹窗壳：暗色磨砂玻璃（非功能区）。 */
+/** 弹窗壳：更深、更糊的暗色磨砂玻璃。 */
 private val SettingsGlassStyle = HazeStyle(
     backgroundColor = GlassBg,
     tints = listOf(
-        HazeTint(Color(0xFF04070C).copy(alpha = 0.72f)),
-        HazeTint(Color(0xFF0A1018).copy(alpha = 0.48f)),
-        HazeTint(Color.Black.copy(alpha = 0.28f)),
+        HazeTint(Color(0xFF020408).copy(alpha = 0.88f)),
+        HazeTint(Color(0xFF060A12).copy(alpha = 0.72f)),
+        HazeTint(Color.Black.copy(alpha = 0.52f)),
     ),
-    blurRadius = 32.dp,
-    noiseFactor = 0.16f,
-    fallbackTint = HazeTint(Color(0xE805080E)),
+    blurRadius = 56.dp,
+    noiseFactor = 0.22f,
+    fallbackTint = HazeTint(Color(0xF205080E)),
 )
 /** 功能行：近不透明实底，与磨砂壳分层。 */
 private val SettingsRowBg = Color(0xF0141A24)
@@ -320,16 +338,22 @@ fun NowPlayingSettingsSheet(
             .fillMaxHeight()
             .fillMaxWidth()
             .clip(PanelShape)
+            // 消费卡片内全部点击，避免穿透到外部 dismiss 层
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = {},
+            )
             .hazeEffect(state = hazeState, style = SettingsGlassStyle) {
-                blurRadius = 34.dp
-                noiseFactor = 0.18f
+                blurRadius = 56.dp
+                noiseFactor = 0.22f
             },
     ) {
-        // 轻罩：让 haze 磨砂可见，不压成实色板
+        // 加深罩层，强化暗色磨砂
         Box(
             Modifier
                 .matchParentSize()
-                .background(Color(0x6605080E)),
+                .background(Color(0xB005080E)),
         )
         Box(
             Modifier
@@ -337,9 +361,9 @@ fun NowPlayingSettingsSheet(
                 .background(
                     Brush.verticalGradient(
                         colors = listOf(
-                            Color.White.copy(alpha = 0.05f),
+                            Color.White.copy(alpha = 0.03f),
                             Color.Transparent,
-                            Color.Black.copy(alpha = 0.36f),
+                            Color.Black.copy(alpha = 0.55f),
                         ),
                     ),
                 ),
@@ -351,9 +375,9 @@ fun NowPlayingSettingsSheet(
                     width = 1.dp,
                     brush = Brush.verticalGradient(
                         colors = listOf(
-                            Color.White.copy(alpha = 0.22f),
+                            Color.White.copy(alpha = 0.16f),
+                            Color.White.copy(alpha = 0.05f),
                             Color.White.copy(alpha = 0.08f),
-                            Color.White.copy(alpha = 0.12f),
                         ),
                     ),
                     shape = PanelShape,
@@ -404,9 +428,27 @@ fun NowPlayingSettingsSheet(
                         colors = switchColors,
                         onCheckedChange = { onPrefsChange(prefs.copy(rainNightEnabled = it)) },
                     )
+                    SettingsSwitchRow(
+                        title = "活跃光晕",
+                        subtitle = "低/中/高互斥高亮，同时仅一球发光，运动略加快",
+                        checked = prefs.activeHalo,
+                        colors = switchColors,
+                        onCheckedChange = { onPrefsChange(prefs.copy(activeHalo = it)) },
+                    )
                 }
 
                 SettingsCategory(title = "文字") {
+                    SettingsSwitchRow(
+                        title = "动态歌词",
+                        subtitle = "宽度避开黑胶，左右对称保持中心",
+                        checked = prefs.dynamicLyrics,
+                        colors = switchColors,
+                        onCheckedChange = { onPrefsChange(prefs.copy(dynamicLyrics = it)) },
+                    )
+                    SettingsTitleAlignRow(
+                        selected = prefs.titleAlign,
+                        onSelect = { onPrefsChange(prefs.copy(titleAlign = it)) },
+                    )
                     SettingsSliderRow(
                         title = "字体大小",
                         valueLabel = String.format("%.0f%%", prefs.fontScale * 100f),
@@ -414,6 +456,50 @@ fun NowPlayingSettingsSheet(
                         valueRange = PlayerDisplayPrefs.FONT_MIN..PlayerDisplayPrefs.FONT_MAX,
                         colors = sliderColors,
                         onValueChange = { onPrefsChange(prefs.copy(fontScale = it)) },
+                    )
+                    SettingsSliderRow(
+                        title = "歌词行间距",
+                        valueLabel = String.format("%.0f", prefs.lyricLineSpacingDp),
+                        value = prefs.lyricLineSpacingDp,
+                        valueRange = PlayerDisplayPrefs.LINE_SPACING_MIN..PlayerDisplayPrefs.LINE_SPACING_MAX,
+                        colors = sliderColors,
+                        onValueChange = { onPrefsChange(prefs.copy(lyricLineSpacingDp = it)) },
+                    )
+                    SettingsSliderRow(
+                        title = "已播放歌词数",
+                        valueLabel = prefs.lyricPlayedCount.toString(),
+                        value = prefs.lyricPlayedCount.toFloat(),
+                        valueRange = PlayerDisplayPrefs.LYRIC_AROUND_MIN.toFloat()..PlayerDisplayPrefs.LYRIC_AROUND_MAX.toFloat(),
+                        steps = PlayerDisplayPrefs.LYRIC_AROUND_MAX - PlayerDisplayPrefs.LYRIC_AROUND_MIN - 1,
+                        colors = sliderColors,
+                        onValueChange = {
+                            onPrefsChange(
+                                prefs.copy(
+                                    lyricPlayedCount = it.roundToInt().coerceIn(
+                                        PlayerDisplayPrefs.LYRIC_AROUND_MIN,
+                                        PlayerDisplayPrefs.LYRIC_AROUND_MAX,
+                                    ),
+                                ),
+                            )
+                        },
+                    )
+                    SettingsSliderRow(
+                        title = "待播放歌词数",
+                        valueLabel = prefs.lyricUpcomingCount.toString(),
+                        value = prefs.lyricUpcomingCount.toFloat(),
+                        valueRange = PlayerDisplayPrefs.LYRIC_AROUND_MIN.toFloat()..PlayerDisplayPrefs.LYRIC_AROUND_MAX.toFloat(),
+                        steps = PlayerDisplayPrefs.LYRIC_AROUND_MAX - PlayerDisplayPrefs.LYRIC_AROUND_MIN - 1,
+                        colors = sliderColors,
+                        onValueChange = {
+                            onPrefsChange(
+                                prefs.copy(
+                                    lyricUpcomingCount = it.roundToInt().coerceIn(
+                                        PlayerDisplayPrefs.LYRIC_AROUND_MIN,
+                                        PlayerDisplayPrefs.LYRIC_AROUND_MAX,
+                                    ),
+                                ),
+                            )
+                        },
                     )
                     SettingsSliderRow(
                         title = "歌词水平位置",
@@ -472,6 +558,167 @@ fun NowPlayingSettingsSheet(
                         enabled = !prefs.vinylAbsoluteCenter,
                         onValueChange = { onPrefsChange(prefs.copy(vinylOffsetYDp = it)) },
                     )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsTitleAlignRow(
+    selected: TitleAlignMode,
+    onSelect: (TitleAlignMode) -> Unit,
+) {
+    val modes = TitleAlignMode.entries
+    val labels = listOf("左对齐", "黑胶", "居中", "歌词")
+    val scope = rememberCoroutineScope()
+    val density = LocalDensity.current
+    val indicator = remember { Animatable(selected.ordinal.toFloat()) }
+    var dragOffsetPx by remember { mutableFloatStateOf(0f) }
+
+    LaunchedEffect(selected) {
+        indicator.animateTo(
+            targetValue = selected.ordinal.toFloat(),
+            animationSpec = spring(dampingRatio = 0.82f, stiffness = 380f),
+        )
+    }
+
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RowShape)
+            .background(SettingsRowBg)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+    ) {
+        Text(
+            text = "标题对齐位置",
+            style = TextStyle(
+                color = LabelColor,
+                fontFamily = FontFamily.SansSerif,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 14.sp,
+                shadow = TextShadow,
+            ),
+        )
+        Spacer(Modifier.height(2.dp))
+        Text(
+            text = "歌名 / 制作人 / 歌单 · 滑动或点选切换",
+            style = TextStyle(
+                color = HintColor,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 9.sp,
+                letterSpacing = 0.3.sp,
+                shadow = TextShadow,
+            ),
+        )
+        Spacer(Modifier.height(10.dp))
+        BoxWithConstraints(
+            Modifier
+                .fillMaxWidth()
+                .height(36.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(Color.Black.copy(alpha = 0.35f))
+                .pointerInput(modes.size) {
+                    val segW = size.width / modes.size.toFloat()
+                    detectHorizontalDragGestures(
+                        onDragStart = {
+                            dragOffsetPx = 0f
+                            scope.launch { indicator.stop() }
+                        },
+                        onHorizontalDrag = { _, dragAmount ->
+                            dragOffsetPx += dragAmount
+                            val live = (selected.ordinal + dragOffsetPx / segW)
+                                .coerceIn(0f, (modes.lastIndex).toFloat())
+                            scope.launch { indicator.snapTo(live) }
+                        },
+                        onDragEnd = {
+                            val segWPx = size.width / modes.size.toFloat()
+                            val idx = (selected.ordinal + dragOffsetPx / segWPx)
+                                .roundToInt()
+                                .coerceIn(0, modes.lastIndex)
+                            dragOffsetPx = 0f
+                            val next = modes[idx]
+                            if (next != selected) {
+                                onSelect(next)
+                            } else {
+                                scope.launch {
+                                    indicator.animateTo(
+                                        targetValue = selected.ordinal.toFloat(),
+                                        animationSpec = spring(
+                                            dampingRatio = 0.82f,
+                                            stiffness = 380f,
+                                        ),
+                                    )
+                                }
+                            }
+                        },
+                        onDragCancel = {
+                            dragOffsetPx = 0f
+                            scope.launch {
+                                indicator.animateTo(
+                                    targetValue = selected.ordinal.toFloat(),
+                                    animationSpec = spring(
+                                        dampingRatio = 0.82f,
+                                        stiffness = 380f,
+                                    ),
+                                )
+                            }
+                        },
+                    )
+                },
+        ) {
+            val segW = maxWidth / modes.size
+            val thumbPad = 3.dp
+            Box(
+                Modifier
+                    .offset {
+                        val x = with(density) {
+                            (segW * indicator.value + thumbPad).roundToPx()
+                        }
+                        IntOffset(x, 0)
+                    }
+                    .padding(vertical = thumbPad)
+                    .width(segW - thumbPad * 2)
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Accent.copy(alpha = 0.28f))
+                    .border(
+                        width = 1.dp,
+                        color = Accent.copy(alpha = 0.45f),
+                        shape = RoundedCornerShape(8.dp),
+                    ),
+            )
+            Row(Modifier.fillMaxSize()) {
+                modes.forEachIndexed { index, mode ->
+                    val active = selected == mode
+                    Box(
+                        Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = { onSelect(mode) },
+                            ),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = labels[index],
+                            style = TextStyle(
+                                color = if (active) {
+                                    Accent.copy(alpha = 0.98f)
+                                } else {
+                                    HintColor.copy(alpha = 0.72f)
+                                },
+                                fontFamily = FontFamily.SansSerif,
+                                fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
+                                fontSize = 11.sp,
+                                letterSpacing = 0.2.sp,
+                                textAlign = TextAlign.Center,
+                                shadow = TextShadow,
+                            ),
+                        )
+                    }
                 }
             }
         }
@@ -554,6 +801,7 @@ private fun SettingsSliderRow(
     colors: androidx.compose.material3.SliderColors,
     onValueChange: (Float) -> Unit,
     enabled: Boolean = true,
+    steps: Int = 0,
 ) {
     val titleColor = if (enabled) LabelColor else LabelColor.copy(alpha = 0.38f)
     val valueColor = if (enabled) Accent.copy(alpha = 0.95f) else Accent.copy(alpha = 0.35f)
@@ -597,6 +845,7 @@ private fun SettingsSliderRow(
             value = value,
             onValueChange = onValueChange,
             valueRange = valueRange,
+            steps = steps,
             enabled = enabled,
             colors = colors,
             modifier = Modifier.fillMaxWidth(),

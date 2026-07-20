@@ -11,19 +11,22 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import kotlin.math.abs
 
-/** 切歌 / 同曲重头：进度归零动画的时长区间。 */
-private const val SeekResetMinMs = 180
-private const val SeekResetMaxMs = 420
+/** 歌词点选 / 大幅跳转：进度条过渡时长区间。 */
+private const val SeekJumpMinMs = 200
+private const val SeekJumpMaxMs = 480
 
-private val SeekResetEasing = CubicBezierEasing(0.22f, 0.8f, 0.28f, 1f)
+/** 小于此差值视为跟播步进，瞬时贴合，不播跳转动画。 */
+private const val SeekFollowEpsilonMs = 480f
 
-private fun seekResetDurationMs(distanceMs: Float): Int =
-    (160f + distanceMs / 36f).toInt().coerceIn(SeekResetMinMs, SeekResetMaxMs)
+private val SeekJumpEasing = CubicBezierEasing(0.22f, 0.8f, 0.28f, 1f)
+
+private fun seekJumpDurationMs(distanceMs: Float): Int =
+    (180f + distanceMs / 40f).toInt().coerceIn(SeekJumpMinMs, SeekJumpMaxMs)
 
 /**
  * 播放进度展示位：
- * - 同曲跟播
- * - 切歌、同曲重头（上一首 >3s）、大幅回退：从当前展示值动画落到新目标（非瞬间跳变）
+ * - 同曲小步进：瞬时跟随
+ * - 切歌、归零、歌词点选等大幅跳转（前进 / 后退均）：动画过渡到目标
  */
 @Composable
 fun rememberSeekDisplayPositionMs(
@@ -40,31 +43,29 @@ fun rememberSeekDisplayPositionMs(
 
         val target = positionMs.toFloat().coerceAtLeast(0f)
         val from = anim.value
-        val dropped = from - target
+        val distance = abs(target - from)
         val trackChanged = trackId != boundTrackId
         if (trackChanged) {
             boundTrackId = trackId
         }
 
-        // 切歌、归零（上一首重头）、大幅回退 → 动画；否则瞬时跟随
-        val shouldAnimate = dropped > 64f && (
-            trackChanged ||
-                target <= 48f ||
-                dropped > 1_200f
-            )
+        // 前进 / 后退的大幅跳转都动画；小步进（跟播）仍 snap
+        val shouldAnimate = distance > SeekFollowEpsilonMs ||
+            (trackChanged && distance > 64f) ||
+            (target <= 48f && from - target > 64f)
 
         if (shouldAnimate) {
             anim.animateTo(
                 targetValue = target,
                 animationSpec = tween(
-                    durationMillis = seekResetDurationMs(dropped),
-                    easing = SeekResetEasing,
+                    durationMillis = seekJumpDurationMs(distance),
+                    easing = SeekJumpEasing,
                 ),
             )
             return@LaunchedEffect
         }
 
-        // 归零动画途中勿被 loadPending 的 0 位 snap 打断（同曲已在上面 animate）
+        // 归零动画途中勿被 loadPending 的 0 位 snap 打断
         if (loadPending && target <= 0f && anim.value > 1f && abs(anim.value - target) > 1f) {
             return@LaunchedEffect
         }

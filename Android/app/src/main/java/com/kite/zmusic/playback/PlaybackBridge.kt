@@ -51,10 +51,14 @@ class PlaybackBridge(
     private var controllerFuture: ListenableFuture<MediaController>? = null
     private var mediaController: MediaController? = null
     private var uiCollectJob: Job? = null
+    private var spectrumCollectJob: Job? = null
     private var lyricJob: Job? = null
 
     private val _ui = MutableStateFlow(stateStore.load() ?: PlaybackUiState())
     val ui: StateFlow<PlaybackUiState> = _ui.asStateFlow()
+
+    private val _spectrum = MutableStateFlow(AudioSpectrumBands.ZERO)
+    val spectrum: StateFlow<AudioSpectrumBands> = _spectrum.asStateFlow()
 
     private val pending = CopyOnWriteArrayList<() -> Unit>()
     private val connecting = AtomicBoolean(false)
@@ -76,6 +80,10 @@ class PlaybackBridge(
         uiCollectJob = scope.launch {
             coord.ui.collectLatest { publishFromCoordinator(it, isExplicitClear = false) }
         }
+        spectrumCollectJob?.cancel()
+        spectrumCollectJob = scope.launch {
+            coord.spectrum.collectLatest { _spectrum.value = it }
+        }
         // 若 Coordinator 刚从快照恢复了队列，合并到 UI
         publishFromCoordinator(coord.ui.value, isExplicitClear = false)
         flushPending()
@@ -88,6 +96,9 @@ class PlaybackBridge(
         if (coordinator !== coord) return
         uiCollectJob?.cancel()
         uiCollectJob = null
+        spectrumCollectJob?.cancel()
+        spectrumCollectJob = null
+        _spectrum.value = AudioSpectrumBands.ZERO
         coordinator = null
         // 保留队列快照到 UI（暂停态）
         val kept = _ui.value.copy(

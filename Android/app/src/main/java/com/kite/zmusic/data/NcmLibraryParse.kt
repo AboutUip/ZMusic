@@ -37,6 +37,37 @@ internal object NcmLibraryParse {
         return ids.length()
     }
 
+    fun likeIdsFromLikeList(json: JSONObject): Set<Long> {
+        if (NcmJson.apiCode(json) != 200) return emptySet()
+        return longIdsFromArray(json.optJSONArray("ids"))
+    }
+
+    /**
+     * `/song/like/check`：返回被喜爱的 id 子集（字段可能是 `data` 或 `ids`）。
+     */
+    fun likedIdsFromLikeCheck(json: JSONObject): Set<Long> {
+        if (NcmJson.apiCode(json) != 200) return emptySet()
+        val fromData = longIdsFromArray(json.optJSONArray("data"))
+        if (fromData.isNotEmpty()) return fromData
+        return longIdsFromArray(json.optJSONArray("ids"))
+    }
+
+    fun isTrackLiked(json: JSONObject, trackId: Long): Boolean =
+        trackId > 0L && likedIdsFromLikeCheck(json).contains(trackId)
+
+    private fun longIdsFromArray(arr: JSONArray?): Set<Long> {
+        if (arr == null || arr.length() == 0) return emptySet()
+        return buildSet {
+            for (i in 0 until arr.length()) {
+                when (val v = arr.opt(i)) {
+                    is Number -> v.toLong().takeIf { it > 0L }?.let { add(it) }
+                    is String -> v.toLongOrNull()?.takeIf { it > 0L }?.let { add(it) }
+                    is JSONObject -> v.optLong("id", 0L).takeIf { it > 0L }?.let { add(it) }
+                }
+            }
+        }
+    }
+
     fun playlistsFromUserPlaylist(json: JSONObject, selfUserId: Long): List<PlaylistSummary> {
         if (NcmJson.apiCode(json) != 200) return emptyList()
         val arr = json.optJSONArray("playlist") ?: return emptyList()

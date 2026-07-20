@@ -32,6 +32,13 @@ class PlaybackViewModel(
             initialValue = bridge.ui.value,
         )
 
+    val spectrum: StateFlow<AudioSpectrumBands> = bridge.spectrum
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = AudioSpectrumBands.ZERO,
+        )
+
     fun playQueue(
         tracks: List<TrackRow>,
         startIndex: Int,

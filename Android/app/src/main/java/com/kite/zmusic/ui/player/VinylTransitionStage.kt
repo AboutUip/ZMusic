@@ -83,8 +83,10 @@ private const val NextExitMs = 920
 private const val NextUnderScale = 0.85f
 private const val PrevEnterMs = 820
 
-/** 旧胶右移出场：剩余可见比例（右侧）达到此值时，新胶应刚好缩放到 100% */
-private const val NextGrowSyncRemain = 0.20f
+/** 旧胶离场行程中：过此比例后新胶才开始放大 */
+private const val NextGrowStartFrac = 0.28f
+/** 旧胶离场行程中：到此比例时新胶才到 100% */
+private const val NextGrowEndFrac = 0.90f
 
 private const val FlingVelocityPx = 900f
 
@@ -167,8 +169,6 @@ fun VinylTransitionStage(
             .coerceAtLeast(1f)
         // 上一首提交：至少露出约 28% 盘面，否则跟手感消失
         val prevCommitPx = (stageW * 0.28f).coerceIn(commitPx, stageW * 0.42f)
-        // 旧胶中心左移至此，舞台宽度内约剩右侧 20%
-        val nextGrowSyncX = -stageW * (1f - NextGrowSyncRemain)
 
         fun prevReveal(rawFollow: Float): Float =
             (rawFollow - prevRevealBase).coerceAtLeast(0f)
@@ -184,28 +184,37 @@ fun VinylTransitionStage(
             stickyTopX = Float.NaN
             bottomScale.snapTo(scaleStart.coerceIn(NextUnderScale, 1f))
             topScale.snapTo(1f)
-            val syncX = nextGrowSyncX.coerceAtMost(topX.value - 1f)
             val startX = topX.value
+            val endX = -exitPx
+            val travel = (startX - endX).coerceAtLeast(1f)
+            // 旧胶先走一段，新胶再放大；接近离场完成才到 100%，避免「旧胶刚动、新胶已满」
+            val growStartX = startX - travel * NextGrowStartFrac
+            val growEndX = startX - travel * NextGrowEndFrac
             val startScale = bottomScale.value
 
             coroutineScope {
                 val exitJob = launch {
                     topX.animateTo(
-                        targetValue = -exitPx,
+                        targetValue = endX,
                         animationSpec = tween(NextExitMs, easing = VinylMotion),
                     )
                 }
                 launch {
                     while (isActive) {
                         val x = topX.value
-                        if (x <= syncX) {
-                            bottomScale.snapTo(1f)
-                            break
+                        when {
+                            x >= growStartX -> bottomScale.snapTo(startScale)
+                            x <= growEndX -> {
+                                bottomScale.snapTo(1f)
+                                break
+                            }
+                            else -> {
+                                val span = (growStartX - growEndX).coerceAtLeast(1f)
+                                val raw = ((growStartX - x) / span).coerceIn(0f, 1f)
+                                // 线性跟行程，避免再套一次 ease 导致前段涨太猛
+                                bottomScale.snapTo(startScale + (1f - startScale) * raw)
+                            }
                         }
-                        val span = (startX - syncX).coerceAtLeast(1f)
-                        val raw = ((startX - x) / span).coerceIn(0f, 1f)
-                        val eased = VinylMotion.transform(raw)
-                        bottomScale.snapTo(startScale + (1f - startScale) * eased)
                         withFrameNanos { }
                     }
                 }
@@ -271,9 +280,11 @@ fun VinylTransitionStage(
             else -> topX.value
         }
         val displayBottomScale = when {
-            dragging && dragMode == VinylSkipDirection.Next && showBottom ->
-                NextUnderScale + (1f - NextUnderScale) *
-                    (abs(followX) / commitPx).coerceIn(0f, 1f)
+            dragging && dragMode == VinylSkipDirection.Next && showBottom -> {
+                // 跟手阶段只轻微放大，满尺寸留给离场后半段
+                val p = (abs(followX) / commitPx).coerceIn(0f, 1f)
+                NextUnderScale + (1f - NextUnderScale) * 0.40f * p
+            }
             else -> bottomScale.value
         }
 
@@ -380,7 +391,7 @@ fun VinylTransitionStage(
                             val p = (abs(startX) / commitPx).coerceIn(0f, 1f)
                             finishNextExit(
                                 exitStartX = startX,
-                                scaleStart = NextUnderScale + (1f - NextUnderScale) * p,
+                                scaleStart = NextUnderScale + (1f - NextUnderScale) * 0.40f * p,
                                 incoming = track,
                             )
                         } else {
@@ -433,7 +444,7 @@ fun VinylTransitionStage(
                         val mode = dragMode
                         val reveal = if (mode == VinylSkipDirection.Previous) prevReveal(x) else 0f
                         val coverX = -slidePx + reveal
-                        val scaleAtRelease = NextUnderScale + (1f - NextUnderScale) *
+                        val scaleAtRelease = NextUnderScale + (1f - NextUnderScale) * 0.40f *
                             (abs(x) / commitPx).coerceIn(0f, 1f)
                         val goNext = mode == VinylSkipDirection.Next &&
                             (x <= -commitPx || velocity <= -FlingVelocityPx) &&
@@ -441,10 +452,9 @@ fun VinylTransitionStage(
                         val goPrev = mode == VinylSkipDirection.Previous &&
                             (reveal >= prevCommitPx || velocity >= FlingVelocityPx) &&
                             peekPrev != null
-                        val nextTrack = peekNext
-                        val prevTrack = peekPrev
                         when {
-                            goNext && nextTrack != null -> {
+                            goNext -> {
+                                val incoming = checkNotNull(peekNext)
                                 stickyTopX = x
                                 dragging = false
                                 dragMode = null
@@ -460,7 +470,7 @@ fun VinylTransitionStage(
                                         finishNextExit(
                                             exitStartX = x,
                                             scaleStart = scaleAtRelease,
-                                            incoming = nextTrack,
+                                            incoming = incoming,
                                         )
                                     } finally {
                                         stickyTopX = Float.NaN
@@ -469,7 +479,8 @@ fun VinylTransitionStage(
                                 }
                                 onCommitSkip(VinylSkipDirection.Next)
                             }
-                            goPrev && prevTrack != null -> {
+                            goPrev -> {
+                                val incoming = checkNotNull(peekPrev)
                                 stickyTopX = coverX
                                 dragging = false
                                 dragMode = null
@@ -484,7 +495,7 @@ fun VinylTransitionStage(
                                         bottomScale.snapTo(1f)
                                         finishPrevEnter(
                                             enterStartX = coverX,
-                                            incoming = prevTrack,
+                                            incoming = incoming,
                                         )
                                     } finally {
                                         stickyTopX = Float.NaN

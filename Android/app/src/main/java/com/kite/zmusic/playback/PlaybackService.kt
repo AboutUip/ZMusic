@@ -43,6 +43,7 @@ class PlaybackService : MediaSessionService() {
             sessionRepository = bridge.sessionRepository(),
             stateStore = bridge.stateStore(),
             lyricRepository = bridge.lyricRepository(),
+            likedPlaylistRepository = app.likedPlaylistRepository,
             onClearAndStopService = {
                 pauseAllPlayersAndStopSelf()
             },
