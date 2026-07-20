@@ -47,8 +47,6 @@ Windows/**/*.suo
 # --- IDE / 系统 ---
 .idea
 .vscode/*
-!.vscode/c_cpp_properties.json
-!.vscode/settings.json
 *.swp
 *~
 .DS_Store
