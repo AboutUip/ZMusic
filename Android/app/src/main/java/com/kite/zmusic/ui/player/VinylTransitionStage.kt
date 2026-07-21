@@ -57,6 +57,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import com.kite.zmusic.data.PlayerDisplayPrefs
 import com.kite.zmusic.data.TrackRow
 import com.kite.zmusic.data.VinylPlateColors
 import com.kite.zmusic.ui.common.UrlImage
@@ -197,12 +198,18 @@ fun VinylTransitionStage(
         val slidePx = (prevEnterSlidePx?.takeIf { it > stageW * 0.5f } ?: (stageW * 1.06f))
             .coerceAtLeast(stageW * 0.92f)
         // 0.5 → 倍率 1（历史默认）；越高越灵敏 → 阈值越低
-        val damp = gestureDamping.coerceIn(0.15f, 1f)
+        val damp = gestureDamping.coerceIn(
+            PlayerDisplayPrefs.VINYL_GESTURE_DAMPING_MIN,
+            PlayerDisplayPrefs.VINYL_GESTURE_DAMPING_MAX,
+        )
         val threshScale = (0.5f / damp).coerceIn(0.45f, 2.2f)
-        val commitPx = with(density) { 96.dp.toPx() }
+        val commitBase = with(density) { 96.dp.toPx() }
             .coerceAtMost(stageW * 0.42f)
-            .coerceAtLeast(1f) * threshScale
-        val prevCommitPx = (stageW * 0.40f * threshScale).coerceIn(commitPx, stageW * 0.72f)
+            .coerceAtLeast(1f)
+        // 必须保证 commitPx ≤ prevUpper，否则 coerceIn(commitPx, prevUpper) 会因 min>max 崩
+        val prevUpper = stageW * 0.72f
+        val commitPx = (commitBase * threshScale).coerceIn(1f, prevUpper)
+        val prevCommitPx = (stageW * 0.40f * threshScale).coerceIn(commitPx, prevUpper)
         val flingVelocityPx = FlingVelocityPx * threshScale
 
         fun prevReveal(rawFollow: Float): Float =
