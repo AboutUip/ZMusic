@@ -95,11 +95,12 @@ internal object NcmLibraryParse {
         val cover = o.optString("coverImgUrl", o.optString("coverUrl", "")).takeIf { it.isNotBlank() }
         val trackCount = o.optInt("trackCount", 0)
         val specialType = o.optInt("specialType", 0)
-        val isHeart = specialType == 5 || name == "我喜欢的音乐"
         val creator = o.optJSONObject("creator")
         val creatorId = creator?.optLong("userId", -1L) ?: -1L
         val subscribed = o.optBoolean("subscribed", false)
         val isOwned = creatorId == selfUserId
+        // 必须是自己的：收藏别人的「我喜欢的音乐」不得标成红心，否则会串进 LikedPlaylistRepository
+        val isHeart = isOwned && (specialType == 5 || name == "我喜欢的音乐")
         val playCount = o.optLong("playCount", 0L)
         return PlaylistSummary(
             id = id,

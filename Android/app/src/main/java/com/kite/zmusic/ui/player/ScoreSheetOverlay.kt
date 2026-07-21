@@ -49,6 +49,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -58,6 +59,7 @@ import androidx.compose.ui.unit.sp
 import com.kite.zmusic.data.TrackRow
 import com.kite.zmusic.data.VinylPlateColors
 import com.kite.zmusic.ui.common.UrlImage
+import com.kite.zmusic.ui.common.UrlImageCache
 import kotlin.math.cos
 import kotlin.math.min
 import kotlin.math.sin
@@ -101,6 +103,14 @@ fun ScoreSheetOverlay(
     val initialIndex = remember(openGeneration, tracks.size) {
         if (tracks.isEmpty()) 0
         else currentIndex.coerceIn(0, tracks.lastIndex)
+    }
+    val context = LocalContext.current
+    // 打开曲谱即预热整队封面：键为 coverUrl，磁盘优先，保证匹配且少打网
+    LaunchedEffect(openGeneration, tracks) {
+        UrlImageCache.prefetchAll(
+            context = context,
+            urls = tracks.map { it.coverUrl },
+        )
     }
 
     Box(
@@ -301,12 +311,15 @@ private fun ScoreTrackCard(
                 ) {
                     val url = track.coverUrl
                     if (!url.isNullOrBlank()) {
-                        UrlImage(
-                            url = url,
-                            contentDescription = track.name,
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop,
-                        )
+                        // track.id + url 双键：复用格子时也不会短暂串图
+                        key(track.id, url) {
+                            UrlImage(
+                                url = url,
+                                contentDescription = track.name,
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop,
+                            )
+                        }
                     }
                 }
             }

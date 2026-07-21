@@ -17,13 +17,13 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * 「我喜欢的音乐」缓存：
- * - 启动后后台预拉取；进入歌单优先读缓存
- * - like / 取消 like 立即改本地缓存
- * - 首次本地变更后启动 3 分钟一次性后台同步；期间不再重置 / 新建计时器
+ * - 首屏最多 [PlaylistTrackLoader.FIRST_BATCH] 首，后台补全并写盘
+ * - like / 取消 like 立即改本地；完整列表补全后红心判定才对未收录曲返回 false
  */
 class LikedPlaylistRepository(
     context: Context,
@@ -37,9 +37,12 @@ class LikedPlaylistRepository(
         val coverUrl: String?,
         val tracks: List<TrackRow>,
         val updatedAtMs: Long,
+        /** 歌单完整曲目数（来自 trackIds）；未齐前可能大于 tracks.size */
+        val expectedCount: Int = tracks.size,
+        val complete: Boolean = true,
     ) {
         val likedIds: Set<Long> get() = tracks.map { it.id }.toSet()
-        val trackCount: Int get() = tracks.size
+        val trackCount: Int get() = if (complete) tracks.size else expectedCount.coerceAtLeast(tracks.size)
     }
 
     private val appContext = context.applicationContext
@@ -50,19 +53,23 @@ class LikedPlaylistRepository(
     private val _snapshot = MutableStateFlow<Snapshot?>(null)
     val snapshot: StateFlow<Snapshot?> = _snapshot.asStateFlow()
 
-    /**
-     * 单曲 like 检查结果（无完整红心歌单缓存时使用）。
-     * 有 [Snapshot] 时以歌单为准；点赞/取消会同步写入这里。
-     */
     private val _checkedLikes = MutableStateFlow<Map<Long, Boolean>>(emptyMap())
 
     private val syncScheduled = AtomicBoolean(false)
     private var syncJob: Job? = null
     private var prefetchJob: Job? = null
+    private val fillJobs = ConcurrentHashMap<Long, Job>()
+    /** 补全用的完整 id 序（内存） */
+    private val pendingAllIds = ConcurrentHashMap<Long, List<Long>>()
 
     init {
         scope.launch(Dispatchers.IO) {
-            loadFromDisk()?.let { _snapshot.value = it }
+            loadFromDisk()?.let { snap ->
+                _snapshot.value = snap
+                if (!snap.complete && snap.playlistId > 0L) {
+                    scheduleFill(snap.playlistId, snap.title, snap.coverUrl, snap.tracks)
+                }
+            }
         }
     }
 
@@ -70,16 +77,20 @@ class LikedPlaylistRepository(
 
     /**
      * 是否喜欢：
-     * - 有红心歌单缓存 → 是否在歌单内（永不为 null）
-     * - 否则看单曲检查缓存；仍未知则 null
+     * - 在缓存列表内 → true
+     * - 列表已完整且不在内 → false
+     * - 列表未完整且不在内 → 单曲检查缓存 / null
      */
     fun isLiked(trackId: Long): Boolean? {
         val snap = _snapshot.value
-        if (snap != null) return snap.likedIds.contains(trackId)
+        if (snap != null) {
+            if (snap.likedIds.contains(trackId)) return true
+            if (snap.complete) return false
+            return _checkedLikes.value[trackId]
+        }
         return _checkedLikes.value[trackId]
     }
 
-    /** 写入单曲检查结果；若已有歌单缓存则校正成员关系（不触发延迟同步）。 */
     fun recordLikeStatus(track: TrackRow, liked: Boolean) {
         _checkedLikes.value = _checkedLikes.value + (track.id to liked)
         val snap = _snapshot.value ?: return
@@ -87,7 +98,6 @@ class LikedPlaylistRepository(
         applyLocalLike(track, liked = liked, scheduleSync = false)
     }
 
-    /** 批量写入邻曲预检查结果（带 TrackRow，便于校正歌单成员）。 */
     fun recordLikeStatuses(tracks: List<TrackRow>, likedIds: Set<Long>) {
         if (tracks.isEmpty()) return
         val merge = tracks.associate { it.id to likedIds.contains(it.id) }
@@ -102,12 +112,14 @@ class LikedPlaylistRepository(
         }
     }
 
-    /** 进入主界面后调用：有会话则后台预拉取（已有完整缓存则跳过）。 */
     fun prefetchOnAppReady() {
         val session = sessionRepository.session.value ?: return
         if (session.isGuest) return
         val existing = _snapshot.value
-        if (existing != null && existing.tracks.isNotEmpty() && existing.playlistId > 0L) {
+        if (existing != null && existing.playlistId > 0L && existing.tracks.isNotEmpty()) {
+            if (!existing.complete) {
+                scheduleFill(existing.playlistId, existing.title, existing.coverUrl, existing.tracks)
+            }
             return
         }
         if (prefetchJob?.isActive == true) return
@@ -117,13 +129,8 @@ class LikedPlaylistRepository(
         }
     }
 
-    /** 用户点刷新：强制网络拉取并写缓存。 */
     suspend fun forceRefresh(): Snapshot? = refreshFromNetwork(force = true)
 
-    /**
-     * 本地 like / 取消 like。
-     * @return 更新后的快照；无缓存时仅维护临时喜欢集合并仍触发延迟同步。
-     */
     fun applyLocalLike(
         track: TrackRow,
         liked: Boolean,
@@ -132,7 +139,6 @@ class LikedPlaylistRepository(
         _checkedLikes.value = _checkedLikes.value + (track.id to liked)
         val current = _snapshot.value
         if (current == null && !liked) {
-            // 无歌单缓存时取消喜欢：只记单曲状态，避免写入「空红心歌单」误判其它曲
             if (scheduleSync) scheduleDeferredSync()
             return null
         }
@@ -142,12 +148,23 @@ class LikedPlaylistRepository(
             val without = current.tracks.filterNot { it.id == track.id }
             if (liked) listOf(track) + without else without
         }
+        val expected = when {
+            current == null -> 1
+            liked && current.likedIds.contains(track.id).not() ->
+                (current.expectedCount + 1).coerceAtLeast(nextTracks.size)
+            !liked && current.likedIds.contains(track.id) ->
+                (current.expectedCount - 1).coerceAtLeast(nextTracks.size)
+            else -> current.expectedCount.coerceAtLeast(nextTracks.size)
+        }
         val next = Snapshot(
             playlistId = current?.playlistId ?: 0L,
             title = current?.title?.takeIf { it.isNotBlank() } ?: "我喜欢的音乐",
             coverUrl = current?.coverUrl ?: track.coverUrl,
             tracks = nextTracks,
             updatedAtMs = System.currentTimeMillis(),
+            expectedCount = expected,
+            // 本地改动后仍保持原完整标记；未齐时继续后台补
+            complete = current?.complete == true,
         )
         _snapshot.value = next
         scope.launch(Dispatchers.IO) { persistToDisk(next) }
@@ -161,6 +178,9 @@ class LikedPlaylistRepository(
         syncScheduled.set(false)
         prefetchJob?.cancel()
         prefetchJob = null
+        fillJobs.values.forEach { it.cancel() }
+        fillJobs.clear()
+        pendingAllIds.clear()
         _snapshot.value = null
         _checkedLikes.value = emptyMap()
         scope.launch(Dispatchers.IO) {
@@ -169,7 +189,6 @@ class LikedPlaylistRepository(
     }
 
     private fun scheduleDeferredSync() {
-        // 已有计时：不重置、不新建
         if (!syncScheduled.compareAndSet(false, true)) return
         syncJob = scope.launch {
             try {
@@ -188,6 +207,9 @@ class LikedPlaylistRepository(
         if (!force) {
             val cached = _snapshot.value
             if (cached != null && cached.tracks.isNotEmpty() && cached.playlistId > 0L) {
+                if (!cached.complete) {
+                    scheduleFill(cached.playlistId, cached.title, cached.coverUrl, cached.tracks)
+                }
                 return cached
             }
         }
@@ -195,6 +217,9 @@ class LikedPlaylistRepository(
             if (!force) {
                 val cached = _snapshot.value
                 if (cached != null && cached.tracks.isNotEmpty() && cached.playlistId > 0L) {
+                    if (!cached.complete) {
+                        scheduleFill(cached.playlistId, cached.title, cached.coverUrl, cached.tracks)
+                    }
                     return@withLock cached
                 }
             }
@@ -207,30 +232,81 @@ class LikedPlaylistRepository(
             val playlists = NcmLibraryParse.playlistsFromUserPlaylist(plJson, uid)
             val heart = playlists.firstOrNull { it.isHeartPlaylist }
                 ?: return@withLock _snapshot.value
-            val tracks = withContext(Dispatchers.IO) {
-                loadTracks(heart.id, cookie)
+            fillJobs[heart.id]?.cancel()
+            fillJobs.remove(heart.id)
+            val first = withContext(Dispatchers.IO) {
+                PlaylistTrackLoader.loadFirstBatch(userClient, heart.id, cookie)
             }
             val snap = Snapshot(
                 playlistId = heart.id,
                 title = heart.name,
                 coverUrl = heart.coverUrl,
-                tracks = tracks,
+                tracks = first.tracks,
                 updatedAtMs = System.currentTimeMillis(),
+                expectedCount = first.allIds.size.coerceAtLeast(first.tracks.size),
+                complete = first.complete,
             )
             _snapshot.value = snap
             withContext(Dispatchers.IO) { persistToDisk(snap) }
+            if (!first.complete) {
+                pendingAllIds[heart.id] = first.allIds
+                scheduleFill(heart.id, heart.name, heart.coverUrl, first.tracks, first.allIds)
+            } else {
+                pendingAllIds.remove(heart.id)
+            }
             snap
         }
     }
 
-    private suspend fun loadTracks(playlistId: Long, cookie: String): List<TrackRow> {
-        val detail = userClient.playlistDetail(playlistId, cookie)
-        val fromPl = NcmLibraryParse.tracksFromPlaylistDetail(detail)
-        if (fromPl.isNotEmpty()) return fromPl
-        val ids = NcmLibraryParse.trackIdsFromPlaylistDetail(detail)
-        if (ids.isEmpty()) return emptyList()
-        return ids.chunked(400).flatMap { chunk ->
-            NcmLibraryParse.tracksFromSongDetail(userClient.songDetail(chunk, cookie))
+    private fun scheduleFill(
+        playlistId: Long,
+        title: String,
+        coverUrl: String?,
+        already: List<TrackRow>,
+        knownIds: List<Long>? = null,
+    ) {
+        if (playlistId <= 0L) return
+        if (fillJobs[playlistId]?.isActive == true) return
+        val session = sessionRepository.session.value ?: return
+        if (session.isGuest) return
+        fillJobs[playlistId] = scope.launch {
+            try {
+                runCatching {
+                    val cookie = session.cookie
+                    val allIds = knownIds
+                        ?: pendingAllIds[playlistId]
+                        ?: withContext(Dispatchers.IO) {
+                            val detail = userClient.playlistDetail(
+                                playlistId,
+                                cookie,
+                                limit = PlaylistTrackLoader.FIRST_BATCH,
+                            )
+                            NcmLibraryParse.trackIdsFromPlaylistDetail(detail)
+                        }
+                    if (allIds.isEmpty()) return@runCatching
+                    pendingAllIds[playlistId] = allIds
+                    PlaylistTrackLoader.loadRemaining(
+                        userClient = userClient,
+                        cookie = cookie,
+                        allIds = allIds,
+                        already = already,
+                    ) { ordered ->
+                        val snap = Snapshot(
+                            playlistId = playlistId,
+                            title = title,
+                            coverUrl = coverUrl ?: _snapshot.value?.coverUrl,
+                            tracks = ordered,
+                            updatedAtMs = System.currentTimeMillis(),
+                            expectedCount = allIds.size,
+                            complete = ordered.size >= allIds.size,
+                        )
+                        _snapshot.value = snap
+                        withContext(Dispatchers.IO) { persistToDisk(snap) }
+                    }
+                }.onFailure { Log.w(TAG, "liked playlist fill failed id=$playlistId", it) }
+            } finally {
+                fillJobs.remove(playlistId)
+            }
         }
     }
 
@@ -260,8 +336,15 @@ class LikedPlaylistRepository(
                     )
                 }
             }
+            val expectedCount = root.optInt("expectedCount", tracks.size).coerceAtLeast(tracks.size)
+            val complete = if (root.has("complete")) {
+                root.optBoolean("complete", true)
+            } else {
+                // 旧缓存无字段：视为完整，避免误伤；下次 force 会重拉
+                true
+            }
             if (playlistId <= 0L && tracks.isEmpty()) null
-            else Snapshot(playlistId, title, coverUrl, tracks, updatedAtMs)
+            else Snapshot(playlistId, title, coverUrl, tracks, updatedAtMs, expectedCount, complete)
         }.getOrNull()
     }
 
@@ -284,6 +367,8 @@ class LikedPlaylistRepository(
                 .put("title", snap.title)
                 .put("coverUrl", snap.coverUrl ?: "")
                 .put("updatedAtMs", snap.updatedAtMs)
+                .put("expectedCount", snap.expectedCount)
+                .put("complete", snap.complete)
                 .put("tracks", arr)
             cacheFile.writeText(root.toString(), Charsets.UTF_8)
         }.onFailure { Log.w(TAG, "persist liked playlist failed", it) }

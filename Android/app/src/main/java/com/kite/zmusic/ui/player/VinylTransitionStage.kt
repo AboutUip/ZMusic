@@ -141,6 +141,11 @@ fun VinylTransitionStage(
     prevEnterSlidePx: Float? = null,
     /** 为 true 时外部切歌直接落定，不做离场/入场位移动画（曲谱飞入专用）。 */
     suppressEnterTransition: Boolean = false,
+    /**
+     * 切歌手势阻尼（灵敏度）：默认 0.5 与历史 96dp / 甩速阈值一致；
+     * 值越高阈值越低、越灵敏。
+     */
+    gestureDamping: Float = 0.5f,
 ) {
     var topTrack by remember { mutableStateOf(track) }
     var bottomTrack by remember { mutableStateOf(track) }
@@ -191,10 +196,14 @@ fun VinylTransitionStage(
         val exitPx = stageW * 2.35f
         val slidePx = (prevEnterSlidePx?.takeIf { it > stageW * 0.5f } ?: (stageW * 1.06f))
             .coerceAtLeast(stageW * 0.92f)
+        // 0.5 → 倍率 1（历史默认）；越高越灵敏 → 阈值越低
+        val damp = gestureDamping.coerceIn(0.15f, 1f)
+        val threshScale = (0.5f / damp).coerceIn(0.45f, 2.2f)
         val commitPx = with(density) { 96.dp.toPx() }
             .coerceAtMost(stageW * 0.42f)
-            .coerceAtLeast(1f)
-        val prevCommitPx = (stageW * 0.40f).coerceIn(commitPx, stageW * 0.52f)
+            .coerceAtLeast(1f) * threshScale
+        val prevCommitPx = (stageW * 0.40f * threshScale).coerceIn(commitPx, stageW * 0.72f)
+        val flingVelocityPx = FlingVelocityPx * threshScale
 
         fun prevReveal(rawFollow: Float): Float =
             (rawFollow - prevRevealBase).coerceAtLeast(0f)
@@ -441,10 +450,10 @@ fun VinylTransitionStage(
                         val scaleAtRelease = NextUnderScale + (1f - NextUnderScale) * 0.40f *
                             (abs(x) / commitPx).coerceIn(0f, 1f)
                         val goNext = mode == VinylSkipDirection.Next &&
-                            (x <= -commitPx || velocity <= -FlingVelocityPx) &&
+                            (x <= -commitPx || velocity <= -flingVelocityPx) &&
                             peekNext != null
                         val goPrev = mode == VinylSkipDirection.Previous &&
-                            (reveal >= prevCommitPx || velocity >= FlingVelocityPx) &&
+                            (reveal >= prevCommitPx || velocity >= flingVelocityPx) &&
                             peekPrev != null
                         when {
                             goNext -> {

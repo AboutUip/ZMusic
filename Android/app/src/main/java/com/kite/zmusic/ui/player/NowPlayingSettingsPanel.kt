@@ -353,6 +353,7 @@ fun NowPlayingSettingsSheet(
     hazeState: HazeState,
     modifier: Modifier = Modifier,
     onOpenVinylColorEditor: () -> Unit = {},
+    onOpenLyricStyleEditor: () -> Unit = {},
     hazeNonce: Int = 0,
 ) {
     val sliderColors = SliderDefaults.colors(
@@ -502,6 +503,12 @@ fun NowPlayingSettingsSheet(
                         colors = switchColors,
                         onCheckedChange = { onPrefsChange(prefs.copy(lyricTapAutoPlay = it)) },
                     )
+                    SettingsActionRow(
+                        title = "歌词样式",
+                        subtitle = "斜体 / 粗体 / 颜色",
+                        actionLabel = "编辑",
+                        onClick = onOpenLyricStyleEditor,
+                    )
                     SettingsTitleAlignRow(
                         selected = prefs.titleAlign,
                         onSelect = { onPrefsChange(prefs.copy(titleAlign = it)) },
@@ -627,6 +634,15 @@ fun NowPlayingSettingsSheet(
                         prefs = prefs,
                         onPrefsChange = onPrefsChange,
                         onOpenCustomEditor = onOpenVinylColorEditor,
+                    )
+                    SettingsSliderRow(
+                        title = "黑胶阻尼",
+                        valueLabel = String.format("%.2f", prefs.vinylGestureDamping),
+                        value = prefs.vinylGestureDamping,
+                        valueRange = PlayerDisplayPrefs.VINYL_GESTURE_DAMPING_MIN..
+                            PlayerDisplayPrefs.VINYL_GESTURE_DAMPING_MAX,
+                        colors = sliderColors,
+                        onValueChange = { onPrefsChange(prefs.copy(vinylGestureDamping = it)) },
                     )
                     SettingsSliderRow(
                         title = "黑胶水平位置",
@@ -1047,6 +1063,61 @@ private fun SettingsCategory(
             ),
         )
         content()
+    }
+}
+
+@Composable
+private fun SettingsActionRow(
+    title: String,
+    subtitle: String,
+    actionLabel: String,
+    onClick: () -> Unit,
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RowShape)
+            .background(SettingsRowBg)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick,
+            )
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = TextStyle(
+                    color = LabelColor,
+                    fontFamily = FontFamily.SansSerif,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 14.sp,
+                    shadow = TextShadow,
+                ),
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = subtitle,
+                style = TextStyle(
+                    color = HintColor,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 9.sp,
+                    letterSpacing = 0.3.sp,
+                    shadow = TextShadow,
+                ),
+            )
+        }
+        Text(
+            text = actionLabel,
+            style = TextStyle(
+                color = Accent.copy(alpha = 0.95f),
+                fontFamily = FontFamily.SansSerif,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 13.sp,
+            ),
+        )
     }
 }
 

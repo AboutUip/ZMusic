@@ -25,7 +25,7 @@ private val UrlImageClient by lazy {
         .build()
 }
 
-/** 不依赖 Coil，用 OkHttp 拉取图片（与工程现有网络栈一致）。 */
+/** 不依赖 Coil，用 OkHttp 拉取图片（与工程现有网络栈一致）。键为 URL，与 [UrlImageCache] 一致。 */
 @Composable
 fun UrlImage(
     url: String?,
@@ -34,8 +34,8 @@ fun UrlImage(
     contentScale: ContentScale = ContentScale.Fit,
 ) {
     val context = LocalContext.current
-    val urlKey = url?.trim().orEmpty()
-    // 同步吃内存缓存，避免重组首帧空白闪一下
+    val urlKey = UrlImageCache.normalizeKey(url).orEmpty()
+    // 同步吃内存缓存，避免重组首帧空白闪一下；remember 绑 urlKey，防 Lazy 复用串图
     var bitmap by remember(urlKey) {
         mutableStateOf(
             urlKey.takeIf { it.isNotEmpty() }?.let { UrlImageCache.memoryGet(it) },
@@ -53,7 +53,7 @@ fun UrlImage(
             return@LaunchedEffect
         }
 
-        // 2) 磁盘缓存
+        // 2) 磁盘缓存（无实时性要求，优先本地）
         val fromDisk: ImageBitmap? = withContext(Dispatchers.IO) {
             runCatching {
                 val file = UrlImageCache.diskFile(context, urlKey)
@@ -62,6 +62,7 @@ fun UrlImage(
                 BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
             }.getOrNull()
         }
+        // 仍对应本 urlKey 才上屏，避免快速滑格时旧请求回写
         if (fromDisk != null) {
             UrlImageCache.memoryPut(urlKey, fromDisk)
             bitmap = fromDisk
@@ -70,7 +71,7 @@ fun UrlImage(
 
         // 3) 网络：仅此时允许短暂空白
         bitmap = null
-        bitmap = withContext(Dispatchers.IO) {
+        val fromNet = withContext(Dispatchers.IO) {
             runCatching {
                 val req = Request.Builder().url(urlKey).get().build()
                 UrlImageClient.newCall(req).execute().use { resp ->
@@ -82,7 +83,11 @@ fun UrlImage(
                     BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
                 }
             }.getOrNull()
-        }?.also { UrlImageCache.memoryPut(urlKey, it) }
+        }
+        if (fromNet != null) {
+            UrlImageCache.memoryPut(urlKey, fromNet)
+            bitmap = fromNet
+        }
     }
     val b = bitmap
     if (b != null) {

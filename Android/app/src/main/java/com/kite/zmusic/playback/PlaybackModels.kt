@@ -37,6 +37,29 @@ data class PlaybackUiState(
 ) {
     val currentTrack: TrackRow?
         get() = queue.getOrNull(index)
+
+    /**
+     * 无 Coordinator 时（冷启动仅 hydrate 快照）补齐邻曲预览，否则黑胶手势因 peek 为空无法切入切歌态。
+     * 顺序/单曲：严格按列表相邻；随机：下一首用稳定占位（非历史上一首仍为空，与 Service 未起时一致）。
+     */
+    fun withHydratedPeeks(): PlaybackUiState {
+        if (!hasQueue || queue.isEmpty() || index !in queue.indices) {
+            return copy(peekNextTrack = null, peekPrevTrack = null)
+        }
+        if (peekNextTrack != null || peekPrevTrack != null) return this
+        val next = when (playbackMode) {
+            PlaybackMode.ORDER, PlaybackMode.REPEAT_ONE -> queue.getOrNull(index + 1)
+            PlaybackMode.SHUFFLE -> {
+                if (queue.size <= 1) null
+                else queue[(index + 1) % queue.size]
+            }
+        }
+        val prev = when (playbackMode) {
+            PlaybackMode.ORDER, PlaybackMode.REPEAT_ONE -> queue.getOrNull(index - 1)
+            PlaybackMode.SHUFFLE -> null
+        }
+        return copy(peekNextTrack = next, peekPrevTrack = prev)
+    }
 }
 
 enum class PlaybackMode {

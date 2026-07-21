@@ -65,6 +65,23 @@ class LibraryViewModel(
                 applyLikedSnapshot(snap)
             }
         }
+        viewModelScope.launch {
+            playlistTracksCache.updates.collect { entry ->
+                _ui.update { state ->
+                    val sheet = state.sheet
+                    if (sheet is LibrarySheet.Ready && sheet.id == entry.playlistId) {
+                        state.copy(
+                            sheet = sheet.copy(
+                                title = entry.title.ifBlank { sheet.title },
+                                tracks = entry.tracks,
+                            ),
+                        )
+                    } else {
+                        state
+                    }
+                }
+            }
+        }
         refresh()
     }
 
@@ -272,7 +289,9 @@ class LibraryViewModel(
         sheetLoadJob = viewModelScope.launch {
             val cached = likedPlaylistRepository.peek()
             if (cached != null && cached.tracks.isNotEmpty() &&
-                (cached.playlistId == playlistId || cached.playlistId == 0L || playlistId == 0L)
+                (cached.playlistId == playlistId ||
+                    (cached.playlistId == 0L && playlistId > 0L) ||
+                    (playlistId == 0L && cached.playlistId > 0L))
             ) {
                 openHeartPlaylistId = cached.playlistId.takeIf { it > 0L } ?: playlistId
                 _ui.update {
@@ -287,6 +306,10 @@ class LibraryViewModel(
                         likedTrackCount = cached.trackCount,
                         playlists = mergeHeartTrackCount(it.playlists, cached),
                     )
+                }
+                // 未齐则依赖 snapshot 流 / prefetch 后台补全
+                if (!cached.complete) {
+                    likedPlaylistRepository.prefetchOnAppReady()
                 }
                 return@launch
             }
@@ -363,6 +386,12 @@ class LibraryViewModel(
                                 cached.tracks,
                             ),
                         )
+                    }
+                    // 触发未齐补全（getOrFetch 内部也会 schedule）
+                    if (!cached.complete) {
+                        runCatching {
+                            playlistTracksCache.getOrFetch(playlistId, title, cookie)
+                        }
                     }
                     return@launch
                 }

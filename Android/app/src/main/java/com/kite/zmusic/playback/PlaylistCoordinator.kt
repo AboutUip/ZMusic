@@ -247,6 +247,39 @@ class PlaylistCoordinator(
         loadAndPlayIndex(index, recordShuffleHistory = true)
     }
 
+    /**
+     * 同源歌单后台补全后扩展播放队列（曲谱 / 切歌 peek 与完整列表一致）。
+     * 按当前曲 id 重定位索引，不打断正在播的媒体。
+     */
+    fun expandQueueFromSourcePlaylist(playlistId: Long, tracks: List<TrackRow>) {
+        if (playlistId <= 0L || tracks.isEmpty()) return
+        val ui = _ui.value
+        if (!ui.hasQueue || ui.sourcePlaylistId != playlistId) return
+        if (tracks.size <= ui.queue.size) {
+            // 同长度但内容更完整（封面等）仍可替换；更短则忽略防回退
+            if (tracks.size < ui.queue.size) return
+            val sameIds = ui.queue.size == tracks.size &&
+                ui.queue.indices.all { ui.queue[it].id == tracks[it].id }
+            if (sameIds) return
+        }
+        val currentId = ui.currentTrack?.id
+        val newIndex = when {
+            currentId != null -> {
+                val i = tracks.indexOfFirst { it.id == currentId }
+                if (i >= 0) i else ui.index.coerceIn(0, tracks.lastIndex)
+            }
+            else -> ui.index.coerceIn(0, tracks.lastIndex)
+        }
+        _ui.update {
+            it.copy(
+                queue = tracks,
+                index = newIndex,
+            )
+        }
+        refreshPeeksAndPrefetch()
+        persistSnapshot()
+    }
+
     fun clearQueue() {
         cancelLoads()
         urlCache.clear()

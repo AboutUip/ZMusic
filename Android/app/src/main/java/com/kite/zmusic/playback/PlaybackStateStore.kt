@@ -76,7 +76,7 @@ class PlaybackStateStore(context: Context) {
                 hasQueue = true,
                 sourcePlaylistId = prefs.getLong(KEY_SOURCE_ID, -1L).takeIf { it > 0 },
                 sourcePlaylistTitle = prefs.getString(KEY_SOURCE_TITLE, null),
-            )
+            ).withHydratedPeeks()
         }.onFailure { Log.w(TAG, "load failed", it) }.getOrNull()
     }
 

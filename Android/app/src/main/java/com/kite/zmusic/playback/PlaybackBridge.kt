@@ -100,7 +100,7 @@ class PlaybackBridge(
         spectrumCollectJob = null
         _spectrum.value = AudioSpectrumBands.ZERO
         coordinator = null
-        // 保留队列快照到 UI（暂停态）
+        // 保留队列快照到 UI（暂停态）；补齐 peek，避免杀进程后仅 hydrate 时无法手势切歌
         val kept = _ui.value.copy(
             isPlaying = false,
             playWhenReady = false,
@@ -108,7 +108,9 @@ class PlaybackBridge(
             loadPending = false,
         )
         if (kept.queue.isNotEmpty()) {
-            _ui.value = kept.copy(hasQueue = true)
+            _ui.value = kept.copy(hasQueue = true).let { s ->
+                if (s.peekNextTrack == null && s.peekPrevTrack == null) s.withHydratedPeeks() else s
+            }
             stateStore.save(_ui.value)
         }
         Log.i(TAG, "coordinator detached, queue kept=${kept.queue.size}")
@@ -116,7 +118,10 @@ class PlaybackBridge(
 
     fun hydrateForUi() {
         if (_ui.value.queue.isEmpty()) {
-            stateStore.load()?.let { _ui.value = it }
+            stateStore.load()?.let { _ui.value = it.withHydratedPeeks() }
+        } else if (_ui.value.peekNextTrack == null && _ui.value.peekPrevTrack == null) {
+            // 已有队列但未起 Service：补 peek，否则横屏黑胶无法手势切歌
+            _ui.value = _ui.value.withHydratedPeeks()
         }
         ensureLyricsForCurrentTrack()
     }
@@ -152,6 +157,29 @@ class PlaybackBridge(
     }
 
     fun playIndex(index: Int) = runOnCoordinator { it.playIndex(index) }
+
+    /** 歌单缓存补全后同步扩展当前播放队列（同源 playlistId）。 */
+    fun expandQueueFromSourcePlaylist(playlistId: Long, tracks: List<TrackRow>) {
+        runOnCoordinator { it.expandQueueFromSourcePlaylist(playlistId, tracks) }
+        // Service 未起时：仅改 Bridge 快照，保证曲谱列表先变完整
+        val ui = _ui.value
+        if (coordinator == null &&
+            ui.hasQueue &&
+            ui.sourcePlaylistId == playlistId &&
+            tracks.size > ui.queue.size
+        ) {
+            val currentId = ui.currentTrack?.id
+            val newIndex = when {
+                currentId != null -> {
+                    val i = tracks.indexOfFirst { it.id == currentId }
+                    if (i >= 0) i else ui.index.coerceIn(0, tracks.lastIndex)
+                }
+                else -> ui.index.coerceIn(0, tracks.lastIndex)
+            }
+            _ui.value = ui.copy(queue = tracks, index = newIndex).withHydratedPeeks()
+            stateStore.save(_ui.value)
+        }
+    }
 
     fun clearQueue() {
         stateStore.clear()

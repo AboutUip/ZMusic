@@ -159,6 +159,114 @@ fun decodeVinylCustomPresets(
     }
 }
 
+/** 歌词颜色槽：不可改默认 + 3 个可写预设。 */
+enum class LyricColorSlot {
+    DEFAULT,
+    PRESET_0,
+    PRESET_1,
+    PRESET_2,
+    ;
+
+    companion object {
+        fun fromOrdinal(v: Int): LyricColorSlot =
+            entries.getOrElse(v) { DEFAULT }
+    }
+}
+
+/** 横屏歌词某一角色（播放中 / 已播放 / 未播放）的样式。 */
+data class LyricRoleStyle(
+    val italic: Boolean = false,
+    val bold: Boolean = false,
+    val colorSlot: LyricColorSlot = LyricColorSlot.DEFAULT,
+    val preset0Argb: Int = Color(0xFFF8FAFC).toArgb(),
+    val preset1Argb: Int = Color(0xFF9AF0F0).toArgb(),
+    val preset2Argb: Int = Color(0xFFE8C4A0).toArgb(),
+) {
+    fun resolvedColor(defaultArgb: Int): Color = when (colorSlot) {
+        LyricColorSlot.DEFAULT -> Color(defaultArgb)
+        LyricColorSlot.PRESET_0 -> Color(preset0Argb)
+        LyricColorSlot.PRESET_1 -> Color(preset1Argb)
+        LyricColorSlot.PRESET_2 -> Color(preset2Argb)
+    }
+
+    fun presetArgb(index: Int): Int = when (index) {
+        0 -> preset0Argb
+        1 -> preset1Argb
+        else -> preset2Argb
+    }
+
+    fun withPresetArgb(index: Int, argb: Int): LyricRoleStyle = when (index) {
+        0 -> copy(preset0Argb = argb, colorSlot = LyricColorSlot.PRESET_0)
+        1 -> copy(preset1Argb = argb, colorSlot = LyricColorSlot.PRESET_1)
+        else -> copy(preset2Argb = argb, colorSlot = LyricColorSlot.PRESET_2)
+    }
+
+    fun withColorSlot(slot: LyricColorSlot): LyricRoleStyle = copy(colorSlot = slot)
+
+    companion object {
+        val PlayingDefault = LyricRoleStyle(
+            italic = false,
+            bold = true,
+            colorSlot = LyricColorSlot.DEFAULT,
+            preset0Argb = Color(0xFFF8FAFC).toArgb(),
+            preset1Argb = Color(0xFF9AF0F0).toArgb(),
+            preset2Argb = Color(0xFFE8C4A0).toArgb(),
+        )
+        val PlayedDefault = LyricRoleStyle(
+            italic = true,
+            bold = false,
+            colorSlot = LyricColorSlot.DEFAULT,
+            preset0Argb = Color(0xFFB8C0CC).toArgb(),
+            preset1Argb = Color(0xFF7EB8FF).toArgb(),
+            preset2Argb = Color(0xFFC8E6C9).toArgb(),
+        )
+        val UnplayedDefault = LyricRoleStyle(
+            italic = false,
+            bold = false,
+            colorSlot = LyricColorSlot.DEFAULT,
+            preset0Argb = Color(0xFFDCE6F0).toArgb(),
+            preset1Argb = Color(0xFFD4C4F0).toArgb(),
+            preset2Argb = Color(0xFFE8C4A0).toArgb(),
+        )
+
+        /** 内置不可改默认色（与历史硬编码一致）。 */
+        val DEFAULT_PLAYING_ARGB: Int = Color(0xFFF8FAFC).toArgb()
+        val DEFAULT_PLAYED_ARGB: Int = Color(0xFFB8C0CC).toArgb()
+        val DEFAULT_UNPLAYED_ARGB: Int = Color(0xFFDCE6F0).toArgb()
+    }
+}
+
+/** 编码：italic,bold,slot,p0,p1,p2 */
+fun encodeLyricRoleStyle(style: LyricRoleStyle): String =
+    listOf(
+        if (style.italic) 1 else 0,
+        if (style.bold) 1 else 0,
+        style.colorSlot.ordinal,
+        style.preset0Argb,
+        style.preset1Argb,
+        style.preset2Argb,
+    ).joinToString(",")
+
+fun decodeLyricRoleStyle(raw: String?, fallback: LyricRoleStyle): LyricRoleStyle {
+    if (raw.isNullOrBlank()) return fallback
+    val bits = raw.split(',')
+    if (bits.size < 6) return fallback
+    val italic = bits[0].toIntOrNull() == 1
+    val bold = bits[1].toIntOrNull() == 1
+    val slot = LyricColorSlot.fromOrdinal(bits[2].toIntOrNull() ?: 0)
+    val p0 = bits[3].toIntOrNull() ?: fallback.preset0Argb
+    val p1 = bits[4].toIntOrNull() ?: fallback.preset1Argb
+    val p2 = bits[5].toIntOrNull() ?: fallback.preset2Argb
+    return LyricRoleStyle(
+        italic = italic,
+        bold = bold,
+        colorSlot = slot,
+        preset0Argb = p0,
+        preset1Argb = p1,
+        preset2Argb = p2,
+    )
+}
+
 /** 全屏播放页显示偏好（雨夜 / 字号 / UI 缩放 / 黑胶位置等），客户端持久化。 */
 data class PlayerDisplayPrefs(
     val rainNightEnabled: Boolean = true,
@@ -224,7 +332,27 @@ data class PlayerDisplayPrefs(
     val lyricTapAutoPlay: Boolean = false,
     /** 标题信息（歌名/制作人/歌单）水平对齐 */
     val titleAlign: TitleAlignMode = TitleAlignMode.VINYL,
+    /**
+     * 黑胶手势阻尼（切歌灵敏度）：默认 0.5 与历史阈值一致；
+     * 值越高越灵敏（提交位移/甩速阈值越低）。
+     */
+    val vinylGestureDamping: Float = 0.5f,
+    /** 横屏「播放中」歌词样式 */
+    val lyricPlayingStyle: LyricRoleStyle = LyricRoleStyle.PlayingDefault,
+    /** 横屏「已播放」歌词样式 */
+    val lyricPlayedStyle: LyricRoleStyle = LyricRoleStyle.PlayedDefault,
+    /** 横屏「未播放」歌词样式 */
+    val lyricUnplayedStyle: LyricRoleStyle = LyricRoleStyle.UnplayedDefault,
 ) {
+    fun lyricPlayingColor(): Color =
+        lyricPlayingStyle.resolvedColor(LyricRoleStyle.DEFAULT_PLAYING_ARGB)
+
+    fun lyricPlayedColor(): Color =
+        lyricPlayedStyle.resolvedColor(LyricRoleStyle.DEFAULT_PLAYED_ARGB)
+
+    fun lyricUnplayedColor(): Color =
+        lyricUnplayedStyle.resolvedColor(LyricRoleStyle.DEFAULT_UNPLAYED_ARGB)
+
     fun vinylPlateColors(): VinylPlateColors = when (vinylColorStyle) {
         VinylColorStyle.BLACK -> VinylPlateColors.Black
         VinylColorStyle.GOLD -> VinylPlateColors.Gold
@@ -296,6 +424,13 @@ data class PlayerDisplayPrefs(
             vinylCustomPresetIndex = index,
             vinylCustomBaseArgb = active.baseArgb,
             vinylCustomGrooveArgb = active.grooveArgb,
+            vinylGestureDamping = vinylGestureDamping.coerceIn(
+                VINYL_GESTURE_DAMPING_MIN,
+                VINYL_GESTURE_DAMPING_MAX,
+            ),
+            lyricPlayingStyle = lyricPlayingStyle,
+            lyricPlayedStyle = lyricPlayedStyle,
+            lyricUnplayedStyle = lyricUnplayedStyle,
         )
     }
 
@@ -320,6 +455,9 @@ data class PlayerDisplayPrefs(
         /** 中心黑胶挖孔（相对基准整体盘）；须大于轴心镂空、小于封面外缘 */
         const val VINYL_CENTER_RADIUS_MIN = 0.10f
         const val VINYL_CENTER_RADIUS_MAX = 0.42f
+        /** 黑胶切歌手势阻尼（灵敏度）：0.15 最钝 … 1.0 最灵敏；0.5 = 历史默认 */
+        const val VINYL_GESTURE_DAMPING_MIN = 0.15f
+        const val VINYL_GESTURE_DAMPING_MAX = 1.00f
     }
 }
 
@@ -382,6 +520,19 @@ class PlayerDisplayPrefsStore(context: Context) {
             titleAlign = TitleAlignMode.fromOrdinal(
                 prefs.getInt(KEY_TITLE_ALIGN, TitleAlignMode.VINYL.ordinal),
             ),
+            vinylGestureDamping = prefs.getFloat(KEY_VINYL_GESTURE_DAMPING, 0.5f),
+            lyricPlayingStyle = decodeLyricRoleStyle(
+                prefs.getString(KEY_LYRIC_PLAYING_STYLE, null),
+                LyricRoleStyle.PlayingDefault,
+            ),
+            lyricPlayedStyle = decodeLyricRoleStyle(
+                prefs.getString(KEY_LYRIC_PLAYED_STYLE, null),
+                LyricRoleStyle.PlayedDefault,
+            ),
+            lyricUnplayedStyle = decodeLyricRoleStyle(
+                prefs.getString(KEY_LYRIC_UNPLAYED_STYLE, null),
+                LyricRoleStyle.UnplayedDefault,
+            ),
         ).sanitized()
     }
 
@@ -412,6 +563,10 @@ class PlayerDisplayPrefsStore(context: Context) {
             .putBoolean(KEY_ACTIVE_HALO, v.activeHalo)
             .putBoolean(KEY_LYRIC_TAP_AUTO_PLAY, v.lyricTapAutoPlay)
             .putInt(KEY_TITLE_ALIGN, v.titleAlign.ordinal)
+            .putFloat(KEY_VINYL_GESTURE_DAMPING, v.vinylGestureDamping)
+            .putString(KEY_LYRIC_PLAYING_STYLE, encodeLyricRoleStyle(v.lyricPlayingStyle))
+            .putString(KEY_LYRIC_PLAYED_STYLE, encodeLyricRoleStyle(v.lyricPlayedStyle))
+            .putString(KEY_LYRIC_UNPLAYED_STYLE, encodeLyricRoleStyle(v.lyricUnplayedStyle))
             .apply()
     }
 
@@ -443,5 +598,9 @@ class PlayerDisplayPrefsStore(context: Context) {
         private const val KEY_ACTIVE_HALO = "active_halo"
         private const val KEY_LYRIC_TAP_AUTO_PLAY = "lyric_tap_auto_play"
         private const val KEY_TITLE_ALIGN = "title_align"
+        private const val KEY_VINYL_GESTURE_DAMPING = "vinyl_gesture_damping"
+        private const val KEY_LYRIC_PLAYING_STYLE = "lyric_playing_style"
+        private const val KEY_LYRIC_PLAYED_STYLE = "lyric_played_style"
+        private const val KEY_LYRIC_UNPLAYED_STYLE = "lyric_unplayed_style"
     }
 }

@@ -76,7 +76,7 @@ class NcmUserClient(
             )
         }
 
-    suspend fun playlistDetail(playlistId: Long, cookie: String, limit: Int = 1000): JSONObject =
+    suspend fun playlistDetail(playlistId: Long, cookie: String, limit: Int = 500): JSONObject =
         withContext(Dispatchers.IO) {
             get(
                 "/playlist/detail",
