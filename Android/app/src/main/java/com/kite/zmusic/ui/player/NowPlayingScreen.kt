@@ -3391,7 +3391,6 @@ private fun LandscapePlayerBody(
     var lyricStyleEditorOpen by remember { mutableStateOf(false) }
     var reopenSettingsAfterLyricStyle by remember { mutableStateOf(false) }
     var lyricStyleSnapshot by remember { mutableStateOf<LyricStyleSnapshot?>(null) }
-    var lyricStylePreviewSlot by remember { mutableStateOf<LyricStylePreviewSlot?>(null) }
     var draftLyricPlaying by remember { mutableStateOf(LyricRoleStyle.PlayingDefault) }
     var draftLyricPlayed by remember { mutableStateOf(LyricRoleStyle.PlayedDefault) }
     var draftLyricUnplayed by remember { mutableStateOf(LyricRoleStyle.UnplayedDefault) }
@@ -3563,7 +3562,6 @@ private fun LandscapePlayerBody(
             }
             if (!lyricStyleEditorOpen) {
                 lyricStyleSnapshot = null
-                lyricStylePreviewSlot = null
             }
         }
     }
@@ -3669,7 +3667,6 @@ private fun LandscapePlayerBody(
         settingsOpen = false
         controlsVisible = false
         reopenSettingsAfterLyricStyle = false
-        lyricStylePreviewSlot = null
         val animActive = lyricAnimActiveIndex(lines, positionMs, durationMs)
         val focus = lyricFocusIndex(lines, animActive)
         draftLyricPlaying = displayPrefs.lyricPlayingStyle
@@ -4527,11 +4524,17 @@ private fun LandscapePlayerBody(
             )
         }
 
-        // 歌词样式：先面板（含预览槽），再克隆叠最上层映射进槽并裁剪包含
+        // 歌词样式：面板与克隆分离；克隆 morph 终点用静止槽几何（不含入场 layer）
         val styleSnap = lyricStyleSnapshot
         if (styleSnap != null &&
             (lyricStyleEditorOpen || lyricStyleT > 0.001f || styleCloneAlpha > 0.001f)
         ) {
+            val restSlot = lyricStyleRestPreviewSlot(
+                screenWidth = rootMaxW,
+                screenHeight = rootMaxH,
+                chromeSidePad = chromeSidePad,
+                previewWidthDp = styleSnap.sourceWidthDp,
+            )
             LyricStyleEditorOverlay(
                 draftPlaying = draftLyricPlaying,
                 draftPlayed = draftLyricPlayed,
@@ -4543,8 +4546,6 @@ private fun LandscapePlayerBody(
                 progress = lyricStyleT,
                 chromeSidePad = chromeSidePad,
                 previewWidthDp = styleSnap.sourceWidthDp,
-                rootCoords = playerRootCoords,
-                onPreviewSlotBounds = { lyricStylePreviewSlot = it },
                 onDismiss = { closeLyricStyleEditor() },
                 onBackToSettings = { closeLyricStyleEditorToSettings() },
                 modifier = Modifier.fillMaxSize(),
@@ -4555,7 +4556,7 @@ private fun LandscapePlayerBody(
                 draftPlayed = draftLyricPlayed,
                 draftUnplayed = draftLyricUnplayed,
                 progress = lyricStyleT,
-                targetSlot = lyricStylePreviewSlot,
+                targetSlot = restSlot,
                 contentAlpha = styleCloneAlpha,
                 uiScale = uiScale,
             )

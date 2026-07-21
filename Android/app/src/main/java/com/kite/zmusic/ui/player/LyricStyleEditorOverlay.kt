@@ -57,10 +57,6 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.LayoutCoordinates
-import androidx.compose.ui.layout.boundsInRoot
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
@@ -101,6 +97,10 @@ private val PreviewSlotShape = RoundedCornerShape(14.dp)
 /** 左侧操作区宽度 */
 private val OpsColumnWidth = 286.dp
 private val OpsPreviewGap = 12.dp
+private val PanelInnerPadStart = 14.dp
+private val PanelInnerPadEnd = 14.dp
+private val PanelInnerPadTop = 48.dp
+private val PanelInnerPadBottom = 14.dp
 
 /**
  * 打开瞬间冻结的歌词克隆：相对播放页根的视觉矩形（boundsInRoot）。
@@ -119,7 +119,7 @@ data class LyricStyleSnapshot(
     val sourceHeightDp: Dp,
 )
 
-/** 预览槽相对播放页根的实测矩形（由槽 onGloballyPositioned 上报，供克隆映射） */
+/** 预览槽相对播放页根的静止矩形（不含入场 graphicsLayer） */
 data class LyricStylePreviewSlot(
     val left: Dp,
     val top: Dp,
@@ -129,6 +129,38 @@ data class LyricStylePreviewSlot(
 
 fun lyricStylePreviewWidth(sourceWidth: Dp): Dp =
     sourceWidth.coerceIn(200.dp, 360.dp)
+
+/**
+ * 弹窗完全展开（t=1、无 translation/scale）时右侧预览槽相对播放页根的几何。
+ * morph 必须用此静止终点；不可用动画中 boundsInRoot（会飞向角落）。
+ */
+fun lyricStyleRestPreviewSlot(
+    screenWidth: Dp,
+    screenHeight: Dp,
+    chromeSidePad: Dp,
+    previewWidthDp: Dp,
+): LyricStylePreviewSlot {
+    val previewW = lyricStylePreviewWidth(previewWidthDp)
+    val rowInnerW = OpsColumnWidth + OpsPreviewGap + previewW
+    val panelContentW = rowInnerW + PanelInnerPadStart + PanelInnerPadEnd
+    // 外框 align End，width = panelContentW + chromeSidePad，padding(end=chromeSidePad)
+    val contentLeft = screenWidth - chromeSidePad - panelContentW
+    val contentTop = chromeSidePad
+    val contentHeight = (screenHeight - chromeSidePad * 2).coerceAtLeast(120.dp)
+    return LyricStylePreviewSlot(
+        left = contentLeft + PanelInnerPadStart + OpsColumnWidth + OpsPreviewGap,
+        top = contentTop + PanelInnerPadTop,
+        width = previewW,
+        height = (contentHeight - PanelInnerPadTop - PanelInnerPadBottom).coerceAtLeast(48.dp),
+    )
+}
+
+/** 与 [lyricStyleRestPreviewSlot] 同源的面板内容宽（不含右侧 chrome pad） */
+internal fun lyricStylePanelContentWidth(previewWidthDp: Dp): Dp {
+    val previewW = lyricStylePreviewWidth(previewWidthDp)
+    val rowInnerW = OpsColumnWidth + OpsPreviewGap + previewW
+    return rowInnerW + PanelInnerPadStart + PanelInnerPadEnd
+}
 
 enum class LyricStyleRole {
     Playing,
@@ -156,7 +188,7 @@ fun LyricRoleStyle.resolvedColorFor(role: LyricStyleRole): Color {
 
 /**
  * 歌词样式弹窗：左操作 / 右预览槽（空槽仅作落点与包含框）。
- * 克隆歌词由 [LyricStyleCloneLayer] 画在最上层，并映射进预览槽。
+ * 克隆歌词由 [LyricStyleCloneLayer] 画在最上层，并映射进 [lyricStyleRestPreviewSlot] 静止终点。
  */
 @Composable
 fun LyricStyleEditorOverlay(
@@ -170,8 +202,6 @@ fun LyricStyleEditorOverlay(
     progress: Float,
     chromeSidePad: Dp,
     previewWidthDp: Dp,
-    rootCoords: LayoutCoordinates?,
-    onPreviewSlotBounds: (LyricStylePreviewSlot) -> Unit,
     onDismiss: () -> Unit,
     onBackToSettings: () -> Unit,
     modifier: Modifier = Modifier,
@@ -179,9 +209,6 @@ fun LyricStyleEditorOverlay(
 ) {
     val t = progress.coerceIn(0f, 1f)
     if (t <= 0.001f) return
-    val density = LocalDensity.current
-    val onSlotUpdated = rememberUpdatedState(onPreviewSlotBounds)
-    val rootUpdated = rememberUpdatedState(rootCoords)
 
     val switchColors = SwitchDefaults.colors(
         checkedThumbColor = Color(0xFFF8FAFC),
@@ -193,7 +220,7 @@ fun LyricStyleEditorOverlay(
     )
 
     val previewW = lyricStylePreviewWidth(previewWidthDp)
-    val panelContentW = OpsColumnWidth + OpsPreviewGap + previewW
+    val panelContentW = lyricStylePanelContentWidth(previewWidthDp)
 
     Box(modifier.fillMaxSize()) {
         Box(
@@ -278,7 +305,12 @@ fun LyricStyleEditorOverlay(
                 Row(
                     Modifier
                         .fillMaxSize()
-                        .padding(start = 14.dp, end = 14.dp, top = 48.dp, bottom = 14.dp),
+                        .padding(
+                            start = PanelInnerPadStart,
+                            end = PanelInnerPadEnd,
+                            top = PanelInnerPadTop,
+                            bottom = PanelInnerPadBottom,
+                        ),
                     horizontalArrangement = Arrangement.spacedBy(OpsPreviewGap),
                 ) {
                     Column(
@@ -339,7 +371,7 @@ fun LyricStyleEditorOverlay(
                         )
                     }
 
-                    // 右侧预览槽：仅框架 + 上报实测 bounds；歌词克隆叠在最上层落入此槽
+                    // 右侧预览槽：仅框架；克隆用静止几何 morph，不在此上报动画 bounds
                     Box(
                         Modifier
                             .width(previewW)
@@ -350,21 +382,7 @@ fun LyricStyleEditorOverlay(
                                 width = 1.dp,
                                 color = Color.White.copy(alpha = 0.10f),
                                 shape = PreviewSlotShape,
-                            )
-                            .onGloballyPositioned { coords ->
-                                val root = rootUpdated.value
-                                if (root == null || !root.isAttached || !coords.isAttached) return@onGloballyPositioned
-                                val band = coords.boundsInRoot()
-                                val rb = root.boundsInRoot()
-                                onSlotUpdated.value(
-                                    LyricStylePreviewSlot(
-                                        left = with(density) { (band.left - rb.left).toDp() },
-                                        top = with(density) { (band.top - rb.top).toDp() },
-                                        width = with(density) { band.width.toDp() },
-                                        height = with(density) { band.height.toDp() },
-                                    ),
-                                )
-                            },
+                            ),
                     )
                 }
             }
@@ -391,7 +409,7 @@ fun LyricStyleCloneLayer(
     val alpha = contentAlpha.coerceIn(0f, 1f)
     if (alpha <= 0.001f) return
     val t = progress.coerceIn(0f, 1f)
-    // 槽未测到前停在源位，避免飞到错误坐标
+    // 终点应为静止槽；缺省时钉在源位（不应再出现动画中 bounds）
     val morphT = if (targetSlot != null) t else 0f
     val scale = uiScale.coerceIn(PlayerDisplayPrefs.UI_MIN, PlayerDisplayPrefs.UI_MAX)
     val contentFontScale = snapshot.fontScale * scale
