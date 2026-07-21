@@ -103,6 +103,7 @@ class PlaybackBridge(
         // 保留队列快照到 UI（暂停态）
         val kept = _ui.value.copy(
             isPlaying = false,
+            playWhenReady = false,
             buffering = false,
             loadPending = false,
         )

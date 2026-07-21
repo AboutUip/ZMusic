@@ -113,9 +113,10 @@ class PlaylistCoordinator(
     private val unplayableUntil = mutableMapOf<Long, Long>()
     private var retryCount = 0
     private var retryIndex = -1
-    /** 随机模式预选下一首/上一首，保证预览封面与真实切歌一致 */
+    /** 随机模式预选下一首，保证预览封面与真实切歌一致 */
     private var preparedShuffleNext: Int? = null
-    private var preparedShufflePrev: Int? = null
+    /** 随机模式真实播放历史（队列下标），用于上一首回退 */
+    private val shuffleHistory = ArrayDeque<Int>()
 
     private val playerListener = object : Player.Listener {
         override fun onPlaybackStateChanged(playbackState: Int) {
@@ -144,6 +145,10 @@ class PlaylistCoordinator(
             if (!isPlaying) persistSnapshot()
         }
 
+        override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+            _ui.update { it.copy(playWhenReady = playWhenReady) }
+        }
+
         override fun onPlayerError(error: PlaybackException) {
             Log.w(TAG, "player error ${error.errorCodeName}", error)
             val idx = _ui.value.index
@@ -156,6 +161,7 @@ class PlaylistCoordinator(
                     buffering = true,
                     loadPending = true,
                     isPlaying = false,
+                    playWhenReady = false,
                     transportWakeToken = it.transportWakeToken + 1,
                 )
             }
@@ -208,7 +214,7 @@ class PlaylistCoordinator(
         urlCache.clear()
         unplayableUntil.clear()
         preparedShuffleNext = null
-        preparedShufflePrev = null
+        shuffleHistory.clear()
         retryCount = 0
         retryIndex = -1
         _ui.update {
@@ -233,7 +239,7 @@ class PlaylistCoordinator(
         urlCache.clear()
         unplayableUntil.clear()
         preparedShuffleNext = null
-        preparedShufflePrev = null
+        shuffleHistory.clear()
         exoPlayer.stop()
         exoPlayer.clearMediaItems()
         playbackMode = _ui.value.playbackMode
@@ -243,7 +249,7 @@ class PlaylistCoordinator(
     }
 
     fun togglePlayPause() {
-        if (exoPlayer.isPlaying) {
+        if (exoPlayer.playWhenReady) {
             exoPlayer.pause()
         } else {
             if (exoPlayer.mediaItemCount == 0) {
@@ -298,15 +304,30 @@ class PlaylistCoordinator(
         if (!_ui.value.hasQueue || i < 0) return
         // 单曲循环：手动下一首与列表模式相同；仅播完自动重播（见 onEnded）
         val ni = nextPlayableIndex(i) ?: return
-        loadAndPlayIndex(ni)
+        loadAndPlayIndex(ni, recordShuffleHistory = true)
     }
 
     fun skipPrevious() {
         val i = _ui.value.index
         if (!_ui.value.hasQueue || i < 0) return
+        if (playbackMode == PlaybackMode.SHUFFLE) {
+            // 随机模式：回退到真实听过的上一首；无历史则从头
+            while (shuffleHistory.isNotEmpty()) {
+                val pi = shuffleHistory.removeLast()
+                val t = _ui.value.queue.getOrNull(pi) ?: continue
+                if (pi == i) continue
+                if (isUnplayable(t.id)) continue
+                // 回退后下一首重新随机，不再回到刚才那首
+                preparedShuffleNext = null
+                loadAndPlayIndex(pi, recordShuffleHistory = false)
+                return
+            }
+            seekTo(0L)
+            return
+        }
         val pi = prevPlayableIndex(i)
         if (pi != null) {
-            loadAndPlayIndex(pi)
+            loadAndPlayIndex(pi, recordShuffleHistory = false)
         } else {
             seekTo(0L)
         }
@@ -319,7 +340,9 @@ class PlaylistCoordinator(
             PlaybackMode.SHUFFLE -> PlaybackMode.ORDER
         }
         preparedShuffleNext = null
-        preparedShufflePrev = null
+        if (playbackMode != PlaybackMode.SHUFFLE) {
+            shuffleHistory.clear()
+        }
         applyRepeatMode()
         _ui.update { it.copy(playbackMode = playbackMode) }
         refreshPeeksAndPrefetch()
@@ -371,11 +394,16 @@ class PlaylistCoordinator(
             PlaybackMode.ORDER, PlaybackMode.SHUFFLE -> {
                 val ni = nextPlayableIndex(_ui.value.index)
                 if (ni != null) {
-                    loadAndPlayIndex(ni)
+                    loadAndPlayIndex(ni, recordShuffleHistory = true)
                 } else {
                     exoPlayer.pause()
                     _ui.update {
-                        it.copy(isPlaying = false, buffering = false, loadPending = false)
+                        it.copy(
+                            isPlaying = false,
+                            playWhenReady = false,
+                            buffering = false,
+                            loadPending = false,
+                        )
                     }
                     persistSnapshot()
                 }
@@ -420,12 +448,12 @@ class PlaylistCoordinator(
                 null
             }
             PlaybackMode.SHUFFLE -> {
-                repeat(q.size.coerceAtMost(12)) {
-                    val n = ensureShufflePrev(from) ?: return null
-                    if (!isUnplayable(q[n].id)) return n
-                    preparedShufflePrev = null
+                // 预览用：历史栈顶即为真实上一首（不弹出）
+                shuffleHistory.lastOrNull()?.takeIf { idx ->
+                    idx != from &&
+                        idx in q.indices &&
+                        !isUnplayable(q[idx].id)
                 }
-                null
             }
         }
     }
@@ -437,16 +465,6 @@ class PlaylistCoordinator(
         if (existing != null && existing != from && existing in 0 until size) return existing
         val n = pickShuffle(from, size)
         preparedShuffleNext = n
-        return n
-    }
-
-    private fun ensureShufflePrev(from: Int): Int? {
-        val size = _ui.value.queue.size
-        if (size <= 1) return null
-        val existing = preparedShufflePrev
-        if (existing != null && existing != from && existing in 0 until size) return existing
-        val n = pickShuffle(from, size)
-        preparedShufflePrev = n
         return n
     }
 
@@ -583,9 +601,7 @@ class PlaylistCoordinator(
         preparedShuffleNext?.let { idx ->
             if (q.getOrNull(idx)?.id == trackId) preparedShuffleNext = null
         }
-        preparedShufflePrev?.let { idx ->
-            if (q.getOrNull(idx)?.id == trackId) preparedShufflePrev = null
-        }
+        shuffleHistory.removeAll { q.getOrNull(it)?.id == trackId }
     }
 
     /** 只保留当前 + 邻曲的新鲜 URL；上一首切走后仍可作下一轮 prev。 */
@@ -596,7 +612,12 @@ class PlaylistCoordinator(
         }
     }
 
-    private fun loadAndPlayIndex(idx: Int, isRetry: Boolean = false, resumeAtMs: Long = 0L) {
+    private fun loadAndPlayIndex(
+        idx: Int,
+        isRetry: Boolean = false,
+        resumeAtMs: Long = 0L,
+        recordShuffleHistory: Boolean = false,
+    ) {
         val track = _ui.value.queue.getOrNull(idx) ?: return
         if (!isRetry) {
             if (retryIndex != idx) {
@@ -612,28 +633,44 @@ class PlaylistCoordinator(
                 return
             }
         }
+        val fromIndex = _ui.value.index
+        if (recordShuffleHistory &&
+            playbackMode == PlaybackMode.SHUFFLE &&
+            fromIndex >= 0 &&
+            fromIndex != idx &&
+            fromIndex in _ui.value.queue.indices
+        ) {
+            shuffleHistory.addLast(fromIndex)
+            while (shuffleHistory.size > MAX_SHUFFLE_HISTORY) {
+                shuffleHistory.removeFirst()
+            }
+        }
+        // 快切：取消旧曲加载，立即切到目标索引并只加载当前曲
         cancelLoads(keepPrefetch = false)
+        // 切走后下一首预选作废，保证之后「下一首」重新随机
         preparedShuffleNext = null
-        preparedShufflePrev = null
         val startPos = resumeAtMs.coerceAtLeast(0L)
         val cachedLyrics = lyricRepository.peekMemory(track.id)
         // 切歌：只暂停旧曲，勿 stop/clearMediaItems —— 清空播放列表会拆掉 Media3 通知再重建，触发系统 FGS 警告
         exoPlayer.playWhenReady = false
+        // 同步更新索引 / peek，黑胶可继续滑；音源在后台加载
+        _ui.update {
+            it.copy(
+                index = idx,
+                loadPending = true,
+                buffering = true,
+                hasQueue = true,
+                error = null,
+                positionMs = startPos,
+                durationMs = track.durationMs.coerceAtLeast(0L),
+                lyricLines = cachedLyrics.orEmpty(),
+                isPlaying = false,
+                playWhenReady = false,
+            )
+        }
+        refreshPeeksAndPrefetch()
+        val loadGen = track.id
         loadJob = scope.launch {
-            _ui.update {
-                it.copy(
-                    index = idx,
-                    loadPending = true,
-                    buffering = true,
-                    hasQueue = true,
-                    error = null,
-                    positionMs = startPos,
-                    durationMs = track.durationMs.coerceAtLeast(0L),
-                    lyricLines = cachedLyrics.orEmpty(),
-                    isPlaying = false,
-                )
-            }
-            refreshPeeksAndPrefetch()
             val cookie = sessionRepository.session.value?.cookie.orEmpty()
             try {
                 // 磁盘歌词优先填上，避免等网络
@@ -643,6 +680,8 @@ class PlaylistCoordinator(
                         _ui.update { it.copy(lyricLines = diskOrNet) }
                     }
                 }
+                // 已被更新的快切目标取代则放弃
+                if (_ui.value.currentTrack?.id != loadGen) return@launch
                 // 重试时强制重新解析；否则可命中邻曲预热缓存
                 val cached = if (isRetry) {
                     null
@@ -653,6 +692,7 @@ class PlaylistCoordinator(
                 val url = cached ?: resolvePlayUrl(track.id, cookie)?.also {
                     urlCache[track.id] = CachedUrl(it, System.currentTimeMillis())
                 }
+                if (_ui.value.currentTrack?.id != loadGen) return@launch
                 if (url.isNullOrBlank()) {
                     markUnplayable(track.id)
                     postUnplayableNotice()
@@ -660,15 +700,18 @@ class PlaylistCoordinator(
                     return@launch
                 }
                 withContext(Dispatchers.Main) {
+                    if (_ui.value.currentTrack?.id != loadGen) return@withContext
                     // 直接替换当前 MediaItem，通知原地更新，不经历「无曲目 → 撤通知」
                     exoPlayer.setMediaItem(buildMediaItem(track, url), startPos)
                     applyRepeatMode()
                     exoPlayer.prepare()
                     exoPlayer.playWhenReady = true
                 }
+                if (_ui.value.currentTrack?.id != loadGen) return@launch
                 persistSnapshot()
                 loadLyricsAsync(track.id, cookie)
             } catch (e: Exception) {
+                if (_ui.value.currentTrack?.id != loadGen) return@launch
                 Log.w(TAG, "loadAndPlayIndex failed", e)
                 markUnplayable(track.id)
                 postUnplayableNotice()
@@ -704,20 +747,24 @@ class PlaylistCoordinator(
         when (playbackMode) {
             PlaybackMode.ORDER -> {
                 val ni = nextPlayableIndex(failedIndex)
-                if (ni != null) loadAndPlayIndex(ni) else {
-                    _ui.update { it.copy(loadPending = false, isPlaying = false, buffering = false) }
+                if (ni != null) {
+                    loadAndPlayIndex(ni, recordShuffleHistory = false)
+                } else {
+                    _ui.update { it.copy(loadPending = false, isPlaying = false, playWhenReady = false, buffering = false) }
                 }
             }
             PlaybackMode.SHUFFLE -> {
                 preparedShuffleNext = null
                 val ni = nextPlayableIndex(failedIndex)
-                if (ni != null) loadAndPlayIndex(ni) else {
-                    _ui.update { it.copy(loadPending = false, isPlaying = false, buffering = false) }
+                if (ni != null) {
+                    loadAndPlayIndex(ni, recordShuffleHistory = false)
+                } else {
+                    _ui.update { it.copy(loadPending = false, isPlaying = false, playWhenReady = false, buffering = false) }
                 }
             }
             PlaybackMode.REPEAT_ONE -> {
                 if (retryCount <= MAX_RETRIES) loadAndPlayIndex(failedIndex, isRetry = true)
-                else _ui.update { it.copy(loadPending = false, isPlaying = false, buffering = false) }
+                else _ui.update { it.copy(loadPending = false, isPlaying = false, playWhenReady = false, buffering = false) }
             }
         }
     }
@@ -819,5 +866,6 @@ class PlaylistCoordinator(
         private const val URL_TTL_MS = 10 * 60 * 1000L
         private const val UNPLAYABLE_TTL_MS = 15 * 60 * 1000L
         private const val UNPLAYABLE_MAX = 64
+        private const val MAX_SHUFFLE_HISTORY = 64
     }
 }

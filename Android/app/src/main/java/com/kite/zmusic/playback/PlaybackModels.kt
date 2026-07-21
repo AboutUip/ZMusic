@@ -13,6 +13,8 @@ data class PlaybackUiState(
     val queue: List<TrackRow> = emptyList(),
     val index: Int = -1,
     val isPlaying: Boolean = false,
+    /** 用户/系统播放意图；seek 缓冲时 isPlaying 可能短暂为 false，图标应跟此字段。 */
+    val playWhenReady: Boolean = false,
     val buffering: Boolean = false,
     val playbackMode: PlaybackMode = PlaybackMode.ORDER,
     val positionMs: Long = 0L,
@@ -25,7 +27,7 @@ data class PlaybackUiState(
     val hasQueue: Boolean = false,
     val sourcePlaylistId: Long? = null,
     val sourcePlaylistTitle: String? = null,
-    /** 手势/预览用：与真实 skipNext/Prev 目标一致（尤其随机模式） */
+    /** 手势/预览用：与真实 skipNext/Prev 目标一致（随机模式：下一首预选随机，上一首为播放历史） */
     val peekNextTrack: TrackRow? = null,
     val peekPrevTrack: TrackRow? = null,
     /** 右上角短通知；token 变化触发重新展示。 */

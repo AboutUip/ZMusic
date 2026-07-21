@@ -310,8 +310,8 @@ fun MainShell(
                         val tr = playingTrack ?: return@AnimatedVisibility
                         MiniPlayerBar(
                             track = tr,
-                            isPlaying = playbackState.isPlaying,
-                            buffering = playbackState.buffering || playbackState.loadPending,
+                            isPlaying = playbackState.playWhenReady,
+                            buffering = playbackState.loadPending,
                             positionMs = playbackState.positionMs,
                             durationMs = playbackState.durationMs,
                             loadPending = playbackState.loadPending,
@@ -405,8 +405,8 @@ fun MainShell(
             ) {
                         MiniPlayerBar(
                             track = tr,
-                            isPlaying = playbackState.isPlaying,
-                            buffering = playbackState.buffering || playbackState.loadPending,
+                            isPlaying = playbackState.playWhenReady,
+                            buffering = playbackState.loadPending,
                             positionMs = playbackState.positionMs,
                             durationMs = playbackState.durationMs,
                             loadPending = playbackState.loadPending,

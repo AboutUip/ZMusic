@@ -2,6 +2,7 @@
 
 package com.kite.zmusic.ui.player
 
+import android.annotation.SuppressLint
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
@@ -25,6 +26,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -60,6 +62,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kite.zmusic.data.PlayerDisplayPrefs
 import com.kite.zmusic.data.TitleAlignMode
+import com.kite.zmusic.data.VinylColorStyle
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeStyle
 import dev.chrisbanes.haze.HazeTint
@@ -160,6 +163,43 @@ fun NowPlayingSettingsIconButton(
                     center = Offset(left + trackLen * knobs[i], y),
                 )
             }
+        }
+    }
+}
+
+/**
+ * 退出全屏播放：向下尖角（类似「>」顺时针 90°），夹角略开于直角以便辨认。
+ */
+@Composable
+fun NowPlayingDismissIconButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    ChromeIconShell(onClick = onClick, modifier = modifier) {
+        Canvas(Modifier.size(18.dp)) {
+            val sw = size.minDimension * 0.12f
+            val cx = size.width / 2f
+            val cy = size.height / 2f
+            // 相对竖直各偏 ~48° → 尖角约 96°，比锐利 chevron 更舒展
+            val halfRad = Math.toRadians(48.0)
+            val arm = size.minDimension * 0.34f
+            val tipY = cy + arm * 0.42f
+            val topY = tipY - arm * cos(halfRad).toFloat()
+            val dx = arm * sin(halfRad).toFloat()
+            drawLine(
+                color = IconTint,
+                start = Offset(cx - dx, topY),
+                end = Offset(cx, tipY),
+                strokeWidth = sw,
+                cap = StrokeCap.Round,
+            )
+            drawLine(
+                color = IconTint,
+                start = Offset(cx + dx, topY),
+                end = Offset(cx, tipY),
+                strokeWidth = sw,
+                cap = StrokeCap.Round,
+            )
         }
     }
 }
@@ -311,6 +351,7 @@ fun NowPlayingSettingsSheet(
     onPrefsChange: (PlayerDisplayPrefs) -> Unit,
     hazeState: HazeState,
     modifier: Modifier = Modifier,
+    onOpenVinylColorEditor: () -> Unit = {},
 ) {
     val sliderColors = SliderDefaults.colors(
         thumbColor = Color(0xFFF8FAFC),
@@ -542,6 +583,36 @@ fun NowPlayingSettingsSheet(
                         onCheckedChange = { onPrefsChange(prefs.copy(vinylFullCover = it)) },
                     )
                     SettingsSliderRow(
+                        title = "黑胶大小（整体）",
+                        valueLabel = String.format("%.0f%%", prefs.vinylSizeScale * 100f),
+                        value = prefs.vinylSizeScale,
+                        valueRange = PlayerDisplayPrefs.VINYL_SIZE_SCALE_MIN..PlayerDisplayPrefs.VINYL_SIZE_SCALE_MAX,
+                        colors = sliderColors,
+                        onValueChange = { onPrefsChange(prefs.copy(vinylSizeScale = it)) },
+                    )
+                    SettingsSliderRow(
+                        title = "外圈黑胶半径",
+                        valueLabel = String.format("%.0f%%", prefs.vinylOuterScale * 100f),
+                        value = prefs.vinylOuterScale,
+                        valueRange = PlayerDisplayPrefs.VINYL_OUTER_SCALE_MIN..PlayerDisplayPrefs.VINYL_OUTER_SCALE_MAX,
+                        colors = sliderColors,
+                        onValueChange = { onPrefsChange(prefs.copy(vinylOuterScale = it)) },
+                    )
+                    SettingsSliderRow(
+                        title = "中心黑胶半径",
+                        valueLabel = String.format("基准 %.0f%%", prefs.vinylCenterRadiusFrac * 100f),
+                        value = prefs.vinylCenterRadiusFrac,
+                        valueRange = PlayerDisplayPrefs.VINYL_CENTER_RADIUS_MIN..PlayerDisplayPrefs.VINYL_CENTER_RADIUS_MAX,
+                        colors = sliderColors,
+                        enabled = !prefs.vinylFullCover,
+                        onValueChange = { onPrefsChange(prefs.copy(vinylCenterRadiusFrac = it)) },
+                    )
+                    SettingsVinylColorRow(
+                        prefs = prefs,
+                        onPrefsChange = onPrefsChange,
+                        onOpenCustomEditor = onOpenVinylColorEditor,
+                    )
+                    SettingsSliderRow(
                         title = "黑胶水平位置",
                         valueLabel = String.format("%+.0f", prefs.vinylOffsetXDp),
                         value = prefs.vinylOffsetXDp,
@@ -564,6 +635,224 @@ fun NowPlayingSettingsSheet(
     }
 }
 
+@SuppressLint("UnusedBoxWithConstraintsScope")
+@Composable
+private fun SettingsVinylColorRow(
+    prefs: PlayerDisplayPrefs,
+    onPrefsChange: (PlayerDisplayPrefs) -> Unit,
+    onOpenCustomEditor: () -> Unit,
+) {
+    val styles = VinylColorStyle.entries
+    val labels = listOf("黑色", "金色", "白色", "自选")
+    val scope = rememberCoroutineScope()
+    val density = LocalDensity.current
+    val selected = prefs.vinylColorStyle
+    val indicator = remember { Animatable(selected.ordinal.toFloat()) }
+    var dragOffsetPx by remember { mutableFloatStateOf(0f) }
+
+    fun selectStyle(style: VinylColorStyle) {
+        if (style != selected) {
+            onPrefsChange(prefs.copy(vinylColorStyle = style))
+        }
+    }
+
+    LaunchedEffect(selected) {
+        indicator.animateTo(
+            targetValue = selected.ordinal.toFloat(),
+            animationSpec = spring(dampingRatio = 0.82f, stiffness = 380f),
+        )
+    }
+
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RowShape)
+            .background(SettingsRowBg)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+    ) {
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = "黑胶颜色",
+                    style = TextStyle(
+                        color = LabelColor,
+                        fontFamily = FontFamily.SansSerif,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 14.sp,
+                        shadow = TextShadow,
+                    ),
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = "滑动切换预设 · 自选时点色环编辑",
+                    style = TextStyle(
+                        color = HintColor,
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 9.sp,
+                        letterSpacing = 0.3.sp,
+                        shadow = TextShadow,
+                    ),
+                )
+            }
+            val previewBase = when (selected) {
+                VinylColorStyle.BLACK -> Color(0xFF121214)
+                VinylColorStyle.GOLD -> Color(0xFFB8860B)
+                VinylColorStyle.WHITE -> Color(0xFFE8E8EC)
+                VinylColorStyle.CUSTOM -> Color(prefs.vinylCustomBaseArgb)
+            }
+            val previewGroove = when (selected) {
+                VinylColorStyle.BLACK -> Color.White.copy(alpha = 0.55f)
+                VinylColorStyle.GOLD -> Color(0xFFFFF8E7)
+                VinylColorStyle.WHITE -> Color(0xFF1A1A1E)
+                VinylColorStyle.CUSTOM -> Color(prefs.vinylCustomGrooveArgb)
+            }
+            val customActive = selected == VinylColorStyle.CUSTOM
+            Box(
+                Modifier
+                    .size(34.dp)
+                    .clip(CircleShape)
+                    .background(previewBase)
+                    .border(1.5.dp, previewGroove.copy(alpha = 0.85f), CircleShape)
+                    .then(
+                        if (customActive) {
+                            Modifier.clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = onOpenCustomEditor,
+                            )
+                        } else {
+                            Modifier
+                        },
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Canvas(Modifier.size(18.dp)) {
+                    drawCircle(
+                        color = previewGroove.copy(alpha = 0.35f),
+                        radius = size.minDimension * 0.42f,
+                        style = Stroke(width = 1.2f),
+                    )
+                }
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        BoxWithConstraints(
+            Modifier
+                .fillMaxWidth()
+                .height(36.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(Color.Black.copy(alpha = 0.35f))
+                .pointerInput(styles.size) {
+                    val segW = size.width / styles.size.toFloat()
+                    detectHorizontalDragGestures(
+                        onDragStart = {
+                            dragOffsetPx = 0f
+                            scope.launch { indicator.stop() }
+                        },
+                        onHorizontalDrag = { _, dragAmount ->
+                            dragOffsetPx += dragAmount
+                            val live = (selected.ordinal + dragOffsetPx / segW)
+                                .coerceIn(0f, (styles.lastIndex).toFloat())
+                            scope.launch { indicator.snapTo(live) }
+                        },
+                        onDragEnd = {
+                            val segWPx = size.width / styles.size.toFloat()
+                            val idx = (selected.ordinal + dragOffsetPx / segWPx)
+                                .roundToInt()
+                                .coerceIn(0, styles.lastIndex)
+                            dragOffsetPx = 0f
+                            val next = styles[idx]
+                            if (next != selected) {
+                                onPrefsChange(prefs.copy(vinylColorStyle = next))
+                            } else {
+                                scope.launch {
+                                    indicator.animateTo(
+                                        targetValue = selected.ordinal.toFloat(),
+                                        animationSpec = spring(
+                                            dampingRatio = 0.82f,
+                                            stiffness = 380f,
+                                        ),
+                                    )
+                                }
+                            }
+                        },
+                        onDragCancel = {
+                            dragOffsetPx = 0f
+                            scope.launch {
+                                indicator.animateTo(
+                                    targetValue = selected.ordinal.toFloat(),
+                                    animationSpec = spring(
+                                        dampingRatio = 0.82f,
+                                        stiffness = 380f,
+                                    ),
+                                )
+                            }
+                        },
+                    )
+                },
+        ) {
+            val segW = maxWidth / styles.size
+            val thumbPad = 3.dp
+            Box(
+                Modifier
+                    .offset {
+                        val x = with(density) {
+                            (segW * indicator.value + thumbPad).roundToPx()
+                        }
+                        IntOffset(x, 0)
+                    }
+                    .padding(vertical = thumbPad)
+                    .width(segW - thumbPad * 2)
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Accent.copy(alpha = 0.28f))
+                    .border(
+                        width = 1.dp,
+                        color = Accent.copy(alpha = 0.45f),
+                        shape = RoundedCornerShape(8.dp),
+                    ),
+            )
+            Row(Modifier.fillMaxSize()) {
+                styles.forEachIndexed { index, style ->
+                    val active = selected == style
+                    Box(
+                        Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = { selectStyle(style) },
+                            ),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = labels[index],
+                            style = TextStyle(
+                                color = if (active) {
+                                    Accent.copy(alpha = 0.98f)
+                                } else {
+                                    HintColor.copy(alpha = 0.72f)
+                                },
+                                fontFamily = FontFamily.SansSerif,
+                                fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
+                                fontSize = 11.sp,
+                                letterSpacing = 0.2.sp,
+                                textAlign = TextAlign.Center,
+                                shadow = TextShadow,
+                            ),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@SuppressLint("UnusedBoxWithConstraintsScope")
 @Composable
 private fun SettingsTitleAlignRow(
     selected: TitleAlignMode,

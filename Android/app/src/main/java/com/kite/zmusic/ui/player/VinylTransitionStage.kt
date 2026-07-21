@@ -25,11 +25,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -56,6 +56,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.kite.zmusic.data.TrackRow
+import com.kite.zmusic.data.VinylPlateColors
 import com.kite.zmusic.ui.common.UrlImage
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
@@ -73,28 +74,39 @@ private val VinylDim = Color(0xFF8FA8B8)
 /** 缓慢优雅：柔和 ease-in-out */
 private val VinylMotion = CubicBezierEasing(0.4f, 0.0f, 0.2f, 1f)
 
-/** 轴心镂空相对整盘半径；封面挖孔更大，露出中间黑胶环。 */
+/** 轴心镂空相对整盘半径（固定，不受中心黑胶半径设置影响）。 */
 private const val SpindleHoleFrac = 0.048f
 private const val CoverFrac = 0.76f
-private const val CoverHoleFrac = 0.20f
+/** 默认中心黑胶挖孔（相对整盘）；与 prefs 默认一致 */
+private const val DefaultCoverHoleFrac = 0.20f
 
 private const val NextExitMs = 920
 /** 下一首底层起始缩放 */
 private const val NextUnderScale = 0.85f
 private const val PrevEnterMs = 820
+private const val NextGrowMs = 520
 
-/** 旧胶离场行程中：过此比例后新胶才开始放大 */
-private const val NextGrowStartFrac = 0.28f
-/** 旧胶离场行程中：到此比例时新胶才到 100% */
-private const val NextGrowEndFrac = 0.90f
+/** 甩动切歌速度门槛（提高以减少轻扫误触） */
+private const val FlingVelocityPx = 1400f
 
-private const val FlingVelocityPx = 900f
+/** 离场层上限，超出丢弃最旧层 */
+private const val MaxExitingLayers = 4
+
+/**
+ * 离场中的黑胶层：不打断收尾，与当前可交互层叠放。
+ */
+private class ExitingVinylLayer(
+    val key: Long,
+    val track: TrackRow,
+    val x: Animatable<Float, AnimationVector1D>,
+    val scale: Animatable<Float, AnimationVector1D>,
+)
 
 /**
  * 切歌黑胶舞台：
- * - 手势跟手（无透明度）：右→左下一首；左→右上一首（新胶从左侧跟手滑入）
- * - 未达阈值松手：上一首新胶缩回左侧；下一首旧胶弹回中心
- * - peek 必须与 PlaylistCoordinator 的 skip 目标一致（随机模式尤其重要）
+ * - 手势跟手：右→左下一首；左→右上一首
+ * - 提交后旧胶继续离场收尾，新胶立刻可再滑（多层叠放）
+ * - 未达阈值松手回弹；peek 与 skip 目标一致
  */
 @SuppressLint("UnusedBoxWithConstraintsScope")
 @Composable
@@ -107,13 +119,22 @@ fun VinylTransitionStage(
     gesturesEnabled: Boolean,
     onTransitionRunningChange: (Boolean) -> Unit,
     onCommitSkip: (VinylSkipDirection) -> Unit,
+    modifier: Modifier = Modifier,
     fullCover: Boolean = false,
     /**
+     * 中心黑胶半径（相对整体大小 = 100% 的基准盘）：封面中心挖孔外缘；
+     * 与 [outerScale] 解耦。完整封面时由内部忽略挖孔。
+     */
+    centerRadiusFrac: Float = DefaultCoverHoleFrac,
+    /**
+     * 外圈黑胶倍率：仅缩放黑胶盘面（绕中心）；封面锁定在整体容器的 CoverFrac。
+     */
+    outerScale: Float = 1f,
+    plateColors: VinylPlateColors = VinylPlateColors.Black,
+    /**
      * 上一首入场起点：相对舞台中心，整盘完全离开左栏左缘所需的位移（px）。
-     * 过大则跟手时看不见；过小则一现身就露右侧一角。
      */
     prevEnterSlidePx: Float? = null,
-    modifier: Modifier = Modifier,
 ) {
     var topTrack by remember { mutableStateOf(track) }
     var bottomTrack by remember { mutableStateOf(track) }
@@ -121,21 +142,22 @@ fun VinylTransitionStage(
     var booted by remember { mutableStateOf(false) }
     var dragging by remember { mutableStateOf(false) }
     var dragMode by remember { mutableStateOf<VinylSkipDirection?>(null) }
-    var transitionRunning by remember { mutableStateOf(false) }
     var followX by remember { mutableFloatStateOf(0f) }
-    // 松手瞬间 dragging=false，但 Animatable.snapTo 异步；用同步粘性 X 避免上一首胶瞬移到中心
     var stickyTopX by remember { mutableFloatStateOf(Float.NaN) }
-    /** 进入「上一首」手势时的 followX，揭示量从 0 起算，避免一现身就露出右侧一角 */
     var prevRevealBase by remember { mutableFloatStateOf(0f) }
+    /** 回弹中不可开新手势；离场收尾不锁手势 */
+    var bounceRunning by remember { mutableStateOf(false) }
 
     val topX = remember { Animatable(0f) }
     val topScale = remember { Animatable(1f) }
     val bottomX = remember { Animatable(0f) }
     val bottomScale = remember { Animatable(1f) }
     var showBottom by remember { mutableStateOf(false) }
-    var handoffX by remember { mutableFloatStateOf(Float.NaN) }
-    /** 手势松手后本地收尾动画；不等待 track 切换，避免几百毫秒停住 */
-    var dragFinishJob by remember { mutableStateOf<Job?>(null) }
+
+    val exiting = remember { mutableStateListOf<ExitingVinylLayer>() }
+    var exitSeq by remember { mutableLongStateOf(0L) }
+    var settleJob by remember { mutableStateOf<Job?>(null) }
+    var bounceJob by remember { mutableStateOf<Job?>(null) }
 
     val spinAngles = remember { mutableMapOf<Long, Animatable<Float, AnimationVector1D>>() }
     fun angleOf(id: Long): Animatable<Float, AnimationVector1D> =
@@ -148,112 +170,91 @@ fun VinylTransitionStage(
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
 
-    fun setBusy(busy: Boolean) {
-        transitionRunning = busy
-        onTransitionRunningChange(busy)
+    LaunchedEffect(bounceRunning, exiting.size, dragging) {
+        onTransitionRunningChange(bounceRunning || exiting.isNotEmpty() || dragging)
     }
 
     BoxWithConstraints(
-        // 不圆形裁剪：旧胶完整离场、新胶完整入场，可画进左侧挖孔区
         modifier.graphicsLayer { clip = false },
         contentAlignment = Alignment.Center,
     ) {
-        // 下一首：旧胶需完整滑出可视区
         val stageW = constraints.maxWidth.toFloat().coerceAtLeast(1f)
         val exitPx = stageW * 2.35f
-        // 上一首：默认略大于一盘；父级传入时含水平偏移后的真实离场距离
         val slidePx = (prevEnterSlidePx?.takeIf { it > stageW * 0.5f } ?: (stageW * 1.06f))
             .coerceAtLeast(stageW * 0.92f)
-        val commitPx = with(density) { 56.dp.toPx() }
-            .coerceAtMost(stageW * 0.32f)
+        val commitPx = with(density) { 96.dp.toPx() }
+            .coerceAtMost(stageW * 0.42f)
             .coerceAtLeast(1f)
-        // 上一首提交：至少露出约 28% 盘面，否则跟手感消失
-        val prevCommitPx = (stageW * 0.28f).coerceIn(commitPx, stageW * 0.42f)
+        val prevCommitPx = (stageW * 0.40f).coerceIn(commitPx, stageW * 0.52f)
 
         fun prevReveal(rawFollow: Float): Float =
             (rawFollow - prevRevealBase).coerceAtLeast(0f)
 
-        suspend fun finishNextExit(exitStartX: Float, scaleStart: Float, incoming: TrackRow) {
-            val outgoing = topTrack
-            resetSpin(incoming.id)
-            bottomTrack = incoming
-            topTrack = outgoing
-            showBottom = true
-            bottomX.snapTo(0f)
-            topX.snapTo(exitStartX.coerceIn(-exitPx, 0f))
-            stickyTopX = Float.NaN
-            bottomScale.snapTo(scaleStart.coerceIn(NextUnderScale, 1f))
-            topScale.snapTo(1f)
-            val startX = topX.value
-            val endX = -exitPx
-            val travel = (startX - endX).coerceAtLeast(1f)
-            // 旧胶先走一段，新胶再放大；接近离场完成才到 100%，避免「旧胶刚动、新胶已满」
-            val growStartX = startX - travel * NextGrowStartFrac
-            val growEndX = startX - travel * NextGrowEndFrac
-            val startScale = bottomScale.value
-
-            coroutineScope {
-                val exitJob = launch {
-                    topX.animateTo(
-                        targetValue = endX,
-                        animationSpec = tween(NextExitMs, easing = VinylMotion),
-                    )
-                }
-                launch {
-                    while (isActive) {
-                        val x = topX.value
-                        when {
-                            x >= growStartX -> bottomScale.snapTo(startScale)
-                            x <= growEndX -> {
-                                bottomScale.snapTo(1f)
-                                break
-                            }
-                            else -> {
-                                val span = (growStartX - growEndX).coerceAtLeast(1f)
-                                val raw = ((growStartX - x) / span).coerceIn(0f, 1f)
-                                // 线性跟行程，避免再套一次 ease 导致前段涨太猛
-                                bottomScale.snapTo(startScale + (1f - startScale) * raw)
-                            }
-                        }
-                        withFrameNanos { }
-                    }
-                }
-                exitJob.join()
-                bottomScale.snapTo(1f)
+        fun trimExiting() {
+            while (exiting.size > MaxExitingLayers) {
+                exiting.removeAt(0)
             }
-
-            topTrack = incoming
-            topX.snapTo(0f)
-            topScale.snapTo(1f)
-            bottomTrack = incoming
-            bottomScale.snapTo(1f)
-            bottomX.snapTo(0f)
-            showBottom = true
-            withFrameNanos { }
-            withFrameNanos { }
-            showBottom = false
-            settledId = incoming.id
         }
 
-        suspend fun finishPrevEnter(enterStartX: Float, incoming: TrackRow) {
-            resetSpin(incoming.id)
-            topTrack = incoming
-            showBottom = true
-            bottomX.snapTo(0f)
-            bottomScale.snapTo(1f)
-            topX.snapTo(enterStartX.coerceIn(-slidePx, 0f))
-            stickyTopX = Float.NaN
-            topScale.snapTo(1f)
-            topX.animateTo(
-                targetValue = 0f,
-                animationSpec = tween(PrevEnterMs, easing = VinylMotion),
+        /** 旧胶离场：独立层继续飞出，不打断 */
+        fun spawnExitNext(outgoing: TrackRow, fromX: Float, fromScale: Float = 1f) {
+            exitSeq += 1L
+            val layer = ExitingVinylLayer(
+                key = exitSeq,
+                track = outgoing,
+                x = Animatable(fromX.coerceIn(-exitPx, 0f)),
+                scale = Animatable(fromScale.coerceIn(NextUnderScale, 1f)),
             )
-            bottomTrack = incoming
-            showBottom = false
-            topX.snapTo(0f)
-            topScale.snapTo(1f)
+            exiting.add(layer)
+            trimExiting()
+            scope.launch {
+                try {
+                    layer.x.animateTo(
+                        targetValue = -exitPx,
+                        animationSpec = tween(NextExitMs, easing = VinylMotion),
+                    )
+                } finally {
+                    exiting.removeAll { it.key == layer.key }
+                }
+            }
+        }
+
+        fun promoteIncoming(
+            incoming: TrackRow,
+            startScale: Float,
+            startX: Float = 0f,
+            animateEnter: Boolean = false,
+            underTrack: TrackRow? = null,
+        ) {
+            settleJob?.cancel()
+            topTrack = incoming
             stickyTopX = Float.NaN
             settledId = incoming.id
+            followX = 0f
+            prevRevealBase = 0f
+            dragMode = null
+            if (underTrack != null && underTrack.id != incoming.id) {
+                bottomTrack = underTrack
+                showBottom = true
+            } else {
+                bottomTrack = incoming
+                showBottom = false
+            }
+            settleJob = scope.launch {
+                resetSpin(incoming.id)
+                if (animateEnter) {
+                    topX.snapTo(startX.coerceIn(-slidePx, 0f))
+                    topScale.snapTo(1f)
+                    topX.animateTo(0f, tween(PrevEnterMs, easing = VinylMotion))
+                    bottomTrack = incoming
+                    showBottom = false
+                    topX.snapTo(0f)
+                } else {
+                    topX.snapTo(0f)
+                    topScale.snapTo(startScale.coerceIn(NextUnderScale, 1f))
+                    topScale.animateTo(1f, tween(NextGrowMs, easing = VinylMotion))
+                }
+            }
         }
 
         fun rubberDrag(raw: Float): Float {
@@ -271,7 +272,6 @@ fun VinylTransitionStage(
             }
         }
 
-        // 上一首：X = -slidePx + reveal（reveal 从 0 起，裁剪区内从无到有）
         val displayX = when {
             dragging && dragMode == VinylSkipDirection.Previous ->
                 -slidePx + prevReveal(followX)
@@ -281,7 +281,6 @@ fun VinylTransitionStage(
         }
         val displayBottomScale = when {
             dragging && dragMode == VinylSkipDirection.Next && showBottom -> {
-                // 跟手阶段只轻微放大，满尺寸留给离场后半段
                 val p = (abs(followX) / commitPx).coerceIn(0f, 1f)
                 NextUnderScale + (1f - NextUnderScale) * 0.40f * p
             }
@@ -294,20 +293,23 @@ fun VinylTransitionStage(
             val x = followX
             when {
                 x < -1.5f && peekNext != null -> {
-                    if (dragMode == VinylSkipDirection.Previous && topTrack.id != track.id) {
-                        topTrack = track
-                    }
                     dragMode = VinylSkipDirection.Next
                     prevRevealBase = 0f
+                    if (topTrack.id != settledId) {
+                        topTrack = track
+                    }
                     bottomTrack = peekNext
                     showBottom = true
+                    scope.launch {
+                        bottomScale.snapTo(NextUnderScale)
+                        bottomX.snapTo(0f)
+                    }
                 }
                 x > 1.5f && peekPrev != null -> {
                     if (dragMode != VinylSkipDirection.Previous) {
                         dragMode = VinylSkipDirection.Previous
-                        // 揭示从 0 开始：此时盘面完全在左侧裁剪外
                         prevRevealBase = x
-                        bottomTrack = track
+                        bottomTrack = if (topTrack.id == settledId) topTrack else track
                         topTrack = peekPrev
                         showBottom = true
                         scope.launch {
@@ -320,7 +322,7 @@ fun VinylTransitionStage(
                 dragMode == VinylSkipDirection.Previous && x > prevRevealBase -> Unit
                 dragMode == VinylSkipDirection.Next && x < 0f -> Unit
                 else -> {
-                    if (dragMode == VinylSkipDirection.Previous && topTrack.id != track.id) {
+                    if (dragMode == VinylSkipDirection.Previous && topTrack.id != settledId) {
                         topTrack = track
                     }
                     dragMode = null
@@ -330,15 +332,8 @@ fun VinylTransitionStage(
             }
         }
 
+        // 外部切歌（播放条按钮等）：同样叠层收尾，尽快恢复可滑
         LaunchedEffect(track.id) {
-            val dir = direction
-            val fromDrag = !handoffX.isNaN()
-            val startX = if (fromDrag) handoffX else 0f
-            handoffX = Float.NaN
-            dragging = false
-            dragMode = null
-            prevRevealBase = 0f
-
             if (!booted) {
                 topTrack = track
                 bottomTrack = track
@@ -350,75 +345,37 @@ fun VinylTransitionStage(
                 bottomScale.snapTo(1f)
                 showBottom = false
                 booted = true
-                setBusy(false)
                 return@LaunchedEffect
             }
-
-            // 手势已在本地收尾：等动画结束再对齐真实 track，避免松手后停顿等待切歌
-            val finishing = dragFinishJob
-            if (finishing != null && finishing.isActive) {
-                finishing.join()
-                if (topTrack.id != track.id) {
-                    topTrack = track
-                    bottomTrack = track
-                    topX.snapTo(0f)
-                    topScale.snapTo(1f)
-                    bottomX.snapTo(0f)
-                    bottomScale.snapTo(1f)
-                    showBottom = false
-                }
+            if (track.id == settledId) return@LaunchedEffect
+            if (topTrack.id == track.id) {
                 settledId = track.id
-                stickyTopX = Float.NaN
-                setBusy(false)
                 return@LaunchedEffect
             }
-
-            if (track.id == settledId &&
-                abs(topX.value) < 1f &&
-                abs(topScale.value - 1f) < 0.01f &&
-                !showBottom &&
-                !fromDrag &&
-                stickyTopX.isNaN()
-            ) {
-                return@LaunchedEffect
-            }
-
-            setBusy(true)
-            try {
-                when (dir) {
-                    VinylSkipDirection.Next -> {
-                        if (fromDrag) {
-                            val p = (abs(startX) / commitPx).coerceIn(0f, 1f)
-                            finishNextExit(
-                                exitStartX = startX,
-                                scaleStart = NextUnderScale + (1f - NextUnderScale) * 0.40f * p,
-                                incoming = track,
-                            )
-                        } else {
-                            finishNextExit(
-                                exitStartX = if (abs(topX.value) < 4f) 0f else topX.value,
-                                scaleStart = NextUnderScale,
-                                incoming = track,
-                            )
-                        }
-                    }
-
-                    VinylSkipDirection.Previous -> {
-                        if (fromDrag) {
-                            finishPrevEnter(enterStartX = startX, incoming = track)
-                        } else {
-                            val under = topTrack
-                            bottomTrack = under
-                            showBottom = true
-                            finishPrevEnter(enterStartX = -slidePx, incoming = track)
-                        }
-                    }
+            dragging = false
+            dragMode = null
+            prevRevealBase = 0f
+            stickyTopX = Float.NaN
+            when (direction) {
+                VinylSkipDirection.Next -> {
+                    spawnExitNext(topTrack, topX.value, topScale.value)
+                    promoteIncoming(track, NextUnderScale, animateEnter = false)
                 }
-            } finally {
-                stickyTopX = Float.NaN
-                setBusy(false)
+                VinylSkipDirection.Previous -> {
+                    val under = topTrack
+                    promoteIncoming(
+                        track,
+                        1f,
+                        startX = -slidePx,
+                        animateEnter = true,
+                        underTrack = under,
+                    )
+                }
             }
         }
+
+        val canStartDrag = gesturesEnabled && !bounceRunning &&
+            (dragging || topTrack.id == settledId)
 
         Box(
             Modifier
@@ -426,17 +383,20 @@ fun VinylTransitionStage(
                 .draggable(
                     state = dragState,
                     orientation = Orientation.Horizontal,
-                    enabled = gesturesEnabled && (
-                        dragging ||
-                            (!transitionRunning && track.id == settledId)
-                        ),
+                    enabled = canStartDrag,
                     onDragStarted = {
-                        if (transitionRunning) return@draggable
+                        if (bounceRunning) return@draggable
+                        // 仅接管当前层 settle，不取消离场层
+                        settleJob?.cancel()
+                        settleJob = null
+                        if (topTrack.id != settledId) {
+                            topTrack = track
+                        }
+                        followX = topX.value
                         dragging = true
                         dragMode = null
-                        followX = 0f
                         prevRevealBase = 0f
-                        setBusy(true)
+                        stickyTopX = Float.NaN
                     },
                     onDragStopped = { velocity ->
                         if (!dragging) return@draggable
@@ -455,53 +415,35 @@ fun VinylTransitionStage(
                         when {
                             goNext -> {
                                 val incoming = checkNotNull(peekNext)
-                                stickyTopX = x
+                                val outgoing = topTrack
                                 dragging = false
                                 dragMode = null
                                 prevRevealBase = 0f
-                                handoffX = Float.NaN
-                                dragFinishJob?.cancel()
-                                dragFinishJob = scope.launch {
-                                    setBusy(true)
-                                    try {
-                                        topX.snapTo(x)
-                                        stickyTopX = Float.NaN
-                                        if (showBottom) bottomScale.snapTo(scaleAtRelease)
-                                        finishNextExit(
-                                            exitStartX = x,
-                                            scaleStart = scaleAtRelease,
-                                            incoming = incoming,
-                                        )
-                                    } finally {
-                                        stickyTopX = Float.NaN
-                                        setBusy(false)
-                                    }
-                                }
+                                stickyTopX = Float.NaN
+                                showBottom = false
+                                spawnExitNext(outgoing, x, topScale.value)
+                                promoteIncoming(incoming, scaleAtRelease, animateEnter = false)
                                 onCommitSkip(VinylSkipDirection.Next)
                             }
                             goPrev -> {
                                 val incoming = checkNotNull(peekPrev)
-                                stickyTopX = coverX
+                                // 跟手时 bottom 已是旧中心；否则用当前 settled
+                                val under = when {
+                                    showBottom && bottomTrack.id != incoming.id -> bottomTrack
+                                    topTrack.id == settledId -> topTrack
+                                    else -> track
+                                }
                                 dragging = false
                                 dragMode = null
                                 prevRevealBase = 0f
-                                handoffX = Float.NaN
-                                dragFinishJob?.cancel()
-                                dragFinishJob = scope.launch {
-                                    setBusy(true)
-                                    try {
-                                        topX.snapTo(coverX)
-                                        stickyTopX = Float.NaN
-                                        bottomScale.snapTo(1f)
-                                        finishPrevEnter(
-                                            enterStartX = coverX,
-                                            incoming = incoming,
-                                        )
-                                    } finally {
-                                        stickyTopX = Float.NaN
-                                        setBusy(false)
-                                    }
-                                }
+                                stickyTopX = Float.NaN
+                                promoteIncoming(
+                                    incoming,
+                                    1f,
+                                    startX = coverX,
+                                    animateEnter = true,
+                                    underTrack = under,
+                                )
                                 onCommitSkip(VinylSkipDirection.Previous)
                             }
                             else -> {
@@ -511,11 +453,12 @@ fun VinylTransitionStage(
                                     stickyTopX = x
                                 }
                                 dragging = false
-                                scope.launch {
+                                bounceRunning = true
+                                bounceJob?.cancel()
+                                bounceJob = scope.launch {
                                     try {
                                         when (mode) {
                                             VinylSkipDirection.Previous -> {
-                                                // 未达阈值：新胶缩回左侧（完全出裁剪区）
                                                 topX.snapTo(coverX)
                                                 stickyTopX = Float.NaN
                                                 topX.animateTo(
@@ -527,6 +470,7 @@ fun VinylTransitionStage(
                                                 )
                                                 topTrack = track
                                                 topX.snapTo(0f)
+                                                topScale.snapTo(1f)
                                                 showBottom = false
                                             }
                                             VinylSkipDirection.Next -> {
@@ -554,20 +498,23 @@ fun VinylTransitionStage(
                                                 }
                                                 showBottom = false
                                                 bottomScale.snapTo(1f)
+                                                topScale.snapTo(1f)
                                             }
                                             null -> {
                                                 topTrack = track
                                                 stickyTopX = Float.NaN
                                                 topX.snapTo(0f)
+                                                topScale.snapTo(1f)
                                                 showBottom = false
                                             }
                                         }
                                         followX = 0f
                                         prevRevealBase = 0f
                                         dragMode = null
+                                        settledId = track.id
                                     } finally {
                                         stickyTopX = Float.NaN
-                                        setBusy(false)
+                                        bounceRunning = false
                                     }
                                 }
                             }
@@ -582,6 +529,9 @@ fun VinylTransitionStage(
                         angle = angleOf(bottomTrack.id),
                         spinning = false,
                         fullCover = fullCover,
+                        centerRadiusFrac = centerRadiusFrac,
+                        outerScale = outerScale,
+                        plateColors = plateColors,
                         modifier = Modifier
                             .fillMaxSize()
                             .zIndex(0f)
@@ -602,9 +552,13 @@ fun VinylTransitionStage(
                     spinning = spinning &&
                         !showBottom &&
                         !dragging &&
+                        exiting.isEmpty() &&
                         abs(displayX) < 2f &&
                         abs(topScale.value - 1f) < 0.02f,
                     fullCover = fullCover,
+                    centerRadiusFrac = centerRadiusFrac,
+                    outerScale = outerScale,
+                    plateColors = plateColors,
                     modifier = Modifier
                         .fillMaxSize()
                         .zIndex(1f)
@@ -612,10 +566,33 @@ fun VinylTransitionStage(
                             translationX = displayX
                             scaleX = topScale.value
                             scaleY = topScale.value
-                            alpha = 1f
                             transformOrigin = TransformOrigin.Center
                         },
                 )
+            }
+
+            // 离场层叠在上方继续飞出；手势挂在父 Box，不挡连续滑动
+            exiting.forEachIndexed { index, layer ->
+                key(layer.key, "exit") {
+                    VinylDiscFace(
+                        track = layer.track,
+                        angle = angleOf(layer.track.id),
+                        spinning = false,
+                        fullCover = fullCover,
+                        centerRadiusFrac = centerRadiusFrac,
+                        outerScale = outerScale,
+                        plateColors = plateColors,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .zIndex(2f + index)
+                            .graphicsLayer {
+                                translationX = layer.x.value
+                                scaleX = layer.scale.value
+                                scaleY = layer.scale.value
+                                transformOrigin = TransformOrigin.Center
+                            },
+                    )
+                }
             }
         }
     }
@@ -627,6 +604,9 @@ private fun VinylDiscFace(
     angle: Animatable<Float, AnimationVector1D>,
     spinning: Boolean,
     fullCover: Boolean,
+    centerRadiusFrac: Float,
+    outerScale: Float,
+    plateColors: VinylPlateColors,
     modifier: Modifier = Modifier,
 ) {
     val coverT by animateFloatAsState(
@@ -637,9 +617,19 @@ private fun VinylDiscFace(
         ),
         label = "vinylFullCover",
     )
-    // 镂空半径：1→轴孔可见，0→封面铺满
-    val coverHoleFrac = (CoverHoleFrac / CoverFrac) * (1f - coverT)
-    val spindleFrac = SpindleHoleFrac * (1f - coverT)
+    // 外圈：只缩放黑胶盘面（绕中心）；封面尺寸锁定在整体容器的 CoverFrac
+    val outer by animateFloatAsState(
+        targetValue = outerScale.coerceIn(0.5f, 1.6f),
+        animationSpec = tween(
+            durationMillis = 360,
+            easing = CubicBezierEasing(0.33f, 0f, 0.2f, 1f),
+        ),
+        label = "vinylOuterScale",
+    )
+    // 中心挖孔相对整体容器（封面不随 outer 变），轴心在盘面本地坐标补偿 outer 缩放以保持绝对大小
+    val coverHoleFrac = (centerRadiusFrac / CoverFrac).coerceIn(0.08f, 0.95f) * (1f - coverT)
+    val spindleFrac = (SpindleHoleFrac / outer.coerceAtLeast(0.01f))
+        .coerceIn(0.02f, 0.35f) * (1f - coverT)
 
     LaunchedEffect(spinning, track.id) {
         if (!spinning) return@LaunchedEffect
@@ -654,27 +644,40 @@ private fun VinylDiscFace(
 
     Box(
         modifier
+            .graphicsLayer { clip = false }
             .shadow(
                 elevation = 10.dp,
                 shape = CircleShape,
                 clip = false,
                 ambientColor = Color.Black.copy(alpha = 0.40f),
                 spotColor = Color.Black.copy(alpha = 0.28f),
-            )
-            .clip(CircleShape),
+            ),
         contentAlignment = Alignment.Center,
     ) {
         Box(
             Modifier
                 .fillMaxSize()
-                .graphicsLayer { rotationZ = angle.value },
+                .graphicsLayer {
+                    rotationZ = angle.value
+                    clip = false
+                },
             contentAlignment = Alignment.Center,
         ) {
+            // 黑胶盘：按 outer 绕中心缩放；外圈 <100% 只收黑圈，不收封面
             VinylDiscPlate(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        scaleX = outer
+                        scaleY = outer
+                        transformOrigin = TransformOrigin.Center
+                        clip = false
+                    },
                 spindleHoleFrac = spindleFrac,
+                colors = plateColors,
             )
 
+            // 封面：只跟整体容器走，不受 outer 影响
             Box(
                 Modifier
                     .fillMaxSize(CoverFrac)
@@ -740,11 +743,12 @@ private data class VinylAnnulusShape(
     }
 }
 
-/** 黑胶盘面：黑色径向底 + 同心纹路；轴孔半径可动画收拢。 */
+/** 黑胶盘面：径向底 + 同心纹路；轴孔半径可动画收拢。 */
 @Composable
 private fun VinylDiscPlate(
     modifier: Modifier = Modifier,
     spindleHoleFrac: Float = SpindleHoleFrac,
+    colors: VinylPlateColors = VinylPlateColors.Black,
 ) {
     Canvas(modifier) {
         val c = Offset(size.width / 2f, size.height / 2f)
@@ -761,10 +765,10 @@ private fun VinylDiscPlate(
             drawCircle(
                 brush = Brush.radialGradient(
                     colorStops = arrayOf(
-                        0.0f to Color(0xFF101012),
-                        0.18f to Color(0xFF161618),
-                        0.55f to Color(0xFF121214),
-                        1.0f to Color(0xFF080809),
+                        0.0f to colors.baseInner,
+                        0.18f to colors.baseMid,
+                        0.55f to colors.baseOuter,
+                        1.0f to colors.baseEdge,
                     ),
                     center = c,
                     radius = r,
@@ -773,36 +777,45 @@ private fun VinylDiscPlate(
                 center = c,
             )
             drawCircle(
-                color = Color.White.copy(alpha = 0.12f),
+                color = colors.rim.copy(alpha = 0.12f),
                 radius = r * 0.985f,
                 center = c,
                 style = Stroke(width = r * 0.018f),
             )
             val innerStart = if (holeR > 0.5f) (holeR / r) + 0.012f else 0.04f
             val ringCount = 22
+            // 深色纹路在浅底上需提高不透明度，否则几乎看不见
+            val grooveBoost =
+                if (colors.groove.red + colors.groove.green + colors.groove.blue < 1.35f) 3.2f else 1f
             for (i in 0 until ringCount) {
                 val t = i / (ringCount - 1).toFloat()
                 val rr = r * (innerStart + t * (0.97f - innerStart))
                 val alpha = when {
-                    rr < r * CoverHoleFrac -> 0.028f + (i % 2) * 0.012f
+                    rr < r * DefaultCoverHoleFrac -> 0.028f + (i % 2) * 0.012f
                     else -> 0.035f + (i % 2) * 0.018f
                 }
                 drawCircle(
-                    color = Color.White.copy(alpha = alpha),
+                    color = colors.groove.copy(
+                        alpha = (alpha * grooveBoost).coerceIn(0f, 0.42f),
+                    ),
                     radius = rr,
                     center = c,
-                    style = Stroke(width = if (rr < r * CoverHoleFrac) 0.9f else 1.1f),
+                    style = Stroke(width = if (rr < r * DefaultCoverHoleFrac) 0.9f else 1.1f),
                 )
             }
             if (holeR > 0.5f) {
                 drawCircle(
-                    color = Color.White.copy(alpha = 0.10f * (holeR / (r * SpindleHoleFrac)).coerceIn(0f, 1f)),
+                    color = colors.holeLight.copy(
+                        alpha = 0.10f * (holeR / (r * SpindleHoleFrac)).coerceIn(0f, 1f),
+                    ),
                     radius = holeR * 1.08f,
                     center = c,
                     style = Stroke(width = r * 0.006f),
                 )
                 drawCircle(
-                    color = Color.Black.copy(alpha = 0.55f * (holeR / (r * SpindleHoleFrac)).coerceIn(0f, 1f)),
+                    color = colors.holeDark.copy(
+                        alpha = 0.55f * (holeR / (r * SpindleHoleFrac)).coerceIn(0f, 1f),
+                    ),
                     radius = holeR * 1.02f,
                     center = c,
                     style = Stroke(width = r * 0.004f),

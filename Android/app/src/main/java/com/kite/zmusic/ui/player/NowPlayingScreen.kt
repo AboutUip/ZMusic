@@ -1,8 +1,10 @@
+@file:Suppress("UnusedBoxWithConstraintsScope")
+
 package com.kite.zmusic.ui.player
 
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.LocalActivity
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -12,29 +14,27 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.ScrollableDefaults
-import androidx.compose.foundation.gestures.FlingBehavior
 import androidx.compose.foundation.gestures.scrollBy
-import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -54,7 +54,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.calculateStartPadding
-import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
@@ -71,9 +70,10 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.mutableStateSetOf
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.snapshots.SnapshotStateSet
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.map
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -99,6 +99,7 @@ import androidx.compose.ui.composed
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
@@ -111,6 +112,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -118,10 +121,8 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -137,21 +138,23 @@ import com.kite.zmusic.data.PlayerDisplayPrefs
 import com.kite.zmusic.data.PlayerDisplayPrefsStore
 import com.kite.zmusic.data.TitleAlignMode
 import com.kite.zmusic.data.TrackRow
+import com.kite.zmusic.data.VinylColorStyle
 import com.kite.zmusic.playback.AudioSpectrumBands
 import com.kite.zmusic.playback.PlaybackNotice
 import com.kite.zmusic.playback.PlaybackUiState
 import com.kite.zmusic.playback.PlaybackMode
 import com.kite.zmusic.ui.common.UrlImage
 import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.abs
 import kotlin.math.cos
-import kotlin.math.max
 import kotlin.math.roundToInt
 import kotlin.math.sin
 import androidx.compose.ui.unit.lerp as lerpDp
@@ -204,10 +207,12 @@ private fun Modifier.nowPlayingBlankGestures(
 
                 if (yieldedToChild) break
 
-                // 退出判定用更大 slop，把常规 touchSlop 留给歌词 LazyColumn 优先认领垂直滚动
-                val dismissSlop = touchSlop * 2.75f
+                // 退出判定用更大 slop，把常规 touchSlop 留给歌词 LazyColumn 优先认领垂直滚动。
+                // 注意：不可用「刚过 touchSlop」永久禁止退出，否则黑胶等非歌词区永远无法下滑退出。
+                val dismissSlop = touchSlop * 3.5f
                 val downDominant =
-                    dy > dismissSlop && dy > abs(dx) * 1.35f
+                    dy > dismissSlop &&
+                        dy > abs(dx) * 1.6f
                 if (downDominant) {
                     decidedSwipeDown = true
                     change.consume()
@@ -238,6 +243,45 @@ private fun Modifier.nowPlayingBlankGestures(
         }
     }
 }
+
+/**
+ * 歌词条带内：子列表未消费的垂直拖动也要吃掉，避免滚到顶/点到行间时
+ * 被外层 [nowPlayingBlankGestures] 当成下滑退出。
+ * 仅应挂在「歌词本身 + 周围」的条带上，勿挂满整列，否则右侧空白无法收回播放页。
+ */
+private fun Modifier.consumeUnclaimedVerticalDrag(): Modifier = pointerInput(Unit) {
+    val touchSlop = viewConfiguration.touchSlop
+    awaitEachGesture {
+        val down = awaitFirstDown(requireUnconsumed = false)
+        val pointerId = down.id
+        val start = down.position
+        var claimed = false
+        while (true) {
+            val event = awaitPointerEvent(PointerEventPass.Main)
+            val change = event.changes.find { it.id == pointerId } ?: return@awaitEachGesture
+            if (change.isConsumed && !claimed) {
+                while (true) {
+                    val rest = awaitPointerEvent(PointerEventPass.Main)
+                    val c = rest.changes.find { it.id == pointerId } ?: return@awaitEachGesture
+                    if (!c.pressed) return@awaitEachGesture
+                }
+            }
+            val dx = change.position.x - start.x
+            val dy = change.position.y - start.y
+            if (!claimed && (abs(dx) > touchSlop || abs(dy) > touchSlop)) {
+                if (abs(dy) > abs(dx) * 0.65f) {
+                    claimed = true
+                    change.consume()
+                } else {
+                    return@awaitEachGesture
+                }
+            }
+            if (claimed) change.consume()
+            if (!change.pressed) return@awaitEachGesture
+        }
+    }
+}
+
 private val MistTop = Color(0xFF120A18)
 private val MistMid = Color(0xFF1C1428)
 private val MistBottom = Color(0xFF0A1420)
@@ -259,32 +303,50 @@ private val GlassLo = Color.White.copy(alpha = 0.045f)
  * Gemini 式透光光球：相位线性循环，位移一律用整周期 sin/cos，保证首尾相接无跳变。
  * [activeHalo] 开关经 [Animatable] 过渡（可打断）；
  * 蔷薇=低音/鼓点、淡紫=中音、青蓝=高音 —— **独立响应**（可同时亮）。
- * 频谱经帧间插值；切歌用 [trackCross] 压暗再亮起，避免活跃光效硬切。
+ * 频谱按时间常数跟瞄；切歌 / 点选歌词 / 拖动进度均有可打断的压暗→回升，避免硬切。
  */
 @Composable
 private fun GeminiOrbsBackdrop(
     modifier: Modifier = Modifier,
     activeHalo: Boolean = false,
     spectrum: AudioSpectrumBands = AudioSpectrumBands.ZERO,
-    isPlaying: Boolean = false,
+    playWhenReady: Boolean = false,
+    positionMs: Long = 0L,
+    scrubbing: Boolean = false,
     trackId: Long = 0L,
     loadPending: Boolean = false,
 ) {
+    val haloEase = CubicBezierEasing(0.22f, 0.8f, 0.28f, 1f)
+    val crossEase = CubicBezierEasing(0.33f, 0.0f, 0.2f, 1f)
+
     val haloGate = remember { Animatable(if (activeHalo) 1f else 0f) }
     LaunchedEffect(activeHalo) {
         val target = if (activeHalo) 1f else 0f
         val distance = abs(target - haloGate.value).coerceIn(0f, 1f)
-        val durationMs = (560f * distance).toInt().coerceIn(180, 560)
+        val durationMs = (640f * distance).toInt().coerceIn(220, 640)
         haloGate.animateTo(
             targetValue = target,
+            animationSpec = tween(durationMillis = durationMs, easing = haloEase),
+        )
+    }
+
+    // 播放意图 / 加载：能量门控柔和开闭，避免 seek 缓冲时 isPlaying 闪断造成光效跳变
+    val energyGate = remember {
+        Animatable(if (playWhenReady && !loadPending) 1f else 0f)
+    }
+    LaunchedEffect(playWhenReady, loadPending) {
+        val target = if (playWhenReady && !loadPending) 1f else 0f
+        val down = target < energyGate.value
+        energyGate.animateTo(
+            targetValue = target,
             animationSpec = tween(
-                durationMillis = durationMs,
-                easing = CubicBezierEasing(0.22f, 0.8f, 0.28f, 1f),
+                durationMillis = if (down) 520 else 380,
+                easing = haloEase,
             ),
         )
     }
 
-    // 切歌：光效先柔和压暗再恢复，避免频谱归零 / loadPending 造成闪断
+    // 切歌：从当前亮度压暗再回升（可被连点打断）
     val trackCross = remember { Animatable(1f) }
     var lastTrackId by remember { mutableLongStateOf(trackId) }
     LaunchedEffect(trackId) {
@@ -296,9 +358,39 @@ private fun GeminiOrbsBackdrop(
         }
         if (trackId == lastTrackId) return@LaunchedEffect
         lastTrackId = trackId
-        val curve = CubicBezierEasing(0.33f, 0.0f, 0.2f, 1f)
-        trackCross.animateTo(0.12f, tween(260, easing = curve))
-        trackCross.animateTo(1f, tween(580, easing = curve))
+        trackCross.animateTo(0.05f, tween(340, easing = crossEase))
+        trackCross.animateTo(1f, tween(860, easing = crossEase))
+    }
+
+    // 点选歌词 / 大幅跳转：浅压暗后回升
+    val seekCross = remember { Animatable(1f) }
+    var lastSeekPos by remember { mutableLongStateOf(positionMs) }
+    var lastSeekTrack by remember { mutableLongStateOf(trackId) }
+    LaunchedEffect(positionMs, trackId, scrubbing) {
+        if (trackId != lastSeekTrack) {
+            lastSeekTrack = trackId
+            lastSeekPos = positionMs
+            seekCross.snapTo(1f)
+            return@LaunchedEffect
+        }
+        val jump = abs(positionMs - lastSeekPos)
+        lastSeekPos = positionMs
+        if (scrubbing || jump < 800L) return@LaunchedEffect
+        val dip = (0.38f + (1f - (jump / 45_000f).coerceIn(0f, 1f)) * 0.28f)
+            .coerceIn(0.38f, 0.66f)
+            .coerceAtMost(seekCross.value)
+        seekCross.animateTo(dip, tween(200, easing = crossEase))
+        seekCross.animateTo(1f, tween(640, easing = crossEase))
+    }
+
+    // 拖动进度条：持续压低响应，松手后缓慢恢复
+    val scrubGate = remember { Animatable(1f) }
+    LaunchedEffect(scrubbing) {
+        if (scrubbing) {
+            scrubGate.animateTo(0.48f, tween(220, easing = haloEase))
+        } else {
+            scrubGate.animateTo(1f, tween(560, easing = haloEase))
+        }
     }
 
     var phaseA by remember { mutableFloatStateOf(0f) }
@@ -307,34 +399,54 @@ private fun GeminiOrbsBackdrop(
     var lowT by remember { mutableFloatStateOf(0f) }
     var midT by remember { mutableFloatStateOf(0f) }
     var highT by remember { mutableFloatStateOf(0f) }
+    // 频谱目标再一层慢跟，视觉比音频包络更柔
+    var lowS by remember { mutableFloatStateOf(0f) }
+    var midS by remember { mutableFloatStateOf(0f) }
+    var highS by remember { mutableFloatStateOf(0f) }
+
     val gateRef = rememberUpdatedState(haloGate.value)
+    val energyRef = rememberUpdatedState(energyGate.value)
     val spectrumRef = rememberUpdatedState(spectrum)
-    val playingRef = rememberUpdatedState(isPlaying)
-    val pendingRef = rememberUpdatedState(loadPending)
     val crossRef = rememberUpdatedState(trackCross.value)
+    val seekRef = rememberUpdatedState(seekCross.value)
+    val scrubRef = rememberUpdatedState(scrubGate.value)
 
     LaunchedEffect(Unit) {
         var last = 0L
         while (true) {
             withFrameMillis { now ->
                 if (last != 0L) {
-                    val dt = ((now - last).coerceIn(0L, 64L)) / 1000f
+                    val dt = ((now - last).coerceIn(0L, 48L)) / 1000f
                     val gate = gateRef.value
-                    val speed = lerp(1f, 1.39f, gate)
+                    val speed = lerp(1f, 1.28f, gate)
                     phaseA = (phaseA + dt / 22f * speed) % 1f
                     phaseB = (phaseB + dt / 31f * speed) % 1f
                     phaseC = (phaseC + dt / 17f * speed) % 1f
 
-                    val live = playingRef.value && !pendingRef.value && gate > 0.01f
-                    val cross = crossRef.value
+                    val presence = (
+                        gate *
+                            energyRef.value *
+                            crossRef.value *
+                            seekRef.value *
+                            scrubRef.value
+                        ).coerceIn(0f, 1f)
                     val sp = spectrumRef.value
-                    val tLow = if (live) (sp.low * gate * cross).coerceIn(0f, 1f) else 0f
-                    val tMid = if (live) (sp.mid * gate * cross).coerceIn(0f, 1f) else 0f
-                    val tHigh = if (live) (sp.high * gate * cross).coerceIn(0f, 1f) else 0f
-                    // 起音较快跟鼓点；衰减稍缓，切歌归零时不硬切
-                    fun follow(cur: Float, target: Float): Float {
-                        val a = if (target > cur) 0.42f else 0.14f
+                    // 频谱源慢跟：抑制切歌 / seek 后突发尖峰
+                    fun lag(cur: Float, target: Float, tau: Float): Float {
+                        val a = (1f - kotlin.math.exp(-dt / tau)).coerceIn(0f, 1f)
                         return cur + (target - cur) * a
+                    }
+                    lowS = lag(lowS, sp.low.coerceIn(0f, 1f), 0.11f)
+                    midS = lag(midS, sp.mid.coerceIn(0f, 1f), 0.13f)
+                    highS = lag(highS, sp.high.coerceIn(0f, 1f), 0.10f)
+
+                    val tLow = (lowS * presence).coerceIn(0f, 1f)
+                    val tMid = (midS * presence).coerceIn(0f, 1f)
+                    val tHigh = (highS * presence).coerceIn(0f, 1f)
+                    // 显示层：起音约 180ms，衰减约 480ms
+                    fun follow(cur: Float, target: Float): Float {
+                        val tau = if (target > cur) 0.18f else 0.48f
+                        return lag(cur, target, tau)
                     }
                     lowT = follow(lowT, tLow)
                     midT = follow(midT, tMid)
@@ -346,10 +458,16 @@ private fun GeminiOrbsBackdrop(
     }
 
     val gate = haloGate.value
-    val cross = trackCross.value
-    // 活跃底光也随切歌 cross 柔和变化，避免「压暗底」瞬间跳变
+    val presence = (
+        gate *
+            energyGate.value *
+            trackCross.value *
+            seekCross.value *
+            scrubGate.value
+        ).coerceIn(0f, 1f)
+    // 活跃底光随综合 presence 柔和变化
     val baseScale = if (gate > 0.05f) {
-        lerp(1f, 0.55f, gate * cross.coerceIn(0f, 1f))
+        lerp(1f, 0.55f, presence)
     } else {
         1f
     }
@@ -579,10 +697,17 @@ private fun lyricHaloStrength(progress: Float, lineSpanMs: Long): Float {
 /** 歌词过渡通用缓动：慢起慢收，偏温柔。 */
 private val LyricSoftEasing = CubicBezierEasing(0.33f, 0.0f, 0.2f, 1f)
 private val LyricSofterEasing = CubicBezierEasing(0.4f, 0.0f, 0.15f, 1f)
-/** 松手对齐：偏慢、无回弹，避免「被抢走选中」的生硬感 */
+/** 松手轻对齐：短促、低存在感，避免「磁吸抢走」 */
 private val LyricSnapEasing = CubicBezierEasing(0.22f, 0.1f, 0.18f, 1f)
-private val LyricSnapScrollSpec = tween<Float>(durationMillis = 620, easing = LyricSnapEasing)
+private val LyricSnapScrollSpec = tween<Float>(durationMillis = 220, easing = LyricSnapEasing)
 private val LyricFollowScrollSpec = tween<Float>(durationMillis = 420, easing = LyricSoftEasing)
+/** 选句退出回正：快速柔和（约跟跟滚同级），按距离略伸缩 */
+private fun lyricResumeScrollSpec(distancePx: Float) = tween<Float>(
+    durationMillis = ((abs(distancePx) / 2600f) * 1000f)
+        .toInt()
+        .coerceIn(300, 560),
+    easing = LyricSoftEasing,
+)
 
 /** 短于此间隔的歌词跳过出场，直接入场下一句。 */
 private const val LyricSkipExitSpanMs = 480L
@@ -604,21 +729,48 @@ private fun StableCenterLyricText(
     maxLines: Int = 6,
     fillWidth: Boolean = true,
     overflow: TextOverflow = TextOverflow.Clip,
+    /** 为 true 时首次合成直接亮起，跳过入场（选句退出恢复时防闪烁） */
+    instantAppear: Boolean = false,
+    /** 选句态：焦点/文案可更新，但禁止翻页入场/出场 */
+    freezeTransitions: Boolean = false,
 ) {
-    var shownFocus by remember { mutableIntStateOf(-1) }
-    var shownText by remember { mutableStateOf("") }
+    var shownFocus by remember {
+        mutableIntStateOf(if (instantAppear || freezeTransitions) focus else -1)
+    }
+    var shownText by remember {
+        mutableStateOf(if (instantAppear || freezeTransitions) text else "")
+    }
     var lastSpanMs by remember { mutableLongStateOf(lineSpanMs) }
-    val enterAlpha = remember { Animatable(0f) }
+    val enterAlpha = remember {
+        Animatable(if (instantAppear || freezeTransitions) 1f else 0f)
+    }
     val enterLift = remember { Animatable(0f) }
     val density = LocalDensity.current
 
-    LaunchedEffect(focus, text, animMs, lineSpanMs) {
+    LaunchedEffect(focus, text, animMs, lineSpanMs, instantAppear, freezeTransitions) {
+        if (freezeTransitions) {
+            shownFocus = focus
+            shownText = text
+            lastSpanMs = lineSpanMs
+            enterAlpha.snapTo(1f)
+            enterLift.snapTo(0f)
+            return@LaunchedEffect
+        }
         val phaseMs = animMs.coerceIn(220, 420)
         val liftPx = with(density) { 10.dp.toPx() }
         if (focus == shownFocus && shownText == text) {
             enterAlpha.snapTo(1f)
             enterLift.snapTo(0f)
             lastSpanMs = lineSpanMs
+            return@LaunchedEffect
+        }
+        // 选句退出后首次挂回：不要再播一遍翻页入场
+        if (shownFocus < 0 && instantAppear) {
+            shownFocus = focus
+            shownText = text
+            lastSpanMs = lineSpanMs
+            enterAlpha.snapTo(1f)
+            enterLift.snapTo(0f)
             return@LaunchedEffect
         }
         val skipExit = shownFocus < 0 || lastSpanMs < LyricSkipExitSpanMs
@@ -801,7 +953,7 @@ fun NowPlayingScreen(
     val openSourcePlaylist = onOpenSourcePlaylist
     // 下滑退出阈值：交给竖/横屏 body 的空白手势识别
     val dismissSwipeThresholdPx = with(LocalDensity.current) {
-        (if (isLandscape) 92.dp else 112.dp).toPx()
+        (if (isLandscape) 120.dp else 112.dp).toPx()
     }
     // Animatable：连点开关会取消上一跳，从当前强度反向；时长按剩余路程缩放，打断可预测
     val rainProgress = remember {
@@ -838,7 +990,9 @@ fun NowPlayingScreen(
                     modifier = Modifier.fillMaxSize(),
                     activeHalo = displayPrefs.activeHalo,
                     spectrum = spectrum,
-                    isPlaying = state.isPlaying,
+                    playWhenReady = state.playWhenReady,
+                    positionMs = state.positionMs,
+                    scrubbing = sliderDragging,
                     trackId = track.id,
                     loadPending = state.loadPending,
                 )
@@ -882,6 +1036,7 @@ fun NowPlayingScreen(
                     positionMs = lyricPos,
                     seekPositionMs = displayPos,
                     isPlaying = state.isPlaying,
+                    playWhenReady = state.playWhenReady,
                     buffering = state.buffering,
                     loadPending = state.loadPending,
                     onTogglePlay = onTogglePlay,
@@ -893,7 +1048,8 @@ fun NowPlayingScreen(
                     onToggleLike = ::toggleTrackLike,
                     durationMs = duration,
                     sourceTitle = srcTitle,
-                    onSourceClick = openSourcePlaylist,
+                    // 横屏：歌单名点击曾直接关全屏（像左上角隐形退出区）；改由右上角退出钮
+                    onSourceClick = null,
                     sliderDragging = sliderDragging,
                     sliderValue = sliderValue,
                     onSliderDragStart = {
@@ -930,8 +1086,8 @@ fun NowPlayingScreen(
                     onCollapseLyrics = { portraitLyricsOpen = false },
                     sourceTitle = srcTitle,
                     onSourceClick = openSourcePlaylist,
-                    isPlaying = state.isPlaying,
-                    buffering = state.buffering,
+                    playWhenReady = state.playWhenReady,
+                    buffering = state.loadPending,
                     onTogglePlay = onTogglePlay,
                     onSkipNext = onSkipNext,
                     onSkipPrev = onSkipPrev,
@@ -1403,7 +1559,7 @@ private fun PortraitPlayerBody(
     onCollapseLyrics: () -> Unit,
     sourceTitle: String?,
     onSourceClick: (() -> Unit)?,
-    isPlaying: Boolean,
+    playWhenReady: Boolean,
     buffering: Boolean,
     onTogglePlay: () -> Unit,
     onSkipNext: () -> Unit,
@@ -1627,7 +1783,7 @@ private fun PortraitPlayerBody(
         }
 
         PlayerTransport(
-            isPlaying = isPlaying,
+            isPlaying = playWhenReady,
             buffering = buffering,
             onTogglePlay = onTogglePlay,
             onSkipNext = onSkipNext,
@@ -1665,6 +1821,19 @@ private fun LandscapeProjectionLyrics(
     onSeekToMs: (Long) -> Unit,
     /** 外部点击等：递增后立即退出浏览并滚回播放行 */
     resumeScrollToken: Int = 0,
+    /** 选句进度 0..1：原列表水平滑入挖孔 + 样式消解 */
+    selectProgress: Float = 0f,
+    selectGeom: LyricSelectGeom? = null,
+    /** 歌词列左缘相对播放页根（与 geom 同一坐标系） */
+    lyricsColStartDp: Dp = 0.dp,
+    selectedIndices: Set<Int> = emptySet(),
+    onToggleSelect: ((Int) -> Unit)? = null,
+    onLongPressLine: ((index: Int) -> Unit)? = null,
+    onBandCenterPx: ((cx: Float, cy: Float) -> Unit)? = null,
+    /** 选句时歌词区附着与操作区相同的磨砂；取消后移除 */
+    selectHazeState: HazeState? = null,
+    /** 选句是否处于打开意图（区别于 progress，用于玻璃入/出时机） */
+    selectOpen: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     if (lines.isEmpty()) {
@@ -1721,10 +1890,62 @@ private fun LandscapeProjectionLyrics(
     var dragSession by remember { mutableStateOf(false) }
     var idleGen by remember { mutableIntStateOf(0) }
     var suppressBrowseDetect by remember { mutableStateOf(false) }
+    /** 选句退出回滚中：抑制浏览高亮与跟滚抢位 */
+    var resumeSettling by remember { mutableStateOf(false) }
+    /** 选句打开时冻结的播放行，避免播放推进触发入场动画 */
+    var selectFrozenFocus by remember { mutableIntStateOf(-1) }
     /** 递增以作废进行中的跟滚，避免与用户拖动手势抢滚动 */
     var followGen by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
+    val onLongPressLineUpdated by rememberUpdatedState(onLongPressLine)
+    val onBandCenterPxUpdated by rememberUpdatedState(onBandCenterPx)
+    val selectProgressUpdated by rememberUpdatedState(selectProgress)
+    val selectT = selectProgress.coerceIn(0f, 1f)
+    val selectMode = selectT > 0.001f
+    val selectInteractive = selectT > 0.85f
+    /**
+     * 长按打开选句后，同一手指抬起可能被重组后的 combinedClickable 当成 onClick，
+     * 从而误选一行；等全部触点抬起后再允许点选。
+     */
+    var selectToggleArmed by remember { mutableStateOf(false) }
+    // 歌词玻璃：进入晚起（等滑移一段），退出尽快消掉（避免直角雾块滞留）
+    val lyricGlassAlpha = remember { Animatable(0f) }
+    LaunchedEffect(selectOpen) {
+        if (selectOpen) {
+            selectToggleArmed = false
+            selectFrozenFocus = playFocus
+            delay(210)
+            lyricGlassAlpha.animateTo(
+                1f,
+                tween(durationMillis = 280, easing = LyricSoftEasing),
+            )
+        } else {
+            selectToggleArmed = false
+            // 退出不 snap：显示 alpha 改跟 selectT，与操作区同步收
+            if (selectT <= 0.001f) {
+                lyricGlassAlpha.snapTo(0f)
+            }
+        }
+    }
+    LaunchedEffect(selectOpen, selectT) {
+        if (!selectOpen && selectT <= 0.001f) {
+            lyricGlassAlpha.snapTo(0f)
+        }
+    }
+    LaunchedEffect(selectMode) {
+        if (selectMode) {
+            followGen++
+            browsing = true
+            dragSession = false
+            if (selectFrozenFocus < 0) selectFrozenFocus = playFocus
+        } else {
+            selectFrozenFocus = -1
+        }
+    }
+    // 选句期间视觉锁定打开时的播放行；回滚目标仍用实时 playFocus
+    val visualPlayFocus =
+        if (selectMode && selectFrozenFocus >= 0) selectFrozenFocus else playFocus
 
     // 槽高 = 字高 + 行间距×2；间距=0 时贴紧，调大则行距与区域高度同步变大（仍恰好 N 行）
     val slotHeight = (38f * fs).dp + linePad * 2
@@ -1783,45 +2004,122 @@ private fun LandscapeProjectionLyrics(
     suspend fun scrollToCenteredIndex(
         index: Int,
         animated: Boolean,
-        /** 松手吸附用更慢的缓动；跟滚/回播放行用稍快但仍柔和的过渡 */
+        /** 松手轻对齐用稍短缓动；跟滚/回播放行用稍柔和的过渡 */
         softSnap: Boolean = false,
+        /** 选句退出：快速柔和回正，禁止先顶对齐再下移 */
+        resumeSoft: Boolean = false,
     ) {
         val gen = followGen
         suppressBrowseDetect = true
         try {
             val target = index.coerceIn(0, lines.lastIndex)
-            // 先保证目标行可见，再按像素差滚到视口绝对垂直中心。
-            // 不用负 scrollOffset：会滚飞，歌词整块沉底。
-            if (listState.layoutInfo.visibleItemsInfo.none { it.index == target }) {
-                listState.scrollToItem(target)
+
+            fun viewportSize(): Int {
+                val info = listState.layoutInfo
+                return (info.viewportEndOffset - info.viewportStartOffset).coerceAtLeast(1)
             }
-            val layout = listState.layoutInfo
-            val item = layout.visibleItemsInfo.firstOrNull { it.index == target } ?: return
-            val viewportCenter =
-                (layout.viewportStartOffset + layout.viewportEndOffset) / 2f
-            val itemCenter = item.offset + item.size / 2f
-            val delta = itemCenter - viewportCenter
-            if (abs(delta) > 1f) {
-                if (animated) {
+
+            /** 将 [target] 落到视口垂直中心；仅用于瞬时落位，不做顶对齐 */
+            suspend fun jumpToCentered(itemSizeHint: Int = slotHeightPx) {
+                val vs = viewportSize()
+                val size = itemSizeHint.coerceIn(1, vs)
+                // 正数 offset：item 顶边距视口顶 (vs-size)/2，中心对齐；避免 scrollToItem 默认 0 顶贴齐
+                val offset = ((vs - size) / 2).coerceAtLeast(0)
+                listState.scrollToItem(target, scrollOffset = offset)
+            }
+
+            suspend fun deltaToTarget(): Float? {
+                val info = listState.layoutInfo
+                val visible = info.visibleItemsInfo
+                if (visible.isEmpty()) return null
+                val viewportCenter =
+                    (info.viewportStartOffset + info.viewportEndOffset) / 2f
+                val item = visible.firstOrNull { it.index == target }
+                return if (item != null) {
+                    (item.offset + item.size / 2f) - viewportCenter
+                } else {
+                    // 估距：固定用 slot 高，避免选句 cell 高估导致冲过目标再折返
+                    val step = slotHeightPx.toFloat().coerceAtLeast(1f)
+                    val anchor = visible.minByOrNull { abs(it.index - target) } ?: visible.first()
+                    val approxCenter =
+                        anchor.offset + anchor.size / 2f + (target - anchor.index) * step
+                    approxCenter - viewportCenter
+                }
+            }
+
+            if (resumeSoft && animated) {
+                // 等选句 morph 基本结束，行高稳定后再一次滚到位，杜绝「冲到上方再折返」
+                var waitFrames = 0
+                while (selectProgressUpdated > 0.04f && waitFrames++ < 90) {
+                    if (followGen != gen) return
+                    withFrameMillis { }
+                }
+                if (followGen != gen) return
+
+                var delta = deltaToTarget()
+                if (delta == null ||
+                    listState.layoutInfo.visibleItemsInfo.none { it.index == target }
+                ) {
+                    jumpToCentered()
+                    withFrameMillis { }
+                    if (followGen != gen) return
+                    delta = deltaToTarget()
+                }
+                if (delta != null && abs(delta) > 1.5f) {
+                    // 只允许一趟动画；残余误差瞬时补齐，避免第二趟反向动画
                     listState.animateScrollBy(
                         delta,
-                        animationSpec = if (softSnap) LyricSnapScrollSpec else LyricFollowScrollSpec,
+                        animationSpec = lyricResumeScrollSpec(delta),
                     )
+                    if (followGen != gen) return
+                    withFrameMillis { }
+                    val fine = deltaToTarget()
+                    if (fine != null && abs(fine) > 1.5f) {
+                        listState.scrollBy(fine)
+                    }
+                }
+                return
+            }
+
+            val scrollSpec = when {
+                softSnap -> LyricSnapScrollSpec
+                else -> LyricFollowScrollSpec
+            }
+            // 先保证目标行可见，再按像素差滚到视口绝对垂直中心。
+            if (listState.layoutInfo.visibleItemsInfo.none { it.index == target }) {
+                if (animated) {
+                    val approxDelta = deltaToTarget()
+                    if (approxDelta != null && abs(approxDelta) > 1f) {
+                        listState.animateScrollBy(approxDelta, animationSpec = scrollSpec)
+                    }
+                    if (followGen != gen) return
+                    if (listState.layoutInfo.visibleItemsInfo.none { it.index == target }) {
+                        jumpToCentered()
+                    }
+                } else {
+                    jumpToCentered()
+                }
+            }
+            if (followGen != gen) return
+            val delta = deltaToTarget() ?: return
+            if (abs(delta) > 1f) {
+                if (animated) {
+                    listState.animateScrollBy(delta, animationSpec = scrollSpec)
                 } else {
                     listState.scrollBy(delta)
                 }
             }
         } finally {
-            if (followGen == gen) {
-                suppressBrowseDetect = false
-            }
+            // 无论是否被 followGen 打断，都必须清掉抑制，否则浏览检测永久失效、跟滚会乱抢
+            suppressBrowseDetect = false
         }
     }
 
-    suspend fun scrollToPlayFocus(animated: Boolean) {
-        scrollToCenteredIndex(playFocus, animated)
+    suspend fun scrollToPlayFocus(animated: Boolean, resumeSoft: Boolean = false) {
+        scrollToCenteredIndex(playFocus, animated, resumeSoft = resumeSoft)
     }
 
+    /** 仅当偏离中心较多时做一次轻对齐；接近则不动，去掉强磁吸感 */
     suspend fun snapToFullLines() {
         val info = listState.layoutInfo
         if (info.visibleItemsInfo.isEmpty()) return
@@ -1830,8 +2128,8 @@ private fun LandscapeProjectionLyrics(
             abs((item.offset + item.size / 2) - mid)
         } ?: return
         val itemMid = closest.offset + closest.size / 2
-        // 已接近垂直居中则不二次动画
-        if (abs(itemMid - mid) <= 2) return
+        val threshold = (slotHeightPx * 0.42f).coerceAtLeast(18f)
+        if (abs(itemMid - mid) <= threshold) return
         scrollToCenteredIndex(closest.index, animated = true, softSnap = true)
     }
 
@@ -1841,46 +2139,73 @@ private fun LandscapeProjectionLyrics(
         scope.launch { scrollToPlayFocus(animated) }
     }
 
+    /** 选句退出：等 morph 稳定后一趟回正，再退浏览态 */
+    suspend fun resumeFromSelectToPlayFocus() {
+        dragSession = false
+        followGen++
+        val gen = followGen
+        resumeSettling = true
+        try {
+            scrollToPlayFocus(animated = true, resumeSoft = true)
+        } finally {
+            if (followGen == gen) {
+                browsing = false
+                resumeSettling = false
+            }
+        }
+    }
+
     LaunchedEffect(listState) {
         snapshotFlow { listState.isScrollInProgress }
             .distinctUntilChanged()
             .collect { inProgress ->
                 if (suppressBrowseDetect) return@collect
                 if (inProgress) {
-                    browsing = true
+                    if (!dragSession) browsing = true
                 } else if (browsing) {
                     idleGen++
+                    // 不再每次松手强行磁吸；仅轻微对齐明显错位
                     snapToFullLines()
                 }
             }
     }
 
-    LaunchedEffect(playFocus, browsing, lines.size, centerPadPx) {
-        if (!browsing) {
+    LaunchedEffect(playFocus, browsing, lines.size, centerPadPx, selectMode) {
+        if (!browsing && !selectMode && !resumeSettling) {
             scrollToPlayFocus(animated = true)
         }
     }
 
     LaunchedEffect(lines) {
+        if (selectMode) return@LaunchedEffect
         browsing = false
         scrollToPlayFocus(animated = false)
     }
 
-    LaunchedEffect(browsing, idleGen) {
-        if (!browsing) return@LaunchedEffect
-        delay(3_000)
-        if (!listState.isScrollInProgress) {
+    LaunchedEffect(browsing, idleGen, selectMode) {
+        if (!browsing || selectMode || resumeSettling) return@LaunchedEffect
+        delay(5_500)
+        // 仍在滚则继续等，避免惯性滚动中途被拽回
+        while (listState.isScrollInProgress) {
+            delay(160)
+        }
+        delay(320)
+        if (browsing && !selectMode && !resumeSettling && !listState.isScrollInProgress) {
             exitBrowseAndFollow(animated = true)
         }
     }
 
     LaunchedEffect(resumeScrollToken) {
-        if (resumeScrollToken > 0 && browsing) {
-            exitBrowseAndFollow(animated = true)
+        if (resumeScrollToken > 0) {
+            resumeFromSelectToPlayFocus()
         }
     }
 
-    BoxWithConstraints(modifier.fillMaxSize()) {
+    // 选句进入：不滚动列表，仅水平滑入挖孔，避免丢焦点
+
+    BoxWithConstraints(
+        modifier.fillMaxSize(),
+    ) {
         val colW = maxWidth
         val t = dynamicT.value
         val centerX = colW / 2 + offsetXDp.dp
@@ -1893,6 +2218,27 @@ private fun LandscapeProjectionLyrics(
         val dynStart = centerX - dynW / 2
         val boxW = lerpDp(colW, dynW, t)
         val startX = lerpDp(offsetXDp.dp, dynStart, t)
+        val geom = selectGeom
+        val targetBandH = geom?.listHeight ?: bandHeight
+        val targetListW = geom?.listWidth ?: maxOf(boxW, 48.dp)
+        val morphBandH = lerpDp(bandHeight, targetBandH, selectT)
+        // 槽高 / 中心垫保持不变，避免 LazyColumn 重排丢焦点
+        val morphListW = lerpDp(boxW.coerceAtLeast(48.dp), targetListW, selectT)
+        // 列内坐标：源中心（个性化 X）→ 挖孔水平中心
+        val sourceCenterLocal = startX + boxW.coerceAtLeast(48.dp) / 2
+        val targetCenterLocal = if (geom != null) {
+            geom.listCenterX - lyricsColStartDp
+        } else {
+            sourceCenterLocal
+        }
+        val animCenterLocal = lerpDp(sourceCenterLocal, targetCenterLocal, selectT)
+        val animLeft = animCenterLocal - morphListW / 2
+        // Y：整块平移到挖孔垂直中心（列内居中 → 挖孔中心），不滚动列表
+        val shiftYpx = if (geom != null) {
+            with(density) { ((geom.listCenterY - maxHeight / 2) * selectT).toPx() }
+        } else {
+            0f
+        }
 
         val playItem = listState.layoutInfo.visibleItemsInfo.find { it.index == playFocus }
         val haloCenterYRatio = if (playItem != null) {
@@ -1904,23 +2250,57 @@ private fun LandscapeProjectionLyrics(
             0.5f
         }
 
+        // 选句推进时收掉光晕外扩，最终高度 = 挖孔高，避免右侧玻璃贯穿全屏
+        val bandHostH = morphBandH + haloBleed * 2 * (1f - selectT)
         Box(
             Modifier
-                .height(bandHeight + haloBleed * 2)
-                .width(boxW)
+                .height(bandHostH)
+                .width(morphListW)
                 .align(Alignment.CenterStart)
-                .offset(x = startX)
-                .graphicsLayer { clip = false },
+                .offset(x = animLeft)
+                .graphicsLayer {
+                    // 选句态裁在挖孔高度内，避免玻璃/触控垫上下溢出
+                    clip = selectT > 0.35f
+                    translationY = shiftYpx
+                }
+                .onGloballyPositioned { coords ->
+                    if (selectT < 0.01f) {
+                        val c = coords.positionInRoot()
+                        onBandCenterPxUpdated?.invoke(
+                            c.x + coords.size.width / 2f,
+                            c.y + coords.size.height / 2f,
+                        )
+                    }
+                },
             contentAlignment = Alignment.Center,
         ) {
-            if (drawnHalo > 0.01f) {
+            // 选句：歌词孔内直角玻璃，与外壳挖孔贴合（同款样式，无圆角以免漏风）
+            val glassA = if (selectOpen) lyricGlassAlpha.value else selectT
+            if (glassA > 0.01f && selectHazeState != null) {
+                Box(
+                    Modifier
+                        .align(Alignment.Center)
+                        .height(morphBandH)
+                        .fillMaxWidth()
+                        .graphicsLayer { alpha = glassA }
+                        .clip(RectangleShape)
+                        .hazeEffect(state = selectHazeState, style = LyricSelectGlassStyle) {
+                            blurRadius = 72.dp
+                            noiseFactor = 0.10f
+                        },
+                )
+            }
+            if (drawnHalo > 0.01f && selectT < 0.98f) {
                 Box(
                     Modifier
                         .fillMaxSize()
-                        .graphicsLayer { clip = false }
+                        .graphicsLayer {
+                            clip = false
+                            alpha = 1f - selectT
+                        }
                         .drawBehind {
-                            val bleedPx = haloBleed.toPx()
-                            val bandPx = bandHeight.toPx()
+                            val bleedPx = haloBleed.toPx() * (1f - selectT)
+                            val bandPx = morphBandH.toPx()
                             val cx = size.width / 2f
                             val cy = bleedPx + bandPx * haloCenterYRatio
                             val radius = size.maxDimension * (0.42f + 0.08f * drawnHalo)
@@ -1942,186 +2322,271 @@ private fun LandscapeProjectionLyrics(
             }
 
             // 歌词列尽量用满可用宽度，长句才能在列内折行；短句仍居中显示
-            val maxLyricW = boxW.coerceAtLeast(48.dp)
-            val textMeasurer = rememberTextMeasurer()
-            val flingBehavior = ScrollableDefaults.flingBehavior()
+            val maxLyricW = morphListW.coerceAtLeast(48.dp)
+            // 正常态触控/列表宽收为 0.85，减少无歌词空白误触滚动；选句挖孔仍用满宽
+            val interactiveLyricW = if (selectMode) maxLyricW else maxLyricW * 0.85f
+            val followFling = ScrollableDefaults.flingBehavior()
+            // 选句收掉上下触控垫，高度与挖孔一致
+            val lyricTouchPad = 28.dp * (1f - selectT)
+            val lyricTouchPadPx = with(density) { lyricTouchPad.roundToPx() }
 
             Box(
                 Modifier
-                    .height(bandHeight)
-                    .width(maxLyricW)
-                    .align(Alignment.Center),
-            ) {
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clip(RectangleShape),
-                    contentPadding = PaddingValues(vertical = centerPad),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    userScrollEnabled = browsing && !dragSession,
-                ) {
-                    itemsIndexed(
-                        items = lines,
-                        key = { index, line -> "${line.timeMs}_$index" },
-                    ) { index, line ->
-                        val isPlayingLine = index == playFocus
-                        val isBrowseCenter = browsing && index == browseCenterIndex && !isPlayingLine
-                        LandscapeScrollLyricLine(
-                            text = line.text,
-                            lineKey = index,
-                            isPlayingLine = isPlayingLine,
-                            isBrowseCenter = isBrowseCenter,
-                            live = live && isPlayingLine,
-                            played = animActive >= 0 && index < animActive,
-                            distanceFromPlay = abs(index - playFocus),
-                            lines = lines,
-                            focus = playFocus,
-                            positionMs = positionMs,
-                            trackDurationMs = trackDurationMs,
-                            fontScale = fs,
-                            lineSpacing = 0.dp,
-                            slotHeight = slotHeight,
-                            animMs = animMs,
-                            browsing = browsing,
-                            expandHitWidth = browsing,
-                            onSeekClick = if (!browsing) {
-                                null
-                            } else {
-                                {
-                                    val i = index
-                                    browsing = false
-                                    dragSession = false
-                                    scope.launch {
-                                        scrollToCenteredIndex(i, animated = true)
-                                    }
-                                    onSeekToMs(line.timeMs)
+                    .height(morphBandH + lyricTouchPad * 2)
+                    .width(interactiveLyricW)
+                    .align(Alignment.Center)
+                    // 打开选句后：等打开那次长按的手指抬起，再允许点选
+                    .pointerInput(selectOpen) {
+                        if (!selectOpen) return@pointerInput
+                        awaitPointerEventScope {
+                            if (currentEvent.changes.any { it.pressed }) {
+                                while (true) {
+                                    val event = awaitPointerEvent(PointerEventPass.Final)
+                                    if (event.changes.none { it.pressed }) break
                                 }
-                            },
-                        )
+                            }
+                        }
+                        selectToggleArmed = true
                     }
-                }
+                    // 跟滚态：拖动中只置 dragSession，松手再置 browsing。
+                    // browsing 进 key，但不会在首滑中途重启 pointerInput。
+                    .pointerInput(browsing, selectMode, lines.size, slotHeightPx, lyricTouchPadPx) {
+                        if (browsing || selectMode) return@pointerInput
+                        val touchSlop = viewConfiguration.touchSlop
+                        val longPressTimeout = viewConfiguration.longPressTimeoutMillis
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            val pointerId = down.id
+                            val start = down.position
+                            var lastY = start.y
+                            var dragging = false
+                            var flingLaunched = false
+                            val tracker = VelocityTracker()
+                            tracker.addPosition(down.uptimeMillis, down.position)
 
-                // 跟滚态用 overlay 做「点到文字才拖」；首滑过程中即使已进入 browsing 也要留住 overlay，
-                // 否则中途卸掉会打断手势，表现为首次滚动失败并被吸回播放行。
-                if (!browsing || dragSession) {
-                    Box(
-                        Modifier
-                            .fillMaxSize()
-                            .pointerInput(lines, fs, playFocus, slotHeight, maxLyricW, centerPadPx) {
-                                val touchSlop = viewConfiguration.touchSlop
-                                val centerStyle = TextStyle(
-                                    fontFamily = FontFamily.SansSerif,
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = (26f * fs).sp,
-                                    lineHeight = (38f * fs).sp,
-                                )
-                                val sideStyle = TextStyle(
-                                    fontFamily = FontFamily.SansSerif,
-                                    fontSize = (16.5f * fs).sp,
-                                    lineHeight = (26f * fs).sp,
-                                )
-                                fun textWidthFor(index: Int, playing: Boolean): Float {
-                                    val t = lines.getOrNull(index)?.text?.ifBlank { " " } ?: return 0f
-                                    val style = if (playing) centerStyle else sideStyle
-                                    return textMeasurer.measure(
-                                        text = t,
-                                        style = style,
-                                        softWrap = true,
-                                        overflow = TextOverflow.Clip,
-                                        constraints = Constraints(
-                                            maxWidth = size.width.toInt().coerceAtLeast(1),
-                                        ),
-                                    ).size.width.toFloat()
-                                }
-                                fun hitLyricText(pos: Offset): Boolean {
-                                    val info = listState.layoutInfo
-                                    val cx = size.width / 2f
-                                    val hitPad = 8.dp.toPx()
-                                    for (item in info.visibleItemsInfo) {
-                                        val top = item.offset.toFloat()
-                                        val bottom = top + item.size
-                                        if (pos.y < top || pos.y > bottom) continue
-                                        val tw = textWidthFor(item.index, item.index == playFocus)
-                                        if (tw <= 1f) continue
-                                        val left = cx - tw / 2f - hitPad
-                                        val right = cx + tw / 2f + hitPad
-                                        if (pos.x in left..right) return true
+                            fun hitLyricIndex(localY: Float): Int? {
+                                val yInList = localY - lyricTouchPadPx
+                                return listState.layoutInfo.visibleItemsInfo
+                                    .firstOrNull { info ->
+                                        yInList >= info.offset && yInList < info.offset + info.size
                                     }
-                                    return false
-                                }
-                                awaitEachGesture {
-                                    val down = awaitFirstDown(requireUnconsumed = true)
-                                    if (!hitLyricText(down.position)) return@awaitEachGesture
-                                    val pointerId = down.id
-                                    val start = down.position
-                                    var lastY = start.y
-                                    var dragging = false
-                                    var flingLaunched = false
-                                    val tracker = VelocityTracker()
-                                    tracker.addPosition(down.uptimeMillis, down.position)
-                                    try {
-                                        while (true) {
-                                            val event = awaitPointerEvent(PointerEventPass.Main)
-                                            val change = event.changes.find { it.id == pointerId } ?: break
-                                            tracker.addPosition(change.uptimeMillis, change.position)
-                                            if (!dragging) {
-                                                val dy = change.position.y - start.y
-                                                val dx = change.position.x - start.x
-                                                if (abs(dy) > touchSlop && abs(dy) > abs(dx) * 0.75f) {
-                                                    dragging = true
-                                                    // 作废跟滚并进入浏览；即使当时正在 animateScroll 也要抢过来
-                                                    followGen++
-                                                    suppressBrowseDetect = false
-                                                    dragSession = true
-                                                    browsing = true
-                                                    change.consume()
-                                                } else if (!change.pressed) {
-                                                    break
-                                                }
-                                            }
-                                            if (dragging) {
-                                                val step = change.position.y - lastY
-                                                lastY = change.position.y
-                                                listState.dispatchRawDelta(-step)
-                                                change.consume()
-                                                if (!change.pressed) {
-                                                    val velocityY = tracker.calculateVelocity().y
-                                                    flingLaunched = true
-                                                    scope.launch {
-                                                        try {
-                                                            listState.scroll {
-                                                                with(flingBehavior) {
-                                                                    performFling(-velocityY)
-                                                                }
-                                                            }
-                                                        } finally {
-                                                            dragSession = false
-                                                        }
-                                                    }
-                                                    break
-                                                }
-                                            }
+                                    ?.index
+                            }
+
+                            fun beginDrag(fromY: Float, change: PointerInputChange?) {
+                                dragging = true
+                                followGen++
+                                // 拖动期间抑制 isScrollInProgress→browsing，避免中途重启本 pointerInput
+                                suppressBrowseDetect = true
+                                dragSession = true
+                                change?.consume()
+                                lastY = fromY
+                            }
+
+                            try {
+                                var slopChange: PointerInputChange? = null
+                                val race = withTimeoutOrNull(longPressTimeout) {
+                                    while (true) {
+                                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                                        val change = event.changes.find { it.id == pointerId }
+                                            ?: return@withTimeoutOrNull "cancel"
+                                        tracker.addPosition(change.uptimeMillis, change.position)
+                                        if (!change.pressed) return@withTimeoutOrNull "up"
+                                        if (change.isConsumed) return@withTimeoutOrNull "cancel"
+                                        val dy = change.position.y - start.y
+                                        val dx = change.position.x - start.x
+                                        if (abs(dy) > touchSlop && abs(dy) > abs(dx) * 0.75f) {
+                                            slopChange = change
+                                            return@withTimeoutOrNull "drag"
                                         }
-                                    } finally {
-                                        // dispatchRawDelta 不一定会驱动 isScrollInProgress；无 fling 时需手动对齐
-                                        if (dragSession && !flingLaunched) {
+                                    }
+                                    @Suppress("UNREACHABLE_CODE")
+                                    "cancel"
+                                }
+
+                                when (race) {
+                                    null -> {
+                                        val index = hitLyricIndex(start.y)
+                                        if (index != null && onLongPressLineUpdated != null) {
+                                            followGen++
+                                            browsing = true
                                             dragSession = false
-                                            if (dragging) {
-                                                idleGen++
-                                                scope.launch { snapToFullLines() }
+                                            onLongPressLineUpdated?.invoke(index)
+                                            waitForUpOrCancellation()
+                                            return@awaitEachGesture
+                                        }
+                                        while (true) {
+                                            val event = awaitPointerEvent(PointerEventPass.Initial)
+                                            val change = event.changes.find { it.id == pointerId }
+                                                ?: return@awaitEachGesture
+                                            if (!change.pressed) return@awaitEachGesture
+                                            val dy = change.position.y - start.y
+                                            val dx = change.position.x - start.x
+                                            if (abs(dy) > touchSlop && abs(dy) > abs(dx) * 0.75f) {
+                                                beginDrag(change.position.y, change)
+                                                break
                                             }
                                         }
                                     }
+                                    "drag" -> {
+                                        beginDrag(
+                                            slopChange?.position?.y ?: start.y,
+                                            slopChange,
+                                        )
+                                    }
+                                    else -> return@awaitEachGesture
                                 }
-                            },
-                    )
+
+                                while (dragging) {
+                                    val event = awaitPointerEvent(PointerEventPass.Main)
+                                    val change = event.changes.find { it.id == pointerId }
+                                        ?: break
+                                    tracker.addPosition(change.uptimeMillis, change.position)
+                                    val step = change.position.y - lastY
+                                    lastY = change.position.y
+                                    listState.dispatchRawDelta(-step)
+                                    change.consume()
+                                    if (!change.pressed) {
+                                        val velocityY = tracker.calculateVelocity().y
+                                        flingLaunched = true
+                                        browsing = true
+                                        suppressBrowseDetect = false
+                                        scope.launch {
+                                            try {
+                                                listState.scroll {
+                                                    with(followFling) {
+                                                        performFling(-velocityY)
+                                                    }
+                                                }
+                                            } finally {
+                                                dragSession = false
+                                                idleGen++
+                                            }
+                                        }
+                                        break
+                                    }
+                                }
+                            } finally {
+                                if (dragSession && !flingLaunched) {
+                                    if (dragging) {
+                                        browsing = true
+                                    }
+                                    dragSession = false
+                                    suppressBrowseDetect = false
+                                    if (dragging) {
+                                        idleGen++
+                                        scope.launch { snapToFullLines() }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    // 垫区未滚列表时吞垂直滑，避免误触下滑退出；列表自己能消费时不会抢走
+                    .consumeUnclaimedVerticalDrag(),
+                contentAlignment = Alignment.Center,
+            ) {
+                Box(
+                    Modifier
+                        .height(morphBandH)
+                        .width(interactiveLyricW),
+                ) {
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(RectangleShape),
+                        contentPadding = PaddingValues(vertical = centerPad),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        // 浏览 / 选句可滚；首滑由父级 pointerInput 抢跟滚
+                        userScrollEnabled = (browsing || selectInteractive) && !dragSession,
+                    ) {
+                        itemsIndexed(
+                            items = lines,
+                            key = { index, line -> "${line.timeMs}_$index" },
+                        ) { index, line ->
+                            // 选句锁定打开时的播放行，避免播放推进换行入场；回滚仍跟实时 playFocus
+                            val inSelect = selectT > 0.001f
+                            val isPlayingLine = index == visualPlayFocus
+                            val isBrowseCenter =
+                                !inSelect &&
+                                    browsing &&
+                                    !resumeSettling &&
+                                    index == browseCenterIndex &&
+                                    !isPlayingLine
+                            val selected = inSelect && index in selectedIndices
+                            val rowHeight = if (geom != null) {
+                                lerpDp(slotHeight, geom.cellHeight, selectT)
+                            } else {
+                                slotHeight
+                            }
+                            LandscapeScrollLyricLine(
+                                text = line.text,
+                                lineKey = index,
+                                isPlayingLine = isPlayingLine,
+                                isBrowseCenter = isBrowseCenter,
+                                live = live && isPlayingLine && selectT < 0.98f,
+                                // 选句中仍保留已播放判定，斜体随 selectT 过渡，禁止进/出瞬间掐掉
+                                played = animActive >= 0 && index < animActive,
+                                distanceFromPlay = if (inSelect) {
+                                    1
+                                } else {
+                                    abs(index - visualPlayFocus)
+                                },
+                                lines = lines,
+                                focus = visualPlayFocus,
+                                trackDurationMs = trackDurationMs,
+                                fontScale = fs,
+                                lineSpacing = 0.dp,
+                                slotHeight = rowHeight,
+                                animMs = animMs,
+                                browsing = browsing || selectMode,
+                                selected = selected,
+                                selectStyleT = selectT,
+                                fixedSelectRow = selectT > 0.15f,
+                                freezeLineTransitions = inSelect || resumeSettling,
+                                instantAppear = resumeSettling && index == playFocus,
+                                onSeekClick = when {
+                                    selectInteractive && selectToggleArmed -> {
+                                        { onToggleSelect?.invoke(index) }
+                                    }
+                                    selectInteractive -> null
+                                    !browsing -> null
+                                    else -> {
+                                        {
+                                            val i = index
+                                            browsing = false
+                                            dragSession = false
+                                            scope.launch {
+                                                scrollToCenteredIndex(i, animated = true)
+                                            }
+                                            onSeekToMs(line.timeMs)
+                                        }
+                                    }
+                                },
+                                // 跟滚态长按由父级 pointerInput 统一命中；浏览态仍走行内长按
+                                onLongPress = if (selectMode || !browsing || onLongPressLine == null) {
+                                    null
+                                } else {
+                                    {
+                                        followGen++
+                                        dragSession = false
+                                        onLongPressLineUpdated?.invoke(index)
+                                    }
+                                },
+                            )
+                        }
+                    }
                 }
             }
         }
     }
 }
 
+private val LyricSelectUnplayed = Color(0xFFDCE6F0)
+private val LyricSelectSelectedText = Color(0xFFFFFFFF)
+private val LyricSelectSelectedBg = lerp(LyricSelectUnplayed, Color.White, 0.22f).copy(alpha = 0.22f)
+
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun LandscapeScrollLyricLine(
     text: String,
@@ -2133,57 +2598,127 @@ private fun LandscapeScrollLyricLine(
     distanceFromPlay: Int,
     lines: List<LrcLine>,
     focus: Int,
-    positionMs: Long,
     trackDurationMs: Long,
     fontScale: Float,
     lineSpacing: Dp,
     slotHeight: Dp,
     animMs: Int,
     browsing: Boolean,
-    expandHitWidth: Boolean,
+    selected: Boolean = false,
+    selectStyleT: Float = 0f,
+    /** 选句行：固定行高，选中底铺满整格，相邻选中拼成连续矩形 */
+    fixedSelectRow: Boolean = false,
+    freezeLineTransitions: Boolean = false,
+    instantAppear: Boolean = false,
     onSeekClick: (() -> Unit)?,
+    onLongPress: (() -> Unit)? = null,
 ) {
     val ix = remember { MutableInteractionSource() }
+    val st = selectStyleT.coerceIn(0f, 1f)
     Box(
         Modifier
-            .heightIn(min = slotHeight)
-            .wrapContentHeight()
             .fillMaxWidth()
             .then(
-                if (onSeekClick != null) {
-                    Modifier.clickable(
-                        interactionSource = ix,
-                        indication = null,
-                        onClick = onSeekClick,
-                    )
+                if (fixedSelectRow) {
+                    Modifier.height(slotHeight)
                 } else {
                     Modifier
+                        .heightIn(min = slotHeight)
+                        .wrapContentHeight()
+                },
+            )
+            .then(
+                if (selected && st > 0.5f) {
+                    Modifier.background(LyricSelectSelectedBg)
+                } else {
+                    Modifier
+                },
+            )
+            .then(
+                when {
+                    onLongPress != null && onSeekClick != null -> {
+                        Modifier.combinedClickable(
+                            interactionSource = ix,
+                            indication = null,
+                            onClick = onSeekClick,
+                            onLongClick = onLongPress,
+                        )
+                    }
+                    onLongPress != null -> {
+                        Modifier.combinedClickable(
+                            interactionSource = ix,
+                            indication = null,
+                            onClick = {},
+                            onLongClick = onLongPress,
+                        )
+                    }
+                    onSeekClick != null -> {
+                        Modifier.clickable(
+                            interactionSource = ix,
+                            indication = null,
+                            onClick = onSeekClick,
+                        )
+                    }
+                    else -> Modifier
                 },
             ),
         contentAlignment = Alignment.Center,
     ) {
+        @Composable
+        fun SelectStaticText(alpha: Float) {
+            val baseAlpha = lerp(0.46f, 0.50f, st)
+            Text(
+                text = text,
+                style = TextStyle(
+                    color = if (selected) {
+                        LyricSelectSelectedText.copy(alpha = 0.96f * alpha)
+                    } else {
+                        LyricSelectUnplayed.copy(alpha = baseAlpha * alpha)
+                    },
+                    fontFamily = FontFamily.SansSerif,
+                    fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal,
+                    fontSize = (16.5f * fontScale).sp,
+                    lineHeight = (26f * fontScale).sp,
+                    letterSpacing = 0.35.sp,
+                    textAlign = TextAlign.Center,
+                ),
+                maxLines = 2,
+                softWrap = true,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp),
+            )
+        }
+
+        // 播放行：保持 Center 挂载，字号/透明度随 selectT 过渡
+        if (isPlayingLine) {
+            LandscapeCenterLyricLine(
+                lines = lines,
+                focus = focus,
+                live = live,
+                trackDurationMs = trackDurationMs,
+                fontScale = fontScale,
+                animMs = animMs.coerceAtLeast(280),
+                compact = true,
+                lineSpacing = lineSpacing,
+                fillWidth = true,
+                instantAppear = instantAppear,
+                freezeTransitions = freezeLineTransitions,
+                selectMorphT = st,
+                selectSelected = selected,
+            )
+            return@Box
+        }
+
         val visualMode = when {
-            isPlayingLine -> 0
             isBrowseCenter -> 1
             else -> 2
         }
         @Composable
         fun LyricBody(mode: Int) {
             when (mode) {
-                0 -> {
-                    LandscapeCenterLyricLine(
-                        lines = lines,
-                        focus = focus,
-                        live = live,
-                        positionMs = positionMs,
-                        trackDurationMs = trackDurationMs,
-                        fontScale = fontScale,
-                        animMs = animMs.coerceAtLeast(280),
-                        compact = true,
-                        lineSpacing = lineSpacing,
-                        fillWidth = true,
-                    )
-                }
                 1 -> {
                     Text(
                         text = text,
@@ -2215,10 +2750,43 @@ private fun LandscapeScrollLyricLine(
                         animMs = animMs.coerceAtLeast(240),
                         verticalPadding = lineSpacing,
                         fillWidth = true,
+                        selectMorphT = st,
                     )
                 }
             }
         }
+
+        // 侧句：选句 progress 上做交叉淡化，避免硬切未播放样式
+        if (st > 0.001f) {
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                if (st < 0.995f) {
+                    Box(Modifier.graphicsLayer { alpha = 1f - st }) {
+                        if (browsing) {
+                            LyricBody(visualMode)
+                        } else {
+                            AnimatedContent(
+                                targetState = visualMode,
+                                transitionSpec = {
+                                    (
+                                        fadeIn(tween(260, easing = LyricSoftEasing)) +
+                                            slideInVertically(tween(260, easing = LyricSoftEasing)) { it / 5 }
+                                        ) togetherWith (
+                                        fadeOut(tween(180, easing = LyricSofterEasing)) +
+                                            slideOutVertically(tween(180, easing = LyricSofterEasing)) { -it / 6 }
+                                        ) using SizeTransform(clip = false)
+                                },
+                                label = "landLyricVisual",
+                            ) { mode -> LyricBody(mode) }
+                        }
+                    }
+                }
+                Box(Modifier.graphicsLayer { alpha = st }) {
+                    SelectStaticText(alpha = 1f)
+                }
+            }
+            return@Box
+        }
+
         if (browsing) {
             LyricBody(visualMode)
         } else {
@@ -2240,40 +2808,21 @@ private fun LandscapeScrollLyricLine(
 }
 
 @Composable
-private fun LandscapeLyricSlotPlaceholder(
-    center: Boolean,
-    fontScale: Float,
-) {
-    if (center) {
-        Spacer(
-            Modifier
-                .fillMaxWidth()
-                .padding(vertical = 10.dp, horizontal = 4.dp)
-                .padding(vertical = 8.dp, horizontal = 10.dp)
-                .height(((38f * fontScale) + 4f).dp),
-        )
-    } else {
-        Spacer(
-            Modifier
-                .fillMaxWidth()
-                .padding(vertical = 11.dp, horizontal = 10.dp)
-                .height(((26f * fontScale) + 2f).dp),
-        )
-    }
-}
-
-@Composable
 private fun LandscapeCenterLyricLine(
     lines: List<LrcLine>,
     focus: Int,
     live: Boolean,
-    positionMs: Long,
     trackDurationMs: Long,
     fontScale: Float,
     animMs: Int,
     compact: Boolean = false,
     lineSpacing: Dp = 10.dp,
     fillWidth: Boolean = true,
+    instantAppear: Boolean = false,
+    freezeTransitions: Boolean = false,
+    /** 选句形态进度：字号/字重/透明度向未播放样式过渡 */
+    selectMorphT: Float = 0f,
+    selectSelected: Boolean = false,
 ) {
     val emphasis by animateFloatAsState(
         targetValue = if (live) 1f else 0f,
@@ -2283,10 +2832,29 @@ private fun LandscapeCenterLyricLine(
         ),
         label = "landLyricEmphasis",
     )
+    val st = selectMorphT.coerceIn(0f, 1f)
     // 布局用固定字号；不做缩放强调，避免入场结束水平微跳
-    val baseFont = 26f * fontScale
-    val baseLine = 38f * fontScale
-    val textAlpha = 0.58f + 0.42f * emphasis
+    val playFont = 26f * fontScale
+    val playLine = 38f * fontScale
+    val selectFont = 16.5f * fontScale
+    val selectLine = 26f * fontScale
+    val baseFont = lerp(playFont, selectFont, st)
+    val baseLine = lerp(playLine, selectLine, st)
+    val playAlpha = 0.58f + 0.42f * emphasis * (1f - st)
+    val selectAlpha = if (selectSelected) 0.96f else 0.50f
+    val textAlpha = lerp(playAlpha, selectAlpha, st)
+    val playColor = Color(0xFFF8FAFC).copy(alpha = textAlpha)
+    val selectColor = if (selectSelected) {
+        LyricSelectSelectedText.copy(alpha = textAlpha)
+    } else {
+        LyricSelectUnplayed.copy(alpha = textAlpha)
+    }
+    val textColor = lerp(playColor, selectColor, st)
+    val weight = when {
+        selectSelected && st > 0.45f -> FontWeight.Medium
+        st > 0.55f -> FontWeight.Normal
+        else -> FontWeight.SemiBold
+    }
     val span = lyricLineSpanMs(lines, focus, trackDurationMs)
     val vPad = if (compact) lineSpacing else 10.dp
 
@@ -2303,15 +2871,17 @@ private fun LandscapeCenterLyricLine(
             animMs = animMs,
             lineSpanMs = span,
             fillWidth = fillWidth,
-            maxLines = 6,
-            overflow = TextOverflow.Clip,
+            maxLines = if (st > 0.5f) 2 else 6,
+            overflow = if (st > 0.5f) TextOverflow.Ellipsis else TextOverflow.Clip,
+            instantAppear = instantAppear,
+            freezeTransitions = freezeTransitions,
             style = TextStyle(
-                color = Color(0xFFF8FAFC).copy(alpha = textAlpha),
+                color = textColor,
                 fontFamily = FontFamily.SansSerif,
-                fontWeight = FontWeight.SemiBold,
+                fontWeight = weight,
                 fontSize = baseFont.sp,
                 lineHeight = baseLine.sp,
-                letterSpacing = 0.5.sp,
+                letterSpacing = lerp(0.5f, 0.35f, st).sp,
                 textAlign = TextAlign.Center,
             ),
         )
@@ -2328,12 +2898,14 @@ private fun LandscapeSideLyricLine(
     animMs: Int,
     verticalPadding: Dp = 11.dp,
     fillWidth: Boolean = true,
+    /** 选句进度：已播放斜体/字重随此值过渡到正体未播放样式 */
+    selectMorphT: Float = 0f,
 ) {
-    val targetAlpha = if (played) {
-        0.32f
-    } else {
-        (0.46f - distance.coerceAtMost(2) * 0.06f)
-    }
+    val st = selectMorphT.coerceIn(0f, 1f)
+    // 已播放视觉强度：1=完整斜体已播放，0=选句正体；随 selectT 连续变化
+    val playedStrength = if (played) (1f - st) else 0f
+    val unplayedAlpha = (0.46f - distance.coerceAtMost(2) * 0.06f)
+    val targetAlpha = lerp(unplayedAlpha, 0.32f, playedStrength)
     val alpha by animateFloatAsState(
         targetValue = targetAlpha,
         animationSpec = tween(
@@ -2342,7 +2914,11 @@ private fun LandscapeSideLyricLine(
         ),
         label = "landSideA",
     )
-    val sizeSp = ((if (played) 15f else 16.5f) * fontScale)
+    val sizeSp = lerp(16.5f, 15f, playedStrength) * fontScale
+    val padMod = Modifier
+        .then(if (fillWidth) Modifier.fillMaxWidth() else Modifier.wrapContentWidth())
+        .padding(vertical = verticalPadding, horizontal = 10.dp)
+
     // 槽位固定后侧句文本会原地替换：用淡入淡出避免硬切
     Crossfade(
         targetState = lineKey to text,
@@ -2353,29 +2929,50 @@ private fun LandscapeSideLyricLine(
         label = "landSideCrossfade",
         modifier = if (fillWidth) Modifier.fillMaxWidth() else Modifier.wrapContentWidth(),
     ) { (_, shown) ->
-        Text(
-            text = shown,
-            style = TextStyle(
-                color = if (played) {
-                    Color(0xFFB8C0CC).copy(alpha = alpha)
-                } else {
-                    Color(0xFFDCE6F0).copy(alpha = alpha)
-                },
-                fontFamily = FontFamily.SansSerif,
-                fontWeight = if (played) FontWeight.Light else FontWeight.Normal,
-                fontStyle = if (played) FontStyle.Italic else FontStyle.Normal,
-                fontSize = sizeSp.sp,
-                lineHeight = (26f * fontScale).sp,
-                letterSpacing = 0.35.sp,
-                textAlign = TextAlign.Center,
-            ),
-            maxLines = 4,
-            softWrap = true,
-            overflow = TextOverflow.Clip,
-            modifier = Modifier
-                .then(if (fillWidth) Modifier.fillMaxWidth() else Modifier.wrapContentWidth())
-                .padding(vertical = verticalPadding, horizontal = 10.dp),
-        )
+        // 斜体无法插值：已播放层与正体层按 playedStrength 交叉淡化
+        Box(
+            modifier = padMod,
+            contentAlignment = Alignment.Center,
+        ) {
+            if (playedStrength < 0.995f) {
+                Text(
+                    text = shown,
+                    style = TextStyle(
+                        color = Color(0xFFDCE6F0).copy(alpha = alpha * (1f - playedStrength)),
+                        fontFamily = FontFamily.SansSerif,
+                        fontWeight = FontWeight.Normal,
+                        fontStyle = FontStyle.Normal,
+                        fontSize = sizeSp.sp,
+                        lineHeight = (26f * fontScale).sp,
+                        letterSpacing = 0.35.sp,
+                        textAlign = TextAlign.Center,
+                    ),
+                    maxLines = 4,
+                    softWrap = true,
+                    overflow = TextOverflow.Clip,
+                    modifier = if (fillWidth) Modifier.fillMaxWidth() else Modifier.wrapContentWidth(),
+                )
+            }
+            if (playedStrength > 0.01f) {
+                Text(
+                    text = shown,
+                    style = TextStyle(
+                        color = Color(0xFFB8C0CC).copy(alpha = alpha * playedStrength),
+                        fontFamily = FontFamily.SansSerif,
+                        fontWeight = FontWeight.Light,
+                        fontStyle = FontStyle.Italic,
+                        fontSize = sizeSp.sp,
+                        lineHeight = (26f * fontScale).sp,
+                        letterSpacing = 0.35.sp,
+                        textAlign = TextAlign.Center,
+                    ),
+                    maxLines = 4,
+                    softWrap = true,
+                    overflow = TextOverflow.Clip,
+                    modifier = if (fillWidth) Modifier.fillMaxWidth() else Modifier.wrapContentWidth(),
+                )
+            }
+        }
     }
 }
 
@@ -2665,6 +3262,7 @@ private fun LandscapePlayerBody(
     positionMs: Long,
     seekPositionMs: Long,
     isPlaying: Boolean,
+    playWhenReady: Boolean,
     buffering: Boolean,
     loadPending: Boolean,
     onTogglePlay: () -> Unit,
@@ -2689,34 +3287,46 @@ private fun LandscapePlayerBody(
     settingsHazeState: HazeState,
     peekNextTrack: TrackRow?,
     peekPrevTrack: TrackRow?,
-    notice: PlaybackNotice? = null,
-    transportWakeToken: Int = 0,
     onSeek: (Long) -> Unit,
     modifier: Modifier = Modifier,
+    notice: PlaybackNotice? = null,
+    transportWakeToken: Int = 0,
 ) {
-    val activity = LocalContext.current as? android.app.Activity
+    val activity = LocalActivity.current
     val rotationLock = com.kite.zmusic.ui.orientation.LocalSessionRotationLock.current
     // 直接读 Store，保证锁状态变化触发重组（不依赖 @Stable 门面推断）
     val rotationLocked = com.kite.zmusic.ui.orientation.SessionRotationLockStore.locked
     // 沉浸默认隐藏；仅纯点击唤出，滑动不唤出（常显时恒定展开）
     var controlsVisible by remember { mutableStateOf(displayPrefs.transportAlwaysVisible) }
     var settingsOpen by remember { mutableStateOf(false) }
+    var vinylColorEditorOpen by remember { mutableStateOf(false) }
+    /** 编辑态黑胶居中锁：进入时立刻开启；退出时等弹窗收完再关，与弹窗错开 */
+    var editorVinylCentered by remember { mutableStateOf(false) }
+    var reopenSettingsAfterEditor by remember { mutableStateOf(false) }
     var idleBump by remember { mutableIntStateOf(0) }
     var vinylSkipDir by remember { mutableStateOf(VinylSkipDirection.Next) }
     var vinylBusy by remember { mutableStateOf(false) }
     var lyricResumeToken by remember { mutableIntStateOf(0) }
+    var lyricSelectOpen by remember { mutableStateOf(false) }
+    var lyricSelectOutsideArmed by remember { mutableStateOf(false) }
+    val lyricSelectSelected: SnapshotStateSet<Int> = remember { mutableStateSetOf() }
     // 未预加载 / URL 解析中：控件锁定，显示加载
     val controlsLocked = loadPending
     val transportBuffering = buffering || loadPending
     val transportPinned = displayPrefs.transportAlwaysVisible
-    // 设置与底部播放条互斥；常显时除设置打开外保持展开
-    val showBar = (controlsVisible || sliderDragging || transportPinned) && !settingsOpen
+    // 设置 / 自选编辑 / 选句与底部播放条互斥；编辑时强制隐藏（忽略常显）
+    val showBar = (controlsVisible || sliderDragging || transportPinned) &&
+        !settingsOpen &&
+        !editorVinylCentered &&
+        !lyricSelectOpen
     val density = LocalDensity.current
     val uiScale = displayPrefs.uiScale.coerceIn(PlayerDisplayPrefs.UI_MIN, PlayerDisplayPrefs.UI_MAX)
     val settingsCurve = remember { CubicBezierEasing(0.16f, 1.02f, 0.3f, 1f) }
+    val vinylCenterEasing = remember { CubicBezierEasing(0.33f, 0f, 0.2f, 1f) }
+    val vinylCenterMs = 480
 
-    LaunchedEffect(transportPinned) {
-        if (transportPinned) controlsVisible = true
+    LaunchedEffect(transportPinned, editorVinylCentered) {
+        if (transportPinned && !editorVinylCentered) controlsVisible = true
     }
 
     // 0 = 沉浸（黑胶放大）→ 1 = 控件可见（黑胶缩小让位）；Animatable 可中途改目标打断
@@ -2738,24 +3348,131 @@ private fun LandscapePlayerBody(
     }
     val settingsT = settingsPanel.value
 
+    val editorPanel = remember { Animatable(0f) }
+    LaunchedEffect(vinylColorEditorOpen) {
+        if (vinylColorEditorOpen) {
+            // 先等黑胶居中就位，再渐显弹窗
+            delay(vinylCenterMs.toLong())
+            if (!vinylColorEditorOpen) return@LaunchedEffect
+            editorPanel.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(durationMillis = vinylCenterMs, easing = vinylCenterEasing),
+            )
+        } else {
+            // 先收弹窗，再在完成后松开黑胶居中（见下方）
+            editorPanel.animateTo(
+                targetValue = 0f,
+                animationSpec = tween(durationMillis = vinylCenterMs, easing = vinylCenterEasing),
+            )
+            editorVinylCentered = false
+            if (reopenSettingsAfterEditor) {
+                reopenSettingsAfterEditor = false
+                controlsVisible = false
+                settingsOpen = true
+            } else if (transportPinned) {
+                controlsVisible = true
+            }
+        }
+    }
+    val editorT = editorPanel.value
+
+    val lyricSelectPanel = remember { Animatable(0f) }
+    var lyricSelectEverOpen by remember { mutableStateOf(false) }
+    LaunchedEffect(lyricSelectOpen) {
+        if (lyricSelectOpen) {
+            lyricSelectEverOpen = true
+            lyricSelectPanel.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(durationMillis = vinylCenterMs, easing = vinylCenterEasing),
+            )
+        } else {
+            // 一开始就触发回滚，与收窗/样式 morph 并行，避免收完再突然跳位
+            if (lyricSelectEverOpen) {
+                lyricResumeToken++
+            }
+            lyricSelectPanel.animateTo(
+                targetValue = 0f,
+                animationSpec = tween(durationMillis = vinylCenterMs, easing = vinylCenterEasing),
+            )
+            if (lyricSelectEverOpen) {
+                lyricSelectEverOpen = false
+                if (transportPinned && !settingsOpen && !editorVinylCentered) {
+                    controlsVisible = true
+                }
+            }
+        }
+    }
+    val lyricSelectT = lyricSelectPanel.value
+
     fun closeSettings() {
         settingsOpen = false
-        if (transportPinned) controlsVisible = true
+        if (transportPinned && !editorVinylCentered && !lyricSelectOpen) controlsVisible = true
+    }
+
+    fun closeVinylColorEditor() {
+        reopenSettingsAfterEditor = false
+        vinylColorEditorOpen = false
+    }
+
+    /** 左上角返回：弹窗收完后再打开设置页 */
+    fun closeVinylColorEditorToSettings() {
+        reopenSettingsAfterEditor = true
+        vinylColorEditorOpen = false
+    }
+
+    fun openVinylColorEditor() {
+        // 收回设置与播放条（忽略常显）；保留黑胶 X，Y 由编辑态强制垂直居中
+        if (lyricSelectOpen) return
+        settingsOpen = false
+        controlsVisible = false
+        reopenSettingsAfterEditor = false
+        if (displayPrefs.vinylColorStyle != VinylColorStyle.CUSTOM) {
+            onDisplayPrefsChange(displayPrefs.copy(vinylColorStyle = VinylColorStyle.CUSTOM))
+        }
+        editorVinylCentered = true
+        vinylColorEditorOpen = true
+    }
+
+    fun closeLyricSelect() {
+        lyricSelectSelected.clear()
+        lyricSelectOpen = false
+        lyricSelectOutsideArmed = false
+    }
+
+    @Suppress("UNUSED_PARAMETER")
+    fun openLyricSelect(index: Int) {
+        if (vinylColorEditorOpen || editorVinylCentered) return
+        settingsOpen = false
+        controlsVisible = false
+        // 进入时不预选；由用户再点选
+        lyricSelectSelected.clear()
+        lyricSelectOutsideArmed = false
+        lyricSelectOpen = true
     }
 
     fun openSettings() {
         // 互斥：收回下方播放组件
+        if (editorVinylCentered || vinylColorEditorOpen || lyricSelectOpen) return
         controlsVisible = false
         settingsOpen = true
     }
 
     fun revealControls() {
-        if (settingsOpen) return
+        if (settingsOpen || editorVinylCentered || vinylColorEditorOpen || lyricSelectOpen) return
         controlsVisible = true
         idleBump++
     }
 
     fun toggleControls() {
+        if (lyricSelectOpen || lyricSelectT > 0.001f) {
+            // 打开手势的松手一律忽略；解锁后才允许空白单击关闭
+            if (lyricSelectOutsideArmed) closeLyricSelect()
+            return
+        }
+        if (vinylColorEditorOpen || editorVinylCentered || editorT > 0.001f) {
+            closeVinylColorEditor()
+            return
+        }
         if (settingsOpen) {
             closeSettings()
             return
@@ -2774,6 +3491,18 @@ private fun LandscapePlayerBody(
     // 播放失败重试：唤醒底部播放组件
     LaunchedEffect(transportWakeToken) {
         if (transportWakeToken > 0) {
+            if (lyricSelectOpen) {
+                lyricSelectSelected.clear()
+                lyricSelectOpen = false
+                lyricSelectOutsideArmed = false
+                lyricSelectPanel.snapTo(0f)
+            }
+            if (vinylColorEditorOpen || editorVinylCentered) {
+                reopenSettingsAfterEditor = false
+                vinylColorEditorOpen = false
+                editorVinylCentered = false
+                editorPanel.snapTo(0f)
+            }
             if (settingsOpen) {
                 settingsOpen = false
                 if (transportPinned) controlsVisible = true
@@ -2783,12 +3512,33 @@ private fun LandscapePlayerBody(
         }
     }
 
-    BackHandler(enabled = settingsOpen) {
+    BackHandler(enabled = lyricSelectOpen || lyricSelectT > 0.001f) {
+        closeLyricSelect()
+    }
+    BackHandler(enabled = vinylColorEditorOpen || editorVinylCentered || editorT > 0.001f) {
+        closeVinylColorEditor()
+    }
+    BackHandler(
+        enabled = settingsOpen &&
+            !vinylColorEditorOpen &&
+            !editorVinylCentered &&
+            !lyricSelectOpen,
+    ) {
         closeSettings()
     }
 
-    LaunchedEffect(idleBump, sliderDragging, track.id, settingsOpen, transportPinned) {
-        if (settingsOpen || transportPinned) return@LaunchedEffect
+    LaunchedEffect(
+        idleBump,
+        sliderDragging,
+        track.id,
+        settingsOpen,
+        transportPinned,
+        editorVinylCentered,
+        lyricSelectOpen,
+    ) {
+        if (settingsOpen || transportPinned || editorVinylCentered || lyricSelectOpen) {
+            return@LaunchedEffect
+        }
         if (sliderDragging) {
             controlsVisible = true
             return@LaunchedEffect
@@ -2818,7 +3568,15 @@ private fun LandscapePlayerBody(
                     toggleControls()
                 },
                 onSwipeDown = {
-                    if (settingsOpen) closeSettings() else onDismiss()
+                    when {
+                        lyricSelectOpen || lyricSelectT > 0.001f -> {
+                            if (lyricSelectOutsideArmed) closeLyricSelect()
+                        }
+                        vinylColorEditorOpen || editorVinylCentered || editorT > 0.001f ->
+                            closeVinylColorEditor()
+                        settingsOpen -> closeSettings()
+                        else -> onDismiss()
+                    }
                 },
             ),
     ) {
@@ -2832,17 +3590,18 @@ private fun LandscapePlayerBody(
         val songMetaTopPad = ((leftColW - discExpandedForPad) / 2).coerceAtLeast(6.dp)
 
         // 与左栏同源的黑胶几何：供动态歌词计算右缘侵入
+        // 自选编辑态强制垂直居中（忽略个性化 Y，保留 X）
         val vinylAbsT by animateFloatAsState(
-            targetValue = if (displayPrefs.vinylAbsoluteCenter) 1f else 0f,
+            targetValue = if (displayPrefs.vinylAbsoluteCenter || editorVinylCentered) 1f else 0f,
             animationSpec = tween(
-                durationMillis = 480,
-                easing = CubicBezierEasing(0.33f, 0f, 0.2f, 1f),
+                durationMillis = vinylCenterMs,
+                easing = vinylCenterEasing,
             ),
             label = "vinylAbsCenterOuter",
         )
         val discCompactForPad = (discBaseForPad * 0.86f).coerceAtLeast(118.dp)
-        val discForLyric = androidx.compose.ui.unit.lerp(
-            androidx.compose.ui.unit.lerp(discExpandedForPad, discCompactForPad, chromeT),
+        val discForLyric = lerpDp(
+            lerpDp(discExpandedForPad, discCompactForPad, chromeT),
             discExpandedForPad,
             vinylAbsT,
         )
@@ -2857,9 +3616,15 @@ private fun LandscapePlayerBody(
             vinylAbsT,
         )
         val vinylOx = displayPrefs.vinylOffsetXDp.dp
+        val vinylSizeScale = displayPrefs.vinylSizeScale
+            .coerceIn(PlayerDisplayPrefs.VINYL_SIZE_SCALE_MIN, PlayerDisplayPrefs.VINYL_SIZE_SCALE_MAX)
+        val vinylOuterScale = displayPrefs.vinylOuterScale
+            .coerceIn(PlayerDisplayPrefs.VINYL_OUTER_SCALE_MIN, PlayerDisplayPrefs.VINYL_OUTER_SCALE_MAX)
+        // 右缘按「整体 × 外圈」可视外缘（外圈可大于 100% 溢出）
+        val vinylVisualScale = vinylSizeScale * maxOf(vinylOuterScale, 1f)
         // 左栏黑胶中心（相对 Row）≈ 左栏右缘 - metaWidth/2 + ox
         val vinylCenterX = leftColW - discExpandedForPad / 2 + vinylOx
-        val vinylRightEdge = vinylCenterX + discForLyric * vinylScaleForLyric / 2f
+        val vinylRightEdge = vinylCenterX + discForLyric * vinylScaleForLyric * vinylVisualScale / 2f
         val lyricsColStart = leftColW + rowGap
         val lyricsColWidth = (maxWidth - leftColW - rowGap - 4.dp).coerceAtLeast(0.dp)
         val lyricsCenterX = lyricsColStart + lyricsColWidth / 2 + displayPrefs.lyricOffsetXDp.dp
@@ -2869,6 +3634,12 @@ private fun LandscapePlayerBody(
         val vinylLyricClearance = 10.dp
         val vinylLeftInset = (vinylRightEdge + vinylLyricClearance - lyricsColStart)
             .coerceAtLeast(0.dp)
+        val lyricSelectGeom = rememberLyricSelectGeom(
+            lines = lines,
+            fontScale = displayPrefs.fontScale,
+            screenWidth = maxWidth,
+            screenHeight = maxHeight,
+        )
 
         // 播放内容作磨砂源（不含设置面板本身）
         Box(
@@ -2911,21 +3682,21 @@ private fun LandscapePlayerBody(
                     .coerceAtMost(286.dp)
                 val discCompact = (discBase * 0.86f).coerceAtLeast(118.dp)
                 val absT by animateFloatAsState(
-                    targetValue = if (displayPrefs.vinylAbsoluteCenter) 1f else 0f,
+                    targetValue = if (displayPrefs.vinylAbsoluteCenter || editorVinylCentered) 1f else 0f,
                     animationSpec = tween(
-                        durationMillis = 480,
-                        easing = CubicBezierEasing(0.33f, 0f, 0.2f, 1f),
+                        durationMillis = vinylCenterMs,
+                        easing = vinylCenterEasing,
                     ),
                     label = "vinylAbsCenter",
                 )
                 // 非绝对居中：尺寸随 chrome 缩；绝对居中：尺寸固定，chrome 只缩放
-                val disc = androidx.compose.ui.unit.lerp(
-                    androidx.compose.ui.unit.lerp(discExpanded, discCompact, chromeT),
+                val disc = lerpDp(
+                    lerpDp(discExpanded, discCompact, chromeT),
                     discExpanded,
                     absT,
                 )
-                val chromePad = androidx.compose.ui.unit.lerp(2.dp, 66.dp, chromeT)
-                val vinylBottomPad = androidx.compose.ui.unit.lerp(0.dp, chromePad, 1f - absT)
+                val chromePad = lerpDp(2.dp, 66.dp, chromeT)
+                val vinylBottomPad = lerpDp(0.dp, chromePad, 1f - absT)
                 val compactRatio = if (discExpanded.value > 0.1f) {
                     discCompact / discExpanded
                 } else {
@@ -2945,11 +3716,13 @@ private fun LandscapePlayerBody(
                     (((edgeInset / 2) + 72.dp).toPx() * 0.5f +
                         chromePad.toPx() * 0.35f) * (1f - absT)
                 }
+                val bottomPadPx = with(density) { vinylBottomPad.toPx() }
                 // 上一首入场：相对「实际静止中心」（含水平偏移 / 缩放）整盘离开左栏左缘
                 val prevEnterSlidePx = with(density) {
                     val centerFromLeft =
                         (maxWidth - metaWidth / 2).toPx() + ox.toPx()
-                    val radius = disc.toPx() * 0.5f * vinylScale
+                    val radius = disc.toPx() * 0.5f * vinylScale * vinylSizeScale *
+                        maxOf(vinylOuterScale, 1f)
                     centerFromLeft + radius + 6.dp.toPx()
                 }
 
@@ -2961,7 +3734,7 @@ private fun LandscapePlayerBody(
                         peekPrev = peekPrevTrack,
                         spinning = isPlaying && !transportBuffering && !vinylBusy,
                         direction = vinylSkipDir,
-                        gesturesEnabled = !controlsLocked && !settingsOpen,
+                        gesturesEnabled = !settingsOpen && !editorVinylCentered,
                         onTransitionRunningChange = { vinylBusy = it },
                         onCommitSkip = { dir ->
                             vinylSkipDir = dir
@@ -2970,13 +3743,18 @@ private fun LandscapePlayerBody(
                                 VinylSkipDirection.Previous -> onSkipPrev()
                             }
                         },
-                        fullCover = displayPrefs.vinylFullCover,
-                        prevEnterSlidePx = prevEnterSlidePx,
                         modifier = mod,
+                        fullCover = displayPrefs.vinylFullCover,
+                        centerRadiusFrac = displayPrefs.vinylCenterRadiusFrac,
+                        outerScale = vinylOuterScale,
+                        plateColors = rememberAnimatedVinylPlateColors(
+                            displayPrefs.vinylPlateColors(),
+                        ),
+                        prevEnterSlidePx = prevEnterSlidePx,
                     )
                 }
 
-                // 单一黑胶：占满左栏，离场/入场可画进左侧挖孔（舞台不圆形裁剪）
+                // 单一黑胶：宿主尺寸固定，整体/外圈均绕圆心缩放，避免改 size 导致圆心漂移
                 Box(
                     Modifier
                         .fillMaxSize()
@@ -2994,13 +3772,13 @@ private fun LandscapePlayerBody(
                             Modifier
                                 .offset(x = ox, y = oy)
                                 .graphicsLayer {
-                                    translationY = layoutShiftY
-                                    scaleX = vinylScale
-                                    scaleY = vinylScale
+                                    // 原 bottom padding 会把缩放原点抬离圆心；改为平移，原点保持盘心
+                                    translationY = layoutShiftY - bottomPadPx * 0.5f
+                                    scaleX = vinylScale * vinylSizeScale
+                                    scaleY = vinylScale * vinylSizeScale
                                     transformOrigin = TransformOrigin.Center
                                     clip = false
                                 }
-                                .padding(bottom = vinylBottomPad)
                                 .size(disc),
                         )
                     }
@@ -3020,8 +3798,26 @@ private fun LandscapePlayerBody(
                 vinylLeftInset = vinylLeftInset,
                 onSeekToMs = { ms ->
                     onSeek(ms.coerceIn(0L, durationMs.coerceAtLeast(0L)))
+                    if (displayPrefs.lyricTapAutoPlay && !playWhenReady) {
+                        onTogglePlay()
+                    }
                 },
                 resumeScrollToken = lyricResumeToken,
+                selectProgress = lyricSelectT,
+                selectGeom = lyricSelectGeom,
+                lyricsColStartDp = lyricsColStart,
+                selectedIndices = lyricSelectSelected,
+                onToggleSelect = { index ->
+                    if (index in lyricSelectSelected) {
+                        lyricSelectSelected.remove(index)
+                    } else {
+                        lyricSelectSelected.add(index)
+                    }
+                },
+                onLongPressLine = { index -> openLyricSelect(index) },
+                onBandCenterPx = null,
+                selectHazeState = settingsHazeState,
+                selectOpen = lyricSelectOpen,
                 modifier = Modifier
                     .weight(0.64f)
                     .fillMaxHeight()
@@ -3077,8 +3873,8 @@ private fun LandscapePlayerBody(
                     .padding(horizontal = 14.dp, vertical = 8.dp),
             ) {
                 PlayerTransport(
-                    isPlaying = isPlaying,
-                    buffering = transportBuffering,
+                    isPlaying = playWhenReady,
+                    buffering = loadPending,
                     controlsLocked = controlsLocked,
                     onTogglePlay = {
                         if (!controlsLocked) {
@@ -3134,7 +3930,7 @@ private fun LandscapePlayerBody(
                 )
             }
 
-            // 右上：旋转锁定 | 设置（与底部播放条同显隐 / 同底 / 右缘对齐）
+            // 右上：退出 | 旋转锁定 | 设置（与底部播放条同显隐 / 同底 / 右缘对齐）
             Row(
                 Modifier
                     .align(Alignment.TopEnd)
@@ -3148,6 +3944,9 @@ private fun LandscapePlayerBody(
                 horizontalArrangement = Arrangement.spacedBy(NowPlayingChromeIconGap),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                NowPlayingDismissIconButton(
+                    onClick = onDismiss,
+                )
                 NowPlayingRotationLockButton(
                     locked = rotationLocked,
                     onClick = { rotationLock.toggle(activity) },
@@ -3197,6 +3996,7 @@ private fun LandscapePlayerBody(
                     prefs = displayPrefs,
                     onPrefsChange = onDisplayPrefsChange,
                     hazeState = settingsHazeState,
+                    onOpenVinylColorEditor = { openVinylColorEditor() },
                     modifier = Modifier
                         .fillMaxSize()
                         .graphicsLayer {
@@ -3207,6 +4007,52 @@ private fun LandscapePlayerBody(
                         },
                 )
             }
+        }
+
+        // 自选黑胶颜色编辑：黑胶先居中就位，再渐显弹窗
+        if (editorT > 0.001f) {
+            // 与内容层同源：bottom pad + uiScale（绕内容中心）后的视觉几何
+            val contentH = (maxHeight - 6.dp).coerceAtLeast(1.dp)
+            val layoutVinylCy = contentH / 2
+            val scaleOriginX = maxWidth / 2
+            val editorVinylRadius = discExpandedForPad / 2 * uiScale * vinylSizeScale *
+                maxOf(vinylOuterScale, 1f)
+            val editorVinylCx = scaleOriginX + (vinylCenterX - scaleOriginX) * uiScale
+            val editorVinylCy = layoutVinylCy
+            VinylColorEditorOverlay(
+                prefs = displayPrefs,
+                onPrefsChange = onDisplayPrefsChange,
+                hazeState = settingsHazeState,
+                progress = editorT,
+                vinylCenterX = editorVinylCx,
+                vinylCenterY = editorVinylCy,
+                vinylRadius = editorVinylRadius,
+                screenWidth = maxWidth,
+                screenHeight = maxHeight,
+                onDismiss = { closeVinylColorEditor() },
+                onBackToSettings = { closeVinylColorEditorToSettings() },
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+
+        // 长按歌词选句：磨砂壳 + 挖孔；原歌词层位移动画填入，非另起列表
+        if (lyricSelectT > 0.001f) {
+            val ctx = LocalContext.current
+            LyricSelectOverlay(
+                selectedCount = lyricSelectSelected.size,
+                hazeState = settingsHazeState,
+                progress = lyricSelectT,
+                selectOpen = lyricSelectOpen,
+                geom = lyricSelectGeom,
+                onDismiss = { closeLyricSelect() },
+                onClearSelection = { lyricSelectSelected.clear() },
+                onCopy = {
+                    copyLyricSelection(ctx, lines, lyricSelectSelected.toSet())
+                    closeLyricSelect()
+                },
+                onOutsideDismissArmed = { lyricSelectOutsideArmed = true },
+                modifier = Modifier.fillMaxSize(),
+            )
         }
     }
 }
