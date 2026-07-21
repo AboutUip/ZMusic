@@ -456,6 +456,7 @@ fun MainShell(
                     onSkipNext = { playback.skipNext() },
                     onSkipPrev = { playback.skipPrevious() },
                     onCyclePlaybackMode = playback::cyclePlaybackMode,
+                    onPlayQueueIndex = playback::playIndex,
                     spectrum = spectrum,
                     modifier = Modifier.fillMaxSize(),
                     // 横屏播放页无 Dock，不再预留左侧占位

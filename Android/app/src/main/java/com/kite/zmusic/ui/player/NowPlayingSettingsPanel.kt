@@ -38,6 +38,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -88,17 +89,17 @@ private val TextShadow = Shadow(color = Color.Black.copy(alpha = 0.7f), blurRadi
 private val GlassBg = Color(0xFF03060A)
 /** 与底部播放条一致：半透明黑底，无描边。 */
 private val ChromeBarBg = Color.Black.copy(alpha = 0.22f)
-/** 弹窗壳：更深、更糊的暗色磨砂玻璃。 */
+/** 弹窗壳：暗色磨砂；fallback 半透，避免切歌源失效时变死实色。 */
 private val SettingsGlassStyle = HazeStyle(
     backgroundColor = GlassBg,
     tints = listOf(
-        HazeTint(Color(0xFF020408).copy(alpha = 0.88f)),
-        HazeTint(Color(0xFF060A12).copy(alpha = 0.72f)),
-        HazeTint(Color.Black.copy(alpha = 0.52f)),
+        HazeTint(Color(0xFF020408).copy(alpha = 0.78f)),
+        HazeTint(Color(0xFF060A12).copy(alpha = 0.60f)),
+        HazeTint(Color.Black.copy(alpha = 0.42f)),
     ),
-    blurRadius = 56.dp,
-    noiseFactor = 0.22f,
-    fallbackTint = HazeTint(Color(0xF205080E)),
+    blurRadius = 84.dp,
+    noiseFactor = 0.20f,
+    fallbackTint = HazeTint(Color(0xCC05080E)),
 )
 /** 功能行：近不透明实底，与磨砂壳分层。 */
 private val SettingsRowBg = Color(0xF0141A24)
@@ -352,6 +353,7 @@ fun NowPlayingSettingsSheet(
     hazeState: HazeState,
     modifier: Modifier = Modifier,
     onOpenVinylColorEditor: () -> Unit = {},
+    hazeNonce: Int = 0,
 ) {
     val sliderColors = SliderDefaults.colors(
         thumbColor = Color(0xFFF8FAFC),
@@ -374,27 +376,34 @@ fun NowPlayingSettingsSheet(
         checkedBorderColor = Color.Transparent,
     )
 
+    // hazeNonce：仅重挂磨砂层，保留滚动与控件状态
     Box(
         modifier
             .fillMaxHeight()
             .fillMaxWidth()
             .clip(PanelShape)
-            // 消费卡片内全部点击，避免穿透到外部 dismiss 层
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
                 onClick = {},
-            )
-            .hazeEffect(state = hazeState, style = SettingsGlassStyle) {
-                blurRadius = 56.dp
-                noiseFactor = 0.22f
-            },
+            ),
     ) {
-        // 加深罩层，强化暗色磨砂
+        key(hazeNonce) {
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .hazeEffect(state = hazeState, style = SettingsGlassStyle) {
+                        blurRadius = 84.dp
+                        noiseFactor = 0.20f
+                        fallbackTint = HazeTint(Color(0xCC05080E))
+                    },
+            )
+        }
+        // 半透罩层：切歌 blur 短暂失效时也不致死实色
         Box(
             Modifier
                 .matchParentSize()
-                .background(Color(0xB005080E)),
+                .background(Color(0x9905080E)),
         )
         Box(
             Modifier
@@ -485,6 +494,13 @@ fun NowPlayingSettingsSheet(
                         checked = prefs.dynamicLyrics,
                         colors = switchColors,
                         onCheckedChange = { onPrefsChange(prefs.copy(dynamicLyrics = it)) },
+                    )
+                    SettingsSwitchRow(
+                        title = "自动播放",
+                        subtitle = "点选歌词跳转后自动开始播放；播放中切歌始终播放",
+                        checked = prefs.lyricTapAutoPlay,
+                        colors = switchColors,
+                        onCheckedChange = { onPrefsChange(prefs.copy(lyricTapAutoPlay = it)) },
                     )
                     SettingsTitleAlignRow(
                         selected = prefs.titleAlign,

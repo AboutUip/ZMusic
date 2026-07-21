@@ -24,11 +24,13 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -100,6 +102,8 @@ private class ExitingVinylLayer(
     val track: TrackRow,
     val x: Animatable<Float, AnimationVector1D>,
     val scale: Animatable<Float, AnimationVector1D>,
+    /** 离场瞬间冻结的封面角，避免与新顶层抢同一旋转状态 */
+    val frozenSpinDeg: Float,
 )
 
 /**
@@ -135,6 +139,8 @@ fun VinylTransitionStage(
      * 上一首入场起点：相对舞台中心，整盘完全离开左栏左缘所需的位移（px）。
      */
     prevEnterSlidePx: Float? = null,
+    /** 为 true 时外部切歌直接落定，不做离场/入场位移动画（曲谱飞入专用）。 */
+    suppressEnterTransition: Boolean = false,
 ) {
     var topTrack by remember { mutableStateOf(track) }
     var bottomTrack by remember { mutableStateOf(track) }
@@ -159,12 +165,15 @@ fun VinylTransitionStage(
     var settleJob by remember { mutableStateOf<Job?>(null) }
     var bounceJob by remember { mutableStateOf<Job?>(null) }
 
-    val spinAngles = remember { mutableMapOf<Long, Animatable<Float, AnimationVector1D>>() }
-    fun angleOf(id: Long): Animatable<Float, AnimationVector1D> =
-        spinAngles.getOrPut(id) { Animatable(0f) }
-
-    suspend fun resetSpin(id: Long) {
-        angleOf(id).snapTo(0f)
+    /**
+     * 顶层旋转角：用可变 Float 同步清零（非挂起），保证入场首帧必为 0°。
+     * 旧实现按 trackId 缓存 Animatable，切歌首帧常仍读到上一圈角度。
+     */
+    var topSpinDeg by remember { mutableFloatStateOf(0f) }
+    var topSpinGen by remember { mutableIntStateOf(0) }
+    fun resetTopSpin() {
+        topSpinDeg = 0f
+        topSpinGen++
     }
 
     val scope = rememberCoroutineScope()
@@ -204,6 +213,7 @@ fun VinylTransitionStage(
                 track = outgoing,
                 x = Animatable(fromX.coerceIn(-exitPx, 0f)),
                 scale = Animatable(fromScale.coerceIn(NextUnderScale, 1f)),
+                frozenSpinDeg = topSpinDeg,
             )
             exiting.add(layer)
             trimExiting()
@@ -227,6 +237,8 @@ fun VinylTransitionStage(
             underTrack: TrackRow? = null,
         ) {
             settleJob?.cancel()
+            // 必须先同步清零再换顶层，否则入场首帧仍带旧旋转
+            resetTopSpin()
             topTrack = incoming
             stickyTopX = Float.NaN
             settledId = incoming.id
@@ -241,7 +253,6 @@ fun VinylTransitionStage(
                 showBottom = false
             }
             settleJob = scope.launch {
-                resetSpin(incoming.id)
                 if (animateEnter) {
                     topX.snapTo(startX.coerceIn(-slidePx, 0f))
                     topScale.snapTo(1f)
@@ -310,12 +321,12 @@ fun VinylTransitionStage(
                         dragMode = VinylSkipDirection.Previous
                         prevRevealBase = x
                         bottomTrack = if (topTrack.id == settledId) topTrack else track
+                        resetTopSpin()
                         topTrack = peekPrev
                         showBottom = true
                         scope.launch {
                             bottomScale.snapTo(1f)
                             bottomX.snapTo(0f)
-                            resetSpin(peekPrev.id)
                         }
                     }
                 }
@@ -333,8 +344,10 @@ fun VinylTransitionStage(
         }
 
         // 外部切歌（播放条按钮等）：同样叠层收尾，尽快恢复可滑
+        val suppressEnter by rememberUpdatedState(suppressEnterTransition)
         LaunchedEffect(track.id) {
             if (!booted) {
+                resetTopSpin()
                 topTrack = track
                 bottomTrack = track
                 settledId = track.id
@@ -349,7 +362,28 @@ fun VinylTransitionStage(
             }
             if (track.id == settledId) return@LaunchedEffect
             if (topTrack.id == track.id) {
+                // 手势已换顶层：保持当前角，仅确认 settled（入场时已 resetTopSpin）
                 settledId = track.id
+                return@LaunchedEffect
+            }
+            // 曲谱飞入接管：禁止常规切歌位移动画，直接落定
+            if (suppressEnter) {
+                settleJob?.cancel()
+                bounceJob?.cancel()
+                exiting.clear()
+                dragging = false
+                dragMode = null
+                prevRevealBase = 0f
+                stickyTopX = Float.NaN
+                resetTopSpin()
+                topTrack = track
+                bottomTrack = track
+                settledId = track.id
+                showBottom = false
+                topX.snapTo(0f)
+                topScale.snapTo(1f)
+                bottomX.snapTo(0f)
+                bottomScale.snapTo(1f)
                 return@LaunchedEffect
             }
             dragging = false
@@ -526,7 +560,7 @@ fun VinylTransitionStage(
                 key(bottomTrack.id, "bottom") {
                     VinylDiscFace(
                         track = bottomTrack,
-                        angle = angleOf(bottomTrack.id),
+                        spinDeg = 0f,
                         spinning = false,
                         fullCover = fullCover,
                         centerRadiusFrac = centerRadiusFrac,
@@ -548,7 +582,9 @@ fun VinylTransitionStage(
             key(topTrack.id, "top") {
                 VinylDiscFace(
                     track = topTrack,
-                    angle = angleOf(topTrack.id),
+                    spinDeg = topSpinDeg,
+                    spinGen = topSpinGen,
+                    onSpinDegChange = { topSpinDeg = it },
                     spinning = spinning &&
                         !showBottom &&
                         !dragging &&
@@ -576,7 +612,7 @@ fun VinylTransitionStage(
                 key(layer.key, "exit") {
                     VinylDiscFace(
                         track = layer.track,
-                        angle = angleOf(layer.track.id),
+                        spinDeg = layer.frozenSpinDeg,
                         spinning = false,
                         fullCover = fullCover,
                         centerRadiusFrac = centerRadiusFrac,
@@ -601,13 +637,15 @@ fun VinylTransitionStage(
 @Composable
 private fun VinylDiscFace(
     track: TrackRow,
-    angle: Animatable<Float, AnimationVector1D>,
+    spinDeg: Float,
     spinning: Boolean,
     fullCover: Boolean,
     centerRadiusFrac: Float,
     outerScale: Float,
     plateColors: VinylPlateColors,
     modifier: Modifier = Modifier,
+    spinGen: Int = 0,
+    onSpinDegChange: ((Float) -> Unit)? = null,
 ) {
     val coverT by animateFloatAsState(
         targetValue = if (fullCover) 1f else 0f,
@@ -631,14 +669,20 @@ private fun VinylDiscFace(
     val spindleFrac = (SpindleHoleFrac / outer.coerceAtLeast(0.01f))
         .coerceIn(0.02f, 0.35f) * (1f - coverT)
 
-    LaunchedEffect(spinning, track.id) {
-        if (!spinning) return@LaunchedEffect
+    val spinGenNow by rememberUpdatedState(spinGen)
+    LaunchedEffect(spinning, track.id, spinGen) {
+        if (!spinning || onSpinDegChange == null) return@LaunchedEffect
+        val gen = spinGen
+        // 切歌/gen 变更时外部已把 spinDeg 同步置 0；同曲暂停后再转则续当前角
+        val anim = Animatable(spinDeg)
         while (isActive) {
-            val next = angle.value + 360f
-            angle.animateTo(
-                targetValue = next,
+            anim.animateTo(
+                targetValue = anim.value + 360f,
                 animationSpec = tween(durationMillis = 28_000, easing = LinearEasing),
-            )
+            ) {
+                // 丢弃已被 resetTopSpin 作废的旧协程写回
+                if (spinGenNow == gen) onSpinDegChange(value)
+            }
         }
     }
 
@@ -658,7 +702,7 @@ private fun VinylDiscFace(
             Modifier
                 .fillMaxSize()
                 .graphicsLayer {
-                    rotationZ = angle.value
+                    rotationZ = spinDeg
                     clip = false
                 },
             contentAlignment = Alignment.Center,
@@ -720,7 +764,7 @@ private fun VinylDiscFace(
 }
 
 /** 圆环裁剪：外圆保留、中心镂空，露出下层黑胶纹理。 */
-private data class VinylAnnulusShape(
+internal data class VinylAnnulusShape(
     private val holeFrac: Float,
 ) : Shape {
     override fun createOutline(
@@ -745,7 +789,7 @@ private data class VinylAnnulusShape(
 
 /** 黑胶盘面：径向底 + 同心纹路；轴孔半径可动画收拢。 */
 @Composable
-private fun VinylDiscPlate(
+internal fun VinylDiscPlate(
     modifier: Modifier = Modifier,
     spindleHoleFrac: Float = SpindleHoleFrac,
     colors: VinylPlateColors = VinylPlateColors.Black,

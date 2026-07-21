@@ -234,6 +234,19 @@ class PlaylistCoordinator(
         loadAndPlayIndex(idx)
     }
 
+    /** 在当前队列内跳转到指定索引（保留队列与随机历史策略）。 */
+    fun playIndex(index: Int) {
+        val q = _ui.value.queue
+        if (index !in q.indices) return
+        if (index == _ui.value.index) {
+            if (!exoPlayer.playWhenReady) {
+                exoPlayer.play()
+            }
+            return
+        }
+        loadAndPlayIndex(index, recordShuffleHistory = true)
+    }
+
     fun clearQueue() {
         cancelLoads()
         urlCache.clear()

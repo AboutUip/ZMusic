@@ -48,6 +48,8 @@ class PlaybackViewModel(
         bridge.playQueue(tracks, startIndex, sourcePlaylistId, sourcePlaylistTitle)
     }
 
+    fun playIndex(index: Int) = bridge.playIndex(index)
+
     fun clearQueue() = bridge.clearQueue()
 
     fun togglePlayPause() = bridge.togglePlayPause()

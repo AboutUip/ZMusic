@@ -5,6 +5,8 @@ import android.content.ClipboardManager
 import android.content.Context
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
@@ -26,6 +28,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -77,7 +80,7 @@ val LyricSelectGlassStyle = HazeStyle(
     ),
     blurRadius = 72.dp,
     noiseFactor = 0.10f,
-    fallbackTint = HazeTint(Color(0x6605080E)),
+    fallbackTint = HazeTint(Color(0x9905080E)),
 )
 
 private val SelectAccent = Color(0xFF9AF0F0)
@@ -176,6 +179,50 @@ fun rememberLyricSelectGeom(
     )
 }
 
+/**
+ * 选句已完全展开时，歌单切歌导致几何跳变则动画过渡；进入/退出 morph 阶段用瞬时目标值。
+ */
+@Composable
+fun rememberAnimatedLyricSelectGeom(
+    target: LyricSelectGeom,
+    animateChanges: Boolean,
+): LyricSelectGeom {
+    val curve = remember { CubicBezierEasing(0.22f, 0.8f, 0.28f, 1f) }
+    val spec = if (animateChanges) {
+        tween<Dp>(durationMillis = 420, easing = curve)
+    } else {
+        snap()
+    }
+    val dialogW by animateDpAsState(target.dialogW, spec, label = "lsDialogW")
+    val dialogLeft by animateDpAsState(target.dialogLeft, spec, label = "lsDialogLeft")
+    val dialogH by animateDpAsState(target.dialogH, spec, label = "lsDialogH")
+    val dialogTop by animateDpAsState(target.dialogTop, spec, label = "lsDialogTop")
+    val listWidth by animateDpAsState(target.listWidth, spec, label = "lsListW")
+    val listLeft by animateDpAsState(target.listLeft, spec, label = "lsListLeft")
+    val listHeight by animateDpAsState(target.listHeight, spec, label = "lsListH")
+    val listTop by animateDpAsState(target.listTop, spec, label = "lsListTop")
+    val cellWidth by animateDpAsState(target.cellWidth, spec, label = "lsCellW")
+    val cellHeight by animateDpAsState(target.cellHeight, spec, label = "lsCellH")
+    val margin by animateDpAsState(target.margin, spec, label = "lsMargin")
+    val opsWidth by animateDpAsState(target.opsWidth, spec, label = "lsOpsW")
+    return LyricSelectGeom(
+        margin = margin,
+        dialogLeft = dialogLeft,
+        dialogTop = dialogTop,
+        dialogW = dialogW,
+        dialogH = dialogH,
+        opsWidth = opsWidth,
+        cellWidth = cellWidth,
+        cellHeight = cellHeight,
+        listLeft = listLeft,
+        listTop = listTop,
+        listWidth = listWidth,
+        listHeight = listHeight,
+        listCenterX = listLeft + listWidth / 2,
+        listCenterY = listTop + listHeight / 2,
+    )
+}
+
 /** 圆角外壳挖去右侧歌词孔；孔为直角，与歌词层直角玻璃贴合 */
 private class LyricSelectHoleShape(
     private val hole: Rect,
@@ -221,6 +268,7 @@ fun LyricSelectOverlay(
     onCopy: () -> Unit,
     onOutsideDismissArmed: () -> Unit,
     modifier: Modifier = Modifier,
+    hazeNonce: Int = 0,
 ) {
     val shellSoft = remember { CubicBezierEasing(0.22f, 0.8f, 0.28f, 1f) }
     val enterAlpha = remember { Animatable(0f) }
@@ -320,6 +368,7 @@ fun LyricSelectOverlay(
         }
 
         if (surfaceA > 0.01f) {
+            key(hazeNonce) {
             Box(
                 Modifier
                     .offset(x = geom.dialogLeft, y = geom.dialogTop)
@@ -329,6 +378,7 @@ fun LyricSelectOverlay(
                     .hazeEffect(state = hazeState, style = LyricSelectGlassStyle) {
                         blurRadius = 72.dp
                         noiseFactor = 0.10f
+                        fallbackTint = HazeTint(Color(0x9905080E))
                     },
             ) {
                 Column(
@@ -398,6 +448,7 @@ fun LyricSelectOverlay(
                     )
                 }
             }
+            } // key(hazeNonce)
         }
     }
 }

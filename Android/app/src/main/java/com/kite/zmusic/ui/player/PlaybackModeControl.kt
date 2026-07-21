@@ -11,6 +11,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -293,6 +294,61 @@ fun TransportLikeIcon(
                 ),
             )
         }
+    }
+}
+
+/**
+ * 曲谱：简约谱面 + 音符，与传输条描边风格一致。
+ */
+@Composable
+fun TransportScoreIcon(
+    modifier: Modifier = Modifier,
+    size: Dp = 16.dp,
+    tint: Color = IconTint,
+) {
+    Canvas(modifier.size(size)) {
+        val w = this.size.width
+        val h = this.size.height
+        val stroke = Stroke(
+            width = min(w, h) * 0.10f,
+            cap = StrokeCap.Round,
+            join = StrokeJoin.Round,
+        )
+        // 谱面外框
+        val left = w * 0.14f
+        val right = w * 0.86f
+        val top = h * 0.18f
+        val bottom = h * 0.82f
+        drawRoundRect(
+            color = tint,
+            topLeft = Offset(left, top),
+            size = Size(right - left, bottom - top),
+            cornerRadius = CornerRadius(w * 0.08f, w * 0.08f),
+            style = stroke,
+        )
+        // 三道谱线
+        val lineLeft = left + w * 0.10f
+        val lineRight = right - w * 0.10f
+        for (frac in floatArrayOf(0.38f, 0.50f, 0.62f)) {
+            val y = h * frac
+            drawLine(tint, Offset(lineLeft, y), Offset(lineRight, y), stroke.width, StrokeCap.Round)
+        }
+        // 右下小音符头
+        val noteCx = w * 0.62f
+        val noteCy = h * 0.58f
+        val noteR = min(w, h) * 0.09f
+        drawOval(
+            color = tint,
+            topLeft = Offset(noteCx - noteR * 1.15f, noteCy - noteR * 0.85f),
+            size = Size(noteR * 2.3f, noteR * 1.7f),
+        )
+        drawLine(
+            tint,
+            Offset(noteCx + noteR * 0.95f, noteCy - noteR * 0.2f),
+            Offset(noteCx + noteR * 0.95f, h * 0.30f),
+            stroke.width,
+            StrokeCap.Round,
+        )
     }
 }
 

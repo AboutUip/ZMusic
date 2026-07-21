@@ -151,6 +151,8 @@ class PlaybackBridge(
         }
     }
 
+    fun playIndex(index: Int) = runOnCoordinator { it.playIndex(index) }
+
     fun clearQueue() {
         stateStore.clear()
         coordinator?.clearQueue()
