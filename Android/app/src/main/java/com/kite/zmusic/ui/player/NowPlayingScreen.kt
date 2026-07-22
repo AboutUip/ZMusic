@@ -1847,7 +1847,6 @@ private fun LandscapeProjectionLyrics(
     lines: List<LrcLine>,
     positionMs: Long,
     trackDurationMs: Long,
-    fontScale: Float = 1f,
     lineSpacingDp: Float = 10f,
     playedCount: Int = 2,
     upcomingCount: Int = 2,
@@ -1896,7 +1895,9 @@ private fun LandscapeProjectionLyrics(
     val animActive = lyricAnimActiveIndex(lines, positionMs, trackDurationMs)
     val playFocus = lyricFocusIndex(lines, animActive)
     val live = lyricIsLive(lines, animActive, playFocus)
-    val fs = fontScale.coerceIn(PlayerDisplayPrefs.FONT_MIN, PlayerDisplayPrefs.FONT_MAX)
+    val playFs = playingStyle.sanitizedFontScale()
+    val playedFs = playedStyle.sanitizedFontScale()
+    val unplayedFs = unplayedStyle.sanitizedFontScale()
     val linePad = lineSpacingDp
         .coerceIn(PlayerDisplayPrefs.LINE_SPACING_MIN, PlayerDisplayPrefs.LINE_SPACING_MAX)
         .dp
@@ -1989,8 +1990,8 @@ private fun LandscapeProjectionLyrics(
     val visualPlayFocus =
         if (selectMode && selectFrozenFocus >= 0) selectFrozenFocus else playFocus
 
-    // 槽高 = 字高 + 行间距×2；间距=0 时贴紧，调大则行距与区域高度同步变大（仍恰好 N 行）
-    val slotHeight = (38f * fs).dp + linePad * 2
+    // 槽高取各角色字号下的最大行高，保证滚动居中稳定
+    val slotHeight = maxOf(38f * playFs, 26f * playedFs, 26f * unplayedFs).dp + linePad * 2
     val bandHeight = slotHeight * visibleCount
     val haloBleed = 96.dp
     // 上下垫白，使任意一行（含仅 1～2 行）都能滚到视口绝对垂直中心
@@ -2583,7 +2584,6 @@ private fun LandscapeProjectionLyrics(
                                 lines = lines,
                                 focus = visualPlayFocus,
                                 trackDurationMs = trackDurationMs,
-                                fontScale = fs,
                                 lineSpacing = 0.dp,
                                 slotHeight = rowHeight,
                                 animMs = animMs,
@@ -2648,7 +2648,6 @@ private fun LandscapeScrollLyricLine(
     lines: List<LrcLine>,
     focus: Int,
     trackDurationMs: Long,
-    fontScale: Float,
     lineSpacing: Dp,
     slotHeight: Dp,
     animMs: Int,
@@ -2667,6 +2666,10 @@ private fun LandscapeScrollLyricLine(
 ) {
     val ix = remember { MutableInteractionSource() }
     val st = selectStyleT.coerceIn(0f, 1f)
+    val playFs = playingStyle.sanitizedFontScale()
+    val playedFs = playedStyle.sanitizedFontScale()
+    val unplayedFs = unplayedStyle.sanitizedFontScale()
+    val sideFs = if (played) playedFs else unplayedFs
     val selectUnplayed = unplayedStyle.resolvedColorFor(LyricStyleRole.Unplayed)
     val selectSelectedText = playingStyle.resolvedColorFor(LyricStyleRole.Playing)
         .takeIf { it.alpha > 0.01f }
@@ -2724,6 +2727,7 @@ private fun LandscapeScrollLyricLine(
         @Composable
         fun SelectStaticText(alpha: Float) {
             val baseAlpha = lerp(0.46f, 0.50f, st)
+            val selectFs = if (selected) playFs else unplayedFs
             Text(
                 text = text,
                 style = TextStyle(
@@ -2743,8 +2747,8 @@ private fun LandscapeScrollLyricLine(
                     } else {
                         unplayedStyle.resolvedFontStyle()
                     },
-                    fontSize = (16.5f * fontScale).sp,
-                    lineHeight = (26f * fontScale).sp,
+                    fontSize = (16.5f * selectFs).sp,
+                    lineHeight = (26f * selectFs).sp,
                     letterSpacing = 0.35.sp,
                     textAlign = TextAlign.Center,
                 ),
@@ -2765,7 +2769,6 @@ private fun LandscapeScrollLyricLine(
                 focus = focus,
                 live = live,
                 trackDurationMs = trackDurationMs,
-                fontScale = fontScale,
                 animMs = animMs.coerceAtLeast(280),
                 compact = true,
                 lineSpacing = lineSpacing,
@@ -2794,8 +2797,8 @@ private fun LandscapeScrollLyricLine(
                             color = LyricBrowseSelect.copy(alpha = 0.88f),
                             fontFamily = FontFamily.SansSerif,
                             fontWeight = FontWeight.SemiBold,
-                            fontSize = (16.5f * fontScale).sp,
-                            lineHeight = (26f * fontScale).sp,
+                            fontSize = (16.5f * sideFs).sp,
+                            lineHeight = (26f * sideFs).sp,
                             letterSpacing = 0.35.sp,
                             textAlign = TextAlign.Center,
                         ),
@@ -2814,7 +2817,6 @@ private fun LandscapeScrollLyricLine(
                         lineKey = lineKey,
                         played = played,
                         distance = distanceFromPlay.coerceAtMost(3).coerceAtLeast(1),
-                        fontScale = fontScale,
                         animMs = animMs.coerceAtLeast(240),
                         verticalPadding = lineSpacing,
                         fillWidth = true,
@@ -2883,7 +2885,6 @@ private fun LandscapeCenterLyricLine(
     focus: Int,
     live: Boolean,
     trackDurationMs: Long,
-    fontScale: Float,
     animMs: Int,
     compact: Boolean = false,
     lineSpacing: Dp = 10.dp,
@@ -2905,11 +2906,13 @@ private fun LandscapeCenterLyricLine(
         label = "landLyricEmphasis",
     )
     val st = selectMorphT.coerceIn(0f, 1f)
+    val playFs = playingStyle.sanitizedFontScale()
+    val unplayedFs = unplayedStyle.sanitizedFontScale()
     // 布局用固定字号；不做缩放强调，避免入场结束水平微跳
-    val playFont = 26f * fontScale
-    val playLine = 38f * fontScale
-    val selectFont = 16.5f * fontScale
-    val selectLine = 26f * fontScale
+    val playFont = 26f * playFs
+    val playLine = 38f * playFs
+    val selectFont = 16.5f * unplayedFs
+    val selectLine = 26f * unplayedFs
     val baseFont = lerp(playFont, selectFont, st)
     val baseLine = lerp(playLine, selectLine, st)
     val playAlpha = 0.58f + 0.42f * emphasis * (1f - st)
@@ -2983,7 +2986,6 @@ private fun LandscapeSideLyricLine(
     lineKey: Int,
     played: Boolean,
     distance: Int,
-    fontScale: Float,
     animMs: Int,
     verticalPadding: Dp = 11.dp,
     fillWidth: Boolean = true,
@@ -3005,7 +3007,10 @@ private fun LandscapeSideLyricLine(
         ),
         label = "landSideA",
     )
-    val sizeSp = lerp(16.5f, 15f, playedStrength) * fontScale
+    val playedScale = playedStyle.sanitizedFontScale()
+    val unplayedScale = unplayedStyle.sanitizedFontScale()
+    val unplayedSizeSp = lerp(16.5f, 15f, 0f) * unplayedScale
+    val playedSizeSp = lerp(16.5f, 15f, 1f) * playedScale
     val padMod = Modifier
         .then(if (fillWidth) Modifier.fillMaxWidth() else Modifier.wrapContentWidth())
         .padding(vertical = verticalPadding, horizontal = 10.dp)
@@ -3014,8 +3019,8 @@ private fun LandscapeSideLyricLine(
     val playedColor = playedStyle.resolvedColorFor(LyricStyleRole.Played)
     val unplayedWeight = unplayedStyle.resolvedFontWeight(LyricStyleRole.Unplayed)
     val playedWeight = playedStyle.resolvedFontWeight(LyricStyleRole.Played)
-    val unplayedFs = unplayedStyle.resolvedFontStyle()
-    val playedFs = playedStyle.resolvedFontStyle()
+    val unplayedFontStyle = unplayedStyle.resolvedFontStyle()
+    val playedFontStyle = playedStyle.resolvedFontStyle()
 
     // 槽位固定后侧句文本会原地替换：用淡入淡出避免硬切
     Crossfade(
@@ -3039,9 +3044,9 @@ private fun LandscapeSideLyricLine(
                         color = unplayedColor.copy(alpha = alpha * (1f - playedStrength)),
                         fontFamily = FontFamily.SansSerif,
                         fontWeight = unplayedWeight,
-                        fontStyle = unplayedFs,
-                        fontSize = sizeSp.sp,
-                        lineHeight = (26f * fontScale).sp,
+                        fontStyle = unplayedFontStyle,
+                        fontSize = unplayedSizeSp.sp,
+                        lineHeight = (26f * unplayedScale).sp,
                         letterSpacing = 0.35.sp,
                         textAlign = TextAlign.Center,
                     ),
@@ -3058,9 +3063,9 @@ private fun LandscapeSideLyricLine(
                         color = playedColor.copy(alpha = alpha * playedStrength),
                         fontFamily = FontFamily.SansSerif,
                         fontWeight = playedWeight,
-                        fontStyle = playedFs,
-                        fontSize = sizeSp.sp,
-                        lineHeight = (26f * fontScale).sp,
+                        fontStyle = playedFontStyle,
+                        fontSize = playedSizeSp.sp,
+                        lineHeight = (26f * playedScale).sp,
                         letterSpacing = 0.35.sp,
                         textAlign = TextAlign.Center,
                     ),
@@ -3090,6 +3095,9 @@ private fun LandscapeAlignedSongMeta(
     titleNameColor: Color,
     titleArtistColor: Color,
     titleSourceColor: Color,
+    titleNameFontScale: Float,
+    titleArtistFontScale: Float,
+    titleSourceFontScale: Float,
     chromeSidePad: Dp,
     vinylCenterX: Dp,
     lyricsCenterX: Dp,
@@ -3107,7 +3115,6 @@ private fun LandscapeAlignedSongMeta(
         titleAlign == TitleAlignMode.CENTER ||
         titleAlign == TitleAlignMode.LYRICS
     val textAlign = if (centerModes) TextAlign.Center else TextAlign.Start
-    val topPad = songMetaTopPad + titleOffsetYDp.dp
     val alpha = contentAlpha.coerceIn(0f, 1f)
 
     fun publishVisualUnion() {
@@ -3151,7 +3158,8 @@ private fun LandscapeAlignedSongMeta(
         Column(
             Modifier
                 .align(Alignment.TopStart)
-                .padding(top = topPad)
+                .padding(top = songMetaTopPad)
+                .offset(y = titleOffsetYDp.dp)
                 .widthIn(max = titleMaxWidth)
                 .fillMaxWidth(),
             horizontalAlignment = Alignment.Start,
@@ -3165,7 +3173,7 @@ private fun LandscapeAlignedSongMeta(
                     color = titleNameColor,
                     fontFamily = FontFamily.SansSerif,
                     fontWeight = FontWeight.SemiBold,
-                    fontSize = 16.sp,
+                    fontSize = (TitleLineStyle.BASE_NAME_SP * titleNameFontScale).sp,
                     letterSpacing = 0.35.sp,
                     textAlign = textAlign,
                 ),
@@ -3181,7 +3189,7 @@ private fun LandscapeAlignedSongMeta(
                 style = TextStyle(
                     color = titleArtistColor,
                     fontFamily = FontFamily.Monospace,
-                    fontSize = 9.5.sp,
+                    fontSize = (TitleLineStyle.BASE_ARTIST_SP * titleArtistFontScale).sp,
                     letterSpacing = 1.8.sp,
                     textAlign = textAlign,
                 ),
@@ -3198,7 +3206,7 @@ private fun LandscapeAlignedSongMeta(
                     style = TextStyle(
                         color = titleSourceColor,
                         fontFamily = FontFamily.Monospace,
-                        fontSize = 8.sp,
+                        fontSize = (TitleLineStyle.BASE_SOURCE_SP * titleSourceFontScale).sp,
                         letterSpacing = 0.55.sp,
                         textAlign = textAlign,
                     ),
@@ -3471,6 +3479,8 @@ private fun LandscapePlayerBody(
     var pickerVinylCentered by remember { mutableStateOf(false) }
     var vinylSongPickOpen by remember { mutableStateOf(false) }
     var vinylSongPickPhase by remember { mutableStateOf(VinylSongPickPhase.Entering) }
+    /** 选歌叠层是否已盖住主黑胶（取消退场期间保持，直至交接） */
+    var pickOverlayCoversMain by remember { mutableStateOf(false) }
     var pickTargetIndex by remember { mutableIntStateOf(0) }
     /** 每次长按打开递增，强制选歌层按当前播放位置重建，避免沿用上次会话 */
     var pickSessionGeneration by remember { mutableIntStateOf(0) }
@@ -3600,19 +3610,39 @@ private fun LandscapePlayerBody(
     val scoreT = scorePanel.value
     val scoreCoverT = scoreCoverAnim.value
 
-    // 切歌：设置/选句刷新磨砂；曲谱已改为实底，不参与 remount
+    // 切歌 / 加载结束：设置等面板重挂磨砂，避免源内容突变后退回纯色 fallback
+    fun hazePanelsOpen(): Boolean =
+        settingsOpen ||
+            lyricSelectOpen ||
+            vinylColorEditorOpen ||
+            editorVinylCentered ||
+            lyricStyleEditorOpen ||
+            titleStyleEditorOpen ||
+            scoreOpen ||
+            vinylSongPickOpen
+
     LaunchedEffect(track.id) {
         if (lyricSelectOpen) {
             lyricSelectSelected.clear()
         }
-        if (settingsOpen || lyricSelectOpen || vinylColorEditorOpen || editorVinylCentered ||
-            lyricStyleEditorOpen || titleStyleEditorOpen
-        ) {
-            delay(64)
-            hazeNonce++
-            delay(280)
-            hazeNonce++
-        }
+        if (!hazePanelsOpen()) return@LaunchedEffect
+        delay(64)
+        hazeNonce++
+        delay(280)
+        hazeNonce++
+    }
+
+    var mediaWasLoading by remember { mutableStateOf(loadPending || buffering) }
+    LaunchedEffect(loadPending, buffering) {
+        val loading = loadPending || buffering
+        val finishedLoading = mediaWasLoading && !loading
+        mediaWasLoading = loading
+        if (!finishedLoading || !hazePanelsOpen()) return@LaunchedEffect
+        // 封面/黑胶等源层绘制就绪后再采样
+        delay(48)
+        hazeNonce++
+        delay(220)
+        hazeNonce++
     }
 
     val editorPanel = remember { Animatable(0f) }
@@ -3704,20 +3734,21 @@ private fun LandscapePlayerBody(
     val titleStylePanel = remember { Animatable(0f) }
     LaunchedEffect(titleStyleEditorOpen) {
         if (titleStyleEditorOpen) {
+            // 先钉在源位，再慢启程，避免开场插值跳位/瞬移
             titleStylePanel.snapTo(0f)
-            delay(32)
+            delay(90)
             if (!titleStyleEditorOpen) return@LaunchedEffect
             titleStylePanel.animateTo(
                 targetValue = 1f,
-                animationSpec = tween(durationMillis = 460, easing = settingsCurve),
+                animationSpec = tween(durationMillis = 860, easing = TitleStylePanelEasing),
             )
         } else {
             titleStylePanel.animateTo(
                 targetValue = 0f,
-                animationSpec = tween(durationMillis = 460, easing = settingsCurve),
+                animationSpec = tween(durationMillis = 780, easing = TitleStylePanelEasing),
             )
             if (titleStyleSnapshot != null) {
-                delay(200)
+                delay(280)
             }
             if (reopenSettingsAfterTitleStyle) {
                 reopenSettingsAfterTitleStyle = false
@@ -3738,22 +3769,24 @@ private fun LandscapePlayerBody(
         }
     }
     val titleStyleT = titleStylePanel.value
+    // 关闭回位末段：真标题与克隆更长交叉淡出，避免回弹突兀
     val titleStyleHandoffT = if (
         !titleStyleEditorOpen &&
         titleStyleSnapshot != null
     ) {
-        ((0.35f - titleStyleT) / 0.35f).coerceIn(0f, 1f)
+        ((0.45f - titleStyleT) / 0.45f).coerceIn(0f, 1f)
     } else {
         0f
     }
+    // 开场：克隆先淡入钉在源位，真标题慢消；morph 行程见 titleStyleMorphT
     val liveTitleMetaAlpha = when {
         titleStyleSnapshot == null -> 1f
-        titleStyleEditorOpen -> 0f
+        titleStyleEditorOpen -> (1f - titleStyleT / 0.24f).coerceIn(0f, 1f)
         else -> titleStyleHandoffT
     }
     val titleStyleCloneAlpha = when {
         titleStyleSnapshot == null -> 0f
-        titleStyleEditorOpen -> 1f
+        titleStyleEditorOpen -> (titleStyleT / 0.14f).coerceIn(0f, 1f)
         else -> (1f - titleStyleHandoffT).coerceIn(0f, 1f)
     }
 
@@ -3809,6 +3842,19 @@ private fun LandscapePlayerBody(
                 pickAnchorSizePx = mainVinylSizePx
             }
             vinylSongPickPhase = VinylSongPickPhase.Stacking
+        }
+    }
+    // 叠层盖住主盘后保持隐藏标记，取消退场时不提前露主盘
+    LaunchedEffect(vinylSongPickPhase) {
+        when (vinylSongPickPhase) {
+            VinylSongPickPhase.Entering,
+            VinylSongPickPhase.Stacking,
+            -> pickOverlayCoversMain = false
+            VinylSongPickPhase.FanOut,
+            VinylSongPickPhase.Browsing,
+            VinylSongPickPhase.Confirming,
+            -> pickOverlayCoversMain = true
+            VinylSongPickPhase.Canceling -> Unit
         }
     }
     val vinylSongPickT = vinylSongPickPanel.value
@@ -3932,7 +3978,6 @@ private fun LandscapePlayerBody(
             focusIndex = focus,
             playedCount = displayPrefs.lyricPlayedCount,
             upcomingCount = displayPrefs.lyricUpcomingCount,
-            fontScale = displayPrefs.fontScale,
             lineSpacingDp = displayPrefs.lyricLineSpacingDp,
             sourceLeftDp = srcLeft,
             sourceTopDp = srcTop,
@@ -4126,16 +4171,24 @@ private fun LandscapePlayerBody(
     fun cancelVinylSongPick() {
         if (!vinylSongPickOpen && vinylSongPickT <= 0.001f) return
         if (vinylSongPickPhase == VinylSongPickPhase.Confirming) return
+        if (vinylSongPickPhase == VinylSongPickPhase.Canceling) return
+        // 先播退场动画，结束后再消雾 + 解除居中（与确认路径对称）
         vinylSongPickPhase = VinylSongPickPhase.Canceling
         pendingPickPlayIndex = null
         pickRevealMainUnderHandoff = false
-        vinylSongPickOpen = false
     }
 
     fun confirmVinylSongPick() {
         if (!vinylSongPickOpen || vinylSongPickPhase != VinylSongPickPhase.Browsing) return
         // 先播离场动画，结束后再消雾 + 切歌
         vinylSongPickPhase = VinylSongPickPhase.Confirming
+    }
+
+    fun finishVinylSongPickCancelExit() {
+        if (vinylSongPickPhase != VinylSongPickPhase.Canceling) return
+        // 主黑胶仍是打开时曲目，交接盘盖住后再消雾
+        pickRevealMainUnderHandoff = true
+        vinylSongPickOpen = false
     }
 
     fun finishVinylSongPickConfirmExit() {
@@ -4240,6 +4293,7 @@ private fun LandscapePlayerBody(
                 pickerVinylCentered = false
                 pendingPickPlayIndex = null
                 pickRevealMainUnderHandoff = false
+                pickOverlayCoversMain = false
                 vinylSongPickEverOpen = false
                 vinylSongPickPhase = VinylSongPickPhase.Entering
                 vinylSongPickPanel.snapTo(0f)
@@ -4411,7 +4465,9 @@ private fun LandscapePlayerBody(
             .coerceAtLeast(0.dp)
         val lyricSelectGeomTarget = rememberLyricSelectGeom(
             lines = lines,
-            fontScale = displayPrefs.fontScale,
+            playingStyle = displayPrefs.lyricPlayingStyle,
+            playedStyle = displayPrefs.lyricPlayedStyle,
+            unplayedStyle = displayPrefs.lyricUnplayedStyle,
             screenWidth = maxWidth,
             screenHeight = maxHeight,
         )
@@ -4562,10 +4618,11 @@ private fun LandscapePlayerBody(
                     !titleStyleEditorOpen
                 // Entering/Stacking 保留主黑胶：叠层先盖住后再藏，避免居中结束瞬间主盘被 haze 虚化闪一下
                 val hideMainForPickTarget = when {
-                    vinylSongPickPhase == VinylSongPickPhase.Canceling -> false
                     pickRevealMainUnderHandoff -> false
                     vinylSongPickPhase == VinylSongPickPhase.Entering -> false
                     vinylSongPickPhase == VinylSongPickPhase.Stacking -> false
+                    vinylSongPickPhase == VinylSongPickPhase.Canceling ->
+                        pickOverlayCoversMain && vinylSongPickT > 0.04f
                     else -> vinylSongPickT > 0.04f
                 }
                 val pickMainAlpha by animateFloatAsState(
@@ -4630,7 +4687,6 @@ private fun LandscapePlayerBody(
                     positionMs
                 },
                 trackDurationMs = durationMs,
-                fontScale = displayPrefs.fontScale,
                 lineSpacingDp = displayPrefs.lyricLineSpacingDp,
                 playedCount = displayPrefs.lyricPlayedCount,
                 upcomingCount = displayPrefs.lyricUpcomingCount,
@@ -4686,6 +4742,9 @@ private fun LandscapePlayerBody(
             titleNameColor = displayPrefs.titleNameColor(),
             titleArtistColor = displayPrefs.titleArtistColor(),
             titleSourceColor = displayPrefs.titleSourceColor(),
+            titleNameFontScale = displayPrefs.titleNameStyle.sanitizedFontScale(),
+            titleArtistFontScale = displayPrefs.titleArtistStyle.sanitizedFontScale(),
+            titleSourceFontScale = displayPrefs.titleSourceStyle.sanitizedFontScale(),
             chromeSidePad = chromeSidePad,
             vinylCenterX = vinylCenterX,
             lyricsCenterX = lyricsCenterX,
@@ -5012,6 +5071,7 @@ private fun LandscapePlayerBody(
                 previewWidthDp = styleSnap.sourceWidthDp,
                 onDismiss = { closeLyricStyleEditor() },
                 onBackToSettings = { closeLyricStyleEditorToSettings() },
+                hazeNonce = hazeNonce,
                 modifier = Modifier.fillMaxSize(),
             )
             LyricStyleCloneLayer(
@@ -5026,7 +5086,7 @@ private fun LandscapePlayerBody(
             )
         }
 
-        // 标题颜色：面板与克隆分离；歌曲信息 morph 进右侧预览槽
+        // 标题样式：面板与克隆分离；歌曲信息柔缓 morph 进右侧预览槽
         val titleSnap = titleStyleSnapshot
         if (titleSnap != null &&
             (titleStyleEditorOpen || titleStyleT > 0.001f || titleStyleCloneAlpha > 0.001f)
@@ -5050,6 +5110,7 @@ private fun LandscapePlayerBody(
                 previewWidthDp = titleSnap.sourceWidthDp,
                 onDismiss = { closeTitleStyleEditor() },
                 onBackToSettings = { closeTitleStyleEditorToSettings() },
+                hazeNonce = hazeNonce,
                 modifier = Modifier.fillMaxSize(),
             )
             TitleStyleCloneLayer(
@@ -5128,9 +5189,12 @@ private fun LandscapePlayerBody(
                 centerRadiusFrac = displayPrefs.vinylCenterRadiusFrac,
                 outerScale = vinylOuterScale,
                 hazeState = settingsHazeState,
+                titleNameStyle = displayPrefs.titleNameStyle,
+                uiScale = uiScale,
                 sessionKey = pickSessionGeneration,
                 onBack = { cancelVinylSongPick() },
                 onConfirmFocused = { confirmVinylSongPick() },
+                onCancelExitFinished = { finishVinylSongPickCancelExit() },
                 onConfirmExitFinished = { finishVinylSongPickConfirmExit() },
                 onStackingFinished = {
                     if (vinylSongPickOpen && vinylSongPickPhase == VinylSongPickPhase.Stacking) {

@@ -26,14 +26,19 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -41,6 +46,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
@@ -111,7 +117,6 @@ data class LyricStyleSnapshot(
     val focusIndex: Int,
     val playedCount: Int,
     val upcomingCount: Int,
-    val fontScale: Float,
     val lineSpacingDp: Float,
     val sourceLeftDp: Dp,
     val sourceTopDp: Dp,
@@ -255,18 +260,33 @@ fun LyricStyleEditorOverlay(
                         alpha = t
                     }
                     .clip(PanelShape)
-                    .hazeEffect(state = hazeState, style = EditorGlassStyle) {
-                        blurRadius = 72.dp
-                        noiseFactor = 0.10f
-                    }
-                    .border(width = 1.dp, color = EditorBorder, shape = PanelShape)
-                    .background(Color(0x9905080E))
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
                         onClick = {},
                     ),
             ) {
+                key(hazeNonce) {
+                    Box(
+                        Modifier
+                            .matchParentSize()
+                            .hazeEffect(state = hazeState, style = EditorGlassStyle) {
+                                blurRadius = 72.dp
+                                noiseFactor = 0.10f
+                            },
+                    )
+                }
+                Box(
+                    Modifier
+                        .matchParentSize()
+                        .background(Color(0x9905080E)),
+                )
+                Box(
+                    Modifier
+                        .matchParentSize()
+                        .border(width = 1.dp, color = EditorBorder, shape = PanelShape),
+                )
+
                 Box(
                     Modifier
                         .align(Alignment.TopStart)
@@ -339,7 +359,7 @@ fun LyricStyleEditorOverlay(
                             ),
                         )
                         Text(
-                            text = "克隆映射进预览 · 关闭后应用",
+                            text = "颜色与字号 · 关闭后应用",
                             style = TextStyle(
                                 color = EditorHint.copy(alpha = 0.72f),
                                 fontFamily = FontFamily.Monospace,
@@ -412,7 +432,9 @@ fun LyricStyleCloneLayer(
     // 终点应为静止槽；缺省时钉在源位（不应再出现动画中 bounds）
     val morphT = if (targetSlot != null) t else 0f
     val scale = uiScale.coerceIn(PlayerDisplayPrefs.UI_MIN, PlayerDisplayPrefs.UI_MAX)
-    val contentFontScale = snapshot.fontScale * scale
+    val playFs = draftPlaying.sanitizedFontScale() * scale
+    val playedFs = draftPlayed.sanitizedFontScale() * scale
+    val unplayedFs = draftUnplayed.sanitizedFontScale() * scale
     // 真歌词在 uiScale 层内，行距布局值也会被放大；克隆在层外需乘同一系数
     val linePadDp = snapshot.lineSpacingDp
         .coerceIn(PlayerDisplayPrefs.LINE_SPACING_MIN, PlayerDisplayPrefs.LINE_SPACING_MAX)
@@ -453,7 +475,9 @@ fun LyricStyleCloneLayer(
             playing = draftPlaying,
             played = draftPlayed,
             unplayed = draftUnplayed,
-            contentFontScale = contentFontScale,
+            playFontScale = playFs,
+            playedFontScale = playedFs,
+            unplayedFontScale = unplayedFs,
             contentLineSpacing = contentLineSpacing,
             contentPad = lerpDp(0.dp, 8.dp, morphT),
             modifier = Modifier.fillMaxSize(),
@@ -461,6 +485,7 @@ fun LyricStyleCloneLayer(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun LyricRoleStyleSection(
     title: String,
@@ -469,6 +494,14 @@ private fun LyricRoleStyleSection(
     switchColors: androidx.compose.material3.SwitchColors,
     onChange: (LyricRoleStyle) -> Unit,
 ) {
+    val fontScale = style.sanitizedFontScale()
+    val sliderColors = SliderDefaults.colors(
+        thumbColor = Color(0xFFF8FAFC),
+        activeTrackColor = EditorAccent.copy(alpha = 0.62f),
+        inactiveTrackColor = Color.White.copy(alpha = 0.16f),
+        activeTickColor = Color.Transparent,
+        inactiveTickColor = Color.Transparent,
+    )
     Column(
         Modifier
             .fillMaxWidth()
@@ -485,6 +518,43 @@ private fun LyricRoleStyleSection(
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 13.sp,
             ),
+        )
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "字体大小",
+                style = TextStyle(
+                    color = EditorHint.copy(alpha = 0.85f),
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 9.sp,
+                    letterSpacing = 0.4.sp,
+                ),
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                text = String.format("%.0f%%", fontScale * 100f),
+                style = TextStyle(
+                    color = EditorAccent.copy(alpha = 0.95f),
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium,
+                ),
+            )
+        }
+        Slider(
+            value = fontScale,
+            onValueChange = { next ->
+                val clamped = next
+                    .takeIf { it.isFinite() }
+                    ?.coerceIn(PlayerDisplayPrefs.FONT_MIN, PlayerDisplayPrefs.FONT_MAX)
+                    ?: return@Slider
+                onChange(style.withFontScale(clamped))
+            },
+            valueRange = PlayerDisplayPrefs.FONT_MIN..PlayerDisplayPrefs.FONT_MAX,
+            colors = sliderColors,
+            modifier = Modifier.fillMaxWidth(),
         )
         Row(
             Modifier.fillMaxWidth(),
@@ -768,7 +838,9 @@ private fun LyricStyleCloneContent(
     playing: LyricRoleStyle,
     played: LyricRoleStyle,
     unplayed: LyricRoleStyle,
-    contentFontScale: Float,
+    playFontScale: Float,
+    playedFontScale: Float,
+    unplayedFontScale: Float,
     /** 与真歌词相同的视觉行距（已含 uiScale） */
     contentLineSpacing: Dp,
     contentPad: Dp,
@@ -784,13 +856,21 @@ private fun LyricStyleCloneContent(
         PlayerDisplayPrefs.LYRIC_AROUND_MIN,
         PlayerDisplayPrefs.LYRIC_AROUND_MAX,
     )
-    val fs = contentFontScale.coerceIn(
+    val playFs = playFontScale.coerceIn(
         PlayerDisplayPrefs.FONT_MIN * 0.75f,
         PlayerDisplayPrefs.FONT_MAX * 1.35f,
     )
-    // 与 LandscapeProjectionLyrics 一致：槽高 = 字高 + 行距×2
+    val playedFs = playedFontScale.coerceIn(
+        PlayerDisplayPrefs.FONT_MIN * 0.75f,
+        PlayerDisplayPrefs.FONT_MAX * 1.35f,
+    )
+    val unplayedFs = unplayedFontScale.coerceIn(
+        PlayerDisplayPrefs.FONT_MIN * 0.75f,
+        PlayerDisplayPrefs.FONT_MAX * 1.35f,
+    )
+    // 与 LandscapeProjectionLyrics 一致：槽高取各角色最大行高
     val linePad = contentLineSpacing
-    val slotHeight = (38f * fs).dp + linePad * 2
+    val slotHeight = maxOf(38f * playFs, 26f * playedFs, 26f * unplayedFs).dp + linePad * 2
 
     val playingColor by animateColorAsState(
         playing.resolvedColorFor(LyricStyleRole.Playing),
@@ -809,7 +889,9 @@ private fun LyricStyleCloneContent(
     )
 
     Box(
-        modifier.padding(contentPad),
+        modifier
+            .fillMaxSize()
+            .padding(contentPad),
         contentAlignment = Alignment.Center,
     ) {
         if (lines.isEmpty()) {
@@ -824,7 +906,7 @@ private fun LyricStyleCloneContent(
             return@Box
         }
 
-        // 不用 weight 挤扁：固定槽高还原真歌词垂直节奏，超出由外层 clip 包含
+        // 与真歌词一致：槽最小高度固定，长句可撑开；末行省略号折叠，避免固定高度裁切
         Column(
             Modifier.fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -834,7 +916,8 @@ private fun LyricStyleCloneContent(
                 Box(
                     Modifier
                         .fillMaxWidth()
-                        .height(slotHeight),
+                        .heightIn(min = slotHeight)
+                        .wrapContentHeight(),
                     contentAlignment = Alignment.Center,
                 ) {
                     CloneSideLine(
@@ -845,7 +928,7 @@ private fun LyricStyleCloneContent(
                         ),
                         style = played,
                         role = LyricStyleRole.Played,
-                        fontScale = fs,
+                        fontScale = playedFs,
                         verticalPad = linePad,
                     )
                 }
@@ -853,14 +936,15 @@ private fun LyricStyleCloneContent(
             Box(
                 Modifier
                     .fillMaxWidth()
-                    .height(slotHeight),
+                    .heightIn(min = slotHeight)
+                    .wrapContentHeight(),
                 contentAlignment = Alignment.Center,
             ) {
                 CloneCenterLine(
                     text = lines.getOrNull(focus)?.text.orEmpty(),
                     color = playingColor.copy(alpha = 0.96f),
                     style = playing,
-                    fontScale = fs,
+                    fontScale = playFs,
                     verticalPad = linePad,
                 )
             }
@@ -869,7 +953,8 @@ private fun LyricStyleCloneContent(
                 Box(
                     Modifier
                         .fillMaxWidth()
-                        .height(slotHeight),
+                        .heightIn(min = slotHeight)
+                        .wrapContentHeight(),
                     contentAlignment = Alignment.Center,
                 ) {
                     CloneSideLine(
@@ -880,7 +965,7 @@ private fun LyricStyleCloneContent(
                         ),
                         style = unplayed,
                         role = LyricStyleRole.Unplayed,
-                        fontScale = fs,
+                        fontScale = unplayedFs,
                         verticalPad = linePad,
                     )
                 }
@@ -912,7 +997,7 @@ private fun CloneCenterLine(
         ),
         maxLines = 4,
         softWrap = true,
-        overflow = TextOverflow.Clip,
+        overflow = TextOverflow.Ellipsis,
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = verticalPad, horizontal = 4.dp)
@@ -944,7 +1029,7 @@ private fun CloneSideLine(
         ),
         maxLines = 3,
         softWrap = true,
-        overflow = TextOverflow.Clip,
+        overflow = TextOverflow.Ellipsis,
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = verticalPad, horizontal = 10.dp),

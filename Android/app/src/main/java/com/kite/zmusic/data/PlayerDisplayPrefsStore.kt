@@ -181,6 +181,8 @@ data class LyricRoleStyle(
     val preset0Argb: Int = Color(0xFFF8FAFC).toArgb(),
     val preset1Argb: Int = Color(0xFF9AF0F0).toArgb(),
     val preset2Argb: Int = Color(0xFFE8C4A0).toArgb(),
+    /** 相对基准字号倍率：0.75 .. 1.50 */
+    val fontScale: Float = 1f,
 ) {
     fun resolvedColor(defaultArgb: Int): Color = when (colorSlot) {
         LyricColorSlot.DEFAULT -> Color(defaultArgb)
@@ -202,6 +204,15 @@ data class LyricRoleStyle(
     }
 
     fun withColorSlot(slot: LyricColorSlot): LyricRoleStyle = copy(colorSlot = slot)
+
+    fun withFontScale(scale: Float): LyricRoleStyle = copy(fontScale = scale)
+
+    fun sanitizedFontScale(
+        min: Float = PlayerDisplayPrefs.FONT_MIN,
+        max: Float = PlayerDisplayPrefs.FONT_MAX,
+    ): Float = fontScale.let { if (it.isFinite()) it.coerceIn(min, max) else 1f }
+
+    fun sanitized(): LyricRoleStyle = copy(fontScale = sanitizedFontScale())
 
     companion object {
         val PlayingDefault = LyricRoleStyle(
@@ -236,7 +247,7 @@ data class LyricRoleStyle(
     }
 }
 
-/** 编码：italic,bold,slot,p0,p1,p2 */
+/** 编码：italic,bold,slot,p0,p1,p2[,fontScale] */
 fun encodeLyricRoleStyle(style: LyricRoleStyle): String =
     listOf(
         if (style.italic) 1 else 0,
@@ -245,6 +256,7 @@ fun encodeLyricRoleStyle(style: LyricRoleStyle): String =
         style.preset0Argb,
         style.preset1Argb,
         style.preset2Argb,
+        style.sanitizedFontScale(),
     ).joinToString(",")
 
 fun decodeLyricRoleStyle(raw: String?, fallback: LyricRoleStyle): LyricRoleStyle {
@@ -257,6 +269,8 @@ fun decodeLyricRoleStyle(raw: String?, fallback: LyricRoleStyle): LyricRoleStyle
     val p0 = bits[3].toIntOrNull() ?: fallback.preset0Argb
     val p1 = bits[4].toIntOrNull() ?: fallback.preset1Argb
     val p2 = bits[5].toIntOrNull() ?: fallback.preset2Argb
+    val fontScale = bits.getOrNull(6)?.toFloatOrNull()?.takeIf { it.isFinite() }
+        ?: fallback.fontScale
     return LyricRoleStyle(
         italic = italic,
         bold = bold,
@@ -264,7 +278,8 @@ fun decodeLyricRoleStyle(raw: String?, fallback: LyricRoleStyle): LyricRoleStyle
         preset0Argb = p0,
         preset1Argb = p1,
         preset2Argb = p2,
-    )
+        fontScale = fontScale,
+    ).sanitized()
 }
 
 /** 横屏标题信息行颜色槽：不可改默认 + 2 个可写预设。 */
@@ -280,11 +295,13 @@ enum class TitleColorSlot {
     }
 }
 
-/** 歌名 / 制作人 / 歌单一行的颜色样式。 */
+/** 歌名 / 制作人 / 歌单一行的颜色与字号样式。 */
 data class TitleLineStyle(
     val colorSlot: TitleColorSlot = TitleColorSlot.DEFAULT,
     val preset0Argb: Int = Color(0xFFF8FAFC).toArgb(),
     val preset1Argb: Int = Color(0xFF9AF0F0).toArgb(),
+    /** 相对基准字号倍率：0.75 .. 1.50 */
+    val fontScale: Float = 1f,
 ) {
     fun resolvedColor(defaultArgb: Int): Color = when (colorSlot) {
         TitleColorSlot.DEFAULT -> Color(defaultArgb)
@@ -304,11 +321,24 @@ data class TitleLineStyle(
 
     fun withColorSlot(slot: TitleColorSlot): TitleLineStyle = copy(colorSlot = slot)
 
+    fun withFontScale(scale: Float): TitleLineStyle = copy(fontScale = scale)
+
+    fun sanitizedFontScale(
+        min: Float = PlayerDisplayPrefs.FONT_MIN,
+        max: Float = PlayerDisplayPrefs.FONT_MAX,
+    ): Float = fontScale.let { if (it.isFinite()) it.coerceIn(min, max) else 1f }
+
+    fun sanitized(): TitleLineStyle = copy(fontScale = sanitizedFontScale())
+
     companion object {
         /** 内置不可改默认色（与历史硬编码一致）。 */
         val DEFAULT_NAME_ARGB: Int = Color(0xFFF5F7FA).toArgb()
         val DEFAULT_ARTIST_ARGB: Int = Color(0xFF6FD4D4).copy(alpha = 0.72f).toArgb()
         val DEFAULT_SOURCE_ARGB: Int = Color(0xFF7A8899).copy(alpha = 0.4f).toArgb()
+
+        const val BASE_NAME_SP = 16f
+        const val BASE_ARTIST_SP = 9.5f
+        const val BASE_SOURCE_SP = 8f
 
         val NameDefault = TitleLineStyle(
             colorSlot = TitleColorSlot.DEFAULT,
@@ -328,12 +358,13 @@ data class TitleLineStyle(
     }
 }
 
-/** 编码：slot,p0,p1 */
+/** 编码：slot,p0,p1[,fontScale] */
 fun encodeTitleLineStyle(style: TitleLineStyle): String =
     listOf(
         style.colorSlot.ordinal,
         style.preset0Argb,
         style.preset1Argb,
+        style.sanitizedFontScale(),
     ).joinToString(",")
 
 fun decodeTitleLineStyle(raw: String?, fallback: TitleLineStyle): TitleLineStyle {
@@ -343,11 +374,14 @@ fun decodeTitleLineStyle(raw: String?, fallback: TitleLineStyle): TitleLineStyle
     val slot = TitleColorSlot.fromOrdinal(bits[0].toIntOrNull() ?: 0)
     val p0 = bits[1].toIntOrNull() ?: fallback.preset0Argb
     val p1 = bits[2].toIntOrNull() ?: fallback.preset1Argb
+    val fontScale = bits.getOrNull(3)?.toFloatOrNull()?.takeIf { it.isFinite() }
+        ?: fallback.fontScale
     return TitleLineStyle(
         colorSlot = slot,
         preset0Argb = p0,
         preset1Argb = p1,
-    )
+        fontScale = fontScale,
+    ).sanitized()
 }
 
 /** 全屏播放页显示偏好（雨夜 / 字号 / UI 缩放 / 黑胶位置等），客户端持久化。 */
@@ -565,9 +599,12 @@ data class PlayerDisplayPrefs(
                 VINYL_GESTURE_DAMPING_MAX,
                 0.5f,
             ),
-            lyricPlayingStyle = lyricPlayingStyle,
-            lyricPlayedStyle = lyricPlayedStyle,
-            lyricUnplayedStyle = lyricUnplayedStyle,
+            lyricPlayingStyle = lyricPlayingStyle.sanitized(),
+            lyricPlayedStyle = lyricPlayedStyle.sanitized(),
+            lyricUnplayedStyle = lyricUnplayedStyle.sanitized(),
+            titleNameStyle = titleNameStyle.sanitized(),
+            titleArtistStyle = titleArtistStyle.sanitized(),
+            titleSourceStyle = titleSourceStyle.sanitized(),
         )
     }
 
@@ -650,9 +687,16 @@ class PlayerDisplayPrefsStore(context: Context) {
         val index = prefs.safeInt(KEY_VINYL_CUSTOM_PRESET_INDEX, 0)
             .coerceIn(0, PlayerDisplayPrefs.VINYL_CUSTOM_PRESET_COUNT - 1)
         val active = presets[index]
+        val legacyLyricFont = prefs.safeFloat(KEY_FONT, 1f).let {
+            if (it.isFinite()) {
+                it.coerceIn(PlayerDisplayPrefs.FONT_MIN, PlayerDisplayPrefs.FONT_MAX)
+            } else {
+                1f
+            }
+        }
         return PlayerDisplayPrefs(
             rainNightEnabled = prefs.safeBoolean(KEY_RAIN, true),
-            fontScale = prefs.safeFloat(KEY_FONT, 1f),
+            fontScale = legacyLyricFont,
             lyricLineSpacingDp = prefs.safeFloat(KEY_LINE_SPACING, 10f),
             lyricPlayedCount = prefs.safeInt(KEY_PLAYED_COUNT, 2),
             lyricUpcomingCount = prefs.safeInt(KEY_UPCOMING_COUNT, 2),
@@ -699,15 +743,16 @@ class PlayerDisplayPrefsStore(context: Context) {
             vinylGestureDamping = prefs.safeFloat(KEY_VINYL_GESTURE_DAMPING, 0.5f),
             lyricPlayingStyle = decodeLyricRoleStyle(
                 prefs.safeString(KEY_LYRIC_PLAYING_STYLE, null),
-                LyricRoleStyle.PlayingDefault,
+                // 旧版全局字号迁移到各角色
+                LyricRoleStyle.PlayingDefault.copy(fontScale = legacyLyricFont),
             ),
             lyricPlayedStyle = decodeLyricRoleStyle(
                 prefs.safeString(KEY_LYRIC_PLAYED_STYLE, null),
-                LyricRoleStyle.PlayedDefault,
+                LyricRoleStyle.PlayedDefault.copy(fontScale = legacyLyricFont),
             ),
             lyricUnplayedStyle = decodeLyricRoleStyle(
                 prefs.safeString(KEY_LYRIC_UNPLAYED_STYLE, null),
-                LyricRoleStyle.UnplayedDefault,
+                LyricRoleStyle.UnplayedDefault.copy(fontScale = legacyLyricFont),
             ),
         )
     }

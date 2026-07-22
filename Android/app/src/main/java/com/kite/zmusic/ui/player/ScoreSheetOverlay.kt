@@ -7,14 +7,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -23,12 +20,10 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.itemsIndexed
-import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -50,19 +45,24 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kite.zmusic.data.TrackRow
 import com.kite.zmusic.data.VinylPlateColors
 import com.kite.zmusic.ui.common.UrlImage
 import com.kite.zmusic.ui.common.UrlImageCache
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.min
+import kotlin.math.roundToInt
 import kotlin.math.sin
+import kotlinx.coroutines.yield
 
 private val LabelColor = Color(0xFFFFFFFF)
 private val Accent = Color(0xFF9AF0F0)
@@ -78,7 +78,8 @@ private val CardBg = Color(0xFF0C121C)
 private val PanelBg = Color(0xF2080C14)
 
 /**
- * @param coverExpanded 目标列数跟布尔走（展开动画一开始就切 4 列），避免中途跳列失焦
+ * @param coverExpanded 仅驱动标题箭头朝向；列数由 [coverExpandProgress] 在 2↔4 间连续插值
+ * @param coverExpandProgress 0=两列收起，1=四列展开；与面板宽度同曲线，卡片位姿同步 morph
  * @param onPlayTrack 点选：带回卡片黑胶根坐标，供飞入动画
  */
 @Composable
@@ -93,13 +94,8 @@ fun ScoreSheetOverlay(
     openGeneration: Int,
     modifier: Modifier = Modifier,
 ) {
-    // 跟目标布尔：展开瞬间用 4 列随宽度变宽，收回瞬间用 2 列随宽度变窄 —— 无中途跳列
-    val columnCount = if (coverExpanded) 4 else 2
-    val gridGap = androidx.compose.ui.unit.lerp(
-        10.dp,
-        8.dp,
-        coverExpandProgress.coerceIn(0f, 1f),
-    )
+    val expandT = coverExpandProgress.coerceIn(0f, 1f)
+    val gridGap = androidx.compose.ui.unit.lerp(10.dp, 8.dp, expandT)
     val initialIndex = remember(openGeneration, tracks.size) {
         if (tracks.isEmpty()) 0
         else currentIndex.coerceIn(0, tracks.lastIndex)
@@ -199,46 +195,211 @@ fun ScoreSheetOverlay(
                     .clip(CardShape),
             ) {
                 key(openGeneration) {
-                    val gridState = rememberLazyGridState(
-                        initialFirstVisibleItemIndex = initialIndex,
+                    ScoreMorphGrid(
+                        expandT = expandT,
+                        gridGap = gridGap,
+                        tracks = tracks,
+                        currentIndex = currentIndex,
+                        plateColors = plateColors,
+                        initialIndex = initialIndex,
+                        onPlayTrack = onPlayTrack,
                     )
-                    // 展开/收回只保留用户滚动锚点；勿跳回当前播放曲（仅 openGeneration 首进对齐播放曲）
-                    LaunchedEffect(columnCount) {
-                        val anchorIndex = gridState.firstVisibleItemIndex
-                        val anchorOffset = gridState.firstVisibleItemScrollOffset
-                        kotlinx.coroutines.yield()
-                        if (tracks.isNotEmpty()) {
-                            val safe = anchorIndex.coerceIn(0, tracks.lastIndex)
-                            runCatching { gridState.scrollToItem(safe, anchorOffset) }
-                        }
+                }
+            }
+        }
+    }
+}
+
+/** 展开 morph 时锁定的滚动锚点：保持某曲在视口中的相对位置不跳 */
+private data class ScoreMorphScrollAnchor(
+    val index: Int,
+    val viewportY: Float,
+)
+
+/**
+ * 2 列 ↔ 4 列：每张卡片在两端布局位姿间插值，随面板加宽同步 morph，避免瞬间换列重排。
+ */
+@Composable
+private fun ScoreMorphGrid(
+    expandT: Float,
+    gridGap: androidx.compose.ui.unit.Dp,
+    tracks: List<TrackRow>,
+    currentIndex: Int,
+    plateColors: VinylPlateColors,
+    initialIndex: Int,
+    onPlayTrack: (index: Int, vinylCenterRoot: Offset, vinylSizePx: Float) -> Unit,
+) {
+    val density = LocalDensity.current
+    val scrollState = rememberScrollState()
+    var morphAnchor by remember { mutableStateOf<ScoreMorphScrollAnchor?>(null) }
+    val morphing = expandT > 0.001f && expandT < 0.999f
+
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val widthPx = constraints.maxWidth.toFloat().coerceAtLeast(1f)
+        val viewportH = constraints.maxHeight.toFloat().coerceAtLeast(1f)
+        val gapPx = with(density) { gridGap.toPx() }
+        val n = tracks.size
+        val cell2 = scoreGridCellPx(columns = 2, widthPx = widthPx, gapPx = gapPx)
+        val cell4 = scoreGridCellPx(columns = 4, widthPx = widthPx, gapPx = gapPx)
+        val cellPx = lerpFloat(cell2, cell4, expandT)
+        val bottomPadPx = with(density) { 6.dp.toPx() }
+        val contentH = scoreGridContentHeightPx(
+            count = n,
+            cell2 = cell2,
+            cell4 = cell4,
+            gapPx = gapPx,
+            t = expandT,
+        ) + bottomPadPx
+        val maxScroll = (contentH - viewportH).coerceAtLeast(0f)
+
+        fun itemTop(index: Int, t: Float): Float =
+            lerpFloat(
+                scoreGridItemTop(index, columns = 2, cellPx = cell2, gapPx = gapPx),
+                scoreGridItemTop(index, columns = 4, cellPx = cell4, gapPx = gapPx),
+                t,
+            )
+
+        fun itemLeft(index: Int, t: Float): Float =
+            lerpFloat(
+                scoreGridItemLeft(index, columns = 2, cellPx = cell2, gapPx = gapPx),
+                scoreGridItemLeft(index, columns = 4, cellPx = cell4, gapPx = gapPx),
+                t,
+            )
+
+        // 首进：滚到当前播放曲（仅 openGeneration 重建时）
+        LaunchedEffect(Unit) {
+            if (n <= 0) return@LaunchedEffect
+            yield()
+            val idx = initialIndex.coerceIn(0, n - 1)
+            val top = itemTop(idx, expandT)
+            scrollState.scrollTo(top.roundToInt().coerceIn(0, maxScroll.roundToInt()))
+        }
+
+        // 开始 morph：锁定当前视口锚点曲目
+        LaunchedEffect(morphing) {
+            if (morphing && n > 0) {
+                val scrollY = scrollState.value.toFloat()
+                val idx = scoreGridFirstVisibleIndex(
+                    scrollY = scrollY,
+                    count = n,
+                    itemTop = { i -> itemTop(i, expandT) },
+                    cellPx = cellPx,
+                )
+                val top = itemTop(idx, expandT)
+                morphAnchor = ScoreMorphScrollAnchor(
+                    index = idx,
+                    viewportY = top - scrollY,
+                )
+            } else {
+                morphAnchor = null
+            }
+        }
+
+        // morph 全程按锚点回写 scroll，卡片只平滑挪位不跳页
+        LaunchedEffect(expandT, morphing, morphAnchor, maxScroll, cell2, cell4, gapPx) {
+            val anchor = morphAnchor
+            if (!morphing || anchor == null || n <= 0) return@LaunchedEffect
+            val idx = anchor.index.coerceIn(0, n - 1)
+            val target = (itemTop(idx, expandT) - anchor.viewportY)
+                .coerceIn(0f, maxScroll)
+                .roundToInt()
+            if (abs(scrollState.value - target) > 0) {
+                scrollState.scrollTo(target)
+            }
+        }
+
+        val scrollY = scrollState.value.toFloat()
+        val overscan = cellPx + gapPx
+        val visibleIndices = remember(scrollY, viewportH, expandT, n, cellPx, cell2, cell4, gapPx) {
+            if (n <= 0) emptyList()
+            else buildList {
+                for (i in 0 until n) {
+                    val top = itemTop(i, expandT)
+                    if (top + cellPx >= scrollY - overscan && top <= scrollY + viewportH + overscan) {
+                        add(i)
                     }
-                    LazyVerticalGrid(
-                        columns = GridCells.Fixed(columnCount),
-                        state = gridState,
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(bottom = 6.dp),
-                        horizontalArrangement = Arrangement.spacedBy(gridGap),
-                        verticalArrangement = Arrangement.spacedBy(gridGap),
-                    ) {
-                        itemsIndexed(
-                            items = tracks,
-                            key = { _, t -> t.id },
-                        ) { index, track ->
-                            ScoreTrackCard(
-                                track = track,
-                                playing = index == currentIndex,
-                                plateColors = plateColors,
-                                onClick = { center, sizePx ->
-                                    onPlayTrack(index, center, sizePx)
-                                },
-                                modifier = Modifier.aspectRatio(1f),
-                            )
-                        }
+                }
+            }
+        }
+
+        Box(
+            Modifier
+                .fillMaxSize()
+                .verticalScroll(scrollState, enabled = !morphing),
+        ) {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(with(density) { contentH.toDp() }),
+            ) {
+                for (index in visibleIndices) {
+                    val track = tracks[index]
+                    val left = itemLeft(index, expandT)
+                    val top = itemTop(index, expandT)
+                    val sideDp = with(density) { cellPx.toDp() }
+                    key(track.id) {
+                        ScoreTrackCard(
+                            track = track,
+                            playing = index == currentIndex,
+                            plateColors = plateColors,
+                            onClick = { center, sizePx ->
+                                onPlayTrack(index, center, sizePx)
+                            },
+                            modifier = Modifier
+                                .offset { IntOffset(left.roundToInt(), top.roundToInt()) }
+                                .size(sideDp),
+                        )
                     }
                 }
             }
         }
     }
+}
+
+private fun lerpFloat(a: Float, b: Float, t: Float): Float = a + (b - a) * t
+
+private fun scoreGridCellPx(columns: Int, widthPx: Float, gapPx: Float): Float {
+    val gaps = (columns - 1).coerceAtLeast(0) * gapPx
+    return ((widthPx - gaps) / columns.toFloat()).coerceAtLeast(1f)
+}
+
+private fun scoreGridItemLeft(index: Int, columns: Int, cellPx: Float, gapPx: Float): Float {
+    val col = index % columns
+    return col * (cellPx + gapPx)
+}
+
+private fun scoreGridItemTop(index: Int, columns: Int, cellPx: Float, gapPx: Float): Float {
+    val row = index / columns
+    return row * (cellPx + gapPx)
+}
+
+private fun scoreGridContentHeightPx(
+    count: Int,
+    cell2: Float,
+    cell4: Float,
+    gapPx: Float,
+    t: Float,
+): Float {
+    if (count <= 0) return 0f
+    val rows2 = (count + 1) / 2
+    val rows4 = (count + 3) / 4
+    val h2 = rows2 * cell2 + (rows2 - 1).coerceAtLeast(0) * gapPx
+    val h4 = rows4 * cell4 + (rows4 - 1).coerceAtLeast(0) * gapPx
+    return lerpFloat(h2, h4, t)
+}
+
+private fun scoreGridFirstVisibleIndex(
+    scrollY: Float,
+    count: Int,
+    itemTop: (Int) -> Float,
+    cellPx: Float,
+): Int {
+    if (count <= 0) return 0
+    for (i in 0 until count) {
+        val top = itemTop(i)
+        if (top + cellPx > scrollY + 0.5f) return i
+    }
+    return count - 1
 }
 
 @Composable

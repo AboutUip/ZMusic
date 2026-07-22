@@ -63,6 +63,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kite.zmusic.data.LrcLine
+import com.kite.zmusic.data.LyricRoleStyle
 import com.kite.zmusic.data.PlayerDisplayPrefs
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeStyle
@@ -111,12 +112,18 @@ data class LyricSelectGeom(
 @Composable
 fun rememberLyricSelectGeom(
     lines: List<LrcLine>,
-    fontScale: Float,
+    playingStyle: LyricRoleStyle,
+    playedStyle: LyricRoleStyle,
+    unplayedStyle: LyricRoleStyle,
     screenWidth: Dp,
     screenHeight: Dp,
 ): LyricSelectGeom {
     val density = LocalDensity.current
-    val fs = fontScale.coerceIn(PlayerDisplayPrefs.FONT_MIN, PlayerDisplayPrefs.FONT_MAX)
+    val fs = maxOf(
+        playingStyle.sanitizedFontScale(),
+        playedStyle.sanitizedFontScale(),
+        unplayedStyle.sanitizedFontScale(),
+    )
     val textStyle = remember(fs) {
         TextStyle(
             fontFamily = FontFamily.SansSerif,

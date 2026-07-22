@@ -2,6 +2,7 @@ package com.kite.zmusic.ui.player
 
 import android.graphics.Color as AndroidColor
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
@@ -29,15 +30,20 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
@@ -164,10 +170,39 @@ fun TitleLineStyle.resolvedColorFor(line: TitleStyleLine): Color {
     return resolvedColor(def)
 }
 
+fun TitleLineStyle.resolvedFontSizeSp(line: TitleStyleLine): Float {
+    val base = when (line) {
+        TitleStyleLine.Name -> TitleLineStyle.BASE_NAME_SP
+        TitleStyleLine.Artist -> TitleLineStyle.BASE_ARTIST_SP
+        TitleStyleLine.Source -> TitleLineStyle.BASE_SOURCE_SP
+    }
+    return base * sanitizedFontScale()
+}
+
 /**
- * 标题颜色弹窗：左操作 / 右预览槽。
+ * 面板展开/收回：慢启动、匀速段、软着陆；避免 settings 曲线（前段冲顶）导致瞬移感。
+ */
+internal val TitleStylePanelEasing = CubicBezierEasing(0.33f, 0.0f, 0.2f, 1f)
+
+/** 歌曲信息位姿 morph：更长行程、更晚收束，宁可慢一点也要连贯。 */
+private val TitleMorphEasing = CubicBezierEasing(0.45f, 0.05f, 0.2f, 1f)
+
+/**
+ * 将面板进度映射为 morph 进度：前段钉在源位，中段飞向预览槽，末段停稳。
+ * 进出场共用（progress 1→0 时自然反向），与面板透明度解耦。
+ */
+private fun titleStyleMorphT(progress: Float): Float {
+    val p = progress.coerceIn(0f, 1f)
+    // 0..0.22 钉源位；0.22..0.96 主行程；0.96..1 落槽微停
+    val u = ((p - 0.22f) / 0.74f).coerceIn(0f, 1f)
+    return TitleMorphEasing.transform(u)
+}
+
+/**
+ * 标题样式弹窗：左操作 / 右预览槽。
  * 克隆由 [TitleStyleCloneLayer] 映射进 [titleStyleRestPreviewSlot]。
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TitleStyleEditorOverlay(
     draftName: TitleLineStyle,
@@ -183,6 +218,7 @@ fun TitleStyleEditorOverlay(
     onDismiss: () -> Unit,
     onBackToSettings: () -> Unit,
     modifier: Modifier = Modifier,
+    hazeNonce: Int = 0,
 ) {
     val t = progress.coerceIn(0f, 1f)
     if (t <= 0.001f) return
@@ -223,18 +259,33 @@ fun TitleStyleEditorOverlay(
                         alpha = t
                     }
                     .clip(PanelShape)
-                    .hazeEffect(state = hazeState, style = EditorGlassStyle) {
-                        blurRadius = 72.dp
-                        noiseFactor = 0.10f
-                    }
-                    .border(width = 1.dp, color = EditorBorder, shape = PanelShape)
-                    .background(Color(0x9905080E))
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
                         onClick = {},
                     ),
             ) {
+                key(hazeNonce) {
+                    Box(
+                        Modifier
+                            .matchParentSize()
+                            .hazeEffect(state = hazeState, style = EditorGlassStyle) {
+                                blurRadius = 72.dp
+                                noiseFactor = 0.10f
+                            },
+                    )
+                }
+                Box(
+                    Modifier
+                        .matchParentSize()
+                        .background(Color(0x9905080E)),
+                )
+                Box(
+                    Modifier
+                        .matchParentSize()
+                        .border(width = 1.dp, color = EditorBorder, shape = PanelShape),
+                )
+
                 Box(
                     Modifier
                         .align(Alignment.TopStart)
@@ -289,7 +340,7 @@ fun TitleStyleEditorOverlay(
                         verticalArrangement = Arrangement.spacedBy(14.dp),
                     ) {
                         Text(
-                            text = "TITLE COLOR",
+                            text = "TITLE STYLE",
                             style = TextStyle(
                                 color = EditorAccent.copy(alpha = 0.75f),
                                 fontFamily = FontFamily.Monospace,
@@ -298,7 +349,7 @@ fun TitleStyleEditorOverlay(
                             ),
                         )
                         Text(
-                            text = "标题颜色",
+                            text = "标题样式",
                             style = TextStyle(
                                 color = EditorLabel,
                                 fontFamily = FontFamily.SansSerif,
@@ -307,7 +358,7 @@ fun TitleStyleEditorOverlay(
                             ),
                         )
                         Text(
-                            text = "克隆映射进预览 · 关闭后应用",
+                            text = "颜色与字号 · 关闭后应用",
                             style = TextStyle(
                                 color = EditorHint.copy(alpha = 0.72f),
                                 fontFamily = FontFamily.Monospace,
@@ -369,16 +420,25 @@ fun TitleStyleCloneLayer(
     val alpha = contentAlpha.coerceIn(0f, 1f)
     if (alpha <= 0.001f) return
     val t = progress.coerceIn(0f, 1f)
-    val morphT = if (targetSlot != null) t else 0f
+    val morphT = if (targetSlot != null) titleStyleMorphT(t) else 0f
     val scale = uiScale.coerceIn(PlayerDisplayPrefs.UI_MIN, PlayerDisplayPrefs.UI_MAX)
+    val nameSp = draftName.resolvedFontSizeSp(TitleStyleLine.Name) * scale
+    val artistSp = draftArtist.resolvedFontSizeSp(TitleStyleLine.Artist) * scale
+    val sourceSp = draftSource.resolvedFontSizeSp(TitleStyleLine.Source) * scale
 
+    // 轻弧线：中段上抬，避免直线平移的机械感
+    val arcLift = if (targetSlot != null && morphT > 0f && morphT < 1f) {
+        (kotlin.math.sin(morphT * Math.PI).toFloat() * 14f).dp
+    } else {
+        0.dp
+    }
     val left = if (targetSlot != null) {
         lerpDp(snapshot.sourceLeftDp, targetSlot.left, morphT)
     } else {
         snapshot.sourceLeftDp
     }
     val top = if (targetSlot != null) {
-        lerpDp(snapshot.sourceTopDp, targetSlot.top, morphT)
+        lerpDp(snapshot.sourceTopDp, targetSlot.top, morphT) - arcLift
     } else {
         snapshot.sourceTopDp
     }
@@ -392,14 +452,19 @@ fun TitleStyleCloneLayer(
     } else {
         snapshot.sourceHeightDp
     }
-    val corner = lerp(0f, 14f, morphT).dp
-    val pad = lerpDp(0.dp, 12.dp, morphT)
-    // 源位：居中族保持水平居中，左对齐从左缘起；终点：槽内水平+垂直居中
+    // 圆角 / 内边距偏后半段浮现，避免开场就被框住
+    val slotChrome = ((morphT - 0.42f) / 0.58f).coerceIn(0f, 1f)
+    val corner = lerp(0f, 14f, slotChrome).dp
+    val pad = lerpDp(0.dp, 12.dp, slotChrome)
+    // 源位：居中族水平居中、左对齐靠左；终点：槽内居中。全程平滑 bias，不中途切换 TextAlign
     val hBias = if (snapshot.centerAligned) 0f else -1f + morphT
     val vBias = -1f + morphT
-    val textCentered = snapshot.centerAligned || morphT > 0.5f
-    val textAlign = if (textCentered) TextAlign.Center else TextAlign.Start
-    val colHAlign = if (textCentered) Alignment.CenterHorizontally else Alignment.Start
+    val textAlign = if (snapshot.centerAligned) TextAlign.Center else TextAlign.Start
+    val colHAlign = if (snapshot.centerAligned) {
+        Alignment.CenterHorizontally
+    } else {
+        Alignment.Start
+    }
 
     Box(
         modifier
@@ -411,7 +476,7 @@ fun TitleStyleCloneLayer(
         contentAlignment = BiasAlignment(hBias, vBias),
     ) {
         Column(
-            Modifier.fillMaxWidth(),
+            Modifier.wrapContentWidth(),
             horizontalAlignment = colHAlign,
             verticalArrangement = Arrangement.spacedBy(5.dp * scale),
         ) {
@@ -421,28 +486,26 @@ fun TitleStyleCloneLayer(
                     color = draftName.resolvedColorFor(TitleStyleLine.Name),
                     fontFamily = FontFamily.SansSerif,
                     fontWeight = FontWeight.SemiBold,
-                    fontSize = (16f * scale).sp,
+                    fontSize = nameSp.sp,
                     letterSpacing = 0.35.sp,
                     textAlign = textAlign,
                 ),
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 textAlign = textAlign,
-                modifier = Modifier.fillMaxWidth(),
             )
             Text(
                 text = snapshot.artists.uppercase(),
                 style = TextStyle(
                     color = draftArtist.resolvedColorFor(TitleStyleLine.Artist),
                     fontFamily = FontFamily.Monospace,
-                    fontSize = (9.5f * scale).sp,
+                    fontSize = artistSp.sp,
                     letterSpacing = 1.8.sp,
                     textAlign = textAlign,
                 ),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 textAlign = textAlign,
-                modifier = Modifier.fillMaxWidth(),
             )
             if (!snapshot.sourceTitle.isNullOrBlank()) {
                 Spacer(Modifier.height(1.dp * scale))
@@ -451,20 +514,20 @@ fun TitleStyleCloneLayer(
                     style = TextStyle(
                         color = draftSource.resolvedColorFor(TitleStyleLine.Source),
                         fontFamily = FontFamily.Monospace,
-                        fontSize = (8f * scale).sp,
+                        fontSize = sourceSp.sp,
                         letterSpacing = 0.55.sp,
                         textAlign = textAlign,
                     ),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     textAlign = textAlign,
-                    modifier = Modifier.fillMaxWidth(),
                 )
             }
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun TitleLineStyleSection(
     title: String,
@@ -472,6 +535,14 @@ private fun TitleLineStyleSection(
     style: TitleLineStyle,
     onChange: (TitleLineStyle) -> Unit,
 ) {
+    val fontScale = style.sanitizedFontScale()
+    val sliderColors = SliderDefaults.colors(
+        thumbColor = Color(0xFFF8FAFC),
+        activeTrackColor = EditorAccent.copy(alpha = 0.62f),
+        inactiveTrackColor = Color.White.copy(alpha = 0.16f),
+        activeTickColor = Color.Transparent,
+        inactiveTickColor = Color.Transparent,
+    )
     Column(
         Modifier
             .fillMaxWidth()
@@ -488,6 +559,43 @@ private fun TitleLineStyleSection(
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 13.sp,
             ),
+        )
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "字体大小",
+                style = TextStyle(
+                    color = EditorHint.copy(alpha = 0.85f),
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 9.sp,
+                    letterSpacing = 0.4.sp,
+                ),
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                text = String.format("%.0f%%", fontScale * 100f),
+                style = TextStyle(
+                    color = EditorAccent.copy(alpha = 0.95f),
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium,
+                ),
+            )
+        }
+        Slider(
+            value = fontScale,
+            onValueChange = { next ->
+                val clamped = next
+                    .takeIf { it.isFinite() }
+                    ?.coerceIn(PlayerDisplayPrefs.FONT_MIN, PlayerDisplayPrefs.FONT_MAX)
+                    ?: return@Slider
+                onChange(style.withFontScale(clamped))
+            },
+            valueRange = PlayerDisplayPrefs.FONT_MIN..PlayerDisplayPrefs.FONT_MAX,
+            colors = sliderColors,
+            modifier = Modifier.fillMaxWidth(),
         )
         Text(
             text = "字体颜色",

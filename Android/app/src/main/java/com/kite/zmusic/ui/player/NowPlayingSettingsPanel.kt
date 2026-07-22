@@ -4,7 +4,9 @@ package com.kite.zmusic.ui.player
 
 import android.annotation.SuppressLint
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -40,8 +42,10 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -52,6 +56,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
@@ -89,7 +95,7 @@ private val TextShadow = Shadow(color = Color.Black.copy(alpha = 0.7f), blurRadi
 private val GlassBg = Color(0xFF03060A)
 /** 与底部播放条一致：半透明黑底，无描边。 */
 private val ChromeBarBg = Color.Black.copy(alpha = 0.22f)
-/** 弹窗壳：暗色磨砂；fallback 半透，避免切歌源失效时变死实色。 */
+/** 磨砂壳 / 背景色 */
 private val SettingsGlassStyle = HazeStyle(
     backgroundColor = GlassBg,
     tints = listOf(
@@ -103,6 +109,51 @@ private val SettingsGlassStyle = HazeStyle(
 )
 /** 功能行：近不透明实底，与磨砂壳分层。 */
 private val SettingsRowBg = Color(0xF0141A24)
+
+/** 拖动歌词布局滑条时，面板其余部分淡出以便预览歌词。 */
+private enum class LyricLayoutPreviewKey {
+    LineSpacing,
+    OffsetX,
+}
+
+private const val SettingsPreviewFadeOutMs = 320
+private const val SettingsPreviewFadeInMs = 360
+/** 预览中当前滑条保持可见但半透明 */
+private const val SettingsPreviewFocusAlpha = 0.42f
+
+/**
+ * 设置面板内容透明度层：淡出时吞掉点击，避免点到隐形控件。
+ */
+@Composable
+private fun SettingsAlpha(
+    alpha: Float,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    val a = alpha.coerceIn(0f, 1f)
+    val blockInput = a < 0.35f
+    Box(
+        modifier
+            .fillMaxWidth()
+            .graphicsLayer { this.alpha = a }
+            .then(
+                if (blockInput) {
+                    Modifier.pointerInput(Unit) {
+                        awaitPointerEventScope {
+                            while (true) {
+                                val event = awaitPointerEvent(PointerEventPass.Main)
+                                event.changes.forEach { it.consume() }
+                            }
+                        }
+                    }
+                } else {
+                    Modifier
+                },
+            ),
+    ) {
+        content()
+    }
+}
 
 /**
  * 与底部播放条同风格的圆角 chrome 按钮底。
@@ -345,6 +396,7 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawRotationArrowHe
 
 /**
  * 右侧设置面板：暗色磨砂（Haze）+ 高对比文字；分类 + 一行一功能；可垂直滚动。
+ * 拖动歌词字体 / 行距 / 水平位置时，其余面板淡出以便预览。
  */
 @Composable
 fun NowPlayingSettingsSheet(
@@ -378,6 +430,67 @@ fun NowPlayingSettingsSheet(
         checkedBorderColor = Color.Transparent,
     )
 
+    var previewKey by remember { mutableStateOf<LyricLayoutPreviewKey?>(null) }
+    var focusKey by remember { mutableStateOf<LyricLayoutPreviewKey?>(null) }
+    val chromeAlpha = remember { Animatable(1f) }
+    val focusAlpha = remember { Animatable(1f) }
+    // 预览键变化时中断上一跳，背景与焦点行各自动画到目标透明度
+    LaunchedEffect(previewKey) {
+        if (previewKey != null) {
+            focusKey = previewKey
+            launch {
+                chromeAlpha.animateTo(
+                    targetValue = 0f,
+                    animationSpec = tween(
+                        durationMillis = SettingsPreviewFadeOutMs,
+                        easing = FastOutSlowInEasing,
+                    ),
+                )
+            }
+            launch {
+                focusAlpha.animateTo(
+                    targetValue = SettingsPreviewFocusAlpha,
+                    animationSpec = tween(
+                        durationMillis = SettingsPreviewFadeOutMs,
+                        easing = FastOutSlowInEasing,
+                    ),
+                )
+            }
+        } else {
+            launch {
+                chromeAlpha.animateTo(
+                    targetValue = 1f,
+                    animationSpec = tween(
+                        durationMillis = SettingsPreviewFadeInMs,
+                        easing = FastOutSlowInEasing,
+                    ),
+                )
+            }
+            launch {
+                focusAlpha.animateTo(
+                    targetValue = 1f,
+                    animationSpec = tween(
+                        durationMillis = SettingsPreviewFadeInMs,
+                        easing = FastOutSlowInEasing,
+                    ),
+                )
+            }
+        }
+    }
+    val dim = chromeAlpha.value
+    fun rowAlpha(key: LyricLayoutPreviewKey): Float =
+        if (key == focusKey) focusAlpha.value else dim
+
+    fun onPreviewDrag(key: LyricLayoutPreviewKey, active: Boolean) {
+        if (active) {
+            previewKey = key
+        } else if (previewKey == key) {
+            previewKey = null
+        }
+    }
+
+    val scrollState = rememberScrollState()
+
     // hazeNonce：仅重挂磨砂层，保留滚动与控件状态
     Box(
         modifier
@@ -394,6 +507,7 @@ fun NowPlayingSettingsSheet(
             Box(
                 Modifier
                     .matchParentSize()
+                    .graphicsLayer { alpha = dim }
                     .hazeEffect(state = hazeState, style = SettingsGlassStyle) {
                         blurRadius = 84.dp
                         noiseFactor = 0.20f
@@ -405,11 +519,13 @@ fun NowPlayingSettingsSheet(
         Box(
             Modifier
                 .matchParentSize()
+                .graphicsLayer { alpha = dim }
                 .background(Color(0x9905080E)),
         )
         Box(
             Modifier
                 .matchParentSize()
+                .graphicsLayer { alpha = dim }
                 .background(
                     Brush.verticalGradient(
                         colors = listOf(
@@ -423,6 +539,7 @@ fun NowPlayingSettingsSheet(
         Box(
             Modifier
                 .matchParentSize()
+                .graphicsLayer { alpha = dim }
                 .border(
                     width = 1.dp,
                     brush = Brush.verticalGradient(
@@ -443,6 +560,7 @@ fun NowPlayingSettingsSheet(
         ) {
             Text(
                 text = "SETTINGS",
+                modifier = Modifier.graphicsLayer { alpha = dim },
                 style = TextStyle(
                     color = Accent.copy(alpha = 0.75f),
                     fontFamily = FontFamily.Monospace,
@@ -454,6 +572,7 @@ fun NowPlayingSettingsSheet(
             Spacer(Modifier.height(4.dp))
             Text(
                 text = "播放显示",
+                modifier = Modifier.graphicsLayer { alpha = dim },
                 style = TextStyle(
                     color = LabelColor,
                     fontFamily = FontFamily.SansSerif,
@@ -469,238 +588,285 @@ fun NowPlayingSettingsSheet(
                 Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .verticalScroll(rememberScrollState()),
+                    .verticalScroll(scrollState, enabled = previewKey == null),
                 verticalArrangement = Arrangement.spacedBy(18.dp),
             ) {
-                SettingsCategory(title = "氛围") {
-                    SettingsSwitchRow(
-                        title = "雨夜效果",
-                        subtitle = "斜雨磨砂玻璃氛围",
-                        checked = prefs.rainNightEnabled,
-                        colors = switchColors,
-                        onCheckedChange = { onPrefsChange(prefs.copy(rainNightEnabled = it)) },
-                    )
-                    SettingsSwitchRow(
-                        title = "活跃光晕",
-                        subtitle = "低/中/高互斥高亮，同时仅一球发光，运动略加快",
-                        checked = prefs.activeHalo,
-                        colors = switchColors,
-                        onCheckedChange = { onPrefsChange(prefs.copy(activeHalo = it)) },
-                    )
+                SettingsCategory(title = "氛围", titleAlpha = dim) {
+                    SettingsAlpha(dim) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            SettingsSwitchRow(
+                                title = "雨夜效果",
+                                subtitle = "斜雨磨砂玻璃氛围",
+                                checked = prefs.rainNightEnabled,
+                                colors = switchColors,
+                                onCheckedChange = { onPrefsChange(prefs.copy(rainNightEnabled = it)) },
+                            )
+                            SettingsSwitchRow(
+                                title = "活跃光晕",
+                                subtitle = "低/中/高互斥高亮，同时仅一球发光，运动略加快",
+                                checked = prefs.activeHalo,
+                                colors = switchColors,
+                                onCheckedChange = { onPrefsChange(prefs.copy(activeHalo = it)) },
+                            )
+                        }
+                    }
                 }
 
-                SettingsCategory(title = "文字") {
-                    SettingsSwitchRow(
-                        title = "动态歌词",
-                        subtitle = "宽度避开黑胶，左右对称保持中心",
-                        checked = prefs.dynamicLyrics,
-                        colors = switchColors,
-                        onCheckedChange = { onPrefsChange(prefs.copy(dynamicLyrics = it)) },
-                    )
-                    SettingsSwitchRow(
-                        title = "自动播放",
-                        subtitle = "点选歌词跳转后自动开始播放；播放中切歌始终播放",
-                        checked = prefs.lyricTapAutoPlay,
-                        colors = switchColors,
-                        onCheckedChange = { onPrefsChange(prefs.copy(lyricTapAutoPlay = it)) },
-                    )
-                    SettingsActionRow(
-                        title = "歌词样式",
-                        subtitle = "斜体 / 粗体 / 颜色",
-                        actionLabel = "编辑",
-                        onClick = onOpenLyricStyleEditor,
-                    )
-                    SettingsActionRow(
-                        title = "标题颜色",
-                        subtitle = "歌名 / 制作人 / 歌单 · 默认 + 2 预设",
-                        actionLabel = "编辑",
-                        onClick = onOpenTitleStyleEditor,
-                    )
-                    SettingsTitleAlignRow(
-                        selected = prefs.titleAlign,
-                        onSelect = { onPrefsChange(prefs.copy(titleAlign = it)) },
-                    )
-                    SettingsSliderRow(
-                        title = "标题垂直位置",
-                        valueLabel = String.format("%+.0f", prefs.titleOffsetYDp),
-                        value = prefs.titleOffsetYDp,
-                        valueRange = PlayerDisplayPrefs.TITLE_OFFSET_Y_MIN..
-                            PlayerDisplayPrefs.TITLE_OFFSET_Y_MAX,
-                        colors = sliderColors,
-                        onValueChange = { onPrefsChange(prefs.copy(titleOffsetYDp = it)) },
-                    )
-                    SettingsSliderRow(
-                        title = "字体大小",
-                        valueLabel = String.format("%.0f%%", prefs.fontScale * 100f),
-                        value = prefs.fontScale,
-                        valueRange = PlayerDisplayPrefs.FONT_MIN..PlayerDisplayPrefs.FONT_MAX,
-                        colors = sliderColors,
-                        onValueChange = { onPrefsChange(prefs.copy(fontScale = it)) },
-                    )
-                    SettingsSliderRow(
-                        title = "歌词行间距",
-                        valueLabel = String.format("%.0f", prefs.lyricLineSpacingDp),
-                        value = prefs.lyricLineSpacingDp,
-                        valueRange = PlayerDisplayPrefs.LINE_SPACING_MIN..PlayerDisplayPrefs.LINE_SPACING_MAX,
-                        colors = sliderColors,
-                        onValueChange = { onPrefsChange(prefs.copy(lyricLineSpacingDp = it)) },
-                    )
-                    SettingsSliderRow(
-                        title = "已播放歌词数",
-                        valueLabel = prefs.lyricPlayedCount.toString(),
-                        value = prefs.lyricPlayedCount.toFloat(),
-                        valueRange = PlayerDisplayPrefs.LYRIC_AROUND_MIN.toFloat()..PlayerDisplayPrefs.LYRIC_AROUND_MAX.toFloat(),
-                        steps = PlayerDisplayPrefs.LYRIC_AROUND_MAX - PlayerDisplayPrefs.LYRIC_AROUND_MIN - 1,
-                        colors = sliderColors,
-                        onValueChange = {
-                            onPrefsChange(
-                                prefs.copy(
-                                    lyricPlayedCount = it.roundToInt().coerceIn(
-                                        PlayerDisplayPrefs.LYRIC_AROUND_MIN,
-                                        PlayerDisplayPrefs.LYRIC_AROUND_MAX,
-                                    ),
-                                ),
+                SettingsCategory(title = "文字", titleAlpha = dim) {
+                    SettingsAlpha(dim) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            SettingsSwitchRow(
+                                title = "动态歌词",
+                                subtitle = "宽度避开黑胶，左右对称保持中心",
+                                checked = prefs.dynamicLyrics,
+                                colors = switchColors,
+                                onCheckedChange = { onPrefsChange(prefs.copy(dynamicLyrics = it)) },
                             )
-                        },
-                    )
-                    SettingsSliderRow(
-                        title = "待播放歌词数",
-                        valueLabel = prefs.lyricUpcomingCount.toString(),
-                        value = prefs.lyricUpcomingCount.toFloat(),
-                        valueRange = PlayerDisplayPrefs.LYRIC_AROUND_MIN.toFloat()..PlayerDisplayPrefs.LYRIC_AROUND_MAX.toFloat(),
-                        steps = PlayerDisplayPrefs.LYRIC_AROUND_MAX - PlayerDisplayPrefs.LYRIC_AROUND_MIN - 1,
-                        colors = sliderColors,
-                        onValueChange = {
-                            onPrefsChange(
-                                prefs.copy(
-                                    lyricUpcomingCount = it.roundToInt().coerceIn(
-                                        PlayerDisplayPrefs.LYRIC_AROUND_MIN,
-                                        PlayerDisplayPrefs.LYRIC_AROUND_MAX,
-                                    ),
-                                ),
+                            SettingsSwitchRow(
+                                title = "自动播放",
+                                subtitle = "点选歌词跳转后自动开始播放；播放中切歌始终播放",
+                                checked = prefs.lyricTapAutoPlay,
+                                colors = switchColors,
+                                onCheckedChange = { onPrefsChange(prefs.copy(lyricTapAutoPlay = it)) },
                             )
-                        },
-                    )
-                    SettingsSliderRow(
-                        title = "歌词水平位置",
-                        valueLabel = String.format("%+.0f", prefs.lyricOffsetXDp),
-                        value = prefs.lyricOffsetXDp,
-                        valueRange = PlayerDisplayPrefs.LYRIC_OFFSET_MIN..PlayerDisplayPrefs.LYRIC_OFFSET_MAX,
-                        colors = sliderColors,
-                        onValueChange = { onPrefsChange(prefs.copy(lyricOffsetXDp = it)) },
-                    )
+                            SettingsActionRow(
+                                title = "歌词样式",
+                                subtitle = "斜体 / 粗体 / 颜色 / 字号",
+                                actionLabel = "编辑",
+                                onClick = onOpenLyricStyleEditor,
+                            )
+                            SettingsActionRow(
+                                title = "标题样式",
+                                subtitle = "歌名 / 制作人 / 歌单 · 颜色与字号",
+                                actionLabel = "编辑",
+                                onClick = onOpenTitleStyleEditor,
+                            )
+                            SettingsTitleAlignRow(
+                                selected = prefs.titleAlign,
+                                onSelect = { onPrefsChange(prefs.copy(titleAlign = it)) },
+                            )
+                            SettingsSliderRow(
+                                title = "标题垂直位置",
+                                valueLabel = String.format("%+.0f", prefs.titleOffsetYDp),
+                                value = prefs.titleOffsetYDp,
+                                valueRange = PlayerDisplayPrefs.TITLE_OFFSET_Y_MIN..
+                                    PlayerDisplayPrefs.TITLE_OFFSET_Y_MAX,
+                                colors = sliderColors,
+                                onValueChange = { onPrefsChange(prefs.copy(titleOffsetYDp = it)) },
+                            )
+                        }
+                    }
+                    SettingsAlpha(rowAlpha(LyricLayoutPreviewKey.LineSpacing)) {
+                        SettingsSliderRow(
+                            title = "歌词行间距",
+                            valueLabel = String.format("%.0f", prefs.lyricLineSpacingDp),
+                            value = prefs.lyricLineSpacingDp,
+                            valueRange = PlayerDisplayPrefs.LINE_SPACING_MIN..PlayerDisplayPrefs.LINE_SPACING_MAX,
+                            colors = sliderColors,
+                            onValueChange = { onPrefsChange(prefs.copy(lyricLineSpacingDp = it)) },
+                            onPreviewDragActiveChange = {
+                                onPreviewDrag(LyricLayoutPreviewKey.LineSpacing, it)
+                            },
+                        )
+                    }
+                    SettingsAlpha(dim) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            SettingsSliderRow(
+                                title = "已播放歌词数",
+                                valueLabel = prefs.lyricPlayedCount.toString(),
+                                value = prefs.lyricPlayedCount.toFloat(),
+                                valueRange = PlayerDisplayPrefs.LYRIC_AROUND_MIN.toFloat()..
+                                    PlayerDisplayPrefs.LYRIC_AROUND_MAX.toFloat(),
+                                steps = PlayerDisplayPrefs.LYRIC_AROUND_MAX -
+                                    PlayerDisplayPrefs.LYRIC_AROUND_MIN - 1,
+                                colors = sliderColors,
+                                onValueChange = {
+                                    onPrefsChange(
+                                        prefs.copy(
+                                            lyricPlayedCount = it.roundToInt().coerceIn(
+                                                PlayerDisplayPrefs.LYRIC_AROUND_MIN,
+                                                PlayerDisplayPrefs.LYRIC_AROUND_MAX,
+                                            ),
+                                        ),
+                                    )
+                                },
+                            )
+                            SettingsSliderRow(
+                                title = "待播放歌词数",
+                                valueLabel = prefs.lyricUpcomingCount.toString(),
+                                value = prefs.lyricUpcomingCount.toFloat(),
+                                valueRange = PlayerDisplayPrefs.LYRIC_AROUND_MIN.toFloat()..
+                                    PlayerDisplayPrefs.LYRIC_AROUND_MAX.toFloat(),
+                                steps = PlayerDisplayPrefs.LYRIC_AROUND_MAX -
+                                    PlayerDisplayPrefs.LYRIC_AROUND_MIN - 1,
+                                colors = sliderColors,
+                                onValueChange = {
+                                    onPrefsChange(
+                                        prefs.copy(
+                                            lyricUpcomingCount = it.roundToInt().coerceIn(
+                                                PlayerDisplayPrefs.LYRIC_AROUND_MIN,
+                                                PlayerDisplayPrefs.LYRIC_AROUND_MAX,
+                                            ),
+                                        ),
+                                    )
+                                },
+                            )
+                        }
+                    }
+                    SettingsAlpha(rowAlpha(LyricLayoutPreviewKey.OffsetX)) {
+                        SettingsSliderRow(
+                            title = "歌词水平位置",
+                            valueLabel = String.format("%+.0f", prefs.lyricOffsetXDp),
+                            value = prefs.lyricOffsetXDp,
+                            valueRange = PlayerDisplayPrefs.LYRIC_OFFSET_MIN..
+                                PlayerDisplayPrefs.LYRIC_OFFSET_MAX,
+                            colors = sliderColors,
+                            onValueChange = { onPrefsChange(prefs.copy(lyricOffsetXDp = it)) },
+                            onPreviewDragActiveChange = {
+                                onPreviewDrag(LyricLayoutPreviewKey.OffsetX, it)
+                            },
+                        )
+                    }
                 }
 
-                SettingsCategory(title = "布局") {
-                    SettingsSliderRow(
-                        title = "整体 UI 缩放",
-                        valueLabel = String.format("%.0f%%", prefs.uiScale * 100f),
-                        value = prefs.uiScale,
-                        valueRange = PlayerDisplayPrefs.UI_MIN..PlayerDisplayPrefs.UI_MAX,
-                        colors = sliderColors,
-                        onValueChange = { onPrefsChange(prefs.copy(uiScale = it)) },
-                    )
-                    SettingsSwitchRow(
-                        title = "播放组件常显",
-                        subtitle = "底部控件保持展开",
-                        checked = prefs.transportAlwaysVisible,
-                        colors = switchColors,
-                        onCheckedChange = { onPrefsChange(prefs.copy(transportAlwaysVisible = it)) },
-                    )
-                    SettingsSwitchRow(
-                        title = "吸附式播放组件",
-                        subtitle = "贴底吸附；关闭后悬浮并四角圆角",
-                        checked = prefs.transportDocked,
-                        colors = switchColors,
-                        onCheckedChange = { onPrefsChange(prefs.copy(transportDocked = it)) },
-                    )
-                    SettingsSliderRow(
-                        title = "播放组件离底距离",
-                        valueLabel = String.format("%.0f", prefs.transportBottomInsetDp),
-                        value = prefs.transportBottomInsetDp,
-                        valueRange = PlayerDisplayPrefs.TRANSPORT_BOTTOM_INSET_MIN..
-                            PlayerDisplayPrefs.TRANSPORT_BOTTOM_INSET_MAX,
-                        colors = sliderColors,
-                        enabled = !prefs.transportDocked,
-                        onValueChange = { onPrefsChange(prefs.copy(transportBottomInsetDp = it)) },
-                    )
-                    SettingsSwitchRow(
-                        title = "黑胶选歌",
-                        subtitle = "横屏长按黑胶进入扑克牌式选歌",
-                        checked = prefs.vinylSongPickEnabled,
-                        colors = switchColors,
-                        onCheckedChange = { onPrefsChange(prefs.copy(vinylSongPickEnabled = it)) },
-                    )
-                    SettingsSwitchRow(
-                        title = "黑胶绝对居中",
-                        subtitle = "垂直对齐屏幕中心，忽略垂直偏移",
-                        checked = prefs.vinylAbsoluteCenter,
-                        colors = switchColors,
-                        onCheckedChange = { onPrefsChange(prefs.copy(vinylAbsoluteCenter = it)) },
-                    )
-                    SettingsSwitchRow(
-                        title = "完整封面",
-                        subtitle = "封面铺满中心，隐藏轴心镂空",
-                        checked = prefs.vinylFullCover,
-                        colors = switchColors,
-                        onCheckedChange = { onPrefsChange(prefs.copy(vinylFullCover = it)) },
-                    )
-                    SettingsSliderRow(
-                        title = "黑胶大小（整体）",
-                        valueLabel = String.format("%.0f%%", prefs.vinylSizeScale * 100f),
-                        value = prefs.vinylSizeScale,
-                        valueRange = PlayerDisplayPrefs.VINYL_SIZE_SCALE_MIN..PlayerDisplayPrefs.VINYL_SIZE_SCALE_MAX,
-                        colors = sliderColors,
-                        onValueChange = { onPrefsChange(prefs.copy(vinylSizeScale = it)) },
-                    )
-                    SettingsSliderRow(
-                        title = "外圈黑胶半径",
-                        valueLabel = String.format("%.0f%%", prefs.vinylOuterScale * 100f),
-                        value = prefs.vinylOuterScale,
-                        valueRange = PlayerDisplayPrefs.VINYL_OUTER_SCALE_MIN..PlayerDisplayPrefs.VINYL_OUTER_SCALE_MAX,
-                        colors = sliderColors,
-                        onValueChange = { onPrefsChange(prefs.copy(vinylOuterScale = it)) },
-                    )
-                    SettingsSliderRow(
-                        title = "中心黑胶半径",
-                        valueLabel = String.format("基准 %.0f%%", prefs.vinylCenterRadiusFrac * 100f),
-                        value = prefs.vinylCenterRadiusFrac,
-                        valueRange = PlayerDisplayPrefs.VINYL_CENTER_RADIUS_MIN..PlayerDisplayPrefs.VINYL_CENTER_RADIUS_MAX,
-                        colors = sliderColors,
-                        enabled = !prefs.vinylFullCover,
-                        onValueChange = { onPrefsChange(prefs.copy(vinylCenterRadiusFrac = it)) },
-                    )
-                    SettingsVinylColorRow(
-                        prefs = prefs,
-                        onPrefsChange = onPrefsChange,
-                        onOpenCustomEditor = onOpenVinylColorEditor,
-                    )
-                    SettingsSliderRow(
-                        title = "黑胶阻尼",
-                        valueLabel = String.format("%.2f", prefs.vinylGestureDamping),
-                        value = prefs.vinylGestureDamping,
-                        valueRange = PlayerDisplayPrefs.VINYL_GESTURE_DAMPING_MIN..
-                            PlayerDisplayPrefs.VINYL_GESTURE_DAMPING_MAX,
-                        colors = sliderColors,
-                        onValueChange = { onPrefsChange(prefs.copy(vinylGestureDamping = it)) },
-                    )
-                    SettingsSliderRow(
-                        title = "黑胶水平位置",
-                        valueLabel = String.format("%+.0f", prefs.vinylOffsetXDp),
-                        value = prefs.vinylOffsetXDp,
-                        valueRange = PlayerDisplayPrefs.VINYL_OFFSET_MIN..PlayerDisplayPrefs.VINYL_OFFSET_MAX,
-                        colors = sliderColors,
-                        onValueChange = { onPrefsChange(prefs.copy(vinylOffsetXDp = it)) },
-                    )
-                    SettingsSliderRow(
-                        title = "黑胶垂直位置",
-                        valueLabel = String.format("%+.0f", prefs.vinylOffsetYDp),
-                        value = prefs.vinylOffsetYDp,
-                        valueRange = PlayerDisplayPrefs.VINYL_OFFSET_MIN..PlayerDisplayPrefs.VINYL_OFFSET_MAX,
-                        colors = sliderColors,
-                        enabled = !prefs.vinylAbsoluteCenter,
-                        onValueChange = { onPrefsChange(prefs.copy(vinylOffsetYDp = it)) },
-                    )
+                SettingsCategory(title = "布局", titleAlpha = dim) {
+                    SettingsAlpha(dim) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            SettingsSliderRow(
+                                title = "整体 UI 缩放",
+                                valueLabel = String.format("%.0f%%", prefs.uiScale * 100f),
+                                value = prefs.uiScale,
+                                valueRange = PlayerDisplayPrefs.UI_MIN..PlayerDisplayPrefs.UI_MAX,
+                                colors = sliderColors,
+                                onValueChange = { onPrefsChange(prefs.copy(uiScale = it)) },
+                            )
+                            SettingsSwitchRow(
+                                title = "播放组件常显",
+                                subtitle = "底部控件保持展开",
+                                checked = prefs.transportAlwaysVisible,
+                                colors = switchColors,
+                                onCheckedChange = {
+                                    onPrefsChange(prefs.copy(transportAlwaysVisible = it))
+                                },
+                            )
+                            SettingsSwitchRow(
+                                title = "吸附式播放组件",
+                                subtitle = "贴底吸附；关闭后悬浮并四角圆角",
+                                checked = prefs.transportDocked,
+                                colors = switchColors,
+                                onCheckedChange = {
+                                    onPrefsChange(prefs.copy(transportDocked = it))
+                                },
+                            )
+                            SettingsSliderRow(
+                                title = "播放组件离底距离",
+                                valueLabel = String.format("%.0f", prefs.transportBottomInsetDp),
+                                value = prefs.transportBottomInsetDp,
+                                valueRange = PlayerDisplayPrefs.TRANSPORT_BOTTOM_INSET_MIN..
+                                    PlayerDisplayPrefs.TRANSPORT_BOTTOM_INSET_MAX,
+                                colors = sliderColors,
+                                enabled = !prefs.transportDocked,
+                                onValueChange = {
+                                    onPrefsChange(prefs.copy(transportBottomInsetDp = it))
+                                },
+                            )
+                            SettingsSwitchRow(
+                                title = "黑胶选歌",
+                                subtitle = "横屏长按黑胶进入扑克牌式选歌",
+                                checked = prefs.vinylSongPickEnabled,
+                                colors = switchColors,
+                                onCheckedChange = {
+                                    onPrefsChange(prefs.copy(vinylSongPickEnabled = it))
+                                },
+                            )
+                            SettingsSwitchRow(
+                                title = "黑胶绝对居中",
+                                subtitle = "垂直对齐屏幕中心，忽略垂直偏移",
+                                checked = prefs.vinylAbsoluteCenter,
+                                colors = switchColors,
+                                onCheckedChange = {
+                                    onPrefsChange(prefs.copy(vinylAbsoluteCenter = it))
+                                },
+                            )
+                            SettingsSwitchRow(
+                                title = "完整封面",
+                                subtitle = "封面铺满中心，隐藏轴心镂空",
+                                checked = prefs.vinylFullCover,
+                                colors = switchColors,
+                                onCheckedChange = {
+                                    onPrefsChange(prefs.copy(vinylFullCover = it))
+                                },
+                            )
+                            SettingsSliderRow(
+                                title = "黑胶大小（整体）",
+                                valueLabel = String.format("%.0f%%", prefs.vinylSizeScale * 100f),
+                                value = prefs.vinylSizeScale,
+                                valueRange = PlayerDisplayPrefs.VINYL_SIZE_SCALE_MIN..
+                                    PlayerDisplayPrefs.VINYL_SIZE_SCALE_MAX,
+                                colors = sliderColors,
+                                onValueChange = { onPrefsChange(prefs.copy(vinylSizeScale = it)) },
+                            )
+                            SettingsSliderRow(
+                                title = "外圈黑胶半径",
+                                valueLabel = String.format("%.0f%%", prefs.vinylOuterScale * 100f),
+                                value = prefs.vinylOuterScale,
+                                valueRange = PlayerDisplayPrefs.VINYL_OUTER_SCALE_MIN..
+                                    PlayerDisplayPrefs.VINYL_OUTER_SCALE_MAX,
+                                colors = sliderColors,
+                                onValueChange = { onPrefsChange(prefs.copy(vinylOuterScale = it)) },
+                            )
+                            SettingsSliderRow(
+                                title = "中心黑胶半径",
+                                valueLabel = String.format(
+                                    "基准 %.0f%%",
+                                    prefs.vinylCenterRadiusFrac * 100f,
+                                ),
+                                value = prefs.vinylCenterRadiusFrac,
+                                valueRange = PlayerDisplayPrefs.VINYL_CENTER_RADIUS_MIN..
+                                    PlayerDisplayPrefs.VINYL_CENTER_RADIUS_MAX,
+                                colors = sliderColors,
+                                enabled = !prefs.vinylFullCover,
+                                onValueChange = {
+                                    onPrefsChange(prefs.copy(vinylCenterRadiusFrac = it))
+                                },
+                            )
+                            SettingsVinylColorRow(
+                                prefs = prefs,
+                                onPrefsChange = onPrefsChange,
+                                onOpenCustomEditor = onOpenVinylColorEditor,
+                            )
+                            SettingsSliderRow(
+                                title = "黑胶阻尼",
+                                valueLabel = String.format("%.2f", prefs.vinylGestureDamping),
+                                value = prefs.vinylGestureDamping,
+                                valueRange = PlayerDisplayPrefs.VINYL_GESTURE_DAMPING_MIN..
+                                    PlayerDisplayPrefs.VINYL_GESTURE_DAMPING_MAX,
+                                colors = sliderColors,
+                                onValueChange = {
+                                    onPrefsChange(prefs.copy(vinylGestureDamping = it))
+                                },
+                            )
+                            SettingsSliderRow(
+                                title = "黑胶水平位置",
+                                valueLabel = String.format("%+.0f", prefs.vinylOffsetXDp),
+                                value = prefs.vinylOffsetXDp,
+                                valueRange = PlayerDisplayPrefs.VINYL_OFFSET_MIN..
+                                    PlayerDisplayPrefs.VINYL_OFFSET_MAX,
+                                colors = sliderColors,
+                                onValueChange = { onPrefsChange(prefs.copy(vinylOffsetXDp = it)) },
+                            )
+                            SettingsSliderRow(
+                                title = "黑胶垂直位置",
+                                valueLabel = String.format("%+.0f", prefs.vinylOffsetYDp),
+                                value = prefs.vinylOffsetYDp,
+                                valueRange = PlayerDisplayPrefs.VINYL_OFFSET_MIN..
+                                    PlayerDisplayPrefs.VINYL_OFFSET_MAX,
+                                colors = sliderColors,
+                                enabled = !prefs.vinylAbsoluteCenter,
+                                onValueChange = { onPrefsChange(prefs.copy(vinylOffsetYDp = it)) },
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -1089,11 +1255,13 @@ private fun SettingsTitleAlignRow(
 @Composable
 private fun SettingsCategory(
     title: String,
+    titleAlpha: Float = 1f,
     content: @Composable () -> Unit,
 ) {
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
             text = title.uppercase(),
+            modifier = Modifier.graphicsLayer { alpha = titleAlpha.coerceIn(0f, 1f) },
             style = TextStyle(
                 color = Accent.copy(alpha = 0.85f),
                 fontFamily = FontFamily.Monospace,
@@ -1218,14 +1386,20 @@ private fun SettingsSliderRow(
     onValueChange: (Float) -> Unit,
     enabled: Boolean = true,
     steps: Int = 0,
+    /** 非空时：交互期间通知预览态（松手 / 点选结束） */
+    onPreviewDragActiveChange: ((Boolean) -> Unit)? = null,
 ) {
     val titleColor = if (enabled) LabelColor else LabelColor.copy(alpha = 0.38f)
     val valueColor = if (enabled) Accent.copy(alpha = 0.95f) else Accent.copy(alpha = 0.35f)
-    val thumbIx = remember { MutableInteractionSource() }
+    val sliderIx = remember { MutableInteractionSource() }
     val safeValue = value
         .takeIf { it.isFinite() }
         ?.coerceIn(valueRange.start, valueRange.endInclusive)
         ?: valueRange.start
+    // Material3 Slider 的 dragged 态不一定可靠；用 value 变化 + finished 驱动预览淡出
+    var previewArmed by remember { mutableStateOf(false) }
+    val onPreviewUpdated by rememberUpdatedState(onPreviewDragActiveChange)
+
     Column(
         Modifier
             .fillMaxWidth()
@@ -1268,16 +1442,28 @@ private fun SettingsSliderRow(
                     .takeIf { it.isFinite() }
                     ?.coerceIn(valueRange.start, valueRange.endInclusive)
                     ?: return@Slider
+                val previewCb = onPreviewUpdated
+                if (previewCb != null && !previewArmed) {
+                    previewArmed = true
+                    previewCb(true)
+                }
                 onValueChange(clamped)
+            },
+            onValueChangeFinished = {
+                if (previewArmed) {
+                    previewArmed = false
+                    onPreviewUpdated?.invoke(false)
+                }
             },
             valueRange = valueRange,
             steps = steps,
             enabled = enabled,
             colors = colors,
+            interactionSource = sliderIx,
             modifier = Modifier.fillMaxWidth(),
             thumb = {
                 SliderDefaults.Thumb(
-                    interactionSource = thumbIx,
+                    interactionSource = sliderIx,
                     colors = colors,
                     enabled = enabled,
                 )
