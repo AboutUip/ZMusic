@@ -354,6 +354,7 @@ fun NowPlayingSettingsSheet(
     modifier: Modifier = Modifier,
     onOpenVinylColorEditor: () -> Unit = {},
     onOpenLyricStyleEditor: () -> Unit = {},
+    onOpenTitleStyleEditor: () -> Unit = {},
     hazeNonce: Int = 0,
 ) {
     val sliderColors = SliderDefaults.colors(
@@ -509,9 +510,24 @@ fun NowPlayingSettingsSheet(
                         actionLabel = "编辑",
                         onClick = onOpenLyricStyleEditor,
                     )
+                    SettingsActionRow(
+                        title = "标题颜色",
+                        subtitle = "歌名 / 制作人 / 歌单 · 默认 + 2 预设",
+                        actionLabel = "编辑",
+                        onClick = onOpenTitleStyleEditor,
+                    )
                     SettingsTitleAlignRow(
                         selected = prefs.titleAlign,
                         onSelect = { onPrefsChange(prefs.copy(titleAlign = it)) },
+                    )
+                    SettingsSliderRow(
+                        title = "标题垂直位置",
+                        valueLabel = String.format("%+.0f", prefs.titleOffsetYDp),
+                        value = prefs.titleOffsetYDp,
+                        valueRange = PlayerDisplayPrefs.TITLE_OFFSET_Y_MIN..
+                            PlayerDisplayPrefs.TITLE_OFFSET_Y_MAX,
+                        colors = sliderColors,
+                        onValueChange = { onPrefsChange(prefs.copy(titleOffsetYDp = it)) },
                     )
                     SettingsSliderRow(
                         title = "字体大小",
@@ -590,6 +606,30 @@ fun NowPlayingSettingsSheet(
                         checked = prefs.transportAlwaysVisible,
                         colors = switchColors,
                         onCheckedChange = { onPrefsChange(prefs.copy(transportAlwaysVisible = it)) },
+                    )
+                    SettingsSwitchRow(
+                        title = "吸附式播放组件",
+                        subtitle = "贴底吸附；关闭后悬浮并四角圆角",
+                        checked = prefs.transportDocked,
+                        colors = switchColors,
+                        onCheckedChange = { onPrefsChange(prefs.copy(transportDocked = it)) },
+                    )
+                    SettingsSliderRow(
+                        title = "播放组件离底距离",
+                        valueLabel = String.format("%.0f", prefs.transportBottomInsetDp),
+                        value = prefs.transportBottomInsetDp,
+                        valueRange = PlayerDisplayPrefs.TRANSPORT_BOTTOM_INSET_MIN..
+                            PlayerDisplayPrefs.TRANSPORT_BOTTOM_INSET_MAX,
+                        colors = sliderColors,
+                        enabled = !prefs.transportDocked,
+                        onValueChange = { onPrefsChange(prefs.copy(transportBottomInsetDp = it)) },
+                    )
+                    SettingsSwitchRow(
+                        title = "黑胶选歌",
+                        subtitle = "横屏长按黑胶进入扑克牌式选歌",
+                        checked = prefs.vinylSongPickEnabled,
+                        colors = switchColors,
+                        onCheckedChange = { onPrefsChange(prefs.copy(vinylSongPickEnabled = it)) },
                     )
                     SettingsSwitchRow(
                         title = "黑胶绝对居中",

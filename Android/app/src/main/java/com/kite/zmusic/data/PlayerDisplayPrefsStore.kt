@@ -267,6 +267,89 @@ fun decodeLyricRoleStyle(raw: String?, fallback: LyricRoleStyle): LyricRoleStyle
     )
 }
 
+/** 横屏标题信息行颜色槽：不可改默认 + 2 个可写预设。 */
+enum class TitleColorSlot {
+    DEFAULT,
+    PRESET_0,
+    PRESET_1,
+    ;
+
+    companion object {
+        fun fromOrdinal(v: Int): TitleColorSlot =
+            entries.getOrElse(v) { DEFAULT }
+    }
+}
+
+/** 歌名 / 制作人 / 歌单一行的颜色样式。 */
+data class TitleLineStyle(
+    val colorSlot: TitleColorSlot = TitleColorSlot.DEFAULT,
+    val preset0Argb: Int = Color(0xFFF8FAFC).toArgb(),
+    val preset1Argb: Int = Color(0xFF9AF0F0).toArgb(),
+) {
+    fun resolvedColor(defaultArgb: Int): Color = when (colorSlot) {
+        TitleColorSlot.DEFAULT -> Color(defaultArgb)
+        TitleColorSlot.PRESET_0 -> Color(preset0Argb)
+        TitleColorSlot.PRESET_1 -> Color(preset1Argb)
+    }
+
+    fun presetArgb(index: Int): Int = when (index) {
+        0 -> preset0Argb
+        else -> preset1Argb
+    }
+
+    fun withPresetArgb(index: Int, argb: Int): TitleLineStyle = when (index) {
+        0 -> copy(preset0Argb = argb, colorSlot = TitleColorSlot.PRESET_0)
+        else -> copy(preset1Argb = argb, colorSlot = TitleColorSlot.PRESET_1)
+    }
+
+    fun withColorSlot(slot: TitleColorSlot): TitleLineStyle = copy(colorSlot = slot)
+
+    companion object {
+        /** 内置不可改默认色（与历史硬编码一致）。 */
+        val DEFAULT_NAME_ARGB: Int = Color(0xFFF5F7FA).toArgb()
+        val DEFAULT_ARTIST_ARGB: Int = Color(0xFF6FD4D4).copy(alpha = 0.72f).toArgb()
+        val DEFAULT_SOURCE_ARGB: Int = Color(0xFF7A8899).copy(alpha = 0.4f).toArgb()
+
+        val NameDefault = TitleLineStyle(
+            colorSlot = TitleColorSlot.DEFAULT,
+            preset0Argb = Color(0xFFF8FAFC).toArgb(),
+            preset1Argb = Color(0xFF9AF0F0).toArgb(),
+        )
+        val ArtistDefault = TitleLineStyle(
+            colorSlot = TitleColorSlot.DEFAULT,
+            preset0Argb = Color(0xFF6FD4D4).toArgb(),
+            preset1Argb = Color(0xFF7EB8FF).toArgb(),
+        )
+        val SourceDefault = TitleLineStyle(
+            colorSlot = TitleColorSlot.DEFAULT,
+            preset0Argb = Color(0xFF7A8899).toArgb(),
+            preset1Argb = Color(0xFFB8C0CC).toArgb(),
+        )
+    }
+}
+
+/** 编码：slot,p0,p1 */
+fun encodeTitleLineStyle(style: TitleLineStyle): String =
+    listOf(
+        style.colorSlot.ordinal,
+        style.preset0Argb,
+        style.preset1Argb,
+    ).joinToString(",")
+
+fun decodeTitleLineStyle(raw: String?, fallback: TitleLineStyle): TitleLineStyle {
+    if (raw.isNullOrBlank()) return fallback
+    val bits = raw.split(',')
+    if (bits.size < 3) return fallback
+    val slot = TitleColorSlot.fromOrdinal(bits[0].toIntOrNull() ?: 0)
+    val p0 = bits[1].toIntOrNull() ?: fallback.preset0Argb
+    val p1 = bits[2].toIntOrNull() ?: fallback.preset1Argb
+    return TitleLineStyle(
+        colorSlot = slot,
+        preset0Argb = p0,
+        preset1Argb = p1,
+    )
+}
+
 /** 全屏播放页显示偏好（雨夜 / 字号 / UI 缩放 / 黑胶位置等），客户端持久化。 */
 data class PlayerDisplayPrefs(
     val rainNightEnabled: Boolean = true,
@@ -321,6 +404,19 @@ data class PlayerDisplayPrefs(
     /** 底部播放组件常显 */
     val transportAlwaysVisible: Boolean = false,
     /**
+     * 吸附式播放组件：开启贴底（仅上方圆角）；
+     * 关闭则悬浮，四角圆角，并用 [transportBottomInsetDp] 离底。
+     */
+    val transportDocked: Boolean = true,
+    /**
+     * 悬浮态离底距离（dp）；吸附开启时忽略且设置项不可编辑。
+     */
+    val transportBottomInsetDp: Float = 16f,
+    /**
+     * 黑胶选歌：横屏长按黑胶进入扑克牌式队列选歌。
+     */
+    val vinylSongPickEnabled: Boolean = false,
+    /**
      * 活跃光晕：三光球对应低/中/高音，随频谱增强发光；
      * 开启时背景光球运动略加快。
      */
@@ -332,6 +428,14 @@ data class PlayerDisplayPrefs(
     val lyricTapAutoPlay: Boolean = false,
     /** 标题信息（歌名/制作人/歌单）水平对齐 */
     val titleAlign: TitleAlignMode = TitleAlignMode.VINYL,
+    /** 标题垂直偏移（dp），负上正下；叠在默认上边距之上 */
+    val titleOffsetYDp: Float = 0f,
+    /** 歌名颜色样式 */
+    val titleNameStyle: TitleLineStyle = TitleLineStyle.NameDefault,
+    /** 制作人颜色样式 */
+    val titleArtistStyle: TitleLineStyle = TitleLineStyle.ArtistDefault,
+    /** 歌单/来源颜色样式 */
+    val titleSourceStyle: TitleLineStyle = TitleLineStyle.SourceDefault,
     /**
      * 黑胶手势阻尼（切歌灵敏度）：默认 0.5 与历史阈值一致；
      * 值越高越灵敏（提交位移/甩速阈值越低）。
@@ -352,6 +456,15 @@ data class PlayerDisplayPrefs(
 
     fun lyricUnplayedColor(): Color =
         lyricUnplayedStyle.resolvedColor(LyricRoleStyle.DEFAULT_UNPLAYED_ARGB)
+
+    fun titleNameColor(): Color =
+        titleNameStyle.resolvedColor(TitleLineStyle.DEFAULT_NAME_ARGB)
+
+    fun titleArtistColor(): Color =
+        titleArtistStyle.resolvedColor(TitleLineStyle.DEFAULT_ARTIST_ARGB)
+
+    fun titleSourceColor(): Color =
+        titleSourceStyle.resolvedColor(TitleLineStyle.DEFAULT_SOURCE_ARGB)
 
     fun vinylPlateColors(): VinylPlateColors = when (vinylColorStyle) {
         VinylColorStyle.BLACK -> VinylPlateColors.Black
@@ -414,6 +527,11 @@ data class PlayerDisplayPrefs(
             vinylOffsetXDp = vinylOffsetXDp.coerceIn(VINYL_OFFSET_MIN, VINYL_OFFSET_MAX),
             vinylOffsetYDp = vinylOffsetYDp.coerceIn(VINYL_OFFSET_MIN, VINYL_OFFSET_MAX),
             lyricOffsetXDp = lyricOffsetXDp.coerceIn(LYRIC_OFFSET_MIN, LYRIC_OFFSET_MAX),
+            titleOffsetYDp = titleOffsetYDp.coerceIn(TITLE_OFFSET_Y_MIN, TITLE_OFFSET_Y_MAX),
+            transportBottomInsetDp = transportBottomInsetDp.coerceIn(
+                TRANSPORT_BOTTOM_INSET_MIN,
+                TRANSPORT_BOTTOM_INSET_MAX,
+            ),
             vinylSizeScale = vinylSizeScale.coerceIn(VINYL_SIZE_SCALE_MIN, VINYL_SIZE_SCALE_MAX),
             vinylOuterScale = vinylOuterScale.coerceIn(VINYL_OUTER_SCALE_MIN, VINYL_OUTER_SCALE_MAX),
             vinylCenterRadiusFrac = vinylCenterRadiusFrac.coerceIn(
@@ -447,6 +565,12 @@ data class PlayerDisplayPrefs(
         const val VINYL_OFFSET_MAX = 56f
         const val LYRIC_OFFSET_MIN = -72f
         const val LYRIC_OFFSET_MAX = 72f
+        /** 标题信息垂直偏移 */
+        const val TITLE_OFFSET_Y_MIN = -40f
+        const val TITLE_OFFSET_Y_MAX = 72f
+        /** 悬浮播放组件离底距离 */
+        const val TRANSPORT_BOTTOM_INSET_MIN = 8f
+        const val TRANSPORT_BOTTOM_INSET_MAX = 48f
         const val VINYL_CUSTOM_PRESET_COUNT = 5
         const val VINYL_SIZE_SCALE_MIN = 0.75f
         const val VINYL_SIZE_SCALE_MAX = 1.35f
@@ -515,10 +639,26 @@ class PlayerDisplayPrefsStore(context: Context) {
             vinylCustomPresets = presets,
             vinylCustomPresetIndex = index,
             transportAlwaysVisible = prefs.getBoolean(KEY_TRANSPORT_ALWAYS, false),
+            transportDocked = prefs.getBoolean(KEY_TRANSPORT_DOCKED, true),
+            transportBottomInsetDp = prefs.getFloat(KEY_TRANSPORT_BOTTOM_INSET, 16f),
+            vinylSongPickEnabled = prefs.getBoolean(KEY_VINYL_SONG_PICK, false),
             activeHalo = prefs.getBoolean(KEY_ACTIVE_HALO, false),
             lyricTapAutoPlay = prefs.getBoolean(KEY_LYRIC_TAP_AUTO_PLAY, false),
             titleAlign = TitleAlignMode.fromOrdinal(
                 prefs.getInt(KEY_TITLE_ALIGN, TitleAlignMode.VINYL.ordinal),
+            ),
+            titleOffsetYDp = prefs.getFloat(KEY_TITLE_OFFSET_Y, 0f),
+            titleNameStyle = decodeTitleLineStyle(
+                prefs.getString(KEY_TITLE_NAME_STYLE, null),
+                TitleLineStyle.NameDefault,
+            ),
+            titleArtistStyle = decodeTitleLineStyle(
+                prefs.getString(KEY_TITLE_ARTIST_STYLE, null),
+                TitleLineStyle.ArtistDefault,
+            ),
+            titleSourceStyle = decodeTitleLineStyle(
+                prefs.getString(KEY_TITLE_SOURCE_STYLE, null),
+                TitleLineStyle.SourceDefault,
             ),
             vinylGestureDamping = prefs.getFloat(KEY_VINYL_GESTURE_DAMPING, 0.5f),
             lyricPlayingStyle = decodeLyricRoleStyle(
@@ -560,9 +700,16 @@ class PlayerDisplayPrefsStore(context: Context) {
             .putString(KEY_VINYL_CUSTOM_PRESETS, encodeVinylCustomPresets(v.vinylCustomPresets))
             .putInt(KEY_VINYL_CUSTOM_PRESET_INDEX, v.vinylCustomPresetIndex)
             .putBoolean(KEY_TRANSPORT_ALWAYS, v.transportAlwaysVisible)
+            .putBoolean(KEY_TRANSPORT_DOCKED, v.transportDocked)
+            .putFloat(KEY_TRANSPORT_BOTTOM_INSET, v.transportBottomInsetDp)
+            .putBoolean(KEY_VINYL_SONG_PICK, v.vinylSongPickEnabled)
             .putBoolean(KEY_ACTIVE_HALO, v.activeHalo)
             .putBoolean(KEY_LYRIC_TAP_AUTO_PLAY, v.lyricTapAutoPlay)
             .putInt(KEY_TITLE_ALIGN, v.titleAlign.ordinal)
+            .putFloat(KEY_TITLE_OFFSET_Y, v.titleOffsetYDp)
+            .putString(KEY_TITLE_NAME_STYLE, encodeTitleLineStyle(v.titleNameStyle))
+            .putString(KEY_TITLE_ARTIST_STYLE, encodeTitleLineStyle(v.titleArtistStyle))
+            .putString(KEY_TITLE_SOURCE_STYLE, encodeTitleLineStyle(v.titleSourceStyle))
             .putFloat(KEY_VINYL_GESTURE_DAMPING, v.vinylGestureDamping)
             .putString(KEY_LYRIC_PLAYING_STYLE, encodeLyricRoleStyle(v.lyricPlayingStyle))
             .putString(KEY_LYRIC_PLAYED_STYLE, encodeLyricRoleStyle(v.lyricPlayedStyle))
@@ -595,9 +742,16 @@ class PlayerDisplayPrefsStore(context: Context) {
         private const val KEY_VINYL_CUSTOM_PRESETS = "vinyl_custom_presets"
         private const val KEY_VINYL_CUSTOM_PRESET_INDEX = "vinyl_custom_preset_index"
         private const val KEY_TRANSPORT_ALWAYS = "transport_always_visible"
+        private const val KEY_TRANSPORT_DOCKED = "transport_docked"
+        private const val KEY_TRANSPORT_BOTTOM_INSET = "transport_bottom_inset_dp"
+        private const val KEY_VINYL_SONG_PICK = "vinyl_song_pick_enabled"
         private const val KEY_ACTIVE_HALO = "active_halo"
         private const val KEY_LYRIC_TAP_AUTO_PLAY = "lyric_tap_auto_play"
         private const val KEY_TITLE_ALIGN = "title_align"
+        private const val KEY_TITLE_OFFSET_Y = "title_offset_y_dp"
+        private const val KEY_TITLE_NAME_STYLE = "title_name_style"
+        private const val KEY_TITLE_ARTIST_STYLE = "title_artist_style"
+        private const val KEY_TITLE_SOURCE_STYLE = "title_source_style"
         private const val KEY_VINYL_GESTURE_DAMPING = "vinyl_gesture_damping"
         private const val KEY_LYRIC_PLAYING_STYLE = "lyric_playing_style"
         private const val KEY_LYRIC_PLAYED_STYLE = "lyric_played_style"

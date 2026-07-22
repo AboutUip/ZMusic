@@ -202,10 +202,14 @@ fun ScoreSheetOverlay(
                     val gridState = rememberLazyGridState(
                         initialFirstVisibleItemIndex = initialIndex,
                     )
-                    // 列数切换时瞬时锚定当前曲，避免失焦跳动
+                    // 展开/收回只保留用户滚动锚点；勿跳回当前播放曲（仅 openGeneration 首进对齐播放曲）
                     LaunchedEffect(columnCount) {
-                        if (currentIndex in tracks.indices) {
-                            runCatching { gridState.scrollToItem(currentIndex) }
+                        val anchorIndex = gridState.firstVisibleItemIndex
+                        val anchorOffset = gridState.firstVisibleItemScrollOffset
+                        kotlinx.coroutines.yield()
+                        if (tracks.isNotEmpty()) {
+                            val safe = anchorIndex.coerceIn(0, tracks.lastIndex)
+                            runCatching { gridState.scrollToItem(safe, anchorOffset) }
                         }
                     }
                     LazyVerticalGrid(
