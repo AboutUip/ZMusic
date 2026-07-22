@@ -116,6 +116,8 @@ fun VinylSongPickOverlay(
     centerRadiusFrac: Float,
     outerScale: Float,
     hazeState: HazeState,
+    /** 每次打开选歌递增；用于重建会话，避免沿用切歌前的旧队列/锚点 */
+    sessionKey: Int = 0,
     onBack: () -> Unit,
     onConfirmFocused: () -> Unit,
     onConfirmExitFinished: () -> Unit,
@@ -126,16 +128,73 @@ fun VinylSongPickOverlay(
     val t = progress.coerceIn(0f, 1f)
     if (t <= 0.001f) return
 
+    key(sessionKey) {
+        VinylSongPickOverlaySession(
+            phase = phase,
+            progress = t,
+            queue = queue,
+            queueIndex = queueIndex,
+            focusedIndex = focusedIndex,
+            onFocusedIndexChange = onFocusedIndexChange,
+            snapCenterX = snapCenterX,
+            snapCenterY = snapCenterY,
+            discSize = discSize,
+            plateColors = plateColors,
+            fullCover = fullCover,
+            centerRadiusFrac = centerRadiusFrac,
+            outerScale = outerScale,
+            hazeState = hazeState,
+            onBack = onBack,
+            onConfirmFocused = onConfirmFocused,
+            onConfirmExitFinished = onConfirmExitFinished,
+            onStackingFinished = onStackingFinished,
+            onFanOutFinished = onFanOutFinished,
+            modifier = modifier,
+        )
+    }
+}
+
+@Composable
+private fun VinylSongPickOverlaySession(
+    phase: VinylSongPickPhase,
+    progress: Float,
+    queue: List<TrackRow>,
+    queueIndex: Int,
+    focusedIndex: Int,
+    onFocusedIndexChange: (Int) -> Unit,
+    snapCenterX: Dp,
+    snapCenterY: Dp,
+    discSize: Dp,
+    plateColors: VinylPlateColors,
+    fullCover: Boolean,
+    centerRadiusFrac: Float,
+    outerScale: Float,
+    hazeState: HazeState,
+    onBack: () -> Unit,
+    onConfirmFocused: () -> Unit,
+    onConfirmExitFinished: () -> Unit,
+    onStackingFinished: () -> Unit,
+    onFanOutFinished: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val t = progress.coerceIn(0f, 1f)
     val fogAlpha = t
     val isCanceling = phase == VinylSongPickPhase.Canceling
 
-    // 会话内冻结歌单/锚点：确认切歌后父级 queueIndex 会变，避免浏览层跟着跳导致 1→0→1 闪烁
-    var sessionQueue by remember { mutableStateOf(queue) }
-    var sessionAnchor by remember { mutableIntStateOf(queueIndex) }
+    // 父级已按打开瞬间快照传入；此处再冻结，避免确认切歌后父级 props 闪变
+    var sessionQueue by remember {
+        mutableStateOf(queue)
+    }
+    var sessionAnchor by remember {
+        mutableIntStateOf(queueIndex.coerceIn(0, (queue.size - 1).coerceAtLeast(0)))
+    }
+    val queueUpdated by rememberUpdatedState(queue)
+    val queueIndexUpdated by rememberUpdatedState(queueIndex)
     LaunchedEffect(phase) {
         if (phase == VinylSongPickPhase.Entering || phase == VinylSongPickPhase.Stacking) {
-            sessionQueue = queue
-            sessionAnchor = queueIndex.coerceIn(0, (queue.size - 1).coerceAtLeast(0))
+            val q = queueUpdated
+            sessionQueue = q
+            sessionAnchor = queueIndexUpdated.coerceIn(0, (q.size - 1).coerceAtLeast(0))
         }
     }
 

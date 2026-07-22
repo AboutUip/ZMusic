@@ -519,32 +519,51 @@ data class PlayerDisplayPrefs(
         val index = vinylCustomPresetIndex.coerceIn(0, VINYL_CUSTOM_PRESET_COUNT - 1)
         val active = presets[index]
         return copy(
-            fontScale = fontScale.coerceIn(FONT_MIN, FONT_MAX),
-            lyricLineSpacingDp = lyricLineSpacingDp.coerceIn(LINE_SPACING_MIN, LINE_SPACING_MAX),
+            fontScale = fontScale.finiteCoerceIn(FONT_MIN, FONT_MAX, 1f),
+            lyricLineSpacingDp = lyricLineSpacingDp.finiteCoerceIn(
+                LINE_SPACING_MIN,
+                LINE_SPACING_MAX,
+                10f,
+            ),
             lyricPlayedCount = lyricPlayedCount.coerceIn(LYRIC_AROUND_MIN, LYRIC_AROUND_MAX),
             lyricUpcomingCount = lyricUpcomingCount.coerceIn(LYRIC_AROUND_MIN, LYRIC_AROUND_MAX),
-            uiScale = uiScale.coerceIn(UI_MIN, UI_MAX),
-            vinylOffsetXDp = vinylOffsetXDp.coerceIn(VINYL_OFFSET_MIN, VINYL_OFFSET_MAX),
-            vinylOffsetYDp = vinylOffsetYDp.coerceIn(VINYL_OFFSET_MIN, VINYL_OFFSET_MAX),
-            lyricOffsetXDp = lyricOffsetXDp.coerceIn(LYRIC_OFFSET_MIN, LYRIC_OFFSET_MAX),
-            titleOffsetYDp = titleOffsetYDp.coerceIn(TITLE_OFFSET_Y_MIN, TITLE_OFFSET_Y_MAX),
-            transportBottomInsetDp = transportBottomInsetDp.coerceIn(
+            uiScale = uiScale.finiteCoerceIn(UI_MIN, UI_MAX, 1f),
+            vinylOffsetXDp = vinylOffsetXDp.finiteCoerceIn(VINYL_OFFSET_MIN, VINYL_OFFSET_MAX, 0f),
+            vinylOffsetYDp = vinylOffsetYDp.finiteCoerceIn(VINYL_OFFSET_MIN, VINYL_OFFSET_MAX, 0f),
+            lyricOffsetXDp = lyricOffsetXDp.finiteCoerceIn(LYRIC_OFFSET_MIN, LYRIC_OFFSET_MAX, 0f),
+            titleOffsetYDp = titleOffsetYDp.finiteCoerceIn(
+                TITLE_OFFSET_Y_MIN,
+                TITLE_OFFSET_Y_MAX,
+                0f,
+            ),
+            transportBottomInsetDp = transportBottomInsetDp.finiteCoerceIn(
                 TRANSPORT_BOTTOM_INSET_MIN,
                 TRANSPORT_BOTTOM_INSET_MAX,
+                16f,
             ),
-            vinylSizeScale = vinylSizeScale.coerceIn(VINYL_SIZE_SCALE_MIN, VINYL_SIZE_SCALE_MAX),
-            vinylOuterScale = vinylOuterScale.coerceIn(VINYL_OUTER_SCALE_MIN, VINYL_OUTER_SCALE_MAX),
-            vinylCenterRadiusFrac = vinylCenterRadiusFrac.coerceIn(
+            vinylSizeScale = vinylSizeScale.finiteCoerceIn(
+                VINYL_SIZE_SCALE_MIN,
+                VINYL_SIZE_SCALE_MAX,
+                1f,
+            ),
+            vinylOuterScale = vinylOuterScale.finiteCoerceIn(
+                VINYL_OUTER_SCALE_MIN,
+                VINYL_OUTER_SCALE_MAX,
+                1f,
+            ),
+            vinylCenterRadiusFrac = vinylCenterRadiusFrac.finiteCoerceIn(
                 VINYL_CENTER_RADIUS_MIN,
                 VINYL_CENTER_RADIUS_MAX,
+                0.20f,
             ),
             vinylCustomPresets = presets,
             vinylCustomPresetIndex = index,
             vinylCustomBaseArgb = active.baseArgb,
             vinylCustomGrooveArgb = active.grooveArgb,
-            vinylGestureDamping = vinylGestureDamping.coerceIn(
+            vinylGestureDamping = vinylGestureDamping.finiteCoerceIn(
                 VINYL_GESTURE_DAMPING_MIN,
                 VINYL_GESTURE_DAMPING_MAX,
+                0.5f,
             ),
             lyricPlayingStyle = lyricPlayingStyle,
             lyricPlayedStyle = lyricPlayedStyle,
@@ -585,6 +604,11 @@ data class PlayerDisplayPrefs(
     }
 }
 
+private fun Float.finiteCoerceIn(min: Float, max: Float, fallback: Float): Float {
+    if (!isFinite()) return fallback
+    return coerceIn(min, max)
+}
+
 private fun sanitizeCustomPresets(
     presets: List<VinylCustomPreset>,
     fallbackBase: Int,
@@ -601,120 +625,134 @@ class PlayerDisplayPrefsStore(context: Context) {
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
     fun load(): PlayerDisplayPrefs {
-        val legacyBase = prefs.getInt(
+        val loaded = runCatching { loadUnchecked().sanitized() }.getOrNull()
+        if (loaded != null) return loaded
+        // 损坏/类型错乱时回落默认并覆写，避免冷启动反复崩溃
+        val fallback = PlayerDisplayPrefs()
+        runCatching { save(fallback) }
+        return fallback
+    }
+
+    private fun loadUnchecked(): PlayerDisplayPrefs {
+        val legacyBase = prefs.safeInt(
             KEY_VINYL_CUSTOM_BASE,
             Color(0xFF2A2A32).toArgb(),
         )
-        val legacyGroove = prefs.getInt(
+        val legacyGroove = prefs.safeInt(
             KEY_VINYL_CUSTOM_GROOVE,
             Color(0xFFE8E8F0).toArgb(),
         )
         val presets = decodeVinylCustomPresets(
-            raw = prefs.getString(KEY_VINYL_CUSTOM_PRESETS, null),
+            raw = prefs.safeString(KEY_VINYL_CUSTOM_PRESETS, null),
             fallbackBase = legacyBase,
             fallbackGroove = legacyGroove,
         )
-        val index = prefs.getInt(KEY_VINYL_CUSTOM_PRESET_INDEX, 0)
+        val index = prefs.safeInt(KEY_VINYL_CUSTOM_PRESET_INDEX, 0)
             .coerceIn(0, PlayerDisplayPrefs.VINYL_CUSTOM_PRESET_COUNT - 1)
         val active = presets[index]
         return PlayerDisplayPrefs(
-            rainNightEnabled = prefs.getBoolean(KEY_RAIN, true),
-            fontScale = prefs.getFloat(KEY_FONT, 1f),
-            lyricLineSpacingDp = prefs.getFloat(KEY_LINE_SPACING, 10f),
-            lyricPlayedCount = prefs.getInt(KEY_PLAYED_COUNT, 2),
-            lyricUpcomingCount = prefs.getInt(KEY_UPCOMING_COUNT, 2),
-            uiScale = prefs.getFloat(KEY_UI, 1f),
-            vinylOffsetXDp = prefs.getFloat(KEY_VINYL_X, 0f),
-            vinylOffsetYDp = prefs.getFloat(KEY_VINYL_Y, 0f),
-            vinylAbsoluteCenter = prefs.getBoolean(KEY_VINYL_ABS, false),
-            lyricOffsetXDp = prefs.getFloat(KEY_LYRIC_X, 0f),
-            dynamicLyrics = prefs.getBoolean(KEY_DYNAMIC_LYRICS, false),
-            vinylFullCover = prefs.getBoolean(KEY_VINYL_FULL_COVER, false),
-            vinylSizeScale = prefs.getFloat(KEY_VINYL_SIZE_SCALE, prefs.getFloat(KEY_VINYL_RADIUS_SCALE_LEGACY, 1f)),
-            vinylOuterScale = prefs.getFloat(KEY_VINYL_OUTER_SCALE, 1f),
-            vinylCenterRadiusFrac = prefs.getFloat(KEY_VINYL_CENTER_RADIUS, 0.20f),
-            vinylColorStyle = VinylColorStyle.fromOrdinal(prefs.getInt(KEY_VINYL_COLOR, 0)),
+            rainNightEnabled = prefs.safeBoolean(KEY_RAIN, true),
+            fontScale = prefs.safeFloat(KEY_FONT, 1f),
+            lyricLineSpacingDp = prefs.safeFloat(KEY_LINE_SPACING, 10f),
+            lyricPlayedCount = prefs.safeInt(KEY_PLAYED_COUNT, 2),
+            lyricUpcomingCount = prefs.safeInt(KEY_UPCOMING_COUNT, 2),
+            uiScale = prefs.safeFloat(KEY_UI, 1f),
+            vinylOffsetXDp = prefs.safeFloat(KEY_VINYL_X, 0f),
+            vinylOffsetYDp = prefs.safeFloat(KEY_VINYL_Y, 0f),
+            vinylAbsoluteCenter = prefs.safeBoolean(KEY_VINYL_ABS, false),
+            lyricOffsetXDp = prefs.safeFloat(KEY_LYRIC_X, 0f),
+            dynamicLyrics = prefs.safeBoolean(KEY_DYNAMIC_LYRICS, false),
+            vinylFullCover = prefs.safeBoolean(KEY_VINYL_FULL_COVER, false),
+            vinylSizeScale = prefs.safeFloat(
+                KEY_VINYL_SIZE_SCALE,
+                prefs.safeFloat(KEY_VINYL_RADIUS_SCALE_LEGACY, 1f),
+            ),
+            vinylOuterScale = prefs.safeFloat(KEY_VINYL_OUTER_SCALE, 1f),
+            vinylCenterRadiusFrac = prefs.safeFloat(KEY_VINYL_CENTER_RADIUS, 0.20f),
+            vinylColorStyle = VinylColorStyle.fromOrdinal(prefs.safeInt(KEY_VINYL_COLOR, 0)),
             vinylCustomBaseArgb = active.baseArgb,
             vinylCustomGrooveArgb = active.grooveArgb,
             vinylCustomPresets = presets,
             vinylCustomPresetIndex = index,
-            transportAlwaysVisible = prefs.getBoolean(KEY_TRANSPORT_ALWAYS, false),
-            transportDocked = prefs.getBoolean(KEY_TRANSPORT_DOCKED, true),
-            transportBottomInsetDp = prefs.getFloat(KEY_TRANSPORT_BOTTOM_INSET, 16f),
-            vinylSongPickEnabled = prefs.getBoolean(KEY_VINYL_SONG_PICK, false),
-            activeHalo = prefs.getBoolean(KEY_ACTIVE_HALO, false),
-            lyricTapAutoPlay = prefs.getBoolean(KEY_LYRIC_TAP_AUTO_PLAY, false),
+            transportAlwaysVisible = prefs.safeBoolean(KEY_TRANSPORT_ALWAYS, false),
+            transportDocked = prefs.safeBoolean(KEY_TRANSPORT_DOCKED, true),
+            transportBottomInsetDp = prefs.safeFloat(KEY_TRANSPORT_BOTTOM_INSET, 16f),
+            vinylSongPickEnabled = prefs.safeBoolean(KEY_VINYL_SONG_PICK, false),
+            activeHalo = prefs.safeBoolean(KEY_ACTIVE_HALO, false),
+            lyricTapAutoPlay = prefs.safeBoolean(KEY_LYRIC_TAP_AUTO_PLAY, false),
             titleAlign = TitleAlignMode.fromOrdinal(
-                prefs.getInt(KEY_TITLE_ALIGN, TitleAlignMode.VINYL.ordinal),
+                prefs.safeInt(KEY_TITLE_ALIGN, TitleAlignMode.VINYL.ordinal),
             ),
-            titleOffsetYDp = prefs.getFloat(KEY_TITLE_OFFSET_Y, 0f),
+            titleOffsetYDp = prefs.safeFloat(KEY_TITLE_OFFSET_Y, 0f),
             titleNameStyle = decodeTitleLineStyle(
-                prefs.getString(KEY_TITLE_NAME_STYLE, null),
+                prefs.safeString(KEY_TITLE_NAME_STYLE, null),
                 TitleLineStyle.NameDefault,
             ),
             titleArtistStyle = decodeTitleLineStyle(
-                prefs.getString(KEY_TITLE_ARTIST_STYLE, null),
+                prefs.safeString(KEY_TITLE_ARTIST_STYLE, null),
                 TitleLineStyle.ArtistDefault,
             ),
             titleSourceStyle = decodeTitleLineStyle(
-                prefs.getString(KEY_TITLE_SOURCE_STYLE, null),
+                prefs.safeString(KEY_TITLE_SOURCE_STYLE, null),
                 TitleLineStyle.SourceDefault,
             ),
-            vinylGestureDamping = prefs.getFloat(KEY_VINYL_GESTURE_DAMPING, 0.5f),
+            vinylGestureDamping = prefs.safeFloat(KEY_VINYL_GESTURE_DAMPING, 0.5f),
             lyricPlayingStyle = decodeLyricRoleStyle(
-                prefs.getString(KEY_LYRIC_PLAYING_STYLE, null),
+                prefs.safeString(KEY_LYRIC_PLAYING_STYLE, null),
                 LyricRoleStyle.PlayingDefault,
             ),
             lyricPlayedStyle = decodeLyricRoleStyle(
-                prefs.getString(KEY_LYRIC_PLAYED_STYLE, null),
+                prefs.safeString(KEY_LYRIC_PLAYED_STYLE, null),
                 LyricRoleStyle.PlayedDefault,
             ),
             lyricUnplayedStyle = decodeLyricRoleStyle(
-                prefs.getString(KEY_LYRIC_UNPLAYED_STYLE, null),
+                prefs.safeString(KEY_LYRIC_UNPLAYED_STYLE, null),
                 LyricRoleStyle.UnplayedDefault,
             ),
-        ).sanitized()
+        )
     }
 
     fun save(value: PlayerDisplayPrefs) {
         val v = value.sanitized()
-        prefs.edit()
-            .putBoolean(KEY_RAIN, v.rainNightEnabled)
-            .putFloat(KEY_FONT, v.fontScale)
-            .putFloat(KEY_LINE_SPACING, v.lyricLineSpacingDp)
-            .putInt(KEY_PLAYED_COUNT, v.lyricPlayedCount)
-            .putInt(KEY_UPCOMING_COUNT, v.lyricUpcomingCount)
-            .putFloat(KEY_UI, v.uiScale)
-            .putFloat(KEY_VINYL_X, v.vinylOffsetXDp)
-            .putFloat(KEY_VINYL_Y, v.vinylOffsetYDp)
-            .putBoolean(KEY_VINYL_ABS, v.vinylAbsoluteCenter)
-            .putFloat(KEY_LYRIC_X, v.lyricOffsetXDp)
-            .putBoolean(KEY_DYNAMIC_LYRICS, v.dynamicLyrics)
-            .putBoolean(KEY_VINYL_FULL_COVER, v.vinylFullCover)
-            .putFloat(KEY_VINYL_SIZE_SCALE, v.vinylSizeScale)
-            .putFloat(KEY_VINYL_OUTER_SCALE, v.vinylOuterScale)
-            .putFloat(KEY_VINYL_CENTER_RADIUS, v.vinylCenterRadiusFrac)
-            .putInt(KEY_VINYL_COLOR, v.vinylColorStyle.ordinal)
-            .putInt(KEY_VINYL_CUSTOM_BASE, v.vinylCustomBaseArgb)
-            .putInt(KEY_VINYL_CUSTOM_GROOVE, v.vinylCustomGrooveArgb)
-            .putString(KEY_VINYL_CUSTOM_PRESETS, encodeVinylCustomPresets(v.vinylCustomPresets))
-            .putInt(KEY_VINYL_CUSTOM_PRESET_INDEX, v.vinylCustomPresetIndex)
-            .putBoolean(KEY_TRANSPORT_ALWAYS, v.transportAlwaysVisible)
-            .putBoolean(KEY_TRANSPORT_DOCKED, v.transportDocked)
-            .putFloat(KEY_TRANSPORT_BOTTOM_INSET, v.transportBottomInsetDp)
-            .putBoolean(KEY_VINYL_SONG_PICK, v.vinylSongPickEnabled)
-            .putBoolean(KEY_ACTIVE_HALO, v.activeHalo)
-            .putBoolean(KEY_LYRIC_TAP_AUTO_PLAY, v.lyricTapAutoPlay)
-            .putInt(KEY_TITLE_ALIGN, v.titleAlign.ordinal)
-            .putFloat(KEY_TITLE_OFFSET_Y, v.titleOffsetYDp)
-            .putString(KEY_TITLE_NAME_STYLE, encodeTitleLineStyle(v.titleNameStyle))
-            .putString(KEY_TITLE_ARTIST_STYLE, encodeTitleLineStyle(v.titleArtistStyle))
-            .putString(KEY_TITLE_SOURCE_STYLE, encodeTitleLineStyle(v.titleSourceStyle))
-            .putFloat(KEY_VINYL_GESTURE_DAMPING, v.vinylGestureDamping)
-            .putString(KEY_LYRIC_PLAYING_STYLE, encodeLyricRoleStyle(v.lyricPlayingStyle))
-            .putString(KEY_LYRIC_PLAYED_STYLE, encodeLyricRoleStyle(v.lyricPlayedStyle))
-            .putString(KEY_LYRIC_UNPLAYED_STYLE, encodeLyricRoleStyle(v.lyricUnplayedStyle))
-            .apply()
+        runCatching {
+            prefs.edit()
+                .putBoolean(KEY_RAIN, v.rainNightEnabled)
+                .putFloat(KEY_FONT, v.fontScale)
+                .putFloat(KEY_LINE_SPACING, v.lyricLineSpacingDp)
+                .putInt(KEY_PLAYED_COUNT, v.lyricPlayedCount)
+                .putInt(KEY_UPCOMING_COUNT, v.lyricUpcomingCount)
+                .putFloat(KEY_UI, v.uiScale)
+                .putFloat(KEY_VINYL_X, v.vinylOffsetXDp)
+                .putFloat(KEY_VINYL_Y, v.vinylOffsetYDp)
+                .putBoolean(KEY_VINYL_ABS, v.vinylAbsoluteCenter)
+                .putFloat(KEY_LYRIC_X, v.lyricOffsetXDp)
+                .putBoolean(KEY_DYNAMIC_LYRICS, v.dynamicLyrics)
+                .putBoolean(KEY_VINYL_FULL_COVER, v.vinylFullCover)
+                .putFloat(KEY_VINYL_SIZE_SCALE, v.vinylSizeScale)
+                .putFloat(KEY_VINYL_OUTER_SCALE, v.vinylOuterScale)
+                .putFloat(KEY_VINYL_CENTER_RADIUS, v.vinylCenterRadiusFrac)
+                .putInt(KEY_VINYL_COLOR, v.vinylColorStyle.ordinal)
+                .putInt(KEY_VINYL_CUSTOM_BASE, v.vinylCustomBaseArgb)
+                .putInt(KEY_VINYL_CUSTOM_GROOVE, v.vinylCustomGrooveArgb)
+                .putString(KEY_VINYL_CUSTOM_PRESETS, encodeVinylCustomPresets(v.vinylCustomPresets))
+                .putInt(KEY_VINYL_CUSTOM_PRESET_INDEX, v.vinylCustomPresetIndex)
+                .putBoolean(KEY_TRANSPORT_ALWAYS, v.transportAlwaysVisible)
+                .putBoolean(KEY_TRANSPORT_DOCKED, v.transportDocked)
+                .putFloat(KEY_TRANSPORT_BOTTOM_INSET, v.transportBottomInsetDp)
+                .putBoolean(KEY_VINYL_SONG_PICK, v.vinylSongPickEnabled)
+                .putBoolean(KEY_ACTIVE_HALO, v.activeHalo)
+                .putBoolean(KEY_LYRIC_TAP_AUTO_PLAY, v.lyricTapAutoPlay)
+                .putInt(KEY_TITLE_ALIGN, v.titleAlign.ordinal)
+                .putFloat(KEY_TITLE_OFFSET_Y, v.titleOffsetYDp)
+                .putString(KEY_TITLE_NAME_STYLE, encodeTitleLineStyle(v.titleNameStyle))
+                .putString(KEY_TITLE_ARTIST_STYLE, encodeTitleLineStyle(v.titleArtistStyle))
+                .putString(KEY_TITLE_SOURCE_STYLE, encodeTitleLineStyle(v.titleSourceStyle))
+                .putFloat(KEY_VINYL_GESTURE_DAMPING, v.vinylGestureDamping)
+                .putString(KEY_LYRIC_PLAYING_STYLE, encodeLyricRoleStyle(v.lyricPlayingStyle))
+                .putString(KEY_LYRIC_PLAYED_STYLE, encodeLyricRoleStyle(v.lyricPlayedStyle))
+                .putString(KEY_LYRIC_UNPLAYED_STYLE, encodeLyricRoleStyle(v.lyricUnplayedStyle))
+                .apply()
+        }
     }
 
     companion object {
@@ -758,3 +796,31 @@ class PlayerDisplayPrefsStore(context: Context) {
         private const val KEY_LYRIC_UNPLAYED_STYLE = "lyric_unplayed_style"
     }
 }
+
+private fun SharedPreferences.safeBoolean(key: String, default: Boolean): Boolean =
+    try {
+        getBoolean(key, default)
+    } catch (_: ClassCastException) {
+        default
+    }
+
+private fun SharedPreferences.safeFloat(key: String, default: Float): Float =
+    try {
+        getFloat(key, default)
+    } catch (_: ClassCastException) {
+        default
+    }
+
+private fun SharedPreferences.safeInt(key: String, default: Int): Int =
+    try {
+        getInt(key, default)
+    } catch (_: ClassCastException) {
+        default
+    }
+
+private fun SharedPreferences.safeString(key: String, default: String?): String? =
+    try {
+        getString(key, default)
+    } catch (_: ClassCastException) {
+        default
+    }

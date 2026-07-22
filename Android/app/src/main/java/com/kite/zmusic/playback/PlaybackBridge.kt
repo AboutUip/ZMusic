@@ -247,7 +247,12 @@ class PlaybackBridge(
     private fun runOnCoordinator(block: (PlaylistCoordinator) -> Unit) {
         val c = coordinator
         if (c != null) {
-            mainHandler.post { block(c) }
+            // 已在主线程则同步执行：手势切歌先换盘再 post 会导致长按选歌仍读到旧 index
+            if (Looper.myLooper() == Looper.getMainLooper()) {
+                block(c)
+            } else {
+                mainHandler.post { block(c) }
+            }
         } else {
             pending.add { coordinator?.let(block) }
             ensureController()

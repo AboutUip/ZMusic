@@ -1222,6 +1222,10 @@ private fun SettingsSliderRow(
     val titleColor = if (enabled) LabelColor else LabelColor.copy(alpha = 0.38f)
     val valueColor = if (enabled) Accent.copy(alpha = 0.95f) else Accent.copy(alpha = 0.35f)
     val thumbIx = remember { MutableInteractionSource() }
+    val safeValue = value
+        .takeIf { it.isFinite() }
+        ?.coerceIn(valueRange.start, valueRange.endInclusive)
+        ?: valueRange.start
     Column(
         Modifier
             .fillMaxWidth()
@@ -1258,8 +1262,14 @@ private fun SettingsSliderRow(
         }
         Spacer(Modifier.height(4.dp))
         Slider(
-            value = value,
-            onValueChange = onValueChange,
+            value = safeValue,
+            onValueChange = { next ->
+                val clamped = next
+                    .takeIf { it.isFinite() }
+                    ?.coerceIn(valueRange.start, valueRange.endInclusive)
+                    ?: return@Slider
+                onValueChange(clamped)
+            },
             valueRange = valueRange,
             steps = steps,
             enabled = enabled,

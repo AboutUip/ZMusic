@@ -125,6 +125,8 @@ fun VinylTransitionStage(
     gesturesEnabled: Boolean,
     onTransitionRunningChange: (Boolean) -> Unit,
     onCommitSkip: (VinylSkipDirection) -> Unit,
+    /** 当前落定展示的黑胶曲目（含手势已提交、播放状态尚未重组时） */
+    onSettledTrackChange: (TrackRow) -> Unit = {},
     modifier: Modifier = Modifier,
     fullCover: Boolean = false,
     /**
@@ -204,6 +206,10 @@ fun VinylTransitionStage(
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
     val settleSpin by rememberUpdatedState(settleSpinUpright)
+    val onSettledTrackChangeUpdated by rememberUpdatedState(onSettledTrackChange)
+    fun publishSettledTrack(t: TrackRow) {
+        onSettledTrackChangeUpdated(t)
+    }
 
     // 选歌入场：连转已停时，把冻结角平滑归正，禁止瞬间跳到 0°
     LaunchedEffect(settleSpinUpright, track.id) {
@@ -314,6 +320,7 @@ fun VinylTransitionStage(
             topTrack = incoming
             stickyTopX = Float.NaN
             settledId = incoming.id
+            publishSettledTrack(incoming)
             followX = 0f
             prevRevealBase = 0f
             dragMode = null
@@ -427,6 +434,7 @@ fun VinylTransitionStage(
                 topTrack = track
                 bottomTrack = track
                 settledId = track.id
+                publishSettledTrack(track)
                 stickyTopX = Float.NaN
                 topX.snapTo(0f)
                 topScale.snapTo(1f)
@@ -441,6 +449,7 @@ fun VinylTransitionStage(
                 // 手势已换顶层：再断言 0°（防旧旋转协程在 reset↔重组间隙写回污染）
                 resetTopSpin()
                 settledId = track.id
+                publishSettledTrack(track)
                 return@LaunchedEffect
             }
             // 曲谱飞入接管：禁止常规切歌位移动画，直接落定
@@ -457,6 +466,7 @@ fun VinylTransitionStage(
                 topTrack = track
                 bottomTrack = track
                 settledId = track.id
+                publishSettledTrack(track)
                 showBottom = false
                 topX.snapTo(0f)
                 topScale.snapTo(1f)
@@ -533,9 +543,10 @@ fun VinylTransitionStage(
                                 prevRevealBase = 0f
                                 stickyTopX = Float.NaN
                                 showBottom = false
+                                // 先提交播放索引（主线程同步），再换盘；避免长按选歌读到旧 index
+                                onCommitSkip(VinylSkipDirection.Next)
                                 spawnExitNext(outgoing, x, topScale.value)
                                 promoteIncoming(incoming, scaleAtRelease, animateEnter = false)
-                                onCommitSkip(VinylSkipDirection.Next)
                             }
                             goPrev -> {
                                 val incoming = checkNotNull(peekPrev)
@@ -549,6 +560,7 @@ fun VinylTransitionStage(
                                 dragMode = null
                                 prevRevealBase = 0f
                                 stickyTopX = Float.NaN
+                                onCommitSkip(VinylSkipDirection.Previous)
                                 promoteIncoming(
                                     incoming,
                                     1f,
@@ -556,7 +568,6 @@ fun VinylTransitionStage(
                                     animateEnter = true,
                                     underTrack = under,
                                 )
-                                onCommitSkip(VinylSkipDirection.Previous)
                             }
                             else -> {
                                 if (mode == VinylSkipDirection.Previous) {
@@ -626,6 +637,7 @@ fun VinylTransitionStage(
                                         prevRevealBase = 0f
                                         dragMode = null
                                         settledId = track.id
+                                        publishSettledTrack(track)
                                     } finally {
                                         stickyTopX = Float.NaN
                                         bounceRunning = false

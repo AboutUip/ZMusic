@@ -82,6 +82,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -155,6 +156,7 @@ import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -865,10 +867,26 @@ fun NowPlayingScreen(
     val context = LocalContext.current
     val displayPrefsStore = remember { PlayerDisplayPrefsStore(context) }
     var displayPrefs by remember { mutableStateOf(displayPrefsStore.load()) }
+    var displayPrefsSaveJob by remember { mutableStateOf<Job?>(null) }
+    val displayPrefsLatest by rememberUpdatedState(displayPrefs)
+    val prefsPersistScope = rememberCoroutineScope()
+    // 滑条拖动只改内存态；磁盘防抖写入，避免澎湃等机型高频 apply 损坏偏好导致无法再进
     fun updateDisplayPrefs(next: PlayerDisplayPrefs) {
         val sanitized = next.sanitized()
         displayPrefs = sanitized
-        displayPrefsStore.save(sanitized)
+        displayPrefsSaveJob?.cancel()
+        displayPrefsSaveJob = prefsPersistScope.launch {
+            delay(200)
+            displayPrefsStore.save(sanitized)
+        }
+    }
+    fun flushDisplayPrefs() {
+        displayPrefsSaveJob?.cancel()
+        displayPrefsSaveJob = null
+        displayPrefsStore.save(displayPrefsLatest)
+    }
+    DisposableEffect(Unit) {
+        onDispose { flushDisplayPrefs() }
     }
 
     val app = context.applicationContext as ZMusicApplication
@@ -1081,6 +1099,7 @@ fun NowPlayingScreen(
                     dismissSwipeThresholdPx = dismissSwipeThresholdPx,
                     displayPrefs = displayPrefs,
                     onDisplayPrefsChange = ::updateDisplayPrefs,
+                    onDisplayPrefsFlush = ::flushDisplayPrefs,
                     settingsHazeState = settingsHazeState!!,
                     peekNextTrack = state.peekNextTrack,
                     peekPrevTrack = state.peekPrevTrack,
@@ -3413,6 +3432,7 @@ private fun LandscapePlayerBody(
     dismissSwipeThresholdPx: Float,
     displayPrefs: PlayerDisplayPrefs,
     onDisplayPrefsChange: (PlayerDisplayPrefs) -> Unit,
+    onDisplayPrefsFlush: () -> Unit,
     settingsHazeState: HazeState,
     peekNextTrack: TrackRow?,
     peekPrevTrack: TrackRow?,
@@ -3452,12 +3472,25 @@ private fun LandscapePlayerBody(
     var vinylSongPickOpen by remember { mutableStateOf(false) }
     var vinylSongPickPhase by remember { mutableStateOf(VinylSongPickPhase.Entering) }
     var pickTargetIndex by remember { mutableIntStateOf(0) }
+    /** 每次长按打开递增，强制选歌层按当前播放位置重建，避免沿用上次会话 */
+    var pickSessionGeneration by remember { mutableIntStateOf(0) }
+    /** 打开瞬间冻结的歌单/锚点（勿跟随后续切歌/手势） */
+    var pickSessionQueue by remember { mutableStateOf<List<TrackRow>>(emptyList()) }
+    var pickSessionAnchor by remember { mutableIntStateOf(0) }
     var pendingPickPlayIndex by remember { mutableStateOf<Int?>(null) }
     /** 确认切歌后：主黑胶已换新曲但仍被选歌交接盘盖住，用于预热封面避免闪旧曲 */
     var pickRevealMainUnderHandoff by remember { mutableStateOf(false) }
     /** 选歌吸附锚点：主黑胶实测中心/尺寸（含个性化），进入居中后锁定 */
     var pickAnchorCenterRoot by remember { mutableStateOf(Offset.Zero) }
     var pickAnchorSizePx by remember { mutableFloatStateOf(0f) }
+    /** 黑胶舞台当前落定曲（手势提交后可能比 playback index 更早） */
+    var vinylSettledTrack by remember { mutableStateOf(track) }
+    LaunchedEffect(track.id) {
+        // 外部切歌：舞台回调前先对齐；若手势已领先到同曲则保持
+        if (vinylSettledTrack.id != track.id) {
+            vinylSettledTrack = track
+        }
+    }
     var reopenSettingsAfterEditor by remember { mutableStateOf(false) }
     var lyricStyleEditorOpen by remember { mutableStateOf(false) }
     var reopenSettingsAfterLyricStyle by remember { mutableStateOf(false) }
@@ -3813,6 +3846,7 @@ private fun LandscapePlayerBody(
     val lyricSelectT = lyricSelectPanel.value
 
     fun closeSettings() {
+        onDisplayPrefsFlush()
         settingsOpen = false
         if (transportPinned && !forceVinylYCentered && !lyricSelectOpen && !scoreOpen &&
             !lyricStyleEditorOpen && !titleStyleEditorOpen
@@ -4067,7 +4101,17 @@ private fun LandscapePlayerBody(
         settingsOpen = false
         pendingPickPlayIndex = null
         pickRevealMainUnderHandoff = false
-        pickTargetIndex = queueIndex.coerceIn(0, (queue.size - 1).coerceAtLeast(0))
+        // 打开瞬间快照：优先按舞台已落定黑胶（手势切歌会先于 queueIndex 更新）
+        val snapQueue = queue.toList()
+        val bySettled = snapQueue.indexOfFirst { it.id == vinylSettledTrack.id }
+        val snapIndex = when {
+            bySettled >= 0 -> bySettled
+            else -> queueIndex.coerceIn(0, (snapQueue.size - 1).coerceAtLeast(0))
+        }
+        pickSessionQueue = snapQueue
+        pickSessionAnchor = snapIndex
+        pickTargetIndex = snapIndex
+        pickSessionGeneration++
         // 先记下当前实测位置；居中动画结束后再刷新一次
         if (mainVinylCenterRoot.x > 1f) {
             pickAnchorCenterRoot = mainVinylCenterRoot
@@ -4482,6 +4526,7 @@ private fun LandscapePlayerBody(
                                 VinylSkipDirection.Previous -> onSkipPrev()
                             }
                         },
+                        onSettledTrackChange = { vinylSettledTrack = it },
                         modifier = mod.onGloballyPositioned { coords ->
                             val b = coords.boundsInRoot()
                             mainVinylCenterRoot = Offset(
@@ -4655,11 +4700,14 @@ private fun LandscapePlayerBody(
         // 吸附：贴底、仅上方圆角；悬浮：离底间距、四角圆角
         if (showBar || chromeT > 0.001f) {
             val transportDocked = displayPrefs.transportDocked
-            val transportBottomPad = if (transportDocked) {
-                0.dp
-            } else {
-                displayPrefs.transportBottomInsetDp.dp
-            }
+            val insetDp = displayPrefs.transportBottomInsetDp
+                .takeIf { it.isFinite() }
+                ?.coerceIn(
+                    PlayerDisplayPrefs.TRANSPORT_BOTTOM_INSET_MIN,
+                    PlayerDisplayPrefs.TRANSPORT_BOTTOM_INSET_MAX,
+                )
+                ?: 16f
+            val transportBottomPad = if (transportDocked) 0.dp else insetDp.dp
             val transportShape = if (transportDocked) {
                 RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp)
             } else {
@@ -5064,8 +5112,12 @@ private fun LandscapePlayerBody(
             VinylSongPickOverlay(
                 phase = vinylSongPickPhase,
                 progress = vinylSongPickT,
-                queue = queue,
-                queueIndex = queueIndex,
+                queue = pickSessionQueue.ifEmpty { queue },
+                queueIndex = if (pickSessionQueue.isEmpty()) {
+                    queueIndex
+                } else {
+                    pickSessionAnchor
+                },
                 focusedIndex = pickTargetIndex,
                 onFocusedIndexChange = { pickTargetIndex = it },
                 snapCenterX = pickSnapCx,
@@ -5076,6 +5128,7 @@ private fun LandscapePlayerBody(
                 centerRadiusFrac = displayPrefs.vinylCenterRadiusFrac,
                 outerScale = vinylOuterScale,
                 hazeState = settingsHazeState,
+                sessionKey = pickSessionGeneration,
                 onBack = { cancelVinylSongPick() },
                 onConfirmFocused = { confirmVinylSongPick() },
                 onConfirmExitFinished = { finishVinylSongPickConfirmExit() },
@@ -5086,8 +5139,11 @@ private fun LandscapePlayerBody(
                 },
                 onFanOutFinished = {
                     if (vinylSongPickOpen && vinylSongPickPhase == VinylSongPickPhase.FanOut) {
-                        // 散开结束：焦点锁回当前播放曲，避免落到队首
-                        pickTargetIndex = queueIndex.coerceIn(0, (queue.size - 1).coerceAtLeast(0))
+                        // 散开结束：焦点锁回本会话打开时的当前曲，勿用可能已变的 live queueIndex
+                        pickTargetIndex = pickSessionAnchor.coerceIn(
+                            0,
+                            (pickSessionQueue.size - 1).coerceAtLeast(0),
+                        )
                         vinylSongPickPhase = VinylSongPickPhase.Browsing
                     }
                 },
