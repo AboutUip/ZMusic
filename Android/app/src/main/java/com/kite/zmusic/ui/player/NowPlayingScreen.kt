@@ -96,6 +96,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameMillis
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
@@ -162,6 +163,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.yield
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.roundToInt
@@ -1874,6 +1876,8 @@ private fun LandscapeProjectionLyrics(
     unplayedStyle: LyricRoleStyle = LyricRoleStyle.UnplayedDefault,
     /** 可交互歌词 band 的布局坐标（相对播放页根），供样式克隆开场对齐 */
     onLyricBandCoords: ((LayoutCoordinates) -> Unit)? = null,
+    /** 为 true 时禁止跟滚/回中，避免歌词样式开场瞬间「绝对居中」跳一下 */
+    scrollFrozen: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     if (lines.isEmpty()) {
@@ -1944,6 +1948,7 @@ private fun LandscapeProjectionLyrics(
     val onBandCenterPxUpdated by rememberUpdatedState(onBandCenterPx)
     val onLyricBandCoordsUpdated by rememberUpdatedState(onLyricBandCoords)
     val selectProgressUpdated by rememberUpdatedState(selectProgress)
+    val playFocusUpdated by rememberUpdatedState(playFocus)
     val selectT = selectProgress.coerceIn(0f, 1f)
     val selectMode = selectT > 0.001f
     val selectInteractive = selectT > 0.85f
@@ -2198,7 +2203,8 @@ private fun LandscapeProjectionLyrics(
         }
     }
 
-    LaunchedEffect(listState) {
+    LaunchedEffect(listState, scrollFrozen) {
+        if (scrollFrozen) return@LaunchedEffect
         snapshotFlow { listState.isScrollInProgress }
             .distinctUntilChanged()
             .collect { inProgress ->
@@ -2213,19 +2219,22 @@ private fun LandscapeProjectionLyrics(
             }
     }
 
-    LaunchedEffect(playFocus, browsing, lines.size, centerPadPx, selectMode) {
+    LaunchedEffect(playFocus, browsing, lines.size, centerPadPx, selectMode, scrollFrozen) {
+        if (scrollFrozen) return@LaunchedEffect
         if (!browsing && !selectMode && !resumeSettling) {
             scrollToPlayFocus(animated = true)
         }
     }
 
-    LaunchedEffect(lines) {
+    LaunchedEffect(lines, scrollFrozen) {
+        if (scrollFrozen) return@LaunchedEffect
         if (selectMode) return@LaunchedEffect
         browsing = false
         scrollToPlayFocus(animated = false)
     }
 
-    LaunchedEffect(browsing, idleGen, selectMode) {
+    LaunchedEffect(browsing, idleGen, selectMode, scrollFrozen) {
+        if (scrollFrozen) return@LaunchedEffect
         if (!browsing || selectMode || resumeSettling) return@LaunchedEffect
         delay(5_500)
         // 仍在滚则继续等，避免惯性滚动中途被拽回
@@ -2378,12 +2387,6 @@ private fun LandscapeProjectionLyrics(
                     .height(morphBandH + lyricTouchPad * 2)
                     .width(interactiveLyricW)
                     .align(Alignment.Center)
-                    .onGloballyPositioned { coords ->
-                        // 仅跟滚态上报：这是真歌词可见块，样式克隆开场必须对齐此处
-                        if (selectT < 0.01f) {
-                            onLyricBandCoordsUpdated?.invoke(coords)
-                        }
-                    }
                     // 打开选句后：等打开那次长按的手指抬起，再允许点选
                     .pointerInput(selectOpen) {
                         if (!selectOpen) return@pointerInput
@@ -2414,12 +2417,22 @@ private fun LandscapeProjectionLyrics(
                             tracker.addPosition(down.uptimeMillis, down.position)
 
                             fun hitLyricIndex(localY: Float): Int? {
+                                if (lines.isEmpty()) return null
                                 val yInList = localY - lyricTouchPadPx
-                                return listState.layoutInfo.visibleItemsInfo
-                                    .firstOrNull { info ->
-                                        yInList >= info.offset && yInList < info.offset + info.size
-                                    }
-                                    ?.index
+                                val visible = listState.layoutInfo.visibleItemsInfo
+                                if (visible.isEmpty()) {
+                                    // 跟滚动画空窗：回落到当前播放行，避免曲末长按失效
+                                    return playFocusUpdated.coerceIn(0, lines.lastIndex)
+                                }
+                                visible.firstOrNull { info ->
+                                    yInList >= info.offset && yInList < info.offset + info.size
+                                }?.index?.let { return it }
+                                // 曲首/曲末视口上下有 contentPadding 空白：命中最近一行，
+                                // 避免「未播放不足 N 行」时长按落在空白区无法开选句
+                                return visible.minByOrNull { info ->
+                                    val cy = info.offset + info.size / 2f
+                                    abs(cy - yInList)
+                                }?.index
                             }
 
                             fun beginDrag(fromY: Float, change: PointerInputChange?) {
@@ -2537,7 +2550,13 @@ private fun LandscapeProjectionLyrics(
                 Box(
                     Modifier
                         .height(morphBandH)
-                        .width(interactiveLyricW),
+                        .width(interactiveLyricW)
+                        .onGloballyPositioned { coords ->
+                            // 仅跟滚态上报可见歌词块（不含触控垫），样式克隆开场对齐此处
+                            if (selectT < 0.01f) {
+                                onLyricBandCoordsUpdated?.invoke(coords)
+                            }
+                        },
                 ) {
                     LazyColumn(
                         state = listState,
@@ -3459,6 +3478,7 @@ private fun LandscapePlayerBody(
     // 沉浸默认隐藏；仅纯点击唤出，滑动不唤出（常显时恒定展开）
     var controlsVisible by remember { mutableStateOf(displayPrefs.transportAlwaysVisible) }
     var settingsOpen by remember { mutableStateOf(false) }
+    val settingsTransferDismissGate = remember { PlayerDisplayTransferDismissGate() }
     var scoreOpen by remember { mutableStateOf(false) }
     /** 曲谱展开：强制黑胶垂直居中（忽略个性化 Y，保留 X）；收窗动画结束后再松开 */
     var scoreVinylCentered by remember { mutableStateOf(false) }
@@ -3546,6 +3566,7 @@ private fun LandscapePlayerBody(
     val settingsCurve = remember { CubicBezierEasing(0.16f, 1.02f, 0.3f, 1f) }
     val vinylCenterEasing = remember { CubicBezierEasing(0.33f, 0f, 0.2f, 1f) }
     val vinylCenterMs = 480
+    val pickScope = rememberCoroutineScope()
 
     LaunchedEffect(transportPinned, forceVinylYCentered) {
         if (transportPinned && !forceVinylYCentered) controlsVisible = true
@@ -3600,12 +3621,6 @@ private fun LandscapePlayerBody(
                 }
             }
         }
-    }
-    LaunchedEffect(scoreCoverExpanded) {
-        scoreCoverAnim.animateTo(
-            targetValue = if (scoreCoverExpanded) 1f else 0f,
-            animationSpec = tween(durationMillis = 520, easing = settingsCurve),
-        )
     }
     val scoreT = scorePanel.value
     val scoreCoverT = scoreCoverAnim.value
@@ -3676,22 +3691,28 @@ private fun LandscapePlayerBody(
     val lyricStylePanel = remember { Animatable(0f) }
     LaunchedEffect(lyricStyleEditorOpen) {
         if (lyricStyleEditorOpen) {
-            // 先钉在源位一帧，避免开场就插值造成跳位
+            // 1) 钉源位 2) 等克隆盖住 3) 再关设置（避免关面板触发的绝对居中跳动露馅）
             lyricStylePanel.snapTo(0f)
-            delay(32)
+            yield()
+            yield()
+            if (!lyricStyleEditorOpen) return@LaunchedEffect
+            settingsOpen = false
+            controlsVisible = false
+            // 设置收起动画期间继续钉在源位，再启程飞入预览槽
+            delay(280)
             if (!lyricStyleEditorOpen) return@LaunchedEffect
             lyricStylePanel.animateTo(
                 targetValue = 1f,
-                animationSpec = tween(durationMillis = 460, easing = settingsCurve),
+                animationSpec = tween(durationMillis = 920, easing = LyricStylePanelEasing),
             )
         } else {
             lyricStylePanel.animateTo(
                 targetValue = 0f,
-                animationSpec = tween(durationMillis = 460, easing = settingsCurve),
+                animationSpec = tween(durationMillis = 780, easing = LyricStylePanelEasing),
             )
             // 回位后短暂停在重叠态，完成交叉淡出再卸克隆
             if (lyricStyleSnapshot != null) {
-                delay(200)
+                delay(280)
             }
             if (reopenSettingsAfterLyricStyle) {
                 reopenSettingsAfterLyricStyle = false
@@ -3711,15 +3732,16 @@ private fun LandscapePlayerBody(
         }
     }
     val lyricStyleT = lyricStylePanel.value
-    // 关闭回位末段：真歌词淡入、克隆淡出
+    // 关闭回位末段：真歌词与克隆更长交叉淡出
     val lyricStyleHandoffT = if (
         !lyricStyleEditorOpen &&
         lyricStyleSnapshot != null
     ) {
-        ((0.35f - lyricStyleT) / 0.35f).coerceIn(0f, 1f)
+        ((0.45f - lyricStyleT) / 0.45f).coerceIn(0f, 1f)
     } else {
         0f
     }
+    // 开场：克隆立刻盖住源位（alpha=1），真歌词隐藏；morph 前段钉源位，盖住关设置后的布局空缺
     val liveLyricAlpha = when {
         lyricStyleSnapshot == null -> 1f
         lyricStyleEditorOpen -> 0f
@@ -3795,13 +3817,7 @@ private fun LandscapePlayerBody(
     LaunchedEffect(vinylSongPickOpen) {
         if (vinylSongPickOpen) {
             vinylSongPickEverOpen = true
-            // 略延迟雾气淡入，与黑胶 Y 居中并行
-            delay(180)
-            if (!vinylSongPickOpen) return@LaunchedEffect
-            vinylSongPickPanel.animateTo(
-                targetValue = 1f,
-                animationSpec = tween(durationMillis = 380, easing = vinylCenterEasing),
-            )
+            // Entering 期间不挂雾气叠层，主黑胶保持清晰居中；Stacking 起再淡入蒙版
         } else {
             if (!vinylSongPickEverOpen) return@LaunchedEffect
             vinylSongPickPanel.animateTo(
@@ -3832,6 +3848,15 @@ private fun LandscapePlayerBody(
             }
         }
     }
+    // Stacking 起再挂蒙版：盘在蒙版上，Entering 主盘不被盖住
+    LaunchedEffect(vinylSongPickOpen, vinylSongPickPhase) {
+        if (!vinylSongPickOpen) return@LaunchedEffect
+        if (vinylSongPickPhase == VinylSongPickPhase.Entering) return@LaunchedEffect
+        vinylSongPickPanel.animateTo(
+            targetValue = 1f,
+            animationSpec = tween(durationMillis = 380, easing = vinylCenterEasing),
+        )
+    }
     // Entering → Stacking：等 Y 居中 + 旋转归正，再堆叠（避免角/位瞬移）
     LaunchedEffect(vinylSongPickOpen, vinylSongPickPhase) {
         if (!vinylSongPickOpen || vinylSongPickPhase != VinylSongPickPhase.Entering) return@LaunchedEffect
@@ -3847,9 +3872,8 @@ private fun LandscapePlayerBody(
     // 叠层盖住主盘后保持隐藏标记，取消退场时不提前露主盘
     LaunchedEffect(vinylSongPickPhase) {
         when (vinylSongPickPhase) {
-            VinylSongPickPhase.Entering,
+            VinylSongPickPhase.Entering -> pickOverlayCoversMain = false
             VinylSongPickPhase.Stacking,
-            -> pickOverlayCoversMain = false
             VinylSongPickPhase.FanOut,
             VinylSongPickPhase.Browsing,
             VinylSongPickPhase.Confirming,
@@ -3964,15 +3988,14 @@ private fun LandscapePlayerBody(
         val srcTop = with(density) { (bandBounds.top - rootBounds.top).toDp() }
         val srcW = with(density) { bandBounds.width.toDp() }
         val srcH = with(density) { bandBounds.height.toDp() }
-        settingsOpen = false
-        controlsVisible = false
-        reopenSettingsAfterLyricStyle = false
         val animActive = lyricAnimActiveIndex(lines, positionMs, durationMs)
         val focus = lyricFocusIndex(lines, animActive)
+        // 先冻结源位几何并挂上克隆，再关设置，避免关面板瞬间布局跳动露馅
+        lyricStyleFrozenPositionMs = positionMs
         draftLyricPlaying = displayPrefs.lyricPlayingStyle
         draftLyricPlayed = displayPrefs.lyricPlayedStyle
         draftLyricUnplayed = displayPrefs.lyricUnplayedStyle
-        lyricStyleFrozenPositionMs = positionMs
+        reopenSettingsAfterLyricStyle = false
         lyricStyleSnapshot = LyricStyleSnapshot(
             lines = lines,
             focusIndex = focus,
@@ -3985,6 +4008,7 @@ private fun LandscapePlayerBody(
             sourceHeightDp = srcH.coerceAtLeast(48.dp),
         )
         lyricStyleEditorOpen = true
+        // 关设置推迟到克隆盖住源位之后（见 LaunchedEffect），避免瞬间绝对居中
     }
 
     fun openTitleStyleEditor() {
@@ -4186,9 +4210,15 @@ private fun LandscapePlayerBody(
 
     fun finishVinylSongPickCancelExit() {
         if (vinylSongPickPhase != VinylSongPickPhase.Canceling) return
-        // 主黑胶仍是打开时曲目，交接盘盖住后再消雾
-        pickRevealMainUnderHandoff = true
-        vinylSongPickOpen = false
+        // 交接盘保持不透明到叠层卸完；主盘先在其下就位，再消雾
+        pickScope.launch {
+            pickRevealMainUnderHandoff = true
+            withFrameNanos { }
+            withFrameNanos { }
+            withFrameNanos { }
+            if (vinylSongPickPhase != VinylSongPickPhase.Canceling) return@launch
+            vinylSongPickOpen = false
+        }
     }
 
     fun finishVinylSongPickConfirmExit() {
@@ -4196,10 +4226,18 @@ private fun LandscapePlayerBody(
         val play = pickTargetIndex
         pendingPickPlayIndex = null
         suppressVinylEnter = true
-        // 先切到目标曲，主黑胶在交接盘下预热；交接盘不跟雾气同步变淡直到末段
         onPlayQueueIndex(play)
-        pickRevealMainUnderHandoff = true
-        vinylSongPickOpen = false
+        pickScope.launch {
+            withFrameNanos { }
+            withFrameNanos { }
+            if (vinylSongPickPhase != VinylSongPickPhase.Confirming) return@launch
+            pickRevealMainUnderHandoff = true
+            withFrameNanos { }
+            withFrameNanos { }
+            withFrameNanos { }
+            if (vinylSongPickPhase != VinylSongPickPhase.Confirming) return@launch
+            vinylSongPickOpen = false
+        }
     }
 
     fun revealControls() {
@@ -4338,7 +4376,9 @@ private fun LandscapePlayerBody(
             !vinylSongPickOpen &&
             !pickerVinylCentered,
     ) {
-        closeSettings()
+        if (!settingsTransferDismissGate.requestDismissTop()) {
+            closeSettings()
+        }
     }
 
     LaunchedEffect(
@@ -4616,20 +4656,18 @@ private fun LandscapePlayerBody(
                     !lyricSelectOpen &&
                     !lyricStyleEditorOpen &&
                     !titleStyleEditorOpen
-                // Entering/Stacking 保留主黑胶：叠层先盖住后再藏，避免居中结束瞬间主盘被 haze 虚化闪一下
+                // Entering：无叠层，主盘清晰居中；Stacking 起叠层盘在蒙版上接替，主盘隐藏
                 val hideMainForPickTarget = when {
                     pickRevealMainUnderHandoff -> false
                     vinylSongPickPhase == VinylSongPickPhase.Entering -> false
-                    vinylSongPickPhase == VinylSongPickPhase.Stacking -> false
+                    vinylSongPickPhase == VinylSongPickPhase.Stacking ->
+                        pickOverlayCoversMain && vinylSongPickT > 0.001f
                     vinylSongPickPhase == VinylSongPickPhase.Canceling ->
                         pickOverlayCoversMain && vinylSongPickT > 0.04f
                     else -> vinylSongPickT > 0.04f
                 }
-                val pickMainAlpha by animateFloatAsState(
-                    targetValue = if (hideMainForPickTarget) 0f else 1f,
-                    animationSpec = tween(durationMillis = 160, easing = FastOutSlowInEasing),
-                    label = "pickMainVinylAlpha",
-                )
+                // 交接期禁止交叉淡入：主盘瞬时显隐，由交接盘不透明盖住
+                val pickMainAlpha = if (hideMainForPickTarget) 0f else 1f
 
                 // 单一黑胶：宿主尺寸固定，整体/外圈均绕圆心缩放，避免改 size 导致圆心漂移
                 Box(
@@ -4719,6 +4757,7 @@ private fun LandscapePlayerBody(
                 playedStyle = displayPrefs.lyricPlayedStyle,
                 unplayedStyle = displayPrefs.lyricUnplayedStyle,
                 onLyricBandCoords = { lyricsBandCoords = it },
+                scrollFrozen = lyricStyleSnapshot != null,
                 modifier = Modifier
                     .weight(0.64f)
                     .fillMaxHeight()
@@ -4906,7 +4945,11 @@ private fun LandscapePlayerBody(
         // 卡片顶/底边距 = 右侧边距（chromeSidePad）
         if (settingsT > 0.001f || settingsOpen) {
             NowPlayingSettingsOutsideDismiss(
-                onDismiss = { closeSettings() },
+                onDismiss = {
+                    if (!settingsTransferDismissGate.requestDismissTop()) {
+                        closeSettings()
+                    }
+                },
                 modifier = Modifier.fillMaxSize(),
             )
             BoxWithConstraints(
@@ -4929,6 +4972,7 @@ private fun LandscapePlayerBody(
                     onOpenLyricStyleEditor = { openLyricStyleEditor() },
                     onOpenTitleStyleEditor = { openTitleStyleEditor() },
                     hazeNonce = hazeNonce,
+                    transferDismissGate = settingsTransferDismissGate,
                     modifier = Modifier
                         .fillMaxSize()
                         .graphicsLayer {
@@ -4980,8 +5024,16 @@ private fun LandscapePlayerBody(
                     val panelW = constraints.maxWidth.toFloat().coerceAtLeast(1f)
                     ScoreSheetOverlay(
                         coverExpanded = scoreCoverExpanded,
-                        coverExpandProgress = scoreCoverT,
                         onToggleCoverExpand = { scoreCoverExpanded = !scoreCoverExpanded },
+                        onCommitCoverWidth = { expanded ->
+                            scoreCoverAnim.animateTo(
+                                targetValue = if (expanded) 1f else 0f,
+                                animationSpec = tween(
+                                    durationMillis = 460,
+                                    easing = settingsCurve,
+                                ),
+                            )
+                        },
                         tracks = queue,
                         currentIndex = queueIndex,
                         plateColors = displayPrefs.vinylPlateColors(),

@@ -3,6 +3,7 @@ package com.kite.zmusic.ui.player
 import android.graphics.Color as AndroidColor
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
@@ -165,6 +166,25 @@ internal fun lyricStylePanelContentWidth(previewWidthDp: Dp): Dp {
     val previewW = lyricStylePreviewWidth(previewWidthDp)
     val rowInnerW = OpsColumnWidth + OpsPreviewGap + previewW
     return rowInnerW + PanelInnerPadStart + PanelInnerPadEnd
+}
+
+/**
+ * 面板展开/收回：慢启、软落，避免 settings 过冲曲线把歌词瞬移到槽位。
+ */
+internal val LyricStylePanelEasing = CubicBezierEasing(0.33f, 0.0f, 0.2f, 1f)
+
+/** 歌词位姿 morph：长行程、晚收束 */
+private val LyricMorphEasing = CubicBezierEasing(0.45f, 0.05f, 0.2f, 1f)
+
+/**
+ * 面板进度 → morph：前段钉在真歌词源位，再飞向预览槽。
+ * 用于盖住「关设置后布局归中」与「飞入槽」之间的空缺，避免先瞬移再开动画。
+ */
+private fun lyricStyleMorphT(progress: Float): Float {
+    val p = progress.coerceIn(0f, 1f)
+    // 0..0.32 钉源位（覆盖关设置）；0.32..0.96 主行程；末段落槽
+    val u = ((p - 0.32f) / 0.64f).coerceIn(0f, 1f)
+    return LyricMorphEasing.transform(u)
 }
 
 enum class LyricStyleRole {
@@ -429,8 +449,8 @@ fun LyricStyleCloneLayer(
     val alpha = contentAlpha.coerceIn(0f, 1f)
     if (alpha <= 0.001f) return
     val t = progress.coerceIn(0f, 1f)
-    // 终点应为静止槽；缺省时钉在源位（不应再出现动画中 bounds）
-    val morphT = if (targetSlot != null) t else 0f
+    // 终点应为静止槽；缺省时钉在源位。morph 与面板进度解耦，前段钉源位盖住布局空缺
+    val morphT = if (targetSlot != null) lyricStyleMorphT(t) else 0f
     val scale = uiScale.coerceIn(PlayerDisplayPrefs.UI_MIN, PlayerDisplayPrefs.UI_MAX)
     val playFs = draftPlaying.sanitizedFontScale() * scale
     val playedFs = draftPlayed.sanitizedFontScale() * scale
@@ -440,13 +460,19 @@ fun LyricStyleCloneLayer(
         .coerceIn(PlayerDisplayPrefs.LINE_SPACING_MIN, PlayerDisplayPrefs.LINE_SPACING_MAX)
     val contentLineSpacing = (linePadDp * scale).dp
 
+    // 轻弧：中段上抬，避免直线瞬移感
+    val arcLift = if (targetSlot != null && morphT > 0f && morphT < 1f) {
+        (kotlin.math.sin(morphT * Math.PI).toFloat() * 12f).dp
+    } else {
+        0.dp
+    }
     val left = if (targetSlot != null) {
         lerpDp(snapshot.sourceLeftDp, targetSlot.left, morphT)
     } else {
         snapshot.sourceLeftDp
     }
     val top = if (targetSlot != null) {
-        lerpDp(snapshot.sourceTopDp, targetSlot.top, morphT)
+        lerpDp(snapshot.sourceTopDp, targetSlot.top, morphT) - arcLift
     } else {
         snapshot.sourceTopDp
     }
@@ -460,28 +486,35 @@ fun LyricStyleCloneLayer(
     } else {
         snapshot.sourceHeightDp
     }
-    val corner = lerp(0f, 14f, morphT).dp
+    // 圆角/内边距偏后半段浮现，开场不「框住」真歌词
+    val slotChrome = ((morphT - 0.4f) / 0.6f).coerceIn(0f, 1f)
+    val corner = lerp(0f, 14f, slotChrome).dp
 
     Box(
         modifier
-            .offset(x = left, y = top)
-            .size(width, height)
-            .clip(RoundedCornerShape(corner))
-            .graphicsLayer { this.alpha = alpha },
-        contentAlignment = Alignment.Center,
+            .fillMaxSize() // 相对播放页根绝对定位，避免 offset 落在局部小盒子里
     ) {
-        LyricStyleCloneContent(
-            snapshot = snapshot,
-            playing = draftPlaying,
-            played = draftPlayed,
-            unplayed = draftUnplayed,
-            playFontScale = playFs,
-            playedFontScale = playedFs,
-            unplayedFontScale = unplayedFs,
-            contentLineSpacing = contentLineSpacing,
-            contentPad = lerpDp(0.dp, 8.dp, morphT),
-            modifier = Modifier.fillMaxSize(),
-        )
+        Box(
+            Modifier
+                .offset(x = left, y = top)
+                .size(width, height)
+                .clip(RoundedCornerShape(corner))
+                .graphicsLayer { this.alpha = alpha },
+            contentAlignment = Alignment.Center,
+        ) {
+            LyricStyleCloneContent(
+                snapshot = snapshot,
+                playing = draftPlaying,
+                played = draftPlayed,
+                unplayed = draftUnplayed,
+                playFontScale = playFs,
+                playedFontScale = playedFs,
+                unplayedFontScale = unplayedFs,
+                contentLineSpacing = contentLineSpacing,
+                contentPad = lerpDp(0.dp, 8.dp, slotChrome),
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
     }
 }
 
@@ -892,7 +925,6 @@ private fun LyricStyleCloneContent(
         modifier
             .fillMaxSize()
             .padding(contentPad),
-        contentAlignment = Alignment.Center,
     ) {
         if (lines.isEmpty()) {
             Text(
@@ -902,35 +934,45 @@ private fun LyricStyleCloneContent(
                     fontFamily = FontFamily.Monospace,
                     fontSize = 13.sp,
                 ),
+                modifier = Modifier.align(Alignment.Center),
             )
             return@Box
         }
 
-        // 与真歌词一致：槽最小高度固定，长句可撑开；末行省略号折叠，避免固定高度裁切
-        Column(
-            Modifier.fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            for (i in (focus - playedN).coerceAtLeast(0) until focus) {
-                val distance = focus - i
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = slotHeight)
-                        .wrapContentHeight(),
-                    contentAlignment = Alignment.Center,
+        // 与真歌词 LazyList 一致：播放行钉在视口绝对垂直中心，已播在上、待播在下
+        Column(Modifier.fillMaxSize()) {
+            Box(
+                Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                contentAlignment = Alignment.BottomCenter,
+            ) {
+                Column(
+                    Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    CloneSideLine(
-                        text = lines[i].text,
-                        color = playedColor.copy(
-                            alpha = (0.46f - distance.coerceAtMost(2) * 0.06f)
-                                .coerceIn(0.28f, 0.5f),
-                        ),
-                        style = played,
-                        role = LyricStyleRole.Played,
-                        fontScale = playedFs,
-                        verticalPad = linePad,
-                    )
+                    for (i in (focus - playedN).coerceAtLeast(0) until focus) {
+                        val distance = focus - i
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = slotHeight)
+                                .wrapContentHeight(),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            CloneSideLine(
+                                text = lines[i].text,
+                                color = playedColor.copy(
+                                    alpha = (0.46f - distance.coerceAtMost(2) * 0.06f)
+                                        .coerceIn(0.28f, 0.5f),
+                                ),
+                                style = played,
+                                role = LyricStyleRole.Played,
+                                fontScale = playedFs,
+                                verticalPad = linePad,
+                            )
+                        }
+                    }
                 }
             }
             Box(
@@ -948,26 +990,38 @@ private fun LyricStyleCloneContent(
                     verticalPad = linePad,
                 )
             }
-            for (i in (focus + 1)..(focus + upcomingN).coerceAtMost(lines.lastIndex)) {
-                val distance = i - focus
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = slotHeight)
-                        .wrapContentHeight(),
-                    contentAlignment = Alignment.Center,
+            Box(
+                Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                contentAlignment = Alignment.TopCenter,
+            ) {
+                Column(
+                    Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    CloneSideLine(
-                        text = lines[i].text,
-                        color = unplayedColor.copy(
-                            alpha = (0.46f - distance.coerceAtMost(2) * 0.06f)
-                                .coerceIn(0.28f, 0.5f),
-                        ),
-                        style = unplayed,
-                        role = LyricStyleRole.Unplayed,
-                        fontScale = unplayedFs,
-                        verticalPad = linePad,
-                    )
+                    for (i in (focus + 1)..(focus + upcomingN).coerceAtMost(lines.lastIndex)) {
+                        val distance = i - focus
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = slotHeight)
+                                .wrapContentHeight(),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            CloneSideLine(
+                                text = lines[i].text,
+                                color = unplayedColor.copy(
+                                    alpha = (0.46f - distance.coerceAtMost(2) * 0.06f)
+                                        .coerceIn(0.28f, 0.5f),
+                                ),
+                                style = unplayed,
+                                role = LyricStyleRole.Unplayed,
+                                fontScale = unplayedFs,
+                                verticalPad = linePad,
+                            )
+                        }
+                    }
                 }
             }
         }

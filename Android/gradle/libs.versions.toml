@@ -15,6 +15,8 @@ androidxCore = "1.15.0"
 okhttp = "4.12.0"
 securityCrypto = "1.1.0-alpha06"
 haze = "1.6.10"
+zxing = "3.5.3"
+camerax = "1.4.1"
 
 [libraries]
 junit = { group = "junit", name = "junit", version.ref = "junit" }
@@ -42,6 +44,10 @@ compose-foundation = { group = "androidx.compose.foundation", name = "foundation
 activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
 navigation-compose = { group = "androidx.navigation", name = "navigation-compose", version.ref = "navigationCompose" }
 haze = { group = "dev.chrisbanes.haze", name = "haze", version.ref = "haze" }
+zxing-core = { group = "com.google.zxing", name = "core", version.ref = "zxing" }
+androidx-camera-camera2 = { group = "androidx.camera", name = "camera-camera2", version.ref = "camerax" }
+androidx-camera-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", version.ref = "camerax" }
+androidx-camera-view = { group = "androidx.camera", name = "camera-view", version.ref = "camerax" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

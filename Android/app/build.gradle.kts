@@ -16,7 +16,7 @@ val localProperties = Properties().apply {
  */
 val ncmApiBaseUrl: String =
     localProperties.getProperty("ncm.api.base.url")?.trim()?.takeIf { it.isNotEmpty() }
-        ?: "http://47.110.72.65:3000"
+        ?: "http://120.27.244.170:3000"
 
 android {
     namespace = "com.kite.zmusic"
@@ -69,6 +69,10 @@ dependencies {
     implementation(libs.activity.compose)
     implementation(libs.navigation.compose)
     implementation(libs.haze)
+    implementation(libs.zxing.core)
+    implementation(libs.androidx.camera.camera2)
+    implementation(libs.androidx.camera.lifecycle)
+    implementation(libs.androidx.camera.view)
 
     implementation(libs.appcompat)
     implementation(libs.material)

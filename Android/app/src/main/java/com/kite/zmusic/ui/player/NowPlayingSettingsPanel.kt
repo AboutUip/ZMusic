@@ -408,7 +408,14 @@ fun NowPlayingSettingsSheet(
     onOpenLyricStyleEditor: () -> Unit = {},
     onOpenTitleStyleEditor: () -> Unit = {},
     hazeNonce: Int = 0,
+    transferDismissGate: PlayerDisplayTransferDismissGate,
 ) {
+    val transferHost = rememberPlayerDisplayTransferHost(
+        prefs = prefs,
+        onPrefsChange = onPrefsChange,
+        hazeState = hazeState,
+        dismissGate = transferDismissGate,
+    )
     val sliderColors = SliderDefaults.colors(
         thumbColor = Color(0xFFF8FAFC),
         activeTrackColor = Accent.copy(alpha = 0.62f),
@@ -570,18 +577,26 @@ fun NowPlayingSettingsSheet(
                 ),
             )
             Spacer(Modifier.height(4.dp))
-            Text(
-                text = "播放显示",
-                modifier = Modifier.graphicsLayer { alpha = dim },
-                style = TextStyle(
-                    color = LabelColor,
-                    fontFamily = FontFamily.SansSerif,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 17.sp,
-                    letterSpacing = 0.3.sp,
-                    shadow = TextShadow,
-                ),
-            )
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .graphicsLayer { alpha = dim },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "播放显示",
+                    style = TextStyle(
+                        color = LabelColor,
+                        fontFamily = FontFamily.SansSerif,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 17.sp,
+                        letterSpacing = 0.3.sp,
+                        shadow = TextShadow,
+                    ),
+                    modifier = Modifier.weight(1f),
+                )
+                PlayerDisplayTransferHeaderIcons(host = transferHost)
+            }
             Spacer(Modifier.height(14.dp))
 
             Column(
@@ -870,6 +885,8 @@ fun NowPlayingSettingsSheet(
                 }
             }
         }
+
+        transferHost.Overlay()
     }
 }
 

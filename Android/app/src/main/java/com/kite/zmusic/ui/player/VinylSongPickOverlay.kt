@@ -51,6 +51,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -65,7 +66,7 @@ import com.kite.zmusic.data.PlayerDisplayPrefs
 import com.kite.zmusic.data.TitleLineStyle
 import com.kite.zmusic.data.TrackRow
 import com.kite.zmusic.data.VinylPlateColors
-import com.kite.zmusic.ui.common.UrlImage
+import com.kite.zmusic.ui.common.UrlImageCache
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeStyle
 import dev.chrisbanes.haze.HazeTint
@@ -100,6 +101,10 @@ private val PickFogStyle = HazeStyle(
 private const val MaxNextStack = 20
 /** 散开时左侧滑入的上一首数量（仅动画覆盖，浏览列表用完整 queue） */
 private const val MaxFanPrev = 12
+/** 选歌预热：焦点前后额外缓冲，供展开后立刻出图 */
+private const val PickCoverPrefetchExtra = 10
+/** 预热并发压低，避免与入场/堆叠动画抢 IO/CPU */
+private const val PickCoverPrefetchParallelism = 4
 private const val TiltDeg = 10f
 private val BrowseGap = 18.dp
 
@@ -237,6 +242,36 @@ private fun VinylSongPickOverlaySession(
     val browseReveal = remember { Animatable(0f) }
     /** 吸附描边：仅进入可滑动浏览后动画描入 */
     val ringReveal = remember { Animatable(0f) }
+    /**
+     * 取消交接封面：0=焦点曲（与浏览所见一致），1=打开时播放曲（主黑胶未换）。
+     * 避免交接盘突然换成旧封面造成闪烁。
+     */
+    val cancelCoverMorph = remember { Animatable(0f) }
+    /** 取消开始时冻结的浏览焦点，避免退场中焦点抖动 */
+    var cancelHandoffFocusLocal by remember { mutableIntStateOf(0) }
+    /**
+     * 展开期间不挂封面（轻量盘），避免批量 UrlImage 打断 fanT；
+     * 位移动画结束后再附着，配合预热走内存命中。
+     */
+    var attachCovers by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    LaunchedEffect(sessionQueue, safeIndex, phase) {
+        if (phase != VinylSongPickPhase.Entering &&
+            phase != VinylSongPickPhase.Stacking &&
+            phase != VinylSongPickPhase.FanOut
+        ) {
+            return@LaunchedEffect
+        }
+        if (sessionQueue.isEmpty()) return@LaunchedEffect
+        val from = (safeIndex - MaxFanPrev - PickCoverPrefetchExtra).coerceAtLeast(0)
+        val to = (safeIndex + MaxNextStack + PickCoverPrefetchExtra)
+            .coerceAtMost(sessionQueue.lastIndex)
+        UrlImageCache.prefetchAll(
+            context = context,
+            urls = sessionQueue.subList(from, to + 1).map { it.coverUrl },
+            parallelism = PickCoverPrefetchParallelism,
+        )
+    }
     val onStackingFinishedUpdated by rememberUpdatedState(onStackingFinished)
     val onFanOutFinishedUpdated by rememberUpdatedState(onFanOutFinished)
     val onCancelExitFinishedUpdated by rememberUpdatedState(onCancelExitFinished)
@@ -245,6 +280,8 @@ private fun VinylSongPickOverlaySession(
     LaunchedEffect(phase) {
         when (phase) {
             VinylSongPickPhase.Entering -> {
+                attachCovers = false
+                cancelCoverMorph.snapTo(0f)
                 exitT.snapTo(0f)
                 stackT.snapTo(0f)
                 fanT.snapTo(0f)
@@ -254,31 +291,35 @@ private fun VinylSongPickOverlaySession(
                 ringReveal.snapTo(0f)
             }
             VinylSongPickPhase.Stacking -> {
+                attachCovers = false
                 exitT.snapTo(0f)
                 fanT.snapTo(0f)
                 browseReveal.snapTo(0f)
                 ringReveal.snapTo(0f)
                 stackT.snapTo(0f)
-                // 先实色盖住主盘，再堆叠；haze 延后到 FanOut，避免居中刚结束就虚化闪一下
-                stackReveal.snapTo(0f)
-                stackReveal.animateTo(1f, tween(220, easing = FastOutSlowInEasing))
+                // 立刻不透明盖住主盘位（盘在蒙版之上），再播堆叠位移；勿先半透明淡入
+                stackReveal.snapTo(1f)
                 stackT.animateTo(1f, tween(520, easing = FastOutSlowInEasing))
                 onStackingFinishedUpdated()
             }
             VinylSongPickPhase.FanOut -> {
+                attachCovers = false
                 stackT.snapTo(1f)
                 stackReveal.snapTo(1f)
                 ringReveal.snapTo(0f)
                 fanT.snapTo(0f)
                 browseReveal.snapTo(0f)
+                // 位移动画全程轻量盘；结束后再给浏览行挂封面
                 fanT.animateTo(1f, tween(720, easing = FastOutSlowInEasing))
                 // 预挂载 LazyRow 两帧对齐布局，再淡入盖住实色叠层（勿双边半透明叠画）
                 withFrameNanos { }
                 withFrameNanos { }
+                attachCovers = true
                 browseReveal.animateTo(1f, tween(260, easing = FastOutSlowInEasing))
                 onFanOutFinishedUpdated()
             }
             VinylSongPickPhase.Browsing -> {
+                attachCovers = true
                 stackT.snapTo(1f)
                 fanT.snapTo(1f)
                 stackReveal.snapTo(1f)
@@ -289,6 +330,7 @@ private fun VinylSongPickOverlaySession(
                 ringReveal.animateTo(1f, tween(420, easing = FastOutSlowInEasing))
             }
             VinylSongPickPhase.Confirming -> {
+                attachCovers = true
                 stackT.snapTo(1f)
                 fanT.snapTo(1f)
                 stackReveal.snapTo(1f)
@@ -298,14 +340,33 @@ private fun VinylSongPickOverlaySession(
                 onConfirmExitFinishedUpdated()
             }
             VinylSongPickPhase.Canceling -> {
+                attachCovers = true
+                cancelHandoffFocusLocal = browseFocusLocal
                 // 按当前进度反向退场：浏览收束 / 叠层收回 / 仅雾气时短停
                 when {
                     browseReveal.value > 0.2f -> {
+                        val focusedId = browseTracks.getOrNull(browseFocusLocal)?.id
+                        val playingId = sessionQueue.getOrNull(safeIndex)?.id
+                        val needsCoverMorph = focusedId != null &&
+                            playingId != null &&
+                            focusedId != playingId
                         exitT.snapTo(0f)
+                        cancelCoverMorph.snapTo(0f)
                         ringReveal.animateTo(0f, tween(200, easing = FastOutSlowInEasing))
-                        exitT.animateTo(1f, tween(420, easing = FastOutSlowInEasing))
+                        // 交接盘先盖住焦点，再 morph 到播放曲，最后才消雾露主盘
+                        exitT.animateTo(1f, tween(360, easing = FastOutSlowInEasing))
+                        if (needsCoverMorph) {
+                            cancelCoverMorph.animateTo(
+                                1f,
+                                tween(260, easing = FastOutSlowInEasing),
+                            )
+                        } else {
+                            cancelCoverMorph.snapTo(1f)
+                        }
                     }
                     stackReveal.value > 0.2f -> {
+                        // 叠层期焦点仍是打开曲，无需封面 morph
+                        cancelCoverMorph.snapTo(1f)
                         exitT.snapTo(0f)
                         ringReveal.snapTo(0f)
                         fanT.animateTo(0f, tween(320, easing = FastOutSlowInEasing))
@@ -315,6 +376,7 @@ private fun VinylSongPickOverlaySession(
                         stackReveal.animateTo(0f, tween(200, easing = FastOutSlowInEasing))
                     }
                     else -> {
+                        cancelCoverMorph.snapTo(1f)
                         exitT.snapTo(0f)
                         ringReveal.snapTo(0f)
                         delay(120)
@@ -336,10 +398,17 @@ private fun VinylSongPickOverlaySession(
     val chromeVisible = phase != VinylSongPickPhase.Confirming
     val exitProgress = exitT.value
     val isConfirming = phase == VinylSongPickPhase.Confirming
-    // 叠层托底保持不透明，浏览层淡入盖住后再卸叠层，避免 50%+50% 透底闪一下
+    // 叠层/浏览盘在蒙版之上：透明度只跟自身入场，绝不乘 fogAlpha（否则等于又被蒙住）
     val browseCovered = browseReveal.value >= 0.995f
-    val stackContentAlpha = fogAlpha * stackReveal.value * if (browseCovered) 0f else 1f
-    val browseContentAlpha = fogAlpha * browseReveal.value * (1f - exitProgress * 0.55f)
+    // Stacking 首帧就满不透明接住主盘位，不依赖 LaunchedEffect 晚一拍的 snap
+    val stackAppear = when (phase) {
+        VinylSongPickPhase.Entering -> 0f
+        VinylSongPickPhase.Canceling -> stackReveal.value
+        else -> 1f
+    }
+    val stackContentAlpha = stackAppear * if (browseCovered) 0f else 1f
+    // 离场时浏览行完全收掉，只留交接盘，避免残影闪一下
+    val browseContentAlpha = browseReveal.value * (1f - exitProgress).coerceIn(0f, 1f)
     val browseRingAlpha = when {
         phase == VinylSongPickPhase.Browsing -> ringReveal.value
         phase == VinylSongPickPhase.Confirming || phase == VinylSongPickPhase.Canceling ->
@@ -351,12 +420,11 @@ private fun VinylSongPickOverlaySession(
     } else {
         1f
     }
-    // Entering/Stacking 仅实色压暗；叠层盖住主盘后再启 haze，消除居中刚结束的虚化闪烁
+    // 离场禁用 haze：避免交接盘下主盘被采样虚化，揭开时清晰度跳变闪一下
     val usePickHaze = phase == VinylSongPickPhase.FanOut ||
-        phase == VinylSongPickPhase.Browsing ||
-        phase == VinylSongPickPhase.Confirming ||
-        (phase == VinylSongPickPhase.Canceling && stackReveal.value > 0.5f)
-    val showHandoffDisc = (isConfirming || isCanceling) && exitProgress > 0.45f
+        phase == VinylSongPickPhase.Browsing
+    // 一离场就上交接盘，与焦点盘同帧切换，中间不露空
+    val showHandoffDisc = (isConfirming || isCanceling) && exitProgress > 0.02f
 
     Box(modifier.fillMaxSize()) {
         Box(
@@ -422,10 +490,11 @@ private fun VinylSongPickOverlaySession(
                         ),
                         exitProgress = exitProgress,
                         keepFocusedOpaque = false,
-                        hideFocusedDisc = (isConfirming || isCanceling) && exitProgress > 0.5f,
+                        hideFocusedDisc = (isConfirming || isCanceling) && exitProgress > 0.02f,
                         ringAlpha = browseRingAlpha,
                         focusedLocal = browseFocusLocal,
                         interactive = phase == VinylSongPickPhase.Browsing,
+                        attachCovers = attachCovers,
                         onFocusedLocalChange = { local ->
                             val track = browseTracks.getOrNull(local) ?: return@VinylSongPickBrowseRow
                             val qi = browseTracks.indexOfFirst { it.id == track.id }
@@ -443,37 +512,76 @@ private fun VinylSongPickOverlaySession(
                 }
             }
 
-            // 确认/取消交接盘：盖住主黑胶直到雾气末段再淡出
+            // 确认/取消交接盘：始终不透明盖到叠层卸掉；不跟 fog 一起变淡
             if (showHandoffDisc) {
-                val handoff = if (isConfirming) {
-                    browseTracks.getOrNull(browseFocusLocal)
-                        ?: sessionQueue.getOrNull(safeIndex)
-                } else {
-                    // 取消：交回打开时的当前曲（主黑胶未换）
-                    sessionQueue.getOrNull(safeIndex)
-                }
-                if (handoff != null) {
-                    val handoffAlpha = when {
-                        fogAlpha >= 0.22f -> 1f
-                        else -> (fogAlpha / 0.22f).coerceIn(0f, 1f)
-                    }
-                    PickVinylDisc(
-                        track = handoff,
-                        plateColors = plateColors,
-                        showCover = true,
-                        lite = false,
-                        fullCover = fullCover,
-                        centerRadiusFrac = centerRadiusFrac,
-                        outerScale = outerScale,
-                        modifier = Modifier
-                            .offset(
-                                x = snapCenterX - discSize / 2,
-                                y = snapCenterY - discSize / 2,
-                            )
-                            .size(discSize)
-                            .zIndex(20f)
-                            .graphicsLayer { alpha = handoffAlpha },
+                val handoffMod = Modifier
+                    .offset(
+                        x = snapCenterX - discSize / 2,
+                        y = snapCenterY - discSize / 2,
                     )
+                    .size(discSize)
+                    .zIndex(20f)
+                if (isConfirming) {
+                    val handoff = browseTracks.getOrNull(browseFocusLocal)
+                        ?: sessionQueue.getOrNull(safeIndex)
+                    if (handoff != null) {
+                        PickVinylDisc(
+                            track = handoff,
+                            plateColors = plateColors,
+                            showCover = true,
+                            lite = false,
+                            fullCover = fullCover,
+                            centerRadiusFrac = centerRadiusFrac,
+                            outerScale = outerScale,
+                            modifier = handoffMod,
+                        )
+                    }
+                } else {
+                    // 取消：焦点封面 ↔ 打开时播放曲 真正交叉淡入
+                    val playing = sessionQueue.getOrNull(safeIndex)
+                    val focused = browseTracks.getOrNull(cancelHandoffFocusLocal)
+                        ?: browseTracks.getOrNull(browseFocusLocal)
+                        ?: playing
+                    val morph = cancelCoverMorph.value.coerceIn(0f, 1f)
+                    if (playing != null && focused != null && playing.id != focused.id) {
+                        if (morph < 0.999f) {
+                            PickVinylDisc(
+                                track = focused,
+                                plateColors = plateColors,
+                                showCover = true,
+                                lite = false,
+                                fullCover = fullCover,
+                                centerRadiusFrac = centerRadiusFrac,
+                                outerScale = outerScale,
+                                modifier = handoffMod
+                                    .zIndex(21f)
+                                    .graphicsLayer { alpha = 1f - morph },
+                            )
+                        }
+                        if (morph > 0.001f) {
+                            PickVinylDisc(
+                                track = playing,
+                                plateColors = plateColors,
+                                showCover = true,
+                                lite = false,
+                                fullCover = fullCover,
+                                centerRadiusFrac = centerRadiusFrac,
+                                outerScale = outerScale,
+                                modifier = handoffMod.graphicsLayer { alpha = morph },
+                            )
+                        }
+                    } else if (playing != null) {
+                        PickVinylDisc(
+                            track = playing,
+                            plateColors = plateColors,
+                            showCover = true,
+                            lite = false,
+                            fullCover = fullCover,
+                            centerRadiusFrac = centerRadiusFrac,
+                            outerScale = outerScale,
+                            modifier = handoffMod,
+                        )
+                    }
                 }
             }
         }
@@ -661,7 +769,7 @@ private fun VinylSongPickStackAndFan(
                 } else {
                     lerpDp(slot.stackX, rowX, ft)
                 }
-                val showCover = slot.coverInStack || ft > 0.35f || slot.fanFromCenter
+                val showCover = slot.coverInStack
                 val lite = !showCover
                 val enterA = when {
                     slot.isCurrent -> 1f
@@ -714,6 +822,7 @@ private fun VinylSongPickBrowseRow(
     ringAlpha: Float = 1f,
     focusedLocal: Int,
     interactive: Boolean,
+    attachCovers: Boolean,
     onFocusedLocalChange: (Int) -> Unit,
     onConfirmLocal: (Int) -> Unit,
 ) {
@@ -739,7 +848,8 @@ private fun VinylSongPickBrowseRow(
     ) {
         val density = LocalDensity.current
         val startPad = (snapCenterX - discSize / 2).coerceAtLeast(0.dp)
-        val endPad = (maxWidth - snapCenterX - discSize / 2).coerceAtLeast(0.dp)
+        // 略加大 endPad，避免末项因 px 取整滚不到 Start 吸附位
+        val endPad = (maxWidth - snapCenterX - discSize / 2).coerceAtLeast(0.dp) + 8.dp
         val rowTop = snapCenterY - discSize / 2
         val startPadPx = with(density) { startPad.roundToPx() }
 
@@ -783,11 +893,12 @@ private fun VinylSongPickBrowseRow(
             }
         }
 
+        val focusedLocalUpdated by rememberUpdatedState(focusedLocal)
         val onDiscTap by rememberUpdatedState { index: Int ->
+            // 与焦点同一判据：末项常因 end 夹紧无法让 firstVisibleItemIndex 落到自身
             val settled = !listState.isScrollInProgress &&
                 scrollJob?.isActive != true &&
-                listState.firstVisibleItemIndex == index &&
-                abs(listState.firstVisibleItemScrollOffset) <= 2
+                index == focusedLocalUpdated
             if (settled) {
                 confirmUpdated(index)
             } else {
@@ -843,8 +954,8 @@ private fun VinylSongPickBrowseRow(
                     PickVinylDisc(
                         track = track,
                         plateColors = plateColors,
-                        showCover = true,
-                        lite = false,
+                        showCover = attachCovers,
+                        lite = !attachCovers,
                         fullCover = fullCover,
                         centerRadiusFrac = centerRadiusFrac,
                         outerScale = outerScale,
