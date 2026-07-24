@@ -135,7 +135,10 @@ class PlaylistCoordinator(
                     persistSnapshot()
                 }
                 Player.STATE_BUFFERING -> _ui.update { it.copy(buffering = true) }
-                Player.STATE_ENDED -> onEnded()
+                Player.STATE_ENDED -> {
+                    // 手动切歌已进入 loadPending 时忽略，避免曲末再 onEnded 连跳下一首
+                    if (!_ui.value.loadPending) onEnded()
+                }
                 Player.STATE_IDLE -> _ui.update { it.copy(buffering = false) }
             }
         }

@@ -47,6 +47,28 @@ data class VinylCustomPreset(
     val grooveArgb: Int,
 )
 
+/**
+ * 竖屏自定义背景预设位。
+ * - [locked]=true 且有图：可启用
+ * - 未锁定：可编辑，不可作为真实背景启用
+ */
+data class PlayerBackgroundPreset(
+    val imagePath: String = "",
+    /** 水平锚点 0..1（0.5=居中） */
+    val offsetX: Float = 0.5f,
+    /** 垂直锚点 0..1（0.5=居中） */
+    val offsetY: Float = 0.5f,
+    /** 相对铺满缩放 */
+    val scale: Float = 1f,
+    val locked: Boolean = false,
+) {
+    val hasImage: Boolean get() = imagePath.isNotBlank()
+    val isUsable: Boolean get() = locked && hasImage
+}
+
+fun defaultBackgroundPresets(): List<PlayerBackgroundPreset> =
+    List(PlayerDisplayPrefs.BACKGROUND_PRESET_COUNT) { PlayerBackgroundPreset() }
+
 /** 黑胶盘绘制用色（径向底 + 纹路）。 */
 data class VinylPlateColors(
     val baseInner: Color,
@@ -481,6 +503,12 @@ data class PlayerDisplayPrefs(
     val lyricPlayedStyle: LyricRoleStyle = LyricRoleStyle.PlayedDefault,
     /** 横屏「未播放」歌词样式 */
     val lyricUnplayedStyle: LyricRoleStyle = LyricRoleStyle.UnplayedDefault,
+    /** 竖屏：自定义背景总开关 */
+    val customBackgroundEnabled: Boolean = false,
+    /** 竖屏：5 档背景预设 */
+    val backgroundPresets: List<PlayerBackgroundPreset> = defaultBackgroundPresets(),
+    /** 竖屏：当前选用的背景预设位 0..4（仅 usable 时真正铺底） */
+    val backgroundPresetIndex: Int = 0,
 ) {
     fun lyricPlayingColor(): Color =
         lyricPlayingStyle.resolvedColor(LyricRoleStyle.DEFAULT_PLAYING_ARGB)
@@ -544,6 +572,38 @@ data class PlayerDisplayPrefs(
         )
     }
 
+    fun activeBackgroundPreset(): PlayerBackgroundPreset =
+        backgroundPresets.getOrElse(
+            backgroundPresetIndex.coerceIn(0, BACKGROUND_PRESET_COUNT - 1),
+        ) { PlayerBackgroundPreset() }
+
+    /** 自定义背景已开启且当前预设可用时返回该预设，否则 null（走默认光球）。 */
+    fun resolvedCustomBackground(): PlayerBackgroundPreset? {
+        if (!customBackgroundEnabled) return null
+        val p = activeBackgroundPreset()
+        return p.takeIf { it.isUsable }
+    }
+
+    fun withBackgroundPresetIndex(index: Int): PlayerDisplayPrefs {
+        val i = index.coerceIn(0, BACKGROUND_PRESET_COUNT - 1)
+        val presets = sanitizeBackgroundPresets(backgroundPresets)
+        return copy(backgroundPresets = presets, backgroundPresetIndex = i)
+    }
+
+    fun withBackgroundPresetAt(index: Int, preset: PlayerBackgroundPreset): PlayerDisplayPrefs {
+        val i = index.coerceIn(0, BACKGROUND_PRESET_COUNT - 1)
+        val presets = sanitizeBackgroundPresets(backgroundPresets).toMutableList()
+        presets[i] = preset.sanitized()
+        return copy(backgroundPresets = presets, backgroundPresetIndex = i)
+    }
+
+    fun resetBackgroundPresetAt(index: Int): PlayerDisplayPrefs {
+        val i = index.coerceIn(0, BACKGROUND_PRESET_COUNT - 1)
+        val presets = sanitizeBackgroundPresets(backgroundPresets).toMutableList()
+        presets[i] = PlayerBackgroundPreset()
+        return copy(backgroundPresets = presets, backgroundPresetIndex = i)
+    }
+
     fun sanitized(): PlayerDisplayPrefs {
         val presets = sanitizeCustomPresets(
             vinylCustomPresets,
@@ -552,6 +612,8 @@ data class PlayerDisplayPrefs(
         )
         val index = vinylCustomPresetIndex.coerceIn(0, VINYL_CUSTOM_PRESET_COUNT - 1)
         val active = presets[index]
+        val bgPresets = sanitizeBackgroundPresets(backgroundPresets)
+        val bgIndex = backgroundPresetIndex.coerceIn(0, BACKGROUND_PRESET_COUNT - 1)
         return copy(
             fontScale = fontScale.finiteCoerceIn(FONT_MIN, FONT_MAX, 1f),
             lyricLineSpacingDp = lyricLineSpacingDp.finiteCoerceIn(
@@ -605,6 +667,8 @@ data class PlayerDisplayPrefs(
             titleNameStyle = titleNameStyle.sanitized(),
             titleArtistStyle = titleArtistStyle.sanitized(),
             titleSourceStyle = titleSourceStyle.sanitized(),
+            backgroundPresets = bgPresets,
+            backgroundPresetIndex = bgIndex,
         )
     }
 
@@ -628,6 +692,11 @@ data class PlayerDisplayPrefs(
         const val TRANSPORT_BOTTOM_INSET_MIN = 8f
         const val TRANSPORT_BOTTOM_INSET_MAX = 48f
         const val VINYL_CUSTOM_PRESET_COUNT = 5
+        const val BACKGROUND_PRESET_COUNT = 5
+        const val BG_OFFSET_MIN = 0f
+        const val BG_OFFSET_MAX = 1f
+        const val BG_SCALE_MIN = 0.60f
+        const val BG_SCALE_MAX = 2.50f
         const val VINYL_SIZE_SCALE_MIN = 0.75f
         const val VINYL_SIZE_SCALE_MAX = 1.35f
         const val VINYL_OUTER_SCALE_MIN = 0.88f
@@ -646,6 +715,57 @@ private fun Float.finiteCoerceIn(min: Float, max: Float, fallback: Float): Float
     return coerceIn(min, max)
 }
 
+private fun PlayerBackgroundPreset.sanitized(): PlayerBackgroundPreset = copy(
+    imagePath = imagePath.trim(),
+    offsetX = offsetX.finiteCoerceIn(
+        PlayerDisplayPrefs.BG_OFFSET_MIN,
+        PlayerDisplayPrefs.BG_OFFSET_MAX,
+        0.5f,
+    ),
+    offsetY = offsetY.finiteCoerceIn(
+        PlayerDisplayPrefs.BG_OFFSET_MIN,
+        PlayerDisplayPrefs.BG_OFFSET_MAX,
+        0.5f,
+    ),
+    scale = scale.finiteCoerceIn(
+        PlayerDisplayPrefs.BG_SCALE_MIN,
+        PlayerDisplayPrefs.BG_SCALE_MAX,
+        1f,
+    ),
+    locked = locked && imagePath.isNotBlank(),
+)
+
+private fun sanitizeBackgroundPresets(
+    presets: List<PlayerBackgroundPreset>,
+): List<PlayerBackgroundPreset> {
+    val defaults = defaultBackgroundPresets()
+    return List(PlayerDisplayPrefs.BACKGROUND_PRESET_COUNT) { i ->
+        presets.getOrElse(i) { defaults[i] }.sanitized()
+    }
+}
+
+/** path|ox|oy|scale|locked;... */
+internal fun encodeBackgroundPresets(presets: List<PlayerBackgroundPreset>): String =
+    sanitizeBackgroundPresets(presets).joinToString(";") { p ->
+        val path = p.imagePath.replace("|", "").replace(";", "")
+        "$path|${p.offsetX}|${p.offsetY}|${p.scale}|${if (p.locked) 1 else 0}"
+    }
+
+internal fun decodeBackgroundPresets(raw: String?): List<PlayerBackgroundPreset> {
+    if (raw.isNullOrBlank()) return defaultBackgroundPresets()
+    val parts = raw.split(';')
+    return List(PlayerDisplayPrefs.BACKGROUND_PRESET_COUNT) { i ->
+        val seg = parts.getOrNull(i)?.split('|') ?: return@List PlayerBackgroundPreset()
+        PlayerBackgroundPreset(
+            imagePath = seg.getOrNull(0).orEmpty(),
+            offsetX = seg.getOrNull(1)?.toFloatOrNull() ?: 0.5f,
+            offsetY = seg.getOrNull(2)?.toFloatOrNull() ?: 0.5f,
+            scale = seg.getOrNull(3)?.toFloatOrNull() ?: 1f,
+            locked = seg.getOrNull(4) == "1",
+        ).sanitized()
+    }
+}
+
 private fun sanitizeCustomPresets(
     presets: List<VinylCustomPreset>,
     fallbackBase: Int,
@@ -657,9 +777,13 @@ private fun sanitizeCustomPresets(
     }
 }
 
-class PlayerDisplayPrefsStore(context: Context) {
+class PlayerDisplayPrefsStore(
+    context: Context,
+    /** 横屏默认；竖屏传入 [PREFS_PORTRAIT] 以完全隔离。 */
+    prefsName: String = PREFS,
+) {
     private val prefs: SharedPreferences =
-        context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        context.applicationContext.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
 
     fun load(): PlayerDisplayPrefs {
         val loaded = runCatching { loadUnchecked().sanitized() }.getOrNull()
@@ -754,6 +878,12 @@ class PlayerDisplayPrefsStore(context: Context) {
                 prefs.safeString(KEY_LYRIC_UNPLAYED_STYLE, null),
                 LyricRoleStyle.UnplayedDefault.copy(fontScale = legacyLyricFont),
             ),
+            customBackgroundEnabled = prefs.safeBoolean(KEY_CUSTOM_BG_ENABLED, false),
+            backgroundPresets = decodeBackgroundPresets(
+                prefs.safeString(KEY_BG_PRESETS, null),
+            ),
+            backgroundPresetIndex = prefs.safeInt(KEY_BG_PRESET_INDEX, 0)
+                .coerceIn(0, PlayerDisplayPrefs.BACKGROUND_PRESET_COUNT - 1),
         )
     }
 
@@ -796,12 +926,17 @@ class PlayerDisplayPrefsStore(context: Context) {
                 .putString(KEY_LYRIC_PLAYING_STYLE, encodeLyricRoleStyle(v.lyricPlayingStyle))
                 .putString(KEY_LYRIC_PLAYED_STYLE, encodeLyricRoleStyle(v.lyricPlayedStyle))
                 .putString(KEY_LYRIC_UNPLAYED_STYLE, encodeLyricRoleStyle(v.lyricUnplayedStyle))
+                .putBoolean(KEY_CUSTOM_BG_ENABLED, v.customBackgroundEnabled)
+                .putString(KEY_BG_PRESETS, encodeBackgroundPresets(v.backgroundPresets))
+                .putInt(KEY_BG_PRESET_INDEX, v.backgroundPresetIndex)
                 .apply()
         }
     }
 
     companion object {
-        private const val PREFS = "zmusic_player_display"
+        const val PREFS = "zmusic_player_display"
+        /** 竖屏播放页设置（与横屏互不覆盖） */
+        const val PREFS_PORTRAIT = "zmusic_player_display_portrait"
         private const val KEY_RAIN = "rain_night"
         private const val KEY_FONT = "font_scale"
         private const val KEY_LINE_SPACING = "lyric_line_spacing_dp"
@@ -839,6 +974,9 @@ class PlayerDisplayPrefsStore(context: Context) {
         private const val KEY_LYRIC_PLAYING_STYLE = "lyric_playing_style"
         private const val KEY_LYRIC_PLAYED_STYLE = "lyric_played_style"
         private const val KEY_LYRIC_UNPLAYED_STYLE = "lyric_unplayed_style"
+        private const val KEY_CUSTOM_BG_ENABLED = "custom_background_enabled"
+        private const val KEY_BG_PRESETS = "background_presets"
+        private const val KEY_BG_PRESET_INDEX = "background_preset_index"
     }
 }
 

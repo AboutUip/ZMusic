@@ -40,6 +40,9 @@ fun PlaybackModeControl(
     onClick: () -> Unit,
     circleSize: Dp = 32.dp,
     tint: Color = IconTint,
+    iconAlignment: Alignment = Alignment.Center,
+    /** 图标绘制尺寸相对 circleSize 的比例；1f 表示铺满触控盒。 */
+    glyphFraction: Float = 0.625f,
 ) {
     Box(
         modifier = modifier
@@ -50,10 +53,11 @@ fun PlaybackModeControl(
                 indication = null,
                 onClick = onClick,
             ),
-        contentAlignment = Alignment.Center,
+        contentAlignment = iconAlignment,
     ) {
-        Canvas(Modifier.size(circleSize * 0.70f)) {
-            val sw = size.minDimension * 0.100f
+        Canvas(Modifier.size(circleSize * glyphFraction.coerceIn(0.4f, 1f))) {
+            // 描边取加粗前与加细后的均值，保持比最初细、比上一版粗
+            val sw = size.minDimension * 0.081f
             val stroke = Stroke(width = sw, cap = StrokeCap.Round, join = StrokeJoin.Round)
             when (mode) {
                 PlaybackMode.ORDER -> drawAppleRepeat(tint, stroke, showOne = false)
@@ -76,7 +80,7 @@ private fun DrawScope.drawAppleRepeat(color: Color, stroke: Stroke, showOne: Boo
     val hw = m * 0.32f
     val hh = m * 0.26f
     // 箭头缩短 + 四角留缝，避免首尾相连成闭环实线
-    val arrow = sw * 1.45f
+    val arrow = sw * 1.35f
     val gap = m * 0.11f
 
     val left = cx - hw
@@ -148,7 +152,7 @@ private fun DrawScope.drawAppleShuffle(color: Color, stroke: Stroke) {
     val w = size.width
     val h = size.height
     val sw = stroke.width
-    val arrow = sw * 2.45f
+    val arrow = sw * 2.28f
 
     fun x(v: Float) = v / 24f * w
     fun y(v: Float) = v / 24f * h
@@ -244,6 +248,7 @@ private val LikeFilledRed = Color(0xFFFF3B5C)
 
 /**
  * 喜欢：空心描边 / 满红心。
+ * 略加宽两叶、抬高腰线，避免细长；不做夸张膨胀。
  */
 @Composable
 fun TransportLikeIcon(
@@ -257,27 +262,27 @@ fun TransportLikeIcon(
         val w = this.size.width
         val h = this.size.height
         val path = Path().apply {
-            // 经典心形：顶中凹点 → 右叶 → 底尖 → 左叶
-            moveTo(w * 0.50f, h * 0.32f)
+            // 略饱满的心形：叶缘更外扩，腰部更圆，底尖不拉长
+            moveTo(w * 0.50f, h * 0.30f)
             cubicTo(
-                w * 0.50f, h * 0.18f,
-                w * 0.22f, h * 0.12f,
-                w * 0.18f, h * 0.36f,
+                w * 0.50f, h * 0.16f,
+                w * 0.18f, h * 0.10f,
+                w * 0.14f, h * 0.34f,
             )
             cubicTo(
-                w * 0.14f, h * 0.58f,
-                w * 0.38f, h * 0.78f,
-                w * 0.50f, h * 0.90f,
+                w * 0.10f, h * 0.54f,
+                w * 0.34f, h * 0.74f,
+                w * 0.50f, h * 0.88f,
             )
             cubicTo(
-                w * 0.62f, h * 0.78f,
-                w * 0.86f, h * 0.58f,
-                w * 0.82f, h * 0.36f,
+                w * 0.66f, h * 0.74f,
+                w * 0.90f, h * 0.54f,
+                w * 0.86f, h * 0.34f,
             )
             cubicTo(
-                w * 0.78f, h * 0.12f,
-                w * 0.50f, h * 0.18f,
-                w * 0.50f, h * 0.32f,
+                w * 0.82f, h * 0.10f,
+                w * 0.50f, h * 0.16f,
+                w * 0.50f, h * 0.30f,
             )
             close()
         }
@@ -288,7 +293,7 @@ fun TransportLikeIcon(
                 path,
                 outlineTint,
                 style = Stroke(
-                    width = min(w, h) * 0.11f,
+                    width = min(w, h) * 0.125f,
                     cap = StrokeCap.Round,
                     join = StrokeJoin.Round,
                 ),

@@ -12,6 +12,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -55,7 +56,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
@@ -64,6 +67,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -181,23 +185,27 @@ private fun ChromeIconShell(
 
 /**
  * 与底部播放条同风格：圆角矩形 + 简约矢量「调节滑块」图标。
+ * [chromeBackground] 为 false 时：细、小巧、中空，无圆角底（竖屏底栏）。
  */
 @Composable
 fun NowPlayingSettingsIconButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    chromeBackground: Boolean = true,
 ) {
-    ChromeIconShell(onClick = onClick, modifier = modifier) {
-        Canvas(Modifier.size(18.dp)) {
+    val iconSize = if (chromeBackground) 18.dp else 15.dp
+    val icon: @Composable () -> Unit = {
+        Canvas(Modifier.size(iconSize)) {
+            val strokeW = size.minDimension * if (chromeBackground) 0.11f else 0.075f
             val stroke = Stroke(
-                width = size.minDimension * 0.11f,
+                width = strokeW,
                 cap = StrokeCap.Round,
             )
             val w = size.width
             val h = size.height
-            val trackLen = w * 0.72f
+            val trackLen = w * if (chromeBackground) 0.72f else 0.68f
             val left = (w - trackLen) / 2f
-            val knobR = size.minDimension * 0.11f
+            val knobR = size.minDimension * if (chromeBackground) 0.11f else 0.095f
             val rows = floatArrayOf(0.22f, 0.50f, 0.78f)
             val knobs = floatArrayOf(0.62f, 0.32f, 0.74f)
             for (i in rows.indices) {
@@ -209,25 +217,48 @@ fun NowPlayingSettingsIconButton(
                     strokeWidth = stroke.width,
                     cap = StrokeCap.Round,
                 )
-                drawCircle(
-                    color = IconTint,
-                    radius = knobR,
-                    center = Offset(left + trackLen * knobs[i], y),
-                )
+                val knobCenter = Offset(left + trackLen * knobs[i], y)
+                if (chromeBackground) {
+                    drawCircle(color = IconTint, radius = knobR, center = knobCenter)
+                } else {
+                    drawCircle(
+                        color = IconTint,
+                        radius = knobR,
+                        center = knobCenter,
+                        style = Stroke(width = strokeW * 0.92f, cap = StrokeCap.Round),
+                    )
+                }
             }
         }
+    }
+    if (chromeBackground) {
+        ChromeIconShell(onClick = onClick, modifier = modifier, content = icon)
+    } else {
+        Box(
+            modifier
+                .size(width = 32.dp, height = 28.dp)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onClick,
+                ),
+            contentAlignment = Alignment.Center,
+            content = { icon() },
+        )
     }
 }
 
 /**
  * 退出全屏播放：向下尖角（类似「>」顺时针 90°），夹角略开于直角以便辨认。
+ * [chromeBackground] 为 false 时仅保留图标，不绘制圆角矩形底。
  */
 @Composable
 fun NowPlayingDismissIconButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    chromeBackground: Boolean = true,
 ) {
-    ChromeIconShell(onClick = onClick, modifier = modifier) {
+    val icon: @Composable () -> Unit = {
         Canvas(Modifier.size(18.dp)) {
             val sw = size.minDimension * 0.12f
             val cx = size.width / 2f
@@ -254,125 +285,271 @@ fun NowPlayingDismissIconButton(
             )
         }
     }
+    if (chromeBackground) {
+        ChromeIconShell(onClick = onClick, modifier = modifier, content = icon)
+    } else {
+        Box(
+            modifier
+                .size(width = NowPlayingChromeIconWidth, height = NowPlayingChromeIconHeight)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onClick,
+                ),
+            contentAlignment = Alignment.Center,
+            content = { icon() },
+        )
+    }
 }
 
 /**
- * 旋转锁定：对齐 Google Material「自动旋转」磁贴。
- * - 自动：竖屏手机 + 环绕旋转弧（screen_rotation）
- * - 锁定：竖屏手机 + 右下锁标（screen_lock_rotation）——轮廓完全不同
+ * 旋转控制图标（对齐 Material Symbols：screen_rotation / screen_lock_rotation / screen_rotation_alt）：
+ * - [forceToLandscape] == null：会话锁（自动双弧 / 锁定+锁标）
+ * - true / false：确定旋转到横/竖（目标机身 + 对称双弧）
+ * [chromeBackground] 为 false 时仅保留图标，不绘制圆角矩形底。
  */
 @Composable
 fun NowPlayingRotationLockButton(
     locked: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    forceToLandscape: Boolean? = null,
+    chromeBackground: Boolean = true,
 ) {
-    ChromeIconShell(onClick = onClick, modifier = modifier) {
-        Canvas(Modifier.size(19.dp)) {
-            val w = size.width
-            val h = size.height
-            val cx = w / 2f
-            val cy = h / 2f
-            val sw = w * 0.092f
-            val stroke = Stroke(width = sw, cap = StrokeCap.Round)
-
-            if (locked) {
-                // 锁定：更大机身 + 清晰锁（无旋转弧，一眼可辨）
-                val phoneW = w * 0.38f
-                val phoneH = h * 0.62f
-                val phoneLeft = cx - phoneW / 2f - w * 0.06f
-                val phoneTop = cy - phoneH / 2f
-                drawRoundRect(
-                    color = IconTint,
-                    topLeft = Offset(phoneLeft, phoneTop),
-                    size = androidx.compose.ui.geometry.Size(phoneW, phoneH),
-                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(w * 0.08f, w * 0.08f),
-                    style = stroke,
-                )
-                drawLine(
-                    IconTint,
-                    Offset(phoneLeft + phoneW * 0.28f, phoneTop + phoneH * 0.15f),
-                    Offset(phoneLeft + phoneW * 0.72f, phoneTop + phoneH * 0.15f),
-                    sw * 0.9f,
-                    StrokeCap.Round,
-                )
-                // 锁：实心感更强
-                val lx = cx + w * 0.28f
-                val bodyTop = cy + h * 0.02f
-                val lockW = w * 0.32f
-                val lockH = h * 0.26f
-                drawRoundRect(
-                    color = IconTint,
-                    topLeft = Offset(lx - lockW / 2f, bodyTop),
-                    size = androidx.compose.ui.geometry.Size(lockW, lockH),
-                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(w * 0.045f, w * 0.045f),
-                    style = stroke,
-                )
-                drawArc(
-                    color = IconTint,
-                    startAngle = 195f,
-                    sweepAngle = 150f,
-                    useCenter = false,
-                    topLeft = Offset(lx - lockW * 0.34f, bodyTop - lockH * 0.92f),
-                    size = androidx.compose.ui.geometry.Size(lockW * 0.68f, lockH * 1.15f),
-                    style = stroke,
-                )
-                drawCircle(IconTint, radius = w * 0.035f, center = Offset(lx, bodyTop + lockH * 0.38f))
-                drawLine(
-                    IconTint,
-                    Offset(lx, bodyTop + lockH * 0.42f),
-                    Offset(lx, bodyTop + lockH * 0.68f),
-                    sw * 0.85f,
-                    StrokeCap.Round,
-                )
-            } else {
-                // 自动：机身略小 + 粗旋转双弧（系统 screen_rotation）
-                val phoneW = w * 0.30f
-                val phoneH = h * 0.50f
-                val phoneLeft = cx - phoneW / 2f
-                val phoneTop = cy - phoneH / 2f
-                drawRoundRect(
-                    color = IconTint,
-                    topLeft = Offset(phoneLeft, phoneTop),
-                    size = androidx.compose.ui.geometry.Size(phoneW, phoneH),
-                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(w * 0.065f, w * 0.065f),
-                    style = stroke,
-                )
-                drawLine(
-                    IconTint,
-                    Offset(cx - phoneW * 0.2f, phoneTop + phoneH * 0.16f),
-                    Offset(cx + phoneW * 0.2f, phoneTop + phoneH * 0.16f),
-                    sw * 0.85f,
-                    StrokeCap.Round,
-                )
-                val arcR = w * 0.44f
-                drawArc(
-                    color = IconTint,
-                    startAngle = -48f,
-                    sweepAngle = 100f,
-                    useCenter = false,
-                    topLeft = Offset(cx - arcR, cy - arcR),
-                    size = androidx.compose.ui.geometry.Size(arcR * 2f, arcR * 2f),
-                    style = stroke,
-                )
-                drawArc(
-                    color = IconTint,
-                    startAngle = 132f,
-                    sweepAngle = 100f,
-                    useCenter = false,
-                    topLeft = Offset(cx - arcR, cy - arcR),
-                    size = androidx.compose.ui.geometry.Size(arcR * 2f, arcR * 2f),
-                    style = stroke,
-                )
-                val a1 = Math.toRadians(52.0)
-                val t1 = Offset(cx + arcR * cos(a1).toFloat(), cy + arcR * sin(a1).toFloat())
-                drawRotationArrowHead(t1, angleDeg = 52f + 90f, color = IconTint, sizePx = sw * 2.4f)
-                val a2 = Math.toRadians(232.0)
-                val t2 = Offset(cx + arcR * cos(a2).toFloat(), cy + arcR * sin(a2).toFloat())
-                drawRotationArrowHead(t2, angleDeg = 232f + 90f, color = IconTint, sizePx = sw * 2.4f)
+    val icon: @Composable () -> Unit = {
+        Canvas(Modifier.size(22.dp)) {
+            val stroke = Stroke(
+                width = size.minDimension * 0.085f,
+                cap = StrokeCap.Round,
+                join = StrokeJoin.Round,
+            )
+            when (forceToLandscape) {
+                true -> drawMdForceRotateIcon(toLandscape = true, color = IconTint, stroke = stroke)
+                false -> drawMdForceRotateIcon(toLandscape = false, color = IconTint, stroke = stroke)
+                null -> if (locked) {
+                    drawMdSessionLockIcon(locked = true, color = IconTint, stroke = stroke)
+                } else {
+                    drawMdSessionLockIcon(locked = false, color = IconTint, stroke = stroke)
+                }
             }
         }
     }
+    if (chromeBackground) {
+        ChromeIconShell(onClick = onClick, modifier = modifier, content = icon)
+    } else {
+        Box(
+            modifier
+                .size(width = NowPlayingChromeIconWidth, height = NowPlayingChromeIconHeight)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onClick,
+                ),
+            contentAlignment = Alignment.Center,
+            content = { icon() },
+        )
+    }
+}
+
+/**
+ * 会话锁图标：
+ * - 自动（locked=false）：恢复智能分支前的原版（直立机身 + 对角双弧），勿用 A 情况新图渗入
+ * - 锁定（locked=true）：直立机身 + 右下锁
+ */
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawMdSessionLockIcon(
+    locked: Boolean,
+    color: Color,
+    stroke: Stroke,
+) {
+    val w = size.width
+    val h = size.height
+    val cx = w / 2f
+    val cy = h / 2f
+    val sw = stroke.width
+
+    if (locked) {
+        val s = size.minDimension
+        val phoneW = s * 0.34f
+        val phoneH = s * 0.56f
+        val left = cx - phoneW / 2f - s * 0.05f
+        val top = cy - phoneH / 2f
+        drawRoundRect(
+            color = color,
+            topLeft = Offset(left, top),
+            size = androidx.compose.ui.geometry.Size(phoneW, phoneH),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(s * 0.06f, s * 0.06f),
+            style = stroke,
+        )
+        drawLine(
+            color,
+            Offset(left + phoneW * 0.30f, top + phoneH * 0.13f),
+            Offset(left + phoneW * 0.70f, top + phoneH * 0.13f),
+            sw * 0.9f,
+            StrokeCap.Round,
+        )
+        val lx = cx + s * 0.28f
+        val ly = cy + s * 0.04f
+        val bw = s * 0.26f
+        val bh = s * 0.20f
+        drawRoundRect(
+            color = color,
+            topLeft = Offset(lx - bw / 2f, ly),
+            size = androidx.compose.ui.geometry.Size(bw, bh),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(s * 0.035f, s * 0.035f),
+            style = stroke,
+        )
+        drawArc(
+            color = color,
+            startAngle = 200f,
+            sweepAngle = 140f,
+            useCenter = false,
+            topLeft = Offset(lx - bw * 0.32f, ly - bh * 0.82f),
+            size = androidx.compose.ui.geometry.Size(bw * 0.64f, bh),
+            style = stroke,
+        )
+    } else {
+        // B·自动：修改智能分支前的原版 screen_rotation（直立小机身 + 粗双弧）
+        val phoneW = w * 0.30f
+        val phoneH = h * 0.50f
+        val phoneLeft = cx - phoneW / 2f
+        val phoneTop = cy - phoneH / 2f
+        drawRoundRect(
+            color = color,
+            topLeft = Offset(phoneLeft, phoneTop),
+            size = androidx.compose.ui.geometry.Size(phoneW, phoneH),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(w * 0.065f, w * 0.065f),
+            style = stroke,
+        )
+        drawLine(
+            color,
+            Offset(cx - phoneW * 0.2f, phoneTop + phoneH * 0.16f),
+            Offset(cx + phoneW * 0.2f, phoneTop + phoneH * 0.16f),
+            sw * 0.85f,
+            StrokeCap.Round,
+        )
+        val arcR = w * 0.44f
+        drawArc(
+            color = color,
+            startAngle = -48f,
+            sweepAngle = 100f,
+            useCenter = false,
+            topLeft = Offset(cx - arcR, cy - arcR),
+            size = androidx.compose.ui.geometry.Size(arcR * 2f, arcR * 2f),
+            style = stroke,
+        )
+        drawArc(
+            color = color,
+            startAngle = 132f,
+            sweepAngle = 100f,
+            useCenter = false,
+            topLeft = Offset(cx - arcR, cy - arcR),
+            size = androidx.compose.ui.geometry.Size(arcR * 2f, arcR * 2f),
+            style = stroke,
+        )
+        val a1 = Math.toRadians(52.0)
+        val t1 = Offset(cx + arcR * cos(a1).toFloat(), cy + arcR * sin(a1).toFloat())
+        drawRotationArrowHead(t1, angleDeg = 52f + 90f, color = color, sizePx = sw * 2.4f)
+        val a2 = Math.toRadians(232.0)
+        val t2 = Offset(cx + arcR * cos(a2).toFloat(), cy + arcR * sin(a2).toFloat())
+        drawRotationArrowHead(t2, angleDeg = 232f + 90f, color = color, sizePx = sw * 2.4f)
+    }
+}
+
+/** A 情况图标内容相对画布的等比缩放（触控/外框尺寸不变）。 */
+private const val ForceRotateIconContentScale = 0.78f
+
+/**
+ * Material screen_rotation_alt 语义：目标方向直立/横置机身 + 对称双弧。
+ * 内容等比缩小，Canvas / chrome 外壳尺寸不变。
+ */
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawMdForceRotateIcon(
+    toLandscape: Boolean,
+    color: Color,
+    stroke: Stroke,
+) {
+    val cx = size.width / 2f
+    val cy = size.height / 2f
+    scale(scale = ForceRotateIconContentScale, pivot = Offset(cx, cy)) {
+        val s = size.minDimension
+        val sw = stroke.width
+        val phoneW = if (toLandscape) s * 0.50f else s * 0.30f
+        val phoneH = if (toLandscape) s * 0.32f else s * 0.48f
+        drawRoundRect(
+            color = color,
+            topLeft = Offset(cx - phoneW / 2f, cy - phoneH / 2f),
+            size = androidx.compose.ui.geometry.Size(phoneW, phoneH),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(s * 0.055f, s * 0.055f),
+            style = stroke,
+        )
+        if (toLandscape) {
+            drawLine(
+                color,
+                Offset(cx - phoneW * 0.38f, cy - phoneH * 0.18f),
+                Offset(cx - phoneW * 0.38f, cy + phoneH * 0.18f),
+                sw * 0.85f,
+                StrokeCap.Round,
+            )
+        } else {
+            drawLine(
+                color,
+                Offset(cx - phoneW * 0.22f, cy - phoneH * 0.32f),
+                Offset(cx + phoneW * 0.22f, cy - phoneH * 0.32f),
+                sw * 0.85f,
+                StrokeCap.Round,
+            )
+        }
+        drawMdRotationArcs(color = color, stroke = stroke, radiusFrac = 0.48f)
+    }
+}
+
+/** Material 对角双旋转弧 + 箭头尖。 */
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawMdRotationArcs(
+    color: Color,
+    stroke: Stroke,
+    radiusFrac: Float,
+) {
+    val s = size.minDimension
+    val cx = size.width / 2f
+    val cy = size.height / 2f
+    val r = s * radiusFrac
+    val box = androidx.compose.ui.geometry.Size(r * 2f, r * 2f)
+    val origin = Offset(cx - r, cy - r)
+
+    // 右上弧
+    drawArc(
+        color = color,
+        startAngle = -70f,
+        sweepAngle = 95f,
+        useCenter = false,
+        topLeft = origin,
+        size = box,
+        style = stroke,
+    )
+    val a1 = Math.toRadians(25.0)
+    drawRotationArrowHead(
+        tip = Offset(cx + r * cos(a1).toFloat(), cy + r * sin(a1).toFloat()),
+        angleDeg = 25f + 90f,
+        color = color,
+        sizePx = stroke.width * 2.35f,
+    )
+
+    // 左下弧
+    drawArc(
+        color = color,
+        startAngle = 110f,
+        sweepAngle = 95f,
+        useCenter = false,
+        topLeft = origin,
+        size = box,
+        style = stroke,
+    )
+    val a2 = Math.toRadians(205.0)
+    drawRotationArrowHead(
+        tip = Offset(cx + r * cos(a2).toFloat(), cy + r * sin(a2).toFloat()),
+        angleDeg = 205f + 90f,
+        color = color,
+        sizePx = stroke.width * 2.35f,
+    )
 }
 
 private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawRotationArrowHead(
@@ -408,13 +585,33 @@ fun NowPlayingSettingsSheet(
     onOpenLyricStyleEditor: () -> Unit = {},
     onOpenTitleStyleEditor: () -> Unit = {},
     hazeNonce: Int = 0,
-    transferDismissGate: PlayerDisplayTransferDismissGate,
+    transferDismissGate: PlayerDisplayTransferDismissGate? = null,
+    /** 横屏：导入/导出；竖屏底部面板关闭。 */
+    showTransferActions: Boolean = true,
+    /** 竖屏：仅悬浮标题名，无 SETTINGS 眉题。 */
+    titleOnlyHeader: Boolean = false,
+    /** 面板主标题（竖屏可改为「竖屏显示」以示隔离）。 */
+    headerTitle: String = "播放显示",
+    panelShape: RoundedCornerShape = PanelShape,
+    /** 磨砂模糊半径；竖屏可加大以增强玻璃感。 */
+    glassBlurRadius: Dp = 84.dp,
+    /** 是否启用实时磨砂；关闭时用静态玻璃层（竖屏弹出更流畅）。 */
+    enableRealtimeHaze: Boolean = true,
+    /** 竖屏内容：仅竖屏相关项，不含横屏氛围/黑胶/标题对齐等。 */
+    portraitContent: Boolean = false,
+    /** 竖屏：打开自定义背景编辑器 */
+    onOpenCustomBackgroundEditor: () -> Unit = {},
+    /** 顶部中央拉取条；竖屏底部面板开启。 */
+    showDragHandle: Boolean = false,
+    onDragHandleVertical: ((dragAmountPx: Float) -> Unit)? = null,
+    onDragHandleEnd: (() -> Unit)? = null,
 ) {
+    val resolvedTransferGate = transferDismissGate ?: remember { PlayerDisplayTransferDismissGate() }
     val transferHost = rememberPlayerDisplayTransferHost(
         prefs = prefs,
         onPrefsChange = onPrefsChange,
         hazeState = hazeState,
-        dismissGate = transferDismissGate,
+        dismissGate = resolvedTransferGate,
     )
     val sliderColors = SliderDefaults.colors(
         thumbColor = Color(0xFFF8FAFC),
@@ -503,7 +700,7 @@ fun NowPlayingSettingsSheet(
         modifier
             .fillMaxHeight()
             .fillMaxWidth()
-            .clip(PanelShape)
+            .clip(panelShape)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
@@ -511,23 +708,47 @@ fun NowPlayingSettingsSheet(
             ),
     ) {
         key(hazeNonce) {
-            Box(
-                Modifier
-                    .matchParentSize()
-                    .graphicsLayer { alpha = dim }
-                    .hazeEffect(state = hazeState, style = SettingsGlassStyle) {
-                        blurRadius = 84.dp
-                        noiseFactor = 0.20f
-                        fallbackTint = HazeTint(Color(0xCC05080E))
-                    },
-            )
+            if (enableRealtimeHaze) {
+                Box(
+                    Modifier
+                        .matchParentSize()
+                        .graphicsLayer { alpha = dim }
+                        .hazeEffect(state = hazeState, style = SettingsGlassStyle) {
+                            blurRadius = glassBlurRadius
+                            noiseFactor = 0.16f
+                            fallbackTint = HazeTint(Color(0xCC05080E))
+                        },
+                )
+            } else {
+                // 静态玻璃：无实时 blur，避免弹出动画卡顿
+                Box(
+                    Modifier
+                        .matchParentSize()
+                        .graphicsLayer { alpha = dim }
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    Color(0xE6080C14),
+                                    Color(0xF005080E),
+                                    Color(0xF0020408),
+                                ),
+                            ),
+                        ),
+                )
+            }
         }
-        // 半透罩层：切歌 blur 短暂失效时也不致死实色
+        // 半透罩层：切歌 blur 短暂失效时也不致死实色；高模糊时略减实色以透出玻璃
         Box(
             Modifier
                 .matchParentSize()
                 .graphicsLayer { alpha = dim }
-                .background(Color(0x9905080E)),
+                .background(
+                    when {
+                        !enableRealtimeHaze -> Color(0x3305080E)
+                        glassBlurRadius >= 110.dp -> Color(0x6605080E)
+                        else -> Color(0x9905080E)
+                    },
+                ),
         )
         Box(
             Modifier
@@ -556,7 +777,7 @@ fun NowPlayingSettingsSheet(
                             Color.White.copy(alpha = 0.08f),
                         ),
                     ),
-                    shape = PanelShape,
+                    shape = panelShape,
                 ),
         )
 
@@ -565,18 +786,45 @@ fun NowPlayingSettingsSheet(
                 .fillMaxSize()
                 .padding(horizontal = 16.dp, vertical = 14.dp),
         ) {
-            Text(
-                text = "SETTINGS",
-                modifier = Modifier.graphicsLayer { alpha = dim },
-                style = TextStyle(
-                    color = Accent.copy(alpha = 0.75f),
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 9.sp,
-                    letterSpacing = 2.sp,
-                    shadow = TextShadow,
-                ),
-            )
-            Spacer(Modifier.height(4.dp))
+            if (showDragHandle) {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 10.dp)
+                        .pointerInput(Unit) {
+                            detectVerticalDragGestures(
+                                onVerticalDrag = { _, dragAmount ->
+                                    onDragHandleVertical?.invoke(dragAmount)
+                                },
+                                onDragEnd = { onDragHandleEnd?.invoke() },
+                                onDragCancel = { onDragHandleEnd?.invoke() },
+                            )
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Box(
+                        Modifier
+                            .width(40.dp)
+                            .height(4.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(Color.White.copy(alpha = 0.38f)),
+                    )
+                }
+            }
+            if (!titleOnlyHeader) {
+                Text(
+                    text = "SETTINGS",
+                    modifier = Modifier.graphicsLayer { alpha = dim },
+                    style = TextStyle(
+                        color = Accent.copy(alpha = 0.75f),
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 9.sp,
+                        letterSpacing = 2.sp,
+                        shadow = TextShadow,
+                    ),
+                )
+                Spacer(Modifier.height(4.dp))
+            }
             Row(
                 Modifier
                     .fillMaxWidth()
@@ -584,7 +832,7 @@ fun NowPlayingSettingsSheet(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = "播放显示",
+                    text = headerTitle,
                     style = TextStyle(
                         color = LabelColor,
                         fontFamily = FontFamily.SansSerif,
@@ -595,10 +843,109 @@ fun NowPlayingSettingsSheet(
                     ),
                     modifier = Modifier.weight(1f),
                 )
-                PlayerDisplayTransferHeaderIcons(host = transferHost)
+                if (showTransferActions) {
+                    PlayerDisplayTransferHeaderIcons(host = transferHost)
+                }
             }
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(if (portraitContent) 4.dp else 14.dp))
 
+            if (portraitContent) {
+                // 竖屏专用项（与横屏设置隔离）；逐步按需求追加
+                Column(
+                    Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .verticalScroll(scrollState),
+                    verticalArrangement = Arrangement.spacedBy(18.dp),
+                ) {
+                    SettingsCategory(title = "氛围", titleAlpha = dim) {
+                        SettingsAlpha(dim) {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                SettingsSwitchRow(
+                                    title = "自定义背景",
+                                    subtitle = "开启后可配置并启用全屏沉浸背景",
+                                    checked = prefs.customBackgroundEnabled,
+                                    colors = switchColors,
+                                    onCheckedChange = {
+                                        onPrefsChange(prefs.copy(customBackgroundEnabled = it))
+                                    },
+                                )
+                                SettingsActionRow(
+                                    title = "背景调控",
+                                    subtitle = if (prefs.customBackgroundEnabled) {
+                                        "5 预设 · 上传 / 定位 / 锁定"
+                                    } else {
+                                        "先开启自定义背景"
+                                    },
+                                    actionLabel = "编辑",
+                                    enabled = prefs.customBackgroundEnabled,
+                                    onClick = onOpenCustomBackgroundEditor,
+                                )
+                                SettingsSwitchRow(
+                                    title = "活跃光晕",
+                                    subtitle = "低/中/高互斥高亮，同时仅一球发光，运动略加快",
+                                    checked = prefs.activeHalo,
+                                    colors = switchColors,
+                                    onCheckedChange = {
+                                        onPrefsChange(prefs.copy(activeHalo = it))
+                                    },
+                                )
+                            }
+                        }
+                    }
+                    SettingsCategory(title = "黑胶", titleAlpha = dim) {
+                        SettingsAlpha(dim) {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                SettingsSwitchRow(
+                                    title = "完整封面",
+                                    subtitle = "封面铺满中心，隐藏轴心镂空",
+                                    checked = prefs.vinylFullCover,
+                                    colors = switchColors,
+                                    onCheckedChange = {
+                                        onPrefsChange(prefs.copy(vinylFullCover = it))
+                                    },
+                                )
+                                SettingsSliderRow(
+                                    title = "黑胶大小（整体）",
+                                    valueLabel = String.format("%.0f%%", prefs.vinylSizeScale * 100f),
+                                    value = prefs.vinylSizeScale,
+                                    valueRange = PlayerDisplayPrefs.VINYL_SIZE_SCALE_MIN..
+                                        PlayerDisplayPrefs.VINYL_SIZE_SCALE_MAX,
+                                    colors = sliderColors,
+                                    onValueChange = {
+                                        onPrefsChange(prefs.copy(vinylSizeScale = it))
+                                    },
+                                )
+                                SettingsSliderRow(
+                                    title = "黑胶垂直位置",
+                                    valueLabel = String.format("%+.0f", prefs.vinylOffsetYDp),
+                                    value = prefs.vinylOffsetYDp,
+                                    valueRange = PlayerDisplayPrefs.VINYL_OFFSET_MIN..
+                                        PlayerDisplayPrefs.VINYL_OFFSET_MAX,
+                                    colors = sliderColors,
+                                    onValueChange = {
+                                        onPrefsChange(prefs.copy(vinylOffsetYDp = it))
+                                    },
+                                )
+                            }
+                        }
+                    }
+                    SettingsCategory(title = "布局", titleAlpha = dim) {
+                        SettingsAlpha(dim) {
+                            SettingsSliderRow(
+                                title = "整体 UI 缩放",
+                                valueLabel = String.format("%.0f%%", prefs.uiScale * 100f),
+                                value = prefs.uiScale,
+                                valueRange = PlayerDisplayPrefs.UI_MIN..PlayerDisplayPrefs.UI_MAX,
+                                colors = sliderColors,
+                                onValueChange = {
+                                    onPrefsChange(prefs.copy(uiScale = it))
+                                },
+                            )
+                        }
+                    }
+                }
+            } else {
             Column(
                 Modifier
                     .weight(1f)
@@ -884,9 +1231,12 @@ fun NowPlayingSettingsSheet(
                     }
                 }
             }
+            } // if (portraitContent) else landscape
         }
 
-        transferHost.Overlay()
+        if (showTransferActions) {
+            transferHost.Overlay()
+        }
     }
 }
 
@@ -1297,13 +1647,21 @@ private fun SettingsActionRow(
     subtitle: String,
     actionLabel: String,
     onClick: () -> Unit,
+    enabled: Boolean = true,
 ) {
+    val enT by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (enabled) 1f else 0.40f,
+        animationSpec = tween(280, easing = FastOutSlowInEasing),
+        label = "settingsActionEn",
+    )
     Row(
         Modifier
             .fillMaxWidth()
+            .graphicsLayer { alpha = enT }
             .clip(RowShape)
             .background(SettingsRowBg)
             .clickable(
+                enabled = enabled,
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
                 onClick = onClick,

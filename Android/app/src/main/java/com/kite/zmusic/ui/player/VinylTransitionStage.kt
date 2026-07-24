@@ -12,9 +12,8 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.Orientation
-import androidx.compose.foundation.gestures.draggable
-import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
@@ -50,6 +49,9 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
@@ -68,7 +70,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.min
-
+import kotlin.math.sign
 enum class VinylSkipDirection {
     Next,
     Previous,
@@ -378,8 +380,8 @@ fun VinylTransitionStage(
             else -> bottomScale.value
         }
 
-        val dragState = rememberDraggableState { delta ->
-            if (!dragging) return@rememberDraggableState
+        fun applyDragDelta(delta: Float) {
+            if (!dragging) return
             followX = rubberDrag(followX + delta)
             val x = followX
             when {
@@ -426,8 +428,210 @@ fun VinylTransitionStage(
             }
         }
 
+        fun beginHorizontalDrag() {
+            // 回弹被取消后可能留下 top≠settled，先自愈再开滑（否则上一首预览后会锁死）
+            if (bounceRunning) {
+                bounceJob?.cancel()
+                bounceJob = null
+                bounceRunning = false
+            }
+            if (topTrack.id != settledId) {
+                topTrack = track
+                bottomTrack = track
+                showBottom = false
+                restoreSavedPrevSpin()
+                settledId = track.id
+                publishSettledTrack(track)
+                followX = 0f
+                scope.launch {
+                    topX.snapTo(0f)
+                    topScale.snapTo(1f)
+                    bottomX.snapTo(0f)
+                    bottomScale.snapTo(1f)
+                }
+            }
+            // 仅接管当前层 settle，不取消离场层
+            settleJob?.cancel()
+            settleJob = null
+            followX = topX.value
+            dragging = true
+            dragMode = null
+            prevRevealBase = 0f
+            stickyTopX = Float.NaN
+        }
+
+        fun abortHorizontalDrag() {
+            if (!dragging) return
+            dragging = false
+            dragMode = null
+            prevRevealBase = 0f
+            stickyTopX = Float.NaN
+            followX = 0f
+            showBottom = false
+            topTrack = track
+            bottomTrack = track
+            restoreSavedPrevSpin()
+            settledId = track.id
+            publishSettledTrack(track)
+            scope.launch {
+                topX.snapTo(0f)
+                topScale.snapTo(1f)
+                bottomX.snapTo(0f)
+                bottomScale.snapTo(1f)
+            }
+        }
+
+        fun endHorizontalDrag(velocity: Float) {
+            if (!dragging) return
+            val x = followX
+            val mode = dragMode
+            val reveal = if (mode == VinylSkipDirection.Previous) prevReveal(x) else 0f
+            val coverX = -slidePx + reveal
+            val scaleAtRelease = NextUnderScale + (1f - NextUnderScale) * 0.40f *
+                (abs(x) / commitPx).coerceIn(0f, 1f)
+            val goNext = mode == VinylSkipDirection.Next &&
+                (x <= -commitPx || velocity <= -flingVelocityPx) &&
+                peekNext != null
+            val goPrev = mode == VinylSkipDirection.Previous &&
+                (reveal >= prevCommitPx || velocity >= flingVelocityPx) &&
+                peekPrev != null
+            when {
+                goNext -> {
+                    val incoming = checkNotNull(peekNext)
+                    val outgoing = topTrack
+                    dragging = false
+                    dragMode = null
+                    prevRevealBase = 0f
+                    stickyTopX = Float.NaN
+                    showBottom = false
+                    bounceJob?.cancel()
+                    bounceJob = null
+                    bounceRunning = false
+                    // 先换盘落定 settled，再提交播放：避免 LaunchedEffect(track.id) 再动画/误判
+                    spawnExitNext(outgoing, x, topScale.value)
+                    promoteIncoming(incoming, scaleAtRelease, animateEnter = false)
+                    onCommitSkip(VinylSkipDirection.Next)
+                }
+                goPrev -> {
+                    val incoming = checkNotNull(peekPrev)
+                    // 跟手时 bottom 已是旧中心；否则用当前 settled
+                    val under = when {
+                        showBottom && bottomTrack.id != incoming.id -> bottomTrack
+                        topTrack.id == settledId -> topTrack
+                        else -> track
+                    }
+                    dragging = false
+                    dragMode = null
+                    prevRevealBase = 0f
+                    stickyTopX = Float.NaN
+                    bounceJob?.cancel()
+                    bounceJob = null
+                    bounceRunning = false
+                    promoteIncoming(
+                        incoming,
+                        1f,
+                        startX = coverX,
+                        animateEnter = true,
+                        underTrack = under,
+                    )
+                    onCommitSkip(VinylSkipDirection.Previous)
+                }
+                else -> {
+                    if (mode == VinylSkipDirection.Previous) {
+                        stickyTopX = coverX
+                    } else if (mode == VinylSkipDirection.Next) {
+                        stickyTopX = x
+                    }
+                    dragging = false
+                    val bounceAnchorSettled = settledId
+                    val bounceRestoreTrack = track
+                    bounceRunning = true
+                    bounceJob?.cancel()
+                    bounceJob = scope.launch {
+                        try {
+                            when (mode) {
+                                VinylSkipDirection.Previous -> {
+                                    topX.snapTo(coverX)
+                                    stickyTopX = Float.NaN
+                                    topX.animateTo(
+                                        -slidePx,
+                                        spring(
+                                            dampingRatio = 0.86f,
+                                            stiffness = Spring.StiffnessMediumLow,
+                                        ),
+                                    )
+                                    // 外部已切歌则不要把顶层/settled 写回旧曲
+                                    if (settledId != bounceAnchorSettled) return@launch
+                                    showBottom = false
+                                    topTrack = bounceRestoreTrack
+                                    restoreSavedPrevSpin()
+                                    topX.snapTo(0f)
+                                    topScale.snapTo(1f)
+                                }
+                                VinylSkipDirection.Next -> {
+                                    topX.snapTo(x)
+                                    stickyTopX = Float.NaN
+                                    if (showBottom) bottomScale.snapTo(scaleAtRelease)
+                                    coroutineScope {
+                                        launch {
+                                            topX.animateTo(
+                                                0f,
+                                                spring(
+                                                    dampingRatio = 0.86f,
+                                                    stiffness = Spring.StiffnessMediumLow,
+                                                ),
+                                            )
+                                        }
+                                        if (showBottom) {
+                                            launch {
+                                                bottomScale.animateTo(
+                                                    NextUnderScale,
+                                                    tween(220, easing = VinylMotion),
+                                                )
+                                            }
+                                        }
+                                    }
+                                    if (settledId != bounceAnchorSettled) return@launch
+                                    showBottom = false
+                                    bottomScale.snapTo(1f)
+                                    topScale.snapTo(1f)
+                                }
+                                null -> {
+                                    if (settledId != bounceAnchorSettled) return@launch
+                                    showBottom = false
+                                    topTrack = bounceRestoreTrack
+                                    restoreSavedPrevSpin()
+                                    stickyTopX = Float.NaN
+                                    topX.snapTo(0f)
+                                    topScale.snapTo(1f)
+                                }
+                            }
+                            if (settledId != bounceAnchorSettled) return@launch
+                            followX = 0f
+                            prevRevealBase = 0f
+                            dragMode = null
+                            settledId = bounceRestoreTrack.id
+                            publishSettledTrack(bounceRestoreTrack)
+                        } finally {
+                            stickyTopX = Float.NaN
+                            bounceRunning = false
+                        }
+                    }
+                }
+            }
+        }
+
+        val beginDragRef = rememberUpdatedState { beginHorizontalDrag() }
+        val applyDeltaRef = rememberUpdatedState { delta: Float -> applyDragDelta(delta) }
+        val endDragRef = rememberUpdatedState { velocity: Float -> endHorizontalDrag(velocity) }
+        val abortDragRef = rememberUpdatedState { abortHorizontalDrag() }
+        val canBeginDragRef = rememberUpdatedState(
+            gesturesEnabled && !bounceRunning,
+        )
+
         // 外部切歌（播放条按钮等）：同样叠层收尾，尽快恢复可滑
         val suppressEnter by rememberUpdatedState(suppressEnterTransition)
+        val directionRef = rememberUpdatedState(direction)
         LaunchedEffect(track.id) {
             if (!booted) {
                 resetTopSpin()
@@ -444,6 +648,14 @@ fun VinylTransitionStage(
                 booted = true
                 return@LaunchedEffect
             }
+            // 外部切歌时作废回弹，避免写回旧 settled 导致上一首锁死 / 下一首连跳
+            bounceJob?.cancel()
+            bounceJob = null
+            bounceRunning = false
+            dragging = false
+            dragMode = null
+            prevRevealBase = 0f
+            stickyTopX = Float.NaN
             if (track.id == settledId) return@LaunchedEffect
             if (topTrack.id == track.id) {
                 // 手势已换顶层：再断言 0°（防旧旋转协程在 reset↔重组间隙写回污染）
@@ -455,12 +667,7 @@ fun VinylTransitionStage(
             // 曲谱飞入接管：禁止常规切歌位移动画，直接落定
             if (suppressEnter) {
                 settleJob?.cancel()
-                bounceJob?.cancel()
                 exiting.clear()
-                dragging = false
-                dragMode = null
-                prevRevealBase = 0f
-                stickyTopX = Float.NaN
                 savedPrevSpinDeg = Float.NaN
                 resetTopSpin()
                 topTrack = track
@@ -474,11 +681,7 @@ fun VinylTransitionStage(
                 bottomScale.snapTo(1f)
                 return@LaunchedEffect
             }
-            dragging = false
-            dragMode = null
-            prevRevealBase = 0f
-            stickyTopX = Float.NaN
-            when (direction) {
+            when (directionRef.value) {
                 VinylSkipDirection.Next -> {
                     spawnExitNext(topTrack, topX.value, topScale.value)
                     promoteIncoming(track, NextUnderScale, animateEnter = false)
@@ -496,157 +699,81 @@ fun VinylTransitionStage(
             }
         }
 
-        val canStartDrag = gesturesEnabled && !bounceRunning &&
-            (dragging || topTrack.id == settledId)
-
         Box(
             Modifier
                 .fillMaxSize()
-                .draggable(
-                    state = dragState,
-                    orientation = Orientation.Horizontal,
-                    enabled = canStartDrag,
-                    onDragStarted = {
-                        if (bounceRunning) return@draggable
-                        // 仅接管当前层 settle，不取消离场层
-                        settleJob?.cancel()
-                        settleJob = null
-                        if (topTrack.id != settledId) {
-                            topTrack = track
+                // 仅水平占优才认领并 consume；竖直下滑不抢，交给外层退出播放页
+                .pointerInput(Unit) {
+                    val touchSlop = viewConfiguration.touchSlop
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        if (!canBeginDragRef.value) {
+                            val pointerId = down.id
+                            while (true) {
+                                val rest = awaitPointerEvent(PointerEventPass.Main)
+                                val c = rest.changes.find { it.id == pointerId }
+                                    ?: return@awaitEachGesture
+                                if (!c.pressed) return@awaitEachGesture
+                            }
                         }
-                        followX = topX.value
-                        dragging = true
-                        dragMode = null
-                        prevRevealBase = 0f
-                        stickyTopX = Float.NaN
-                    },
-                    onDragStopped = { velocity ->
-                        if (!dragging) return@draggable
-                        val x = followX
-                        val mode = dragMode
-                        val reveal = if (mode == VinylSkipDirection.Previous) prevReveal(x) else 0f
-                        val coverX = -slidePx + reveal
-                        val scaleAtRelease = NextUnderScale + (1f - NextUnderScale) * 0.40f *
-                            (abs(x) / commitPx).coerceIn(0f, 1f)
-                        val goNext = mode == VinylSkipDirection.Next &&
-                            (x <= -commitPx || velocity <= -flingVelocityPx) &&
-                            peekNext != null
-                        val goPrev = mode == VinylSkipDirection.Previous &&
-                            (reveal >= prevCommitPx || velocity >= flingVelocityPx) &&
-                            peekPrev != null
-                        when {
-                            goNext -> {
-                                val incoming = checkNotNull(peekNext)
-                                val outgoing = topTrack
-                                dragging = false
-                                dragMode = null
-                                prevRevealBase = 0f
-                                stickyTopX = Float.NaN
-                                showBottom = false
-                                // 先提交播放索引（主线程同步），再换盘；避免长按选歌读到旧 index
-                                onCommitSkip(VinylSkipDirection.Next)
-                                spawnExitNext(outgoing, x, topScale.value)
-                                promoteIncoming(incoming, scaleAtRelease, animateEnter = false)
-                            }
-                            goPrev -> {
-                                val incoming = checkNotNull(peekPrev)
-                                // 跟手时 bottom 已是旧中心；否则用当前 settled
-                                val under = when {
-                                    showBottom && bottomTrack.id != incoming.id -> bottomTrack
-                                    topTrack.id == settledId -> topTrack
-                                    else -> track
-                                }
-                                dragging = false
-                                dragMode = null
-                                prevRevealBase = 0f
-                                stickyTopX = Float.NaN
-                                onCommitSkip(VinylSkipDirection.Previous)
-                                promoteIncoming(
-                                    incoming,
-                                    1f,
-                                    startX = coverX,
-                                    animateEnter = true,
-                                    underTrack = under,
-                                )
-                            }
-                            else -> {
-                                if (mode == VinylSkipDirection.Previous) {
-                                    stickyTopX = coverX
-                                } else if (mode == VinylSkipDirection.Next) {
-                                    stickyTopX = x
-                                }
-                                dragging = false
-                                bounceRunning = true
-                                bounceJob?.cancel()
-                                bounceJob = scope.launch {
-                                    try {
-                                        when (mode) {
-                                            VinylSkipDirection.Previous -> {
-                                                topX.snapTo(coverX)
-                                                stickyTopX = Float.NaN
-                                                topX.animateTo(
-                                                    -slidePx,
-                                                    spring(
-                                                        dampingRatio = 0.86f,
-                                                        stiffness = Spring.StiffnessMediumLow,
-                                                    ),
-                                                )
-                                                showBottom = false
-                                                topTrack = track
-                                                restoreSavedPrevSpin()
-                                                topX.snapTo(0f)
-                                                topScale.snapTo(1f)
-                                            }
-                                            VinylSkipDirection.Next -> {
-                                                topX.snapTo(x)
-                                                stickyTopX = Float.NaN
-                                                if (showBottom) bottomScale.snapTo(scaleAtRelease)
-                                                coroutineScope {
-                                                    launch {
-                                                        topX.animateTo(
-                                                            0f,
-                                                            spring(
-                                                                dampingRatio = 0.86f,
-                                                                stiffness = Spring.StiffnessMediumLow,
-                                                            ),
-                                                        )
-                                                    }
-                                                    if (showBottom) {
-                                                        launch {
-                                                            bottomScale.animateTo(
-                                                                NextUnderScale,
-                                                                tween(220, easing = VinylMotion),
-                                                            )
-                                                        }
-                                                    }
-                                                }
-                                                showBottom = false
-                                                bottomScale.snapTo(1f)
-                                                topScale.snapTo(1f)
-                                            }
-                                            null -> {
-                                                showBottom = false
-                                                topTrack = track
-                                                restoreSavedPrevSpin()
-                                                stickyTopX = Float.NaN
-                                                topX.snapTo(0f)
-                                                topScale.snapTo(1f)
+                        val pointerId = down.id
+                        val start = down.position
+                        var lastPos = down.position
+                        var horizontalLocked = false
+                        var finished = false
+                        val velocityTracker = VelocityTracker()
+                        velocityTracker.addPosition(down.uptimeMillis, down.position)
+                        try {
+                            while (true) {
+                                val event = awaitPointerEvent(PointerEventPass.Main)
+                                val change = event.changes.find { it.id == pointerId }
+                                    ?: break
+                                velocityTracker.addPosition(change.uptimeMillis, change.position)
+                                if (!horizontalLocked) {
+                                    val dx = change.position.x - start.x
+                                    val dy = change.position.y - start.y
+                                    if (abs(dx) > touchSlop || abs(dy) > touchSlop) {
+                                        if (abs(dx) > abs(dy)) {
+                                            horizontalLocked = true
+                                            beginDragRef.value.invoke()
+                                            val overSlop = dx - sign(dx) * touchSlop
+                                            applyDeltaRef.value.invoke(overSlop)
+                                            lastPos = change.position
+                                            change.consume()
+                                        } else {
+                                            // 竖直（或近竖直）占优：不 consume，让外层下滑退出
+                                            while (true) {
+                                                val rest = awaitPointerEvent(PointerEventPass.Main)
+                                                val c = rest.changes.find { it.id == pointerId }
+                                                    ?: return@awaitEachGesture
+                                                if (!c.pressed) return@awaitEachGesture
                                             }
                                         }
-                                        followX = 0f
-                                        prevRevealBase = 0f
-                                        dragMode = null
-                                        settledId = track.id
-                                        publishSettledTrack(track)
-                                    } finally {
-                                        stickyTopX = Float.NaN
-                                        bounceRunning = false
+                                    } else if (!change.pressed) {
+                                        finished = true
+                                        return@awaitEachGesture
+                                    }
+                                } else {
+                                    val delta = change.position.x - lastPos.x
+                                    lastPos = change.position
+                                    change.consume()
+                                    applyDeltaRef.value.invoke(delta)
+                                    if (!change.pressed) {
+                                        val vx = velocityTracker.calculateVelocity().x
+                                        endDragRef.value.invoke(vx)
+                                        finished = true
+                                        return@awaitEachGesture
                                     }
                                 }
                             }
+                        } finally {
+                            // 手势被取消时复位，避免 top≠settled 锁死上一首
+                            if (horizontalLocked && !finished) {
+                                abortDragRef.value.invoke()
+                            }
                         }
-                    },
-                ),
+                    }
+                },
         ) {
             if (showBottom) {
                 key(bottomTrack.id, "bottom") {
