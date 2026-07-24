@@ -264,7 +264,8 @@ private fun Modifier.nowPlayingBlankGestures(
 }
 
 /**
- * 黑胶轻触 / 长按：不 consume down/move，避免挡住外层下滑退出与横向切歌。
+ * 黑胶轻触 / 长按：长按超时前不 consume，避免挡住外层下滑退出与横向切歌。
+ * 长按用 [withTimeoutOrNull] 竞速——手指静止无 move 事件时也能在超时后立刻触发（不必松手）。
  * 横屏单击由 [nowPlayingBlankGestures] 处理；此处仅在需要时挂长按（或竖屏进歌词）。
  */
 private fun Modifier.vinylLightTapGestures(
@@ -281,26 +282,49 @@ private fun Modifier.vinylLightTapGestures(
             val down = awaitFirstDown(requireUnconsumed = false)
             val pointerId = down.id
             val start = down.position
-            val startUptime = down.uptimeMillis
-            var pastSlop = false
-            var longFired = false
-            while (true) {
-                val event = awaitPointerEvent(PointerEventPass.Main)
-                val change = event.changes.find { it.id == pointerId } ?: return@awaitEachGesture
-                val dx = change.position.x - start.x
-                val dy = change.position.y - start.y
-                if (!pastSlop && (abs(dx) > touchSlop || abs(dy) > touchSlop)) {
-                    pastSlop = true
+
+            // 无长按：仅短按（竖屏点黑胶进歌词）
+            if (longRef.value == null) {
+                while (true) {
+                    val event = awaitPointerEvent(PointerEventPass.Main)
+                    val change = event.changes.find { it.id == pointerId } ?: return@awaitEachGesture
+                    val dx = change.position.x - start.x
+                    val dy = change.position.y - start.y
+                    if (abs(dx) > touchSlop || abs(dy) > touchSlop) {
+                        while (true) {
+                            val rest = awaitPointerEvent(PointerEventPass.Main)
+                            val c = rest.changes.find { it.id == pointerId } ?: return@awaitEachGesture
+                            if (!c.pressed) return@awaitEachGesture
+                        }
+                    }
+                    if (!change.pressed) {
+                        tapRef.value?.invoke()
+                        return@awaitEachGesture
+                    }
                 }
-                if (
-                    !pastSlop &&
-                    !longFired &&
-                    longRef.value != null &&
-                    change.uptimeMillis - startUptime >= longPressMs
-                ) {
-                    longFired = true
+            }
+
+            // 长按竞速：超时仍按住且未出 slop → 立即回调（按住即开，无需松手）
+            val race = withTimeoutOrNull(longPressMs) {
+                while (true) {
+                    val event = awaitPointerEvent(PointerEventPass.Main)
+                    val change = event.changes.find { it.id == pointerId }
+                        ?: return@withTimeoutOrNull "cancel"
+                    if (!change.pressed) return@withTimeoutOrNull "up"
+                    val dx = change.position.x - start.x
+                    val dy = change.position.y - start.y
+                    if (abs(dx) > touchSlop || abs(dy) > touchSlop) {
+                        // 已滑动：交给横滑切歌 / 外层下滑退出，不 consume
+                        return@withTimeoutOrNull "slop"
+                    }
+                }
+                @Suppress("UNREACHABLE_CODE")
+                "cancel"
+            }
+
+            when (race) {
+                null -> {
                     longRef.value?.invoke()
-                    change.consume()
                     while (true) {
                         val rest = awaitPointerEvent(PointerEventPass.Main)
                         val c = rest.changes.find { it.id == pointerId } ?: return@awaitEachGesture
@@ -308,11 +332,16 @@ private fun Modifier.vinylLightTapGestures(
                         if (!c.pressed) return@awaitEachGesture
                     }
                 }
-                if (!change.pressed) {
-                    if (!pastSlop && !longFired) {
-                        tapRef.value?.invoke()
+                "up" -> {
+                    tapRef.value?.invoke()
+                }
+                else -> {
+                    // slop / cancel：不 consume，让黑胶横滑与下滑退出继续
+                    while (true) {
+                        val rest = awaitPointerEvent(PointerEventPass.Main)
+                        val c = rest.changes.find { it.id == pointerId } ?: return@awaitEachGesture
+                        if (!c.pressed) return@awaitEachGesture
                     }
-                    return@awaitEachGesture
                 }
             }
         }
@@ -1293,6 +1322,12 @@ fun NowPlayingScreen(
                     .fillMaxSize()
                     .hazeSource(state = settingsHazeState, zIndex = 0f),
             ) {
+                // 不透明底：Fit 留白 / 交叉淡入时不透出主界面迷你条
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .background(Color(0xFF05070C)),
+                )
                 GeminiOrbsBackdrop(
                     modifier = Modifier
                         .fillMaxSize()
@@ -2242,7 +2277,7 @@ private fun PortraitPlayerBody(
     val vinylSizeScale = displayPrefs.vinylSizeScale
         .coerceIn(PlayerDisplayPrefs.VINYL_SIZE_SCALE_MIN, PlayerDisplayPrefs.VINYL_SIZE_SCALE_MAX)
     val vinylOffsetY = displayPrefs.vinylOffsetYDp
-        .coerceIn(PlayerDisplayPrefs.VINYL_OFFSET_MIN, PlayerDisplayPrefs.VINYL_OFFSET_MAX)
+        .coerceIn(PlayerDisplayPrefs.VINYL_OFFSET_Y_MIN, PlayerDisplayPrefs.VINYL_OFFSET_Y_MAX)
         .dp
     val vinylFullCover = displayPrefs.vinylFullCover
     val uiScale = displayPrefs.uiScale
@@ -2432,6 +2467,7 @@ private fun PortraitPlayerBody(
             portraitSlim = true,
             landscapeDense = false,
             onOpenSettings = onOpenSettings,
+            controlsOffsetYDp = displayPrefs.portraitTransportOffsetYDp,
         )
     }
 }
@@ -5852,6 +5888,8 @@ private fun PlayerTransport(
     controlsLocked: Boolean = false,
     onOpenScore: (() -> Unit)? = null,
     onOpenSettings: (() -> Unit)? = null,
+    /** 竖屏：仅进度条与播放按钮行的垂直偏移；底部设置条不参与 */
+    controlsOffsetYDp: Float = 0f,
 ) {
     val maxF = durationMs.toFloat().coerceAtLeast(1f)
     val sliderPos = if (sliderDragging) sliderValue else positionMs.toFloat()
@@ -6051,142 +6089,162 @@ private fun PlayerTransport(
         val alignPad =
             if (portraitSlim) Modifier.padding(horizontal = portraitAlignPad) else Modifier
 
-        // 竖屏：当前时长 / 总时长分别贴在进度条左上、右上
-        if (portraitSlim) {
+        // 竖屏：进度 + 传输按钮可整体垂直偏移；底部设置条保持默认位置
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .then(
+                    if (portraitSlim) {
+                        Modifier.offset(
+                            y = controlsOffsetYDp
+                                .coerceIn(
+                                    PlayerDisplayPrefs.PORTRAIT_TRANSPORT_OFFSET_Y_MIN,
+                                    PlayerDisplayPrefs.PORTRAIT_TRANSPORT_OFFSET_Y_MAX,
+                                )
+                                .dp,
+                        )
+                    } else {
+                        Modifier
+                    },
+                ),
+        ) {
+            // 竖屏：当前时长 / 总时长分别贴在进度条左上、右上
+            if (portraitSlim) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .then(alignPad)
+                        .padding(bottom = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = formatTimeMs(displayPosMs),
+                        style = timeStyle,
+                    )
+                    Text(
+                        text = formatTimeMs(durationMs),
+                        style = timeStyle,
+                    )
+                }
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .then(alignPad)
+                        .height(sliderH),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Slider(
+                        modifier = Modifier.fillMaxWidth(),
+                        value = sliderPos.coerceIn(0f, maxF),
+                        onValueChange = { v ->
+                            if (!sliderDragging) onSliderDragStart()
+                            onSliderChange(v)
+                        },
+                        onValueChangeFinished = onSliderDragEnd,
+                        valueRange = 0f..maxF,
+                        colors = sliderColors,
+                    )
+                }
+                Spacer(Modifier.height(16.dp))
+            } else {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(sliderH),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Slider(
+                        modifier = Modifier.fillMaxWidth(),
+                        value = sliderPos.coerceIn(0f, maxF),
+                        onValueChange = { v ->
+                            if (!sliderDragging) onSliderDragStart()
+                            onSliderChange(v)
+                        },
+                        onValueChangeFinished = onSliderDragEnd,
+                        valueRange = 0f..maxF,
+                        colors = sliderColors,
+                    )
+                }
+            }
             Row(
                 Modifier
                     .fillMaxWidth()
                     .then(alignPad)
-                    .padding(bottom = 6.dp),
+                    .padding(vertical = if (portraitSlim) 4.dp else 2.dp),
+                // 左右两端贴齐进度条半圆外缘；中间 3 个控件之间形成 4 段等分间隙
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    text = formatTimeMs(displayPosMs),
-                    style = timeStyle,
+                // 竖屏：端点按实绘尺寸参与排布；模式图标更小更细，喜欢保持原视觉尺寸
+                val likeGlyphSize = if (portraitSlim) playSize * 0.70f else playSize
+                val modeGlyphSize = if (portraitSlim) playSize * 0.61f else playSize
+                PlaybackModeControl(
+                    mode = playbackMode,
+                    onClick = onCyclePlaybackMode,
+                    circleSize = modeGlyphSize,
+                    tint = iconTint,
+                    glyphFraction = if (portraitSlim) 1f else 0.625f,
                 )
-                Text(
-                    text = formatTimeMs(durationMs),
-                    style = timeStyle,
-                )
-            }
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .then(alignPad)
-                    .height(sliderH),
-                contentAlignment = Alignment.Center,
-            ) {
-                Slider(
-                    modifier = Modifier.fillMaxWidth(),
-                    value = sliderPos.coerceIn(0f, maxF),
-                    onValueChange = { v ->
-                        if (!sliderDragging) onSliderDragStart()
-                        onSliderChange(v)
-                    },
-                    onValueChangeFinished = onSliderDragEnd,
-                    valueRange = 0f..maxF,
-                    colors = sliderColors,
-                )
-            }
-            Spacer(Modifier.height(16.dp))
-        } else {
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .height(sliderH),
-                contentAlignment = Alignment.Center,
-            ) {
-                Slider(
-                    modifier = Modifier.fillMaxWidth(),
-                    value = sliderPos.coerceIn(0f, maxF),
-                    onValueChange = { v ->
-                        if (!sliderDragging) onSliderDragStart()
-                        onSliderChange(v)
-                    },
-                    onValueChangeFinished = onSliderDragEnd,
-                    valueRange = 0f..maxF,
-                    colors = sliderColors,
-                )
-            }
-        }
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .then(alignPad)
-                .padding(vertical = if (portraitSlim) 4.dp else 2.dp),
-            // 左右两端贴齐进度条半圆外缘；中间 3 个控件之间形成 4 段等分间隙
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            // 竖屏：端点按实绘尺寸参与排布；模式图标更小更细，喜欢保持原视觉尺寸
-            val likeGlyphSize = if (portraitSlim) playSize * 0.70f else playSize
-            val modeGlyphSize = if (portraitSlim) playSize * 0.61f else playSize
-            PlaybackModeControl(
-                mode = playbackMode,
-                onClick = onCyclePlaybackMode,
-                circleSize = modeGlyphSize,
-                tint = iconTint,
-                glyphFraction = if (portraitSlim) 1f else 0.625f,
-            )
 
-            Box(
-                modifier = Modifier
-                    .size(playSize)
-                    .clip(CircleShape)
-                    .clickable(onClick = onSkipPrev),
-                contentAlignment = Alignment.Center,
-            ) {
-                TransportSkipIcon(forward = false, size = transportIconSize, tint = iconTint)
-            }
+                Box(
+                    modifier = Modifier
+                        .size(playSize)
+                        .clip(CircleShape)
+                        .clickable(onClick = onSkipPrev),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    TransportSkipIcon(forward = false, size = transportIconSize, tint = iconTint)
+                }
 
-            Box(
-                modifier = Modifier
-                    .graphicsLayer {
-                        scaleX = playPulse
-                        scaleY = playPulse
-                    }
-                    .size(playSize)
-                    .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.12f))
-                    .clickable(onClick = onTogglePlay),
-                contentAlignment = Alignment.Center,
-            ) {
-                TransportPlayPauseIcon(
-                    playing = isPlaying,
-                    buffering = buffering,
-                    size = transportIconSize,
-                    tint = Color(0xFFF5F7FA),
-                )
-            }
+                Box(
+                    modifier = Modifier
+                        .graphicsLayer {
+                            scaleX = playPulse
+                            scaleY = playPulse
+                        }
+                        .size(playSize)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.12f))
+                        .clickable(onClick = onTogglePlay),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    TransportPlayPauseIcon(
+                        playing = isPlaying,
+                        buffering = buffering,
+                        size = transportIconSize,
+                        tint = Color(0xFFF5F7FA),
+                    )
+                }
 
-            Box(
-                modifier = Modifier
-                    .size(playSize)
-                    .clip(CircleShape)
-                    .clickable(onClick = onSkipNext),
-                contentAlignment = Alignment.Center,
-            ) {
-                TransportSkipIcon(forward = true, size = transportIconSize, tint = iconTint)
-            }
+                Box(
+                    modifier = Modifier
+                        .size(playSize)
+                        .clip(CircleShape)
+                        .clickable(onClick = onSkipNext),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    TransportSkipIcon(forward = true, size = transportIconSize, tint = iconTint)
+                }
 
-            Box(
-                modifier = Modifier
-                    .size(likeGlyphSize)
-                    .clip(CircleShape)
-                    .clickable(onClick = onToggleLike),
-                contentAlignment = Alignment.Center,
-            ) {
-                TransportLikeIcon(
-                    liked = trackLiked,
-                    size = likeGlyphSize,
-                    outlineTint = iconTint,
-                )
+                Box(
+                    modifier = Modifier
+                        .size(likeGlyphSize)
+                        .clip(CircleShape)
+                        .clickable(onClick = onToggleLike),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    TransportLikeIcon(
+                        liked = trackLiked,
+                        size = likeGlyphSize,
+                        outlineTint = iconTint,
+                    )
+                }
             }
         }
 
         // 竖屏底部：区域延伸进系统导航条；玻璃条在剩余空白内垂直居中
-        // 背景与横屏底部播放条一致（半透明黑底 + 14dp 圆角）
+        // 背景与横屏底部播放条一致（半透明黑底 + 14dp 圆角）；位置固定，不受播放控件偏移影响
         if (portraitSlim) {
             val navBottom = WindowInsets.navigationBars
                 .asPaddingValues()

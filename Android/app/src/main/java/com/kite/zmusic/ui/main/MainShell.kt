@@ -295,7 +295,8 @@ fun MainShell(
                         )
                     }
                     AnimatedVisibility(
-                        visible = playingTrack != null,
+                        // 与横屏一致：全屏播放页打开时隐藏，避免自定义背景 Fit 留白透出底层小组件
+                        visible = playingTrack != null && !showFullPlayer,
                         enter = fadeIn(tween(280, easing = FastOutSlowInEasing)) +
                             slideInVertically(
                                 animationSpec = tween(340, easing = FastOutSlowInEasing),

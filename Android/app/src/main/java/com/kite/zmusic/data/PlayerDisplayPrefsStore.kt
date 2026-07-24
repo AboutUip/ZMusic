@@ -469,6 +469,11 @@ data class PlayerDisplayPrefs(
      */
     val transportBottomInsetDp: Float = 16f,
     /**
+     * 竖屏：播放控件（进度条 / 模式 / 切歌 / 播放 / 喜欢）垂直偏移（dp），负上正下；
+     * 不含底部设置条，设置条保持默认贴底区域。
+     */
+    val portraitTransportOffsetYDp: Float = 0f,
+    /**
      * 黑胶选歌：横屏长按黑胶进入扑克牌式队列选歌。
      */
     val vinylSongPickEnabled: Boolean = false,
@@ -625,7 +630,7 @@ data class PlayerDisplayPrefs(
             lyricUpcomingCount = lyricUpcomingCount.coerceIn(LYRIC_AROUND_MIN, LYRIC_AROUND_MAX),
             uiScale = uiScale.finiteCoerceIn(UI_MIN, UI_MAX, 1f),
             vinylOffsetXDp = vinylOffsetXDp.finiteCoerceIn(VINYL_OFFSET_MIN, VINYL_OFFSET_MAX, 0f),
-            vinylOffsetYDp = vinylOffsetYDp.finiteCoerceIn(VINYL_OFFSET_MIN, VINYL_OFFSET_MAX, 0f),
+            vinylOffsetYDp = vinylOffsetYDp.finiteCoerceIn(VINYL_OFFSET_Y_MIN, VINYL_OFFSET_Y_MAX, 0f),
             lyricOffsetXDp = lyricOffsetXDp.finiteCoerceIn(LYRIC_OFFSET_MIN, LYRIC_OFFSET_MAX, 0f),
             titleOffsetYDp = titleOffsetYDp.finiteCoerceIn(
                 TITLE_OFFSET_Y_MIN,
@@ -636,6 +641,11 @@ data class PlayerDisplayPrefs(
                 TRANSPORT_BOTTOM_INSET_MIN,
                 TRANSPORT_BOTTOM_INSET_MAX,
                 16f,
+            ),
+            portraitTransportOffsetYDp = portraitTransportOffsetYDp.finiteCoerceIn(
+                PORTRAIT_TRANSPORT_OFFSET_Y_MIN,
+                PORTRAIT_TRANSPORT_OFFSET_Y_MAX,
+                0f,
             ),
             vinylSizeScale = vinylSizeScale.finiteCoerceIn(
                 VINYL_SIZE_SCALE_MIN,
@@ -683,6 +693,9 @@ data class PlayerDisplayPrefs(
         const val UI_MAX = 1.25f
         const val VINYL_OFFSET_MIN = -56f
         const val VINYL_OFFSET_MAX = 56f
+        /** 竖屏黑胶垂直偏移：相对水平范围放大 1.5 倍 */
+        const val VINYL_OFFSET_Y_MIN = -84f
+        const val VINYL_OFFSET_Y_MAX = 84f
         const val LYRIC_OFFSET_MIN = -72f
         const val LYRIC_OFFSET_MAX = 72f
         /** 标题信息垂直偏移 */
@@ -691,6 +704,9 @@ data class PlayerDisplayPrefs(
         /** 悬浮播放组件离底距离 */
         const val TRANSPORT_BOTTOM_INSET_MIN = 8f
         const val TRANSPORT_BOTTOM_INSET_MAX = 48f
+        /** 竖屏播放控件（不含设置条）垂直偏移 */
+        const val PORTRAIT_TRANSPORT_OFFSET_Y_MIN = -48f
+        const val PORTRAIT_TRANSPORT_OFFSET_Y_MAX = 48f
         const val VINYL_CUSTOM_PRESET_COUNT = 5
         const val BACKGROUND_PRESET_COUNT = 5
         const val BG_OFFSET_MIN = 0f
@@ -845,6 +861,7 @@ class PlayerDisplayPrefsStore(
             transportAlwaysVisible = prefs.safeBoolean(KEY_TRANSPORT_ALWAYS, false),
             transportDocked = prefs.safeBoolean(KEY_TRANSPORT_DOCKED, true),
             transportBottomInsetDp = prefs.safeFloat(KEY_TRANSPORT_BOTTOM_INSET, 16f),
+            portraitTransportOffsetYDp = prefs.safeFloat(KEY_PORTRAIT_TRANSPORT_OFFSET_Y, 0f),
             vinylSongPickEnabled = prefs.safeBoolean(KEY_VINYL_SONG_PICK, false),
             activeHalo = prefs.safeBoolean(KEY_ACTIVE_HALO, false),
             lyricTapAutoPlay = prefs.safeBoolean(KEY_LYRIC_TAP_AUTO_PLAY, false),
@@ -914,6 +931,7 @@ class PlayerDisplayPrefsStore(
                 .putBoolean(KEY_TRANSPORT_ALWAYS, v.transportAlwaysVisible)
                 .putBoolean(KEY_TRANSPORT_DOCKED, v.transportDocked)
                 .putFloat(KEY_TRANSPORT_BOTTOM_INSET, v.transportBottomInsetDp)
+                .putFloat(KEY_PORTRAIT_TRANSPORT_OFFSET_Y, v.portraitTransportOffsetYDp)
                 .putBoolean(KEY_VINYL_SONG_PICK, v.vinylSongPickEnabled)
                 .putBoolean(KEY_ACTIVE_HALO, v.activeHalo)
                 .putBoolean(KEY_LYRIC_TAP_AUTO_PLAY, v.lyricTapAutoPlay)
@@ -962,6 +980,7 @@ class PlayerDisplayPrefsStore(
         private const val KEY_TRANSPORT_ALWAYS = "transport_always_visible"
         private const val KEY_TRANSPORT_DOCKED = "transport_docked"
         private const val KEY_TRANSPORT_BOTTOM_INSET = "transport_bottom_inset_dp"
+        private const val KEY_PORTRAIT_TRANSPORT_OFFSET_Y = "portrait_transport_offset_y_dp"
         private const val KEY_VINYL_SONG_PICK = "vinyl_song_pick_enabled"
         private const val KEY_ACTIVE_HALO = "active_halo"
         private const val KEY_LYRIC_TAP_AUTO_PLAY = "lyric_tap_auto_play"

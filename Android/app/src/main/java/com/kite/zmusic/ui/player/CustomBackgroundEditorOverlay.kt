@@ -91,8 +91,16 @@ private val BgEditorShadow = Shadow(color = Color.Black.copy(alpha = 0.7f), blur
 internal fun playerBackgroundDir(context: Context): File =
     File(context.filesDir, "player_backgrounds").also { it.mkdirs() }
 
-internal fun playerBackgroundFile(context: Context, index: Int): File =
-    File(playerBackgroundDir(context), "preset_$index.jpg")
+/** 清理某预设位的旧背景文件（含历史固定名与带时间戳的新名）。 */
+private fun clearPresetBackgroundFiles(dir: File, index: Int, keep: File? = null) {
+    dir.listFiles()?.forEach { f ->
+        if (keep != null && f.absolutePath == keep.absolutePath) return@forEach
+        val name = f.name
+        if (name == "preset_$index.jpg" || name.startsWith("preset_${index}_")) {
+            runCatching { f.delete() }
+        }
+    }
+}
 
 internal suspend fun copyBackgroundImageToPreset(
     context: Context,
@@ -100,17 +108,15 @@ internal suspend fun copyBackgroundImageToPreset(
     index: Int,
 ): String? = withContext(Dispatchers.IO) {
     runCatching {
-        val out = playerBackgroundFile(context, index)
+        val dir = playerBackgroundDir(context)
+        // 每次新文件名：同路径覆盖时 Bitmap/Compose 会继续显示旧图
+        val out = File(dir, "preset_${index}_${System.currentTimeMillis()}.jpg")
         context.contentResolver.openInputStream(uri)?.use { input ->
             out.outputStream().use { output -> input.copyTo(output) }
         } ?: return@runCatching null
+        clearPresetBackgroundFiles(dir, index, keep = out)
         out.absolutePath
     }.getOrNull()
-}
-
-internal suspend fun deleteBackgroundImageFile(path: String?) = withContext(Dispatchers.IO) {
-    if (path.isNullOrBlank()) return@withContext
-    runCatching { File(path).takeIf { it.exists() }?.delete() }
 }
 
 @Composable
@@ -181,6 +187,8 @@ fun PlayerCustomBackgroundLayer(
             .fillMaxSize()
             .graphicsLayer { alpha = t },
     ) {
+        // Fit 留白处保持不透明，避免透出下层主界面
+        Box(Modifier.fillMaxSize().background(Color(0xFF05070C)))
         if (preset != null && preset.hasImage && t > 0.001f) {
             LocalPathImage(
                 path = preset.imagePath,
@@ -257,7 +265,10 @@ fun CustomBackgroundEditorOverlay(
         if (uri == null || draft.locked) return@rememberLauncherForActivityResult
         scope.launch {
             val path = copyBackgroundImageToPreset(context, uri, editIndex) ?: return@launch
-            draft = draft.copy(imagePath = path, locked = false)
+            val updated = draft.copy(imagePath = path, locked = false)
+            draft = updated
+            // 未锁定也写入 prefs：预览/缩略图立即刷新，且路径变更触发重新解码
+            onPrefsChange(prefs.withBackgroundPresetAt(editIndex, updated))
         }
     }
 
@@ -474,7 +485,9 @@ fun CustomBackgroundEditorOverlay(
                     modifier = Modifier.weight(1f),
                     onClick = {
                         scope.launch {
-                            deleteBackgroundImageFile(draft.imagePath)
+                            withContext(Dispatchers.IO) {
+                                clearPresetBackgroundFiles(playerBackgroundDir(context), editIndex)
+                            }
                             draft = PlayerBackgroundPreset()
                             draftOx = 0.5f
                             draftOy = 0.5f
@@ -651,7 +664,7 @@ private fun PortraitBackgroundPreview(
     val vinylSizeScale = displayPrefs.vinylSizeScale
         .coerceIn(PlayerDisplayPrefs.VINYL_SIZE_SCALE_MIN, PlayerDisplayPrefs.VINYL_SIZE_SCALE_MAX)
     val vinylOffsetYDp = displayPrefs.vinylOffsetYDp
-        .coerceIn(PlayerDisplayPrefs.VINYL_OFFSET_MIN, PlayerDisplayPrefs.VINYL_OFFSET_MAX)
+        .coerceIn(PlayerDisplayPrefs.VINYL_OFFSET_Y_MIN, PlayerDisplayPrefs.VINYL_OFFSET_Y_MAX)
     val vinylFullCover = displayPrefs.vinylFullCover
     val prefsUiScale = displayPrefs.uiScale
         .coerceIn(PlayerDisplayPrefs.UI_MIN, PlayerDisplayPrefs.UI_MAX)
@@ -794,7 +807,11 @@ private fun PortraitBackgroundPreview(
                     }
                 }
 
-                PortraitTransportHeightStub(uiScale = uiScale, navBottom = navPad)
+                PortraitTransportHeightStub(
+                    uiScale = uiScale,
+                    navBottom = navPad,
+                    controlsOffsetYDp = displayPrefs.portraitTransportOffsetYDp,
+                )
             }
         }
     }
@@ -804,24 +821,36 @@ private fun PortraitBackgroundPreview(
 private fun PortraitTransportHeightStub(
     uiScale: Float,
     navBottom: androidx.compose.ui.unit.Dp,
+    controlsOffsetYDp: Float = 0f,
 ) {
     val sliderH = 16.dp * uiScale
     val playSize = 50.dp * uiScale
     val portraitBottomBandHeight = 36.dp * uiScale
     val bottomZoneHeight = navBottom + 56.dp * uiScale
+    val oy = controlsOffsetYDp
+        .coerceIn(
+            PlayerDisplayPrefs.PORTRAIT_TRANSPORT_OFFSET_Y_MIN,
+            PlayerDisplayPrefs.PORTRAIT_TRANSPORT_OFFSET_Y_MAX,
+        ) * uiScale
     Column(
         Modifier
             .fillMaxWidth()
             .padding(top = 1.dp * uiScale),
     ) {
-        Spacer(Modifier.height((14.dp + 6.dp) * uiScale))
-        Spacer(Modifier.height(sliderH))
-        Spacer(Modifier.height(16.dp * uiScale))
-        Spacer(
+        Column(
             Modifier
                 .fillMaxWidth()
-                .height(playSize + 8.dp * uiScale),
-        )
+                .offset(y = oy.dp),
+        ) {
+            Spacer(Modifier.height((14.dp + 6.dp) * uiScale))
+            Spacer(Modifier.height(sliderH))
+            Spacer(Modifier.height(16.dp * uiScale))
+            Spacer(
+                Modifier
+                    .fillMaxWidth()
+                    .height(playSize + 8.dp * uiScale),
+            )
+        }
         Box(
             Modifier
                 .fillMaxWidth()

@@ -114,10 +114,14 @@ private val SettingsGlassStyle = HazeStyle(
 /** 功能行：近不透明实底，与磨砂壳分层。 */
 private val SettingsRowBg = Color(0xF0141A24)
 
-/** 拖动歌词布局滑条时，面板其余部分淡出以便预览歌词。 */
-private enum class LyricLayoutPreviewKey {
+/** 拖动布局相关滑条时，面板其余部分淡出以便预览真实效果。 */
+private enum class SettingsPreviewKey {
     LineSpacing,
     OffsetX,
+    UiScale,
+    VinylSize,
+    VinylOffsetY,
+    TransportOffsetY,
 }
 
 private const val SettingsPreviewFadeOutMs = 320
@@ -634,8 +638,8 @@ fun NowPlayingSettingsSheet(
         checkedBorderColor = Color.Transparent,
     )
 
-    var previewKey by remember { mutableStateOf<LyricLayoutPreviewKey?>(null) }
-    var focusKey by remember { mutableStateOf<LyricLayoutPreviewKey?>(null) }
+    var previewKey by remember { mutableStateOf<SettingsPreviewKey?>(null) }
+    var focusKey by remember { mutableStateOf<SettingsPreviewKey?>(null) }
     val chromeAlpha = remember { Animatable(1f) }
     val focusAlpha = remember { Animatable(1f) }
     // 预览键变化时中断上一跳，背景与焦点行各自动画到目标透明度
@@ -682,10 +686,10 @@ fun NowPlayingSettingsSheet(
         }
     }
     val dim = chromeAlpha.value
-    fun rowAlpha(key: LyricLayoutPreviewKey): Float =
+    fun rowAlpha(key: SettingsPreviewKey): Float =
         if (key == focusKey) focusAlpha.value else dim
 
-    fun onPreviewDrag(key: LyricLayoutPreviewKey, active: Boolean) {
+    fun onPreviewDrag(key: SettingsPreviewKey, active: Boolean) {
         if (active) {
             previewKey = key
         } else if (previewKey == key) {
@@ -850,12 +854,12 @@ fun NowPlayingSettingsSheet(
             Spacer(Modifier.height(if (portraitContent) 4.dp else 14.dp))
 
             if (portraitContent) {
-                // 竖屏专用项（与横屏设置隔离）；逐步按需求追加
+                // 竖屏专用项（与横屏设置隔离）；预览淡出与横屏同一套 chromeAlpha / focusAlpha
                 Column(
                     Modifier
                         .weight(1f)
                         .fillMaxWidth()
-                        .verticalScroll(scrollState),
+                        .verticalScroll(scrollState, enabled = previewKey == null),
                     verticalArrangement = Arrangement.spacedBy(18.dp),
                 ) {
                     SettingsCategory(title = "氛围", titleAlpha = dim) {
@@ -895,43 +899,51 @@ fun NowPlayingSettingsSheet(
                     }
                     SettingsCategory(title = "黑胶", titleAlpha = dim) {
                         SettingsAlpha(dim) {
-                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                SettingsSwitchRow(
-                                    title = "完整封面",
-                                    subtitle = "封面铺满中心，隐藏轴心镂空",
-                                    checked = prefs.vinylFullCover,
-                                    colors = switchColors,
-                                    onCheckedChange = {
-                                        onPrefsChange(prefs.copy(vinylFullCover = it))
-                                    },
-                                )
-                                SettingsSliderRow(
-                                    title = "黑胶大小（整体）",
-                                    valueLabel = String.format("%.0f%%", prefs.vinylSizeScale * 100f),
-                                    value = prefs.vinylSizeScale,
-                                    valueRange = PlayerDisplayPrefs.VINYL_SIZE_SCALE_MIN..
-                                        PlayerDisplayPrefs.VINYL_SIZE_SCALE_MAX,
-                                    colors = sliderColors,
-                                    onValueChange = {
-                                        onPrefsChange(prefs.copy(vinylSizeScale = it))
-                                    },
-                                )
-                                SettingsSliderRow(
-                                    title = "黑胶垂直位置",
-                                    valueLabel = String.format("%+.0f", prefs.vinylOffsetYDp),
-                                    value = prefs.vinylOffsetYDp,
-                                    valueRange = PlayerDisplayPrefs.VINYL_OFFSET_MIN..
-                                        PlayerDisplayPrefs.VINYL_OFFSET_MAX,
-                                    colors = sliderColors,
-                                    onValueChange = {
-                                        onPrefsChange(prefs.copy(vinylOffsetYDp = it))
-                                    },
-                                )
-                            }
+                            SettingsSwitchRow(
+                                title = "完整封面",
+                                subtitle = "封面铺满中心，隐藏轴心镂空",
+                                checked = prefs.vinylFullCover,
+                                colors = switchColors,
+                                onCheckedChange = {
+                                    onPrefsChange(prefs.copy(vinylFullCover = it))
+                                },
+                            )
+                        }
+                        SettingsAlpha(rowAlpha(SettingsPreviewKey.VinylSize)) {
+                            SettingsSliderRow(
+                                title = "黑胶大小（整体）",
+                                valueLabel = String.format("%.0f%%", prefs.vinylSizeScale * 100f),
+                                value = prefs.vinylSizeScale,
+                                valueRange = PlayerDisplayPrefs.VINYL_SIZE_SCALE_MIN..
+                                    PlayerDisplayPrefs.VINYL_SIZE_SCALE_MAX,
+                                colors = sliderColors,
+                                onValueChange = {
+                                    onPrefsChange(prefs.copy(vinylSizeScale = it))
+                                },
+                                onPreviewDragActiveChange = {
+                                    onPreviewDrag(SettingsPreviewKey.VinylSize, it)
+                                },
+                            )
+                        }
+                        SettingsAlpha(rowAlpha(SettingsPreviewKey.VinylOffsetY)) {
+                            SettingsSliderRow(
+                                title = "黑胶垂直位置",
+                                valueLabel = String.format("%+.0f", prefs.vinylOffsetYDp),
+                                value = prefs.vinylOffsetYDp,
+                                valueRange = PlayerDisplayPrefs.VINYL_OFFSET_Y_MIN..
+                                    PlayerDisplayPrefs.VINYL_OFFSET_Y_MAX,
+                                colors = sliderColors,
+                                onValueChange = {
+                                    onPrefsChange(prefs.copy(vinylOffsetYDp = it))
+                                },
+                                onPreviewDragActiveChange = {
+                                    onPreviewDrag(SettingsPreviewKey.VinylOffsetY, it)
+                                },
+                            )
                         }
                     }
                     SettingsCategory(title = "布局", titleAlpha = dim) {
-                        SettingsAlpha(dim) {
+                        SettingsAlpha(rowAlpha(SettingsPreviewKey.UiScale)) {
                             SettingsSliderRow(
                                 title = "整体 UI 缩放",
                                 valueLabel = String.format("%.0f%%", prefs.uiScale * 100f),
@@ -940,6 +952,25 @@ fun NowPlayingSettingsSheet(
                                 colors = sliderColors,
                                 onValueChange = {
                                     onPrefsChange(prefs.copy(uiScale = it))
+                                },
+                                onPreviewDragActiveChange = {
+                                    onPreviewDrag(SettingsPreviewKey.UiScale, it)
+                                },
+                            )
+                        }
+                        SettingsAlpha(rowAlpha(SettingsPreviewKey.TransportOffsetY)) {
+                            SettingsSliderRow(
+                                title = "播放控件垂直位置",
+                                valueLabel = String.format("%+.0f", prefs.portraitTransportOffsetYDp),
+                                value = prefs.portraitTransportOffsetYDp,
+                                valueRange = PlayerDisplayPrefs.PORTRAIT_TRANSPORT_OFFSET_Y_MIN..
+                                    PlayerDisplayPrefs.PORTRAIT_TRANSPORT_OFFSET_Y_MAX,
+                                colors = sliderColors,
+                                onValueChange = {
+                                    onPrefsChange(prefs.copy(portraitTransportOffsetYDp = it))
+                                },
+                                onPreviewDragActiveChange = {
+                                    onPreviewDrag(SettingsPreviewKey.TransportOffsetY, it)
                                 },
                             )
                         }
@@ -1018,7 +1049,7 @@ fun NowPlayingSettingsSheet(
                             )
                         }
                     }
-                    SettingsAlpha(rowAlpha(LyricLayoutPreviewKey.LineSpacing)) {
+                    SettingsAlpha(rowAlpha(SettingsPreviewKey.LineSpacing)) {
                         SettingsSliderRow(
                             title = "歌词行间距",
                             valueLabel = String.format("%.0f", prefs.lyricLineSpacingDp),
@@ -1027,7 +1058,7 @@ fun NowPlayingSettingsSheet(
                             colors = sliderColors,
                             onValueChange = { onPrefsChange(prefs.copy(lyricLineSpacingDp = it)) },
                             onPreviewDragActiveChange = {
-                                onPreviewDrag(LyricLayoutPreviewKey.LineSpacing, it)
+                                onPreviewDrag(SettingsPreviewKey.LineSpacing, it)
                             },
                         )
                     }
@@ -1075,7 +1106,7 @@ fun NowPlayingSettingsSheet(
                             )
                         }
                     }
-                    SettingsAlpha(rowAlpha(LyricLayoutPreviewKey.OffsetX)) {
+                    SettingsAlpha(rowAlpha(SettingsPreviewKey.OffsetX)) {
                         SettingsSliderRow(
                             title = "歌词水平位置",
                             valueLabel = String.format("%+.0f", prefs.lyricOffsetXDp),
@@ -1085,23 +1116,28 @@ fun NowPlayingSettingsSheet(
                             colors = sliderColors,
                             onValueChange = { onPrefsChange(prefs.copy(lyricOffsetXDp = it)) },
                             onPreviewDragActiveChange = {
-                                onPreviewDrag(LyricLayoutPreviewKey.OffsetX, it)
+                                onPreviewDrag(SettingsPreviewKey.OffsetX, it)
                             },
                         )
                     }
                 }
 
                 SettingsCategory(title = "布局", titleAlpha = dim) {
+                    SettingsAlpha(rowAlpha(SettingsPreviewKey.UiScale)) {
+                        SettingsSliderRow(
+                            title = "整体 UI 缩放",
+                            valueLabel = String.format("%.0f%%", prefs.uiScale * 100f),
+                            value = prefs.uiScale,
+                            valueRange = PlayerDisplayPrefs.UI_MIN..PlayerDisplayPrefs.UI_MAX,
+                            colors = sliderColors,
+                            onValueChange = { onPrefsChange(prefs.copy(uiScale = it)) },
+                            onPreviewDragActiveChange = {
+                                onPreviewDrag(SettingsPreviewKey.UiScale, it)
+                            },
+                        )
+                    }
                     SettingsAlpha(dim) {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            SettingsSliderRow(
-                                title = "整体 UI 缩放",
-                                valueLabel = String.format("%.0f%%", prefs.uiScale * 100f),
-                                value = prefs.uiScale,
-                                valueRange = PlayerDisplayPrefs.UI_MIN..PlayerDisplayPrefs.UI_MAX,
-                                colors = sliderColors,
-                                onValueChange = { onPrefsChange(prefs.copy(uiScale = it)) },
-                            )
                             SettingsSwitchRow(
                                 title = "播放组件常显",
                                 subtitle = "底部控件保持展开",
@@ -1221,8 +1257,8 @@ fun NowPlayingSettingsSheet(
                                 title = "黑胶垂直位置",
                                 valueLabel = String.format("%+.0f", prefs.vinylOffsetYDp),
                                 value = prefs.vinylOffsetYDp,
-                                valueRange = PlayerDisplayPrefs.VINYL_OFFSET_MIN..
-                                    PlayerDisplayPrefs.VINYL_OFFSET_MAX,
+                                valueRange = PlayerDisplayPrefs.VINYL_OFFSET_Y_MIN..
+                                    PlayerDisplayPrefs.VINYL_OFFSET_Y_MAX,
                                 colors = sliderColors,
                                 enabled = !prefs.vinylAbsoluteCenter,
                                 onValueChange = { onPrefsChange(prefs.copy(vinylOffsetYDp = it)) },
