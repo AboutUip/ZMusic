@@ -1,43 +1,25 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
-VisualStudioVersion = 17.14.37111.16 d17.14
+VisualStudioVersion = 17.14.37216.2 d17.14
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ZMusic", "ZMusic.vcxproj", "{6CE50886-DB11-4714-880C-7EE10298DA8B}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ZMusic", "ZMusic.csproj", "{C11E5792-29FF-46B4-B859-E8200B889735}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
-		Debug|ARM64 = Debug|ARM64
-		Debug|x64 = Debug|x64
-		Debug|x86 = Debug|x86
-		Release|ARM64 = Release|ARM64
-		Release|x64 = Release|x64
-		Release|x86 = Release|x86
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{6CE50886-DB11-4714-880C-7EE10298DA8B}.Debug|ARM64.ActiveCfg = Debug|ARM64
-		{6CE50886-DB11-4714-880C-7EE10298DA8B}.Debug|ARM64.Build.0 = Debug|ARM64
-		{6CE50886-DB11-4714-880C-7EE10298DA8B}.Debug|ARM64.Deploy.0 = Debug|ARM64
-		{6CE50886-DB11-4714-880C-7EE10298DA8B}.Debug|x64.ActiveCfg = Debug|x64
-		{6CE50886-DB11-4714-880C-7EE10298DA8B}.Debug|x64.Build.0 = Debug|x64
-		{6CE50886-DB11-4714-880C-7EE10298DA8B}.Debug|x64.Deploy.0 = Debug|x64
-		{6CE50886-DB11-4714-880C-7EE10298DA8B}.Debug|x86.ActiveCfg = Debug|Win32
-		{6CE50886-DB11-4714-880C-7EE10298DA8B}.Debug|x86.Build.0 = Debug|Win32
-		{6CE50886-DB11-4714-880C-7EE10298DA8B}.Debug|x86.Deploy.0 = Debug|Win32
-		{6CE50886-DB11-4714-880C-7EE10298DA8B}.Release|ARM64.ActiveCfg = Release|ARM64
-		{6CE50886-DB11-4714-880C-7EE10298DA8B}.Release|ARM64.Build.0 = Release|ARM64
-		{6CE50886-DB11-4714-880C-7EE10298DA8B}.Release|ARM64.Deploy.0 = Release|ARM64
-		{6CE50886-DB11-4714-880C-7EE10298DA8B}.Release|x64.ActiveCfg = Release|x64
-		{6CE50886-DB11-4714-880C-7EE10298DA8B}.Release|x64.Build.0 = Release|x64
-		{6CE50886-DB11-4714-880C-7EE10298DA8B}.Release|x64.Deploy.0 = Release|x64
-		{6CE50886-DB11-4714-880C-7EE10298DA8B}.Release|x86.ActiveCfg = Release|Win32
-		{6CE50886-DB11-4714-880C-7EE10298DA8B}.Release|x86.Build.0 = Release|Win32
-		{6CE50886-DB11-4714-880C-7EE10298DA8B}.Release|x86.Deploy.0 = Release|Win32
+		{C11E5792-29FF-46B4-B859-E8200B889735}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C11E5792-29FF-46B4-B859-E8200B889735}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C11E5792-29FF-46B4-B859-E8200B889735}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C11E5792-29FF-46B4-B859-E8200B889735}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
-		SolutionGuid = {C75EE2C2-06F5-4132-B454-A70007C33FE0}
+		SolutionGuid = {97612AD0-15EB-4A4F-8C66-BC30531D7DBD}
 	EndGlobalSection
 EndGlobal

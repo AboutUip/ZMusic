@@ -13,36 +13,45 @@ Android/app/src/androidTest
 Android/app/src/test
 Android/dev
 
-# --- Windows (Visual Studio / WinUI / C++/WinRT / NuGet) ---
+# --- Windows (WPF / .NET SDK / Visual Studio) ---
 Windows/.vs/
 Windows/packages/
-Windows/Generated Files/
+Windows/TestResults/
+Windows/publish/
 
-# MSBuild & 本机输出目录
+# 构建输出
 Windows/**/[Dd]ebug/
 Windows/**/[Rr]elease/
-Windows/**/x64/
-Windows/**/x86/
-Windows/**/ARM64/
-Windows/**/Win32/
 Windows/**/[Bb]in/
 Windows/**/[Oo]bj/
+Windows/bin/
+Windows/obj/
 Windows/**/[Ll]og/
 Windows/**/[Ll]ogs/
 
-# MSIX / 打包
+# 发布 / 打包
 Windows/AppPackages/
 Windows/**/BundleArtifacts/
+Windows/**/artifacts/
 Windows/**/*.appx
 Windows/**/*.msix
 Windows/**/*.msixbundle
+Windows/**/*.appxupload
+Windows/**/*.msixupload
 
-# VS 用户与本地数据库
+# VS / Rider 用户文件
 Windows/**/*.user
-Windows/**/*.rsuser
-Windows/**/*.VC.db
-Windows/**/*.VC.VC.opendb
+Windows/**/*.userosscache
 Windows/**/*.suo
+Windows/**/*.sln.docstates
+Windows/**/*.DotSettings.user
+Windows/**/*.~vs*
+
+# NuGet
+Windows/**/*.nupkg
+Windows/**/*.snupkg
+Windows/**/project.lock.json
+Windows/**/project.fragment.lock.json
 
 # --- IDE / 系统 ---
 .idea
@@ -51,3 +60,4 @@ Windows/**/*.suo
 *~
 .DS_Store
 Thumbs.db
+desktop.ini
