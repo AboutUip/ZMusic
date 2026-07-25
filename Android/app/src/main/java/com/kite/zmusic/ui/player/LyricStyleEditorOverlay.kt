@@ -520,7 +520,7 @@ fun LyricStyleCloneLayer(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun LyricRoleStyleSection(
+internal fun LyricRoleStyleSection(
     title: String,
     role: LyricStyleRole,
     style: LyricRoleStyle,
@@ -883,11 +883,11 @@ private fun LyricStyleCloneContent(
     val focus = snapshot.focusIndex.coerceIn(0, (lines.size - 1).coerceAtLeast(0))
     val playedN = snapshot.playedCount.coerceIn(
         PlayerDisplayPrefs.LYRIC_AROUND_MIN,
-        PlayerDisplayPrefs.LYRIC_AROUND_MAX,
+        PlayerDisplayPrefs.PORTRAIT_LYRIC_AROUND_MAX,
     )
     val upcomingN = snapshot.upcomingCount.coerceIn(
         PlayerDisplayPrefs.LYRIC_AROUND_MIN,
-        PlayerDisplayPrefs.LYRIC_AROUND_MAX,
+        PlayerDisplayPrefs.PORTRAIT_LYRIC_AROUND_MAX,
     )
     val playFs = playFontScale.coerceIn(
         PlayerDisplayPrefs.FONT_MIN * 0.75f,

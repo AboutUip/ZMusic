@@ -15,6 +15,7 @@ import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
+import com.kite.zmusic.R
 import com.kite.zmusic.data.LikedPlaylistRepository
 import com.kite.zmusic.data.LyricRepository
 import com.kite.zmusic.data.NcmLibraryParse
@@ -818,17 +819,29 @@ class PlaylistCoordinator(
         }
     }
 
+    private val fallbackArtworkData: ByteArray by lazy {
+        // 预读 256px RGBA PNG；禁止用过大原图塞进 MediaMetadata
+        context.resources.openRawResource(R.drawable.ic_notification_artwork).use { it.readBytes() }
+    }
+
     private fun buildMediaItem(track: TrackRow, url: String): MediaItem {
-        val meta = MediaMetadata.Builder()
+        val cover = track.coverUrl?.takeIf { it.isNotBlank() }
+        val metaBuilder = MediaMetadata.Builder()
             .setTitle(track.name)
             .setArtist(track.artists)
             .setAlbumTitle(track.album)
-            .setArtworkUri(track.coverUrl?.takeIf { it.isNotBlank() }?.let(Uri::parse))
-            .build()
+        if (cover != null) {
+            metaBuilder.setArtworkUri(Uri.parse(cover))
+        } else {
+            metaBuilder.setArtworkData(
+                fallbackArtworkData,
+                MediaMetadata.PICTURE_TYPE_FRONT_COVER,
+            )
+        }
         return MediaItem.Builder()
             .setMediaId(track.id.toString())
             .setUri(url)
-            .setMediaMetadata(meta)
+            .setMediaMetadata(metaBuilder.build())
             .build()
     }
 

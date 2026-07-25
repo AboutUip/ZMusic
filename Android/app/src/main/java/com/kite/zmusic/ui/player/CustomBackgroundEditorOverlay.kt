@@ -811,6 +811,7 @@ private fun PortraitBackgroundPreview(
                     uiScale = uiScale,
                     navBottom = navPad,
                     controlsOffsetYDp = displayPrefs.portraitTransportOffsetYDp,
+                    containerInclude = displayPrefs.portraitTransportContainerInclude,
                 )
             }
         }
@@ -822,6 +823,7 @@ private fun PortraitTransportHeightStub(
     uiScale: Float,
     navBottom: androidx.compose.ui.unit.Dp,
     controlsOffsetYDp: Float = 0f,
+    containerInclude: Boolean = false,
 ) {
     val sliderH = 16.dp * uiScale
     val playSize = 50.dp * uiScale
@@ -832,38 +834,62 @@ private fun PortraitTransportHeightStub(
             PlayerDisplayPrefs.PORTRAIT_TRANSPORT_OFFSET_Y_MIN,
             PlayerDisplayPrefs.PORTRAIT_TRANSPORT_OFFSET_Y_MAX,
         ) * uiScale
+    val glassBg = Color.Black.copy(alpha = 0.22f)
+    val glassShape = RoundedCornerShape(14.dp * uiScale)
     Column(
         Modifier
             .fillMaxWidth()
             .padding(top = 1.dp * uiScale),
     ) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .offset(y = oy.dp),
-        ) {
-            Spacer(Modifier.height((14.dp + 6.dp) * uiScale))
-            Spacer(Modifier.height(sliderH))
-            Spacer(Modifier.height(16.dp * uiScale))
-            Spacer(
+        if (containerInclude) {
+            Column(
                 Modifier
                     .fillMaxWidth()
-                    .height(playSize + 8.dp * uiScale),
-            )
-        }
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .height(bottomZoneHeight),
-            contentAlignment = Alignment.Center,
-        ) {
+                    .offset(y = oy.dp)
+                    .clip(glassShape)
+                    .background(glassBg)
+                    .padding(top = 10.dp * uiScale, bottom = 4.dp * uiScale),
+            ) {
+                Spacer(Modifier.height((14.dp + 6.dp) * uiScale))
+                Spacer(Modifier.height(sliderH))
+                Spacer(Modifier.height(16.dp * uiScale))
+                Spacer(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(playSize + 8.dp * uiScale),
+                )
+                Spacer(Modifier.height(portraitBottomBandHeight))
+            }
+            Spacer(Modifier.height(navBottom.coerceAtLeast(8.dp * uiScale)))
+        } else {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .offset(y = oy.dp),
+            ) {
+                Spacer(Modifier.height((14.dp + 6.dp) * uiScale))
+                Spacer(Modifier.height(sliderH))
+                Spacer(Modifier.height(16.dp * uiScale))
+                Spacer(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(playSize + 8.dp * uiScale),
+                )
+            }
             Box(
                 Modifier
                     .fillMaxWidth()
-                    .height(portraitBottomBandHeight)
-                    .clip(RoundedCornerShape(14.dp * uiScale))
-                    .background(Color.Black.copy(alpha = 0.22f)),
-            )
+                    .height(bottomZoneHeight),
+                contentAlignment = Alignment.Center,
+            ) {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(portraitBottomBandHeight)
+                        .clip(glassShape)
+                        .background(glassBg),
+                )
+            }
         }
     }
 }

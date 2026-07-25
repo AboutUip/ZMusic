@@ -122,6 +122,7 @@ private enum class SettingsPreviewKey {
     VinylSize,
     VinylOffsetY,
     TransportOffsetY,
+    LyricBackgroundTransparency,
 }
 
 private const val SettingsPreviewFadeOutMs = 320
@@ -885,6 +886,35 @@ fun NowPlayingSettingsSheet(
                                     enabled = prefs.customBackgroundEnabled,
                                     onClick = onOpenCustomBackgroundEditor,
                                 )
+                                SettingsActionRow(
+                                    title = "歌词样式",
+                                    subtitle = "字号 / 斜体 / 粗体 / 颜色 · 条数与间距",
+                                    actionLabel = "编辑",
+                                    onClick = onOpenLyricStyleEditor,
+                                )
+                            }
+                        }
+                        SettingsAlpha(rowAlpha(SettingsPreviewKey.LyricBackgroundTransparency)) {
+                            SettingsSliderRow(
+                                title = "歌词页背景透明度",
+                                valueLabel = String.format(
+                                    "%.0f%%",
+                                    prefs.lyricBackgroundTransparency * 100f,
+                                ),
+                                value = prefs.lyricBackgroundTransparency,
+                                valueRange = PlayerDisplayPrefs.LYRIC_BG_TRANSPARENCY_MIN..
+                                    PlayerDisplayPrefs.LYRIC_BG_TRANSPARENCY_MAX,
+                                colors = sliderColors,
+                                onValueChange = {
+                                    onPrefsChange(prefs.copy(lyricBackgroundTransparency = it))
+                                },
+                                onPreviewDragActiveChange = {
+                                    onPreviewDrag(SettingsPreviewKey.LyricBackgroundTransparency, it)
+                                },
+                            )
+                        }
+                        SettingsAlpha(dim) {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 SettingsSwitchRow(
                                     title = "活跃光晕",
                                     subtitle = "低/中/高互斥高亮，同时仅一球发光，运动略加快",
@@ -971,6 +1001,19 @@ fun NowPlayingSettingsSheet(
                                 },
                                 onPreviewDragActiveChange = {
                                     onPreviewDrag(SettingsPreviewKey.TransportOffsetY, it)
+                                },
+                            )
+                        }
+                        SettingsAlpha(dim) {
+                            SettingsSwitchRow(
+                                title = "容器包含",
+                                subtitle = "开启后半透明底包含进度、时长与播放控件",
+                                checked = prefs.portraitTransportContainerInclude,
+                                colors = switchColors,
+                                onCheckedChange = {
+                                    onPrefsChange(
+                                        prefs.copy(portraitTransportContainerInclude = it),
+                                    )
                                 },
                             )
                         }

@@ -32,6 +32,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -60,6 +61,9 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.currentStateAsState
 import com.kite.zmusic.data.PlayerDisplayPrefs
 import com.kite.zmusic.data.TrackRow
 import com.kite.zmusic.data.VinylPlateColors
@@ -145,7 +149,10 @@ fun VinylTransitionStage(
      * 上一首入场起点：相对舞台中心，整盘完全离开左栏左缘所需的位移（px）。
      */
     prevEnterSlidePx: Float? = null,
-    /** 为 true 时外部切歌直接落定，不做离场/入场位移动画（曲谱飞入专用）。 */
+    /**
+     * 为 true 时外部切歌直接落定，不做离场/入场位移动画（曲谱飞入专用）。
+     * 后台/不可见期间积压的切歌也会走同一落定路径，避免回前台补播切换动画。
+     */
     suppressEnterTransition: Boolean = false,
     /**
      * 切歌手势阻尼（灵敏度）：默认 0.5 与历史 96dp / 甩速阈值一致；
@@ -157,6 +164,10 @@ fun VinylTransitionStage(
      */
     settleSpinUpright: Boolean = false,
 ) {
+    val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
+    /** 曾低于 STARTED：回前台后若 track 相对落定盘有积压变化，应 snap 而非补动画 */
+    val pendingCatchUp = remember { booleanArrayOf(false) }
+
     var topTrack by remember { mutableStateOf(track) }
     var bottomTrack by remember { mutableStateOf(track) }
     var settledId by remember { mutableLongStateOf(track.id) }
@@ -632,7 +643,46 @@ fun VinylTransitionStage(
         // 外部切歌（播放条按钮等）：同样叠层收尾，尽快恢复可滑
         val suppressEnter by rememberUpdatedState(suppressEnterTransition)
         val directionRef = rememberUpdatedState(direction)
-        LaunchedEffect(track.id) {
+        suspend fun snapExternalTrack(incoming: TrackRow) {
+            settleJob?.cancel()
+            exiting.clear()
+            savedPrevSpinDeg = Float.NaN
+            resetTopSpin()
+            topTrack = incoming
+            bottomTrack = incoming
+            settledId = incoming.id
+            publishSettledTrack(incoming)
+            showBottom = false
+            stickyTopX = Float.NaN
+            topX.snapTo(0f)
+            topScale.snapTo(1f)
+            bottomX.snapTo(0f)
+            bottomScale.snapTo(1f)
+        }
+        LaunchedEffect(track.id, lifecycleState) {
+            val started = lifecycleState.isAtLeast(Lifecycle.State.STARTED)
+            if (!started) {
+                pendingCatchUp[0] = true
+                if (!booted) return@LaunchedEffect
+                // 不可见期间若 track 仍有更新，静默对齐，避免回前台再演切换
+                bounceJob?.cancel()
+                bounceJob = null
+                bounceRunning = false
+                dragging = false
+                dragMode = null
+                prevRevealBase = 0f
+                stickyTopX = Float.NaN
+                if (track.id == settledId) return@LaunchedEffect
+                if (topTrack.id == track.id) {
+                    resetTopSpin()
+                    settledId = track.id
+                    publishSettledTrack(track)
+                    return@LaunchedEffect
+                }
+                snapExternalTrack(track)
+                return@LaunchedEffect
+            }
+
             if (!booted) {
                 resetTopSpin()
                 topTrack = track
@@ -646,6 +696,7 @@ fun VinylTransitionStage(
                 bottomScale.snapTo(1f)
                 showBottom = false
                 booted = true
+                pendingCatchUp[0] = false
                 return@LaunchedEffect
             }
             // 外部切歌时作废回弹，避免写回旧 settled 导致上一首锁死 / 下一首连跳
@@ -656,29 +707,28 @@ fun VinylTransitionStage(
             dragMode = null
             prevRevealBase = 0f
             stickyTopX = Float.NaN
-            if (track.id == settledId) return@LaunchedEffect
+            if (track.id == settledId) {
+                if (pendingCatchUp[0]) {
+                    // ON_START 后等两帧，让 collectAsStateWithLifecycle 刷出后台切歌；
+                    // 若期间 track.id 变化，本 effect 会被取消并带着 pendingCatchUp 重跑 → snap
+                    withFrameNanos { }
+                    withFrameNanos { }
+                    pendingCatchUp[0] = false
+                }
+                return@LaunchedEffect
+            }
             if (topTrack.id == track.id) {
                 // 手势已换顶层：再断言 0°（防旧旋转协程在 reset↔重组间隙写回污染）
                 resetTopSpin()
                 settledId = track.id
                 publishSettledTrack(track)
+                pendingCatchUp[0] = false
                 return@LaunchedEffect
             }
-            // 曲谱飞入接管：禁止常规切歌位移动画，直接落定
-            if (suppressEnter) {
-                settleJob?.cancel()
-                exiting.clear()
-                savedPrevSpinDeg = Float.NaN
-                resetTopSpin()
-                topTrack = track
-                bottomTrack = track
-                settledId = track.id
-                publishSettledTrack(track)
-                showBottom = false
-                topX.snapTo(0f)
-                topScale.snapTo(1f)
-                bottomX.snapTo(0f)
-                bottomScale.snapTo(1f)
+            // 曲谱飞入 / 后台积压切歌：直接落定，不补离场入场
+            if (suppressEnter || pendingCatchUp[0]) {
+                pendingCatchUp[0] = false
+                snapExternalTrack(track)
                 return@LaunchedEffect
             }
             when (directionRef.value) {

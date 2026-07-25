@@ -514,6 +514,16 @@ data class PlayerDisplayPrefs(
     val backgroundPresets: List<PlayerBackgroundPreset> = defaultBackgroundPresets(),
     /** 竖屏：当前选用的背景预设位 0..4（仅 usable 时真正铺底） */
     val backgroundPresetIndex: Int = 0,
+    /**
+     * 竖屏歌词页背景透明度：0 .. 1。
+     * 越高则阅读磨砂越淡、自定义背景越可见；0 为当前默认满强度磨砂。
+     */
+    val lyricBackgroundTransparency: Float = 0f,
+    /**
+     * 竖屏：底部灰色容器是否包含进度条 / 时长 / 播放控件。
+     * 关闭时仅包裹设置条（历史行为）；开启后半透明底扩展到整块播放组件。
+     */
+    val portraitTransportContainerInclude: Boolean = false,
 ) {
     fun lyricPlayingColor(): Color =
         lyricPlayingStyle.resolvedColor(LyricRoleStyle.DEFAULT_PLAYING_ARGB)
@@ -626,8 +636,14 @@ data class PlayerDisplayPrefs(
                 LINE_SPACING_MAX,
                 10f,
             ),
-            lyricPlayedCount = lyricPlayedCount.coerceIn(LYRIC_AROUND_MIN, LYRIC_AROUND_MAX),
-            lyricUpcomingCount = lyricUpcomingCount.coerceIn(LYRIC_AROUND_MIN, LYRIC_AROUND_MAX),
+            lyricPlayedCount = lyricPlayedCount.coerceIn(
+                LYRIC_AROUND_MIN,
+                PORTRAIT_LYRIC_AROUND_MAX,
+            ),
+            lyricUpcomingCount = lyricUpcomingCount.coerceIn(
+                LYRIC_AROUND_MIN,
+                PORTRAIT_LYRIC_AROUND_MAX,
+            ),
             uiScale = uiScale.finiteCoerceIn(UI_MIN, UI_MAX, 1f),
             vinylOffsetXDp = vinylOffsetXDp.finiteCoerceIn(VINYL_OFFSET_MIN, VINYL_OFFSET_MAX, 0f),
             vinylOffsetYDp = vinylOffsetYDp.finiteCoerceIn(VINYL_OFFSET_Y_MIN, VINYL_OFFSET_Y_MAX, 0f),
@@ -679,6 +695,11 @@ data class PlayerDisplayPrefs(
             titleSourceStyle = titleSourceStyle.sanitized(),
             backgroundPresets = bgPresets,
             backgroundPresetIndex = bgIndex,
+            lyricBackgroundTransparency = lyricBackgroundTransparency.finiteCoerceIn(
+                LYRIC_BG_TRANSPARENCY_MIN,
+                LYRIC_BG_TRANSPARENCY_MAX,
+                0f,
+            ),
         )
     }
 
@@ -689,6 +710,8 @@ data class PlayerDisplayPrefs(
         const val LINE_SPACING_MAX = 28f
         const val LYRIC_AROUND_MIN = 0
         const val LYRIC_AROUND_MAX = 3
+        /** 竖屏展示区域更大，已播/未播可到 10 */
+        const val PORTRAIT_LYRIC_AROUND_MAX = 10
         const val UI_MIN = 0.80f
         const val UI_MAX = 1.25f
         const val VINYL_OFFSET_MIN = -56f
@@ -723,6 +746,9 @@ data class PlayerDisplayPrefs(
         /** 黑胶切歌手势阻尼（灵敏度）：0.15 最钝 … 1.0 最灵敏；0.5 = 历史默认 */
         const val VINYL_GESTURE_DAMPING_MIN = 0.15f
         const val VINYL_GESTURE_DAMPING_MAX = 1.00f
+        /** 竖屏歌词页背景透明度：0=满强度磨砂，1=背景近乎全透可见 */
+        const val LYRIC_BG_TRANSPARENCY_MIN = 0f
+        const val LYRIC_BG_TRANSPARENCY_MAX = 1f
     }
 }
 
@@ -901,6 +927,11 @@ class PlayerDisplayPrefsStore(
             ),
             backgroundPresetIndex = prefs.safeInt(KEY_BG_PRESET_INDEX, 0)
                 .coerceIn(0, PlayerDisplayPrefs.BACKGROUND_PRESET_COUNT - 1),
+            lyricBackgroundTransparency = prefs.safeFloat(KEY_LYRIC_BG_TRANSPARENCY, 0f),
+            portraitTransportContainerInclude = prefs.safeBoolean(
+                KEY_PORTRAIT_TRANSPORT_CONTAINER_INCLUDE,
+                false,
+            ),
         )
     }
 
@@ -947,6 +978,11 @@ class PlayerDisplayPrefsStore(
                 .putBoolean(KEY_CUSTOM_BG_ENABLED, v.customBackgroundEnabled)
                 .putString(KEY_BG_PRESETS, encodeBackgroundPresets(v.backgroundPresets))
                 .putInt(KEY_BG_PRESET_INDEX, v.backgroundPresetIndex)
+                .putFloat(KEY_LYRIC_BG_TRANSPARENCY, v.lyricBackgroundTransparency)
+                .putBoolean(
+                    KEY_PORTRAIT_TRANSPORT_CONTAINER_INCLUDE,
+                    v.portraitTransportContainerInclude,
+                )
                 .apply()
         }
     }
@@ -996,6 +1032,9 @@ class PlayerDisplayPrefsStore(
         private const val KEY_CUSTOM_BG_ENABLED = "custom_background_enabled"
         private const val KEY_BG_PRESETS = "background_presets"
         private const val KEY_BG_PRESET_INDEX = "background_preset_index"
+        private const val KEY_LYRIC_BG_TRANSPARENCY = "lyric_background_transparency"
+        private const val KEY_PORTRAIT_TRANSPORT_CONTAINER_INCLUDE =
+            "portrait_transport_container_include"
     }
 }
 

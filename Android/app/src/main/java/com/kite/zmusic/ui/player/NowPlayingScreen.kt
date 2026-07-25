@@ -353,7 +353,7 @@ private fun Modifier.vinylLightTapGestures(
  * 被外层 [nowPlayingBlankGestures] 当成下滑退出。
  * 仅应挂在「歌词本身 + 周围」的条带上，勿挂满整列，否则右侧空白无法收回播放页。
  */
-private fun Modifier.consumeUnclaimedVerticalDrag(): Modifier = pointerInput(Unit) {
+internal fun Modifier.consumeUnclaimedVerticalDrag(): Modifier = pointerInput(Unit) {
     val touchSlop = viewConfiguration.touchSlop
     awaitEachGesture {
         val down = awaitFirstDown(requireUnconsumed = false)
@@ -401,31 +401,42 @@ private val GlassHi = Color.White.copy(alpha = 0.14f)
 private val GlassLo = Color.White.copy(alpha = 0.045f)
 
 /** 竖屏歌词阅读罩：全屏低透光磨砂（兼容任意自定义背景，避免局部卡片割裂） */
-private val PortraitLyricReadingGlassStyle = HazeStyle(
-    backgroundColor = Color(0xFF0A0E16),
-    tints = listOf(
-        HazeTint(Color(0xFF0B1220).copy(alpha = 0.58f)),
-        HazeTint(Color(0xFF141C2C).copy(alpha = 0.36f)),
-        HazeTint(Color(0xFF1E2838).copy(alpha = 0.16f)),
-        HazeTint(Color.Black.copy(alpha = 0.28f)),
-    ),
-    blurRadius = 80.dp,
-    noiseFactor = 0.11f,
-    fallbackTint = HazeTint(Color(0xD10A101C)),
-)
+private fun portraitLyricReadingGlassStyle(veilStrength: Float): HazeStyle {
+    val s = veilStrength.coerceIn(0f, 1f)
+    return HazeStyle(
+        backgroundColor = Color(0xFF0A0E16),
+        tints = listOf(
+            HazeTint(Color(0xFF0B1220).copy(alpha = 0.58f * s)),
+            HazeTint(Color(0xFF141C2C).copy(alpha = 0.36f * s)),
+            HazeTint(Color(0xFF1E2838).copy(alpha = 0.16f * s)),
+            HazeTint(Color.Black.copy(alpha = 0.28f * s)),
+        ),
+        blurRadius = 80.dp,
+        noiseFactor = 0.11f * s,
+        fallbackTint = HazeTint(Color(0xFF0A101C).copy(alpha = 0.82f * s)),
+    )
+}
+
+private fun Color.scaledAlpha(factor: Float): Color =
+    copy(alpha = (alpha * factor).coerceIn(0f, 1f))
 
 /**
  * 进入歌词页时铺在背景与前景之间：整屏连续磨砂，标题/歌词/播放条共用同一阅读环境。
- * [progress] 0..1 控制显隐。
+ * [progress] 0..1 控制显隐；[transparency] 0..1 越高则磨砂越淡、背景越可见。
  */
 @Composable
 private fun PortraitLyricReadingVeil(
     progress: Float,
     hazeState: HazeState?,
+    transparency: Float = 0f,
     modifier: Modifier = Modifier,
 ) {
     val t = progress.coerceIn(0f, 1f)
     if (t <= 0.001f) return
+    val veilStrength = (1f - transparency.coerceIn(0f, 1f)).coerceIn(0f, 1f)
+    if (veilStrength <= 0.001f) return
+    val glassStyle = portraitLyricReadingGlassStyle(veilStrength)
+    val glassFallbackTint = HazeTint(Color(0xFF0A101C).copy(alpha = 0.82f * veilStrength))
     Box(
         modifier
             .fillMaxSize()
@@ -435,17 +446,17 @@ private fun PortraitLyricReadingVeil(
             Box(
                 Modifier
                     .matchParentSize()
-                    .hazeEffect(state = hazeState, style = PortraitLyricReadingGlassStyle) {
+                    .hazeEffect(state = hazeState, style = glassStyle) {
                         blurRadius = 80.dp
-                        noiseFactor = 0.11f
-                        fallbackTint = HazeTint(Color(0xD10A101C))
+                        noiseFactor = 0.11f * veilStrength
+                        fallbackTint = glassFallbackTint
                     },
             )
         } else {
             Box(
                 Modifier
                     .matchParentSize()
-                    .background(Color(0xD10A101C)),
+                    .background(Color(0xFF0A101C).copy(alpha = 0.82f * veilStrength)),
             )
         }
         // 墨色纵深：略偏冷钢蓝，避免纯黑平板
@@ -455,11 +466,11 @@ private fun PortraitLyricReadingVeil(
                 .background(
                     Brush.verticalGradient(
                         colorStops = arrayOf(
-                            0.00f to Color(0xB2060A14),
-                            0.22f to Color(0xC40C1422),
-                            0.55f to Color(0xCC0E1624),
-                            0.82f to Color(0xC40A121E),
-                            1.00f to Color(0xB805080E),
+                            0.00f to Color(0xB2060A14).scaledAlpha(veilStrength),
+                            0.22f to Color(0xC40C1422).scaledAlpha(veilStrength),
+                            0.55f to Color(0xCC0E1624).scaledAlpha(veilStrength),
+                            0.82f to Color(0xC40A121E).scaledAlpha(veilStrength),
+                            1.00f to Color(0xB805080E).scaledAlpha(veilStrength),
                         ),
                     ),
                 ),
@@ -471,10 +482,10 @@ private fun PortraitLyricReadingVeil(
                 .background(
                     Brush.radialGradient(
                         colorStops = arrayOf(
-                            0.00f to Color(0x281A2838),
-                            0.42f to Color(0x140E1828),
-                            0.78f to Color(0x33060A12),
-                            1.00f to Color(0x6602080C),
+                            0.00f to Color(0x281A2838).scaledAlpha(veilStrength),
+                            0.42f to Color(0x140E1828).scaledAlpha(veilStrength),
+                            0.78f to Color(0x33060A12).scaledAlpha(veilStrength),
+                            1.00f to Color(0x6602080C).scaledAlpha(veilStrength),
                         ),
                     ),
                 ),
@@ -486,9 +497,9 @@ private fun PortraitLyricReadingVeil(
                 .background(
                     Brush.horizontalGradient(
                         colorStops = arrayOf(
-                            0.00f to Color(0x22101828),
-                            0.45f to Color(0x0A182028),
-                            1.00f to Color(0x1A0C1018),
+                            0.00f to Color(0x22101828).scaledAlpha(veilStrength),
+                            0.45f to Color(0x0A182028).scaledAlpha(veilStrength),
+                            1.00f to Color(0x1A0C1018).scaledAlpha(veilStrength),
                         ),
                     ),
                 ),
@@ -892,7 +903,7 @@ private fun lyricHaloStrength(progress: Float, lineSpanMs: Long): Float {
 }
 
 /** 歌词过渡通用缓动：慢起慢收，偏温柔。 */
-private val LyricSoftEasing = CubicBezierEasing(0.33f, 0.0f, 0.2f, 1f)
+internal val LyricSoftEasing = CubicBezierEasing(0.33f, 0.0f, 0.2f, 1f)
 private val LyricSofterEasing = CubicBezierEasing(0.4f, 0.0f, 0.15f, 1f)
 /** 选句退出回正：快速柔和（约跟跟滚同级），按距离略伸缩 */
 private fun lyricResumeScrollSpec(distancePx: Float) = tween<Float>(
@@ -912,7 +923,7 @@ private const val LyricSkipExitSpanMs = 480L
  * 禁止 scaleX/Y，避免水平错位。
  */
 @Composable
-private fun StableCenterLyricText(
+internal fun StableCenterLyricText(
     focus: Int,
     text: String,
     animMs: Int,
@@ -1039,9 +1050,14 @@ fun NowPlayingScreen(
 ) {
     val track = state.currentTrack ?: return
     var portraitLyricsOpen by rememberSaveable { mutableStateOf(false) }
+    var portraitPosterOpen by remember { mutableStateOf(false) }
+    var portraitPosterFrozenPositionMs by remember { mutableLongStateOf(0L) }
     // 旋转离开竖屏时清除歌词页状态，避免横竖切换残留
     LaunchedEffect(isLandscape) {
-        if (isLandscape) portraitLyricsOpen = false
+        if (isLandscape) {
+            portraitLyricsOpen = false
+            portraitPosterOpen = false
+        }
     }
     var sliderDragging by remember { mutableStateOf(false) }
     var sliderValue by remember { mutableFloatStateOf(0f) }
@@ -1157,13 +1173,9 @@ fun NowPlayingScreen(
         }
     }
 
-    // 竖屏：优先关闭“歌词预览”，再次返回才退出全屏播放器
-    BackHandler(enabled = !isLandscape && portraitLyricsOpen) {
-        portraitLyricsOpen = false
-    }
-
     LaunchedEffect(track.id) {
         portraitLyricsOpen = false
+        portraitPosterOpen = false
         sliderDragging = false
     }
 
@@ -1210,6 +1222,20 @@ fun NowPlayingScreen(
     val settingsHazeState = rememberHazeState()
     var portraitSettingsOpen by remember { mutableStateOf(false) }
     var portraitBackgroundEditorOpen by remember { mutableStateOf(false) }
+    var portraitLyricStyleEditorOpen by remember { mutableStateOf(false) }
+    var pendingPortraitLyricStyleEditor by remember { mutableStateOf(false) }
+    var reopenSettingsAfterPortraitLyricStyle by remember { mutableStateOf(false) }
+    var portraitLyricStyleSnapshot by remember { mutableStateOf<LyricStyleSnapshot?>(null) }
+    var portraitLyricStyleFrozenPositionMs by remember { mutableLongStateOf(0L) }
+    var draftPortraitLyricPlaying by remember { mutableStateOf(LyricRoleStyle.PlayingDefault) }
+    var draftPortraitLyricPlayed by remember { mutableStateOf(LyricRoleStyle.PlayedDefault) }
+    var draftPortraitLyricUnplayed by remember { mutableStateOf(LyricRoleStyle.UnplayedDefault) }
+    var draftPortraitPlayedCount by remember { mutableIntStateOf(2) }
+    var draftPortraitUpcomingCount by remember { mutableIntStateOf(2) }
+    var draftPortraitLineSpacing by remember { mutableFloatStateOf(10f) }
+    var portraitPlayerRootCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    var portraitLyricsBandCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    val portraitLyricStylePanel = remember { Animatable(0f) }
     val portraitSettingsPanel = remember { Animatable(0f) }
     // 面板高度：拖动跟手；松手必吸附到 1/3、2/3、全屏（丝滑弹簧）
     val portraitSheetFrac = remember { Animatable(1f / 3f) }
@@ -1241,6 +1267,61 @@ fun NowPlayingScreen(
         flushPortraitDisplayPrefs()
         portraitSettingsOpen = false
     }
+
+    fun openPortraitPoster() {
+        closePortraitSettings()
+        portraitPosterFrozenPositionMs = lyricPos
+        portraitLyricsOpen = true
+        portraitPosterOpen = true
+    }
+
+    fun closePortraitPoster() {
+        portraitPosterOpen = false
+        portraitLyricsOpen = false
+    }
+
+    fun commitPortraitLyricStyleDraft() {
+        updatePortraitDisplayPrefs(
+            portraitDisplayPrefs.copy(
+                lyricPlayingStyle = draftPortraitLyricPlaying.sanitized(),
+                lyricPlayedStyle = draftPortraitLyricPlayed.sanitized(),
+                lyricUnplayedStyle = draftPortraitLyricUnplayed.sanitized(),
+                lyricPlayedCount = draftPortraitPlayedCount.coerceIn(
+                    PlayerDisplayPrefs.LYRIC_AROUND_MIN,
+                    PlayerDisplayPrefs.PORTRAIT_LYRIC_AROUND_MAX,
+                ),
+                lyricUpcomingCount = draftPortraitUpcomingCount.coerceIn(
+                    PlayerDisplayPrefs.LYRIC_AROUND_MIN,
+                    PlayerDisplayPrefs.PORTRAIT_LYRIC_AROUND_MAX,
+                ),
+                lyricLineSpacingDp = draftPortraitLineSpacing.coerceIn(
+                    PlayerDisplayPrefs.LINE_SPACING_MIN,
+                    PlayerDisplayPrefs.LINE_SPACING_MAX,
+                ),
+            ),
+        )
+        flushPortraitDisplayPrefs()
+    }
+
+    fun closePortraitLyricStyleEditor(reopenSettings: Boolean) {
+        reopenSettingsAfterPortraitLyricStyle = reopenSettings
+        commitPortraitLyricStyleDraft()
+        portraitLyricStyleEditorOpen = false
+    }
+
+    fun requestPortraitLyricStyleEditor() {
+        if (portraitBackgroundEditorOpen || portraitLyricStyleEditorOpen) return
+        draftPortraitLyricPlaying = portraitDisplayPrefs.lyricPlayingStyle
+        draftPortraitLyricPlayed = portraitDisplayPrefs.lyricPlayedStyle
+        draftPortraitLyricUnplayed = portraitDisplayPrefs.lyricUnplayedStyle
+        draftPortraitPlayedCount = portraitDisplayPrefs.lyricPlayedCount
+        draftPortraitUpcomingCount = portraitDisplayPrefs.lyricUpcomingCount
+        draftPortraitLineSpacing = portraitDisplayPrefs.lyricLineSpacingDp
+        reopenSettingsAfterPortraitLyricStyle = false
+        pendingPortraitLyricStyleEditor = true
+        portraitLyricsOpen = true
+    }
+
     fun snapPortraitSheet() {
         val cur = portraitSheetFrac.value
         val vel = portraitSheetDragVel // 高度占比变化速度（上滑为正）
@@ -1263,12 +1344,138 @@ fun NowPlayingScreen(
             )
         }
     }
+    BackHandler(
+        enabled = !isLandscape && (
+            portraitLyricStyleEditorOpen || portraitLyricStylePanel.value > 0.001f
+            ),
+    ) {
+        closePortraitLyricStyleEditor(reopenSettings = true)
+    }
+    BackHandler(
+        enabled = !isLandscape &&
+            portraitLyricsOpen &&
+            !portraitLyricStyleEditorOpen &&
+            !portraitPosterOpen &&
+            portraitLyricStylePanel.value <= 0.001f,
+    ) {
+        portraitLyricsOpen = false
+    }
     BackHandler(enabled = !isLandscape && portraitBackgroundEditorOpen) {
         portraitBackgroundEditorOpen = false
     }
-    BackHandler(enabled = !isLandscape && portraitSettingsOpen && !portraitBackgroundEditorOpen) {
+    BackHandler(
+        enabled = !isLandscape &&
+            portraitSettingsOpen &&
+            !portraitBackgroundEditorOpen &&
+            !portraitLyricStyleEditorOpen,
+    ) {
         closePortraitSettings()
     }
+
+    // 打开歌词样式：先确保歌词页铺开并量到 band，再钉克隆
+    val portraitDensity = LocalDensity.current
+    LaunchedEffect(
+        pendingPortraitLyricStyleEditor,
+        portraitLyricsOpen,
+        portraitLyricsBandCoords,
+        portraitPlayerRootCoords,
+    ) {
+        if (!pendingPortraitLyricStyleEditor || !portraitLyricsOpen) return@LaunchedEffect
+        // 等封面→歌词切换与首帧布局（最多约 1s）
+        repeat(24) {
+            yield()
+            val root = portraitPlayerRootCoords
+            val lyric = portraitLyricsBandCoords
+            if (root != null && lyric != null && root.isAttached && lyric.isAttached) {
+                val bandBounds = lyric.boundsInRoot()
+                val rootBounds = root.boundsInRoot()
+                if (bandBounds.width > 1f && bandBounds.height > 1f) {
+                    val srcLeft = with(portraitDensity) { (bandBounds.left - rootBounds.left).toDp() }
+                    val srcTop = with(portraitDensity) { (bandBounds.top - rootBounds.top).toDp() }
+                    val srcW = with(portraitDensity) { bandBounds.width.toDp() }
+                    val srcH = with(portraitDensity) { bandBounds.height.toDp() }
+                    val lines = lyricLines
+                    val animActive = lyricAnimActiveIndex(lines, state.positionMs, state.durationMs)
+                    val focus = lyricFocusIndex(lines, animActive)
+                    portraitLyricStyleFrozenPositionMs = state.positionMs
+                    portraitLyricStyleSnapshot = LyricStyleSnapshot(
+                        lines = lines,
+                        focusIndex = focus,
+                        playedCount = draftPortraitPlayedCount,
+                        upcomingCount = draftPortraitUpcomingCount,
+                        lineSpacingDp = draftPortraitLineSpacing,
+                        sourceLeftDp = srcLeft,
+                        sourceTopDp = srcTop,
+                        sourceWidthDp = srcW.coerceAtLeast(48.dp),
+                        sourceHeightDp = srcH.coerceAtLeast(48.dp),
+                    )
+                    pendingPortraitLyricStyleEditor = false
+                    portraitLyricStyleEditorOpen = true
+                    return@LaunchedEffect
+                }
+            }
+            delay(40)
+        }
+        pendingPortraitLyricStyleEditor = false
+    }
+
+    LaunchedEffect(portraitLyricStyleEditorOpen) {
+        if (portraitLyricStyleEditorOpen) {
+            portraitLyricStylePanel.snapTo(0f)
+            yield()
+            yield()
+            if (!portraitLyricStyleEditorOpen) return@LaunchedEffect
+            // 克隆已盖住源位后再收设置，避免布局跳动
+            portraitSettingsOpen = false
+            delay(280)
+            if (!portraitLyricStyleEditorOpen) return@LaunchedEffect
+            portraitLyricStylePanel.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(
+                    durationMillis = 920,
+                    easing = PortraitLyricStylePanelEasing,
+                ),
+            )
+        } else {
+            portraitLyricStylePanel.animateTo(
+                targetValue = 0f,
+                animationSpec = tween(
+                    durationMillis = 780,
+                    easing = PortraitLyricStylePanelEasing,
+                ),
+            )
+            if (portraitLyricStyleSnapshot != null) {
+                delay(280)
+            }
+            if (reopenSettingsAfterPortraitLyricStyle) {
+                reopenSettingsAfterPortraitLyricStyle = false
+                portraitSettingsOpen = true
+            }
+            if (!portraitLyricStyleEditorOpen) {
+                portraitLyricStyleSnapshot = null
+            }
+        }
+    }
+    val portraitLyricStyleT = portraitLyricStylePanel.value
+    val portraitLyricStyleHandoffT = if (
+        !portraitLyricStyleEditorOpen && portraitLyricStyleSnapshot != null
+    ) {
+        ((0.45f - portraitLyricStyleT) / 0.45f).coerceIn(0f, 1f)
+    } else {
+        0f
+    }
+    val portraitLiveLyricAlpha = when {
+        portraitPosterOpen -> 0f
+        portraitLyricStyleSnapshot == null -> 1f
+        portraitLyricStyleEditorOpen -> 0f
+        else -> portraitLyricStyleHandoffT
+    }
+    val portraitStyleCloneAlpha = when {
+        portraitLyricStyleSnapshot == null -> 0f
+        portraitLyricStyleEditorOpen -> 1f
+        else -> (1f - portraitLyricStyleHandoffT).coerceIn(0f, 1f)
+    }
+
     val portraitCustomBg = if (!isLandscape) {
         portraitDisplayPrefs.resolvedCustomBackground()
     } else {
@@ -1290,7 +1497,15 @@ fun NowPlayingScreen(
         }
     }
     Box(
-        modifier.fillMaxSize(),
+        modifier
+            .fillMaxSize()
+            .then(
+                if (!isLandscape) {
+                    Modifier.onGloballyPositioned { portraitPlayerRootCoords = it }
+                } else {
+                    Modifier
+                },
+            ),
     ) {
         if (isLandscape) {
             Box(
@@ -1362,6 +1577,7 @@ fun NowPlayingScreen(
         PortraitLyricReadingVeil(
             progress = lyricVeilT,
             hazeState = settingsHazeState,
+            transparency = portraitDisplayPrefs.lyricBackgroundTransparency,
             modifier = Modifier.fillMaxSize(),
         )
 
@@ -1476,12 +1692,20 @@ fun NowPlayingScreen(
                     onDismiss = onDismiss,
                     dismissSwipeThresholdPx = dismissSwipeThresholdPx,
                     onOpenSettings = { portraitSettingsOpen = true },
+                    onOpenPoster = { openPortraitPoster() },
                     settingsOpen = portraitSettingsOpen,
                     onCloseSettings = { closePortraitSettings() },
                     displayPrefs = portraitDisplayPrefs,
                     peekNextTrack = state.peekNextTrack,
                     peekPrevTrack = state.peekPrevTrack,
                     onSeek = onSeek,
+                    lyricContentAlpha = portraitLiveLyricAlpha,
+                    onLyricBandCoords = { portraitLyricsBandCoords = it },
+                    frozenLyricPositionMs = if (portraitLyricStyleSnapshot != null) {
+                        portraitLyricStyleFrozenPositionMs
+                    } else {
+                        null
+                    },
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -1526,6 +1750,9 @@ fun NowPlayingScreen(
                     onOpenCustomBackgroundEditor = {
                         portraitBackgroundEditorOpen = true
                     },
+                    onOpenLyricStyleEditor = {
+                        requestPortraitLyricStyleEditor()
+                    },
                     onDragHandleVertical = { dragAmount ->
                         // 跟手：向上拖为负 → 增高；记录高度变化速度供松手吸附偏向
                         val deltaFrac = -dragAmount / maxSheetH
@@ -1560,6 +1787,76 @@ fun NowPlayingScreen(
                 },
                 modifier = Modifier.fillMaxSize(),
             )
+        }
+
+        // 竖屏：制作海报全屏向导
+        if (!isLandscape) {
+            PosterMakeOverlay(
+                open = portraitPosterOpen,
+                track = track,
+                lines = lyricLines,
+                frozenPositionMs = portraitPosterFrozenPositionMs,
+                onDismiss = { closePortraitPoster() },
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+
+        // 竖屏：歌词样式全屏编辑（克隆穿透 + 优雅进出场）
+        if (!isLandscape) {
+            val styleSnap = portraitLyricStyleSnapshot
+            val styleT = portraitLyricStyleT
+            if (styleT > 0.001f || portraitLyricStyleEditorOpen) {
+                BoxWithConstraints(Modifier.fillMaxSize()) {
+                    val statusTop = WindowInsets.statusBars
+                        .asPaddingValues()
+                        .calculateTopPadding()
+                    val navBottom = WindowInsets.navigationBars
+                        .asPaddingValues()
+                        .calculateBottomPadding()
+                    val restSlot = portraitLyricStyleRestPreviewSlot(
+                        screenWidth = maxWidth,
+                        screenHeight = maxHeight,
+                        statusTop = statusTop,
+                        navBottom = navBottom,
+                    )
+                    PortraitLyricStyleEditorOverlay(
+                        progress = styleT,
+                        draftPlaying = draftPortraitLyricPlaying,
+                        draftPlayed = draftPortraitLyricPlayed,
+                        draftUnplayed = draftPortraitLyricUnplayed,
+                        draftPlayedCount = draftPortraitPlayedCount,
+                        draftUpcomingCount = draftPortraitUpcomingCount,
+                        draftLineSpacingDp = draftPortraitLineSpacing,
+                        onDraftPlayingChange = { draftPortraitLyricPlaying = it },
+                        onDraftPlayedChange = { draftPortraitLyricPlayed = it },
+                        onDraftUnplayedChange = { draftPortraitLyricUnplayed = it },
+                        onDraftPlayedCountChange = { draftPortraitPlayedCount = it },
+                        onDraftUpcomingCountChange = { draftPortraitUpcomingCount = it },
+                        onDraftLineSpacingChange = { draftPortraitLineSpacing = it },
+                        hazeState = settingsHazeState,
+                        onDismiss = { closePortraitLyricStyleEditor(reopenSettings = false) },
+                        onBackToSettings = { closePortraitLyricStyleEditor(reopenSettings = true) },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                    if (styleSnap != null && portraitStyleCloneAlpha > 0.001f) {
+                        LyricStyleCloneLayer(
+                            snapshot = styleSnap.copy(
+                                playedCount = draftPortraitPlayedCount,
+                                upcomingCount = draftPortraitUpcomingCount,
+                                lineSpacingDp = draftPortraitLineSpacing,
+                            ),
+                            draftPlaying = draftPortraitLyricPlaying,
+                            draftPlayed = draftPortraitLyricPlayed,
+                            draftUnplayed = draftPortraitLyricUnplayed,
+                            progress = styleT,
+                            targetSlot = restSlot,
+                            uiScale = portraitDisplayPrefs.uiScale,
+                            contentAlpha = portraitStyleCloneAlpha,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                }
+            }
         }
 
         // 竖屏：右上短通知（贴外层 Box，避免挡在 Column 流式布局里）
@@ -1882,355 +2179,6 @@ private fun VinylWithCoverArt(
     }
 }
 
-/** 竖屏展开：根据可用高度尽可能多展示歌词，并保持垂直居中 */
-@Composable
-private fun PortraitCinemaLyrics(
-    lines: List<LrcLine>,
-    positionMs: Long,
-    trackDurationMs: Long,
-    onSeekToMs: (Long) -> Unit,
-    onCollapse: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    if (lines.isEmpty()) {
-        Box(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-            Text(
-                text = "暂无逐行歌词",
-                style = TextStyle(
-                    color = LyricDim.copy(alpha = 0.38f),
-                    fontFamily = FontFamily.SansSerif,
-                    fontStyle = FontStyle.Italic,
-                    fontSize = 14.sp,
-                    textAlign = TextAlign.Center,
-                ),
-            )
-        }
-        return
-    }
-    val timing = lyricAnimTiming(lines, positionMs, trackDurationMs)
-    val animActive = lyricAnimActiveIndex(lines, positionMs, trackDurationMs)
-    val playFocus = lyricFocusIndex(lines, animActive)
-    val live = lyricIsLive(lines, animActive, playFocus)
-    val animMs = timing.durationMs
-    val emphasis by animateFloatAsState(
-        targetValue = if (live) 1f else 0f,
-        animationSpec = tween(
-            durationMillis = (animMs * 1.25f).toInt().coerceIn(280, 520),
-            easing = LyricSoftEasing,
-        ),
-        label = "portraitLyricEmphasis",
-    )
-
-    val listState = rememberLazyListState()
-    var browsing by remember { mutableStateOf(false) }
-    var dragSession by remember { mutableStateOf(false) }
-    var idleGen by remember { mutableIntStateOf(0) }
-    var suppressBrowseDetect by remember { mutableStateOf(false) }
-    var followGen by remember { mutableIntStateOf(0) }
-    val scope = rememberCoroutineScope()
-    val density = LocalDensity.current
-    val onSeekUpdated by rememberUpdatedState(onSeekToMs)
-    val onCollapseUpdated by rememberUpdatedState(onCollapse)
-    val playFocusUpdated by rememberUpdatedState(playFocus)
-    val followFling = ScrollableDefaults.flingBehavior()
-
-    // 与横屏同思路：槽高覆盖播放行字号，保证 contentPadding 居中几何稳定
-    val slotHeight = 32.dp
-    val slotHeightPx = with(density) { slotHeight.roundToPx() }
-
-    val browseCenterIndex by remember {
-        derivedStateOf { listState.browseCenterLyricIndex(playFocusUpdated) }
-    }
-
-    BoxWithConstraints(modifier.fillMaxSize()) {
-        val viewportPx = with(density) { maxHeight.roundToPx() }.coerceAtLeast(1)
-        val centerPadPx = ((viewportPx - slotHeightPx) / 2).coerceAtLeast(0)
-        val centerPad = with(density) { centerPadPx.toDp() }
-
-        suspend fun scrollToCenteredIndex(
-            index: Int,
-            animated: Boolean,
-            softSnap: Boolean = false,
-        ) {
-            val gen = followGen
-            listState.scrollLyricToCenteredIndex(
-                index = index,
-                lastIndex = lines.lastIndex,
-                slotHeightPx = slotHeightPx,
-                animated = animated,
-                softSnap = softSnap,
-                followGen = gen,
-                currentFollowGen = { followGen },
-                setSuppressBrowseDetect = { suppressBrowseDetect = it },
-            )
-        }
-
-        suspend fun snapToFullLines() {
-            val gen = followGen
-            listState.snapLyricToFullLines(
-                slotHeightPx = slotHeightPx,
-                lastIndex = lines.lastIndex,
-                followGen = gen,
-                currentFollowGen = { followGen },
-                setSuppressBrowseDetect = { suppressBrowseDetect = it },
-            )
-        }
-
-        fun exitBrowseAndFollow(animated: Boolean = true) {
-            dragSession = false
-            browsing = false
-            scope.launch { scrollToCenteredIndex(playFocusUpdated, animated) }
-        }
-
-        LaunchedEffect(listState) {
-            snapshotFlow { listState.isScrollInProgress }
-                .distinctUntilChanged()
-                .collect { inProgress ->
-                    if (suppressBrowseDetect) return@collect
-                    if (inProgress) {
-                        if (!dragSession) browsing = true
-                    } else if (browsing) {
-                        idleGen++
-                        snapToFullLines()
-                    }
-                }
-        }
-
-        LaunchedEffect(playFocus, browsing, lines.size, centerPadPx, dragSession) {
-            if (!browsing && !dragSession) {
-                scrollToCenteredIndex(playFocus, animated = true)
-            }
-        }
-
-        LaunchedEffect(lines) {
-            browsing = false
-            dragSession = false
-            scrollToCenteredIndex(playFocus, animated = false)
-        }
-
-        LaunchedEffect(browsing, idleGen) {
-            if (!browsing || dragSession) return@LaunchedEffect
-            delay(5_500)
-            while (listState.isScrollInProgress) {
-                delay(160)
-            }
-            delay(320)
-            if (browsing && !dragSession && !listState.isScrollInProgress) {
-                exitBrowseAndFollow(animated = true)
-            }
-        }
-
-        Box(
-            Modifier
-                .fillMaxSize()
-                .padding(horizontal = 18.dp)
-                .pointerInput(browsing, lines.size, slotHeightPx) {
-                    if (browsing) return@pointerInput
-                    val touchSlop = viewConfiguration.touchSlop
-                    awaitEachGesture {
-                        val down = awaitFirstDown(requireUnconsumed = false)
-                        val pointerId = down.id
-                        val start = down.position
-                        var lastY = start.y
-                        var dragging = false
-                        var flingLaunched = false
-                        val tracker = VelocityTracker()
-                        tracker.addPosition(down.uptimeMillis, down.position)
-
-                        fun beginDrag(fromY: Float, change: PointerInputChange?) {
-                            dragging = true
-                            followGen++
-                            suppressBrowseDetect = true
-                            dragSession = true
-                            change?.consume()
-                            lastY = fromY
-                        }
-
-                        try {
-                            while (true) {
-                                val event = awaitPointerEvent(PointerEventPass.Initial)
-                                val change = event.changes.find { it.id == pointerId }
-                                    ?: return@awaitEachGesture
-                                tracker.addPosition(change.uptimeMillis, change.position)
-                                if (!change.pressed) {
-                                    if (!dragging) onCollapseUpdated()
-                                    return@awaitEachGesture
-                                }
-                                if (change.isConsumed) return@awaitEachGesture
-                                val dy = change.position.y - start.y
-                                val dx = change.position.x - start.x
-                                if (abs(dy) > touchSlop && abs(dy) > abs(dx) * 0.75f) {
-                                    beginDrag(change.position.y, change)
-                                    break
-                                }
-                            }
-
-                            while (dragging) {
-                                val event = awaitPointerEvent(PointerEventPass.Main)
-                                val change = event.changes.find { it.id == pointerId } ?: break
-                                tracker.addPosition(change.uptimeMillis, change.position)
-                                val step = change.position.y - lastY
-                                lastY = change.position.y
-                                listState.dispatchRawDelta(-step)
-                                change.consume()
-                                if (!change.pressed) {
-                                    val velocityY = tracker.calculateVelocity().y
-                                    flingLaunched = true
-                                    browsing = true
-                                    suppressBrowseDetect = false
-                                    scope.launch {
-                                        try {
-                                            listState.scroll {
-                                                with(followFling) {
-                                                    performFling(-velocityY)
-                                                }
-                                            }
-                                        } finally {
-                                            dragSession = false
-                                            idleGen++
-                                            snapToFullLines()
-                                        }
-                                    }
-                                    break
-                                }
-                            }
-                        } finally {
-                            if (dragSession && !flingLaunched) {
-                                if (dragging) browsing = true
-                                dragSession = false
-                                suppressBrowseDetect = false
-                                if (dragging) {
-                                    idleGen++
-                                    scope.launch { snapToFullLines() }
-                                }
-                            }
-                        }
-                    }
-                }
-                .consumeUnclaimedVerticalDrag(),
-        ) {
-            LazyColumn(
-                state = listState,
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(vertical = centerPad),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                userScrollEnabled = browsing && !dragSession,
-            ) {
-                itemsIndexed(
-                    items = lines,
-                    key = { index, line -> "${line.timeMs}_$index" },
-                ) { index, line ->
-                    val isPlayingLine = index == playFocus
-                    val isBrowseCenter =
-                        browsing &&
-                            index == browseCenterIndex &&
-                            !isPlayingLine
-                    val distance = abs(index - playFocus)
-                    val lineIx = remember(index) { MutableInteractionSource() }
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .height(slotHeight)
-                            .then(
-                                if (browsing) {
-                                    Modifier.clickable(
-                                        interactionSource = lineIx,
-                                        indication = null,
-                                        onClick = {
-                                            val i = index
-                                            browsing = false
-                                            dragSession = false
-                                            scope.launch {
-                                                scrollToCenteredIndex(i, animated = true)
-                                            }
-                                            onSeekUpdated(
-                                                line.timeMs.coerceIn(
-                                                    0L,
-                                                    trackDurationMs.coerceAtLeast(0L),
-                                                ),
-                                            )
-                                        },
-                                    )
-                                } else {
-                                    Modifier
-                                },
-                            ),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        when {
-                            isPlayingLine -> {
-                                StableCenterLyricText(
-                                    focus = playFocus,
-                                    text = line.text,
-                                    animMs = animMs,
-                                    lineSpanMs = lyricLineSpanMs(
-                                        lines,
-                                        playFocus,
-                                        trackDurationMs,
-                                    ),
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Clip,
-                                    style = TextStyle(
-                                        color = LyricCurrent.copy(
-                                            alpha = 0.55f + 0.45f * emphasis,
-                                        ),
-                                        fontFamily = FontFamily.SansSerif,
-                                        fontWeight = FontWeight.SemiBold,
-                                        fontSize = 20.sp,
-                                        lineHeight = 24.sp,
-                                        letterSpacing = 0.15.sp,
-                                        textAlign = TextAlign.Center,
-                                    ),
-                                )
-                            }
-                            isBrowseCenter -> {
-                                Text(
-                                    text = line.text,
-                                    maxLines = 2,
-                                    softWrap = true,
-                                    overflow = TextOverflow.Clip,
-                                    style = TextStyle(
-                                        color = LyricBrowseSelect.copy(alpha = 0.88f),
-                                        fontFamily = FontFamily.SansSerif,
-                                        fontWeight = FontWeight.SemiBold,
-                                        fontSize = 14.sp,
-                                        lineHeight = 17.sp,
-                                        letterSpacing = 0.2.sp,
-                                        textAlign = TextAlign.Center,
-                                    ),
-                                )
-                            }
-                            else -> {
-                                Text(
-                                    text = line.text,
-                                    maxLines = 2,
-                                    softWrap = true,
-                                    overflow = TextOverflow.Clip,
-                                    style = TextStyle(
-                                        color = LyricDim.copy(
-                                            alpha = if (browsing) {
-                                                0.36f
-                                            } else {
-                                                (0.4f - distance * 0.06f)
-                                                    .coerceIn(0.18f, 0.4f)
-                                            },
-                                        ),
-                                        fontFamily = FontFamily.SansSerif,
-                                        fontWeight = FontWeight.Normal,
-                                        fontSize = 12.sp,
-                                        lineHeight = 15.sp,
-                                        textAlign = TextAlign.Center,
-                                    ),
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
 @Composable
 private fun PortraitPlayerBody(
     track: TrackRow,
@@ -2258,12 +2206,16 @@ private fun PortraitPlayerBody(
     onDismiss: () -> Unit,
     dismissSwipeThresholdPx: Float,
     onOpenSettings: (() -> Unit)? = null,
+    onOpenPoster: (() -> Unit)? = null,
     settingsOpen: Boolean = false,
     onCloseSettings: (() -> Unit)? = null,
     displayPrefs: PlayerDisplayPrefs = PlayerDisplayPrefs(),
     peekNextTrack: TrackRow? = null,
     peekPrevTrack: TrackRow? = null,
     onSeek: (Long) -> Unit = {},
+    lyricContentAlpha: Float = 1f,
+    onLyricBandCoords: ((LayoutCoordinates) -> Unit)? = null,
+    frozenLyricPositionMs: Long? = null,
     modifier: Modifier = Modifier,
 ) {
     val activity = LocalActivity.current
@@ -2426,12 +2378,20 @@ private fun PortraitPlayerBody(
                     )
                     PortraitCinemaLyrics(
                         lines = lines,
-                        positionMs = positionMs,
+                        positionMs = frozenLyricPositionMs ?: positionMs,
                         trackDurationMs = durationMs,
+                        playingStyle = displayPrefs.lyricPlayingStyle,
+                        playedStyle = displayPrefs.lyricPlayedStyle,
+                        unplayedStyle = displayPrefs.lyricUnplayedStyle,
+                        playedCount = displayPrefs.lyricPlayedCount,
+                        upcomingCount = displayPrefs.lyricUpcomingCount,
+                        lineSpacingDp = displayPrefs.lyricLineSpacingDp,
+                        contentAlpha = lyricContentAlpha,
                         onSeekToMs = { ms ->
                             onSeek(ms.coerceIn(0L, durationMs.coerceAtLeast(0L)))
                         },
                         onCollapse = onCollapseLyrics,
+                        onBandCoords = onLyricBandCoords,
                         modifier = Modifier
                             .fillMaxWidth()
                             .fillMaxHeight()
@@ -2467,7 +2427,9 @@ private fun PortraitPlayerBody(
             portraitSlim = true,
             landscapeDense = false,
             onOpenSettings = onOpenSettings,
+            onOpenPoster = onOpenPoster,
             controlsOffsetYDp = displayPrefs.portraitTransportOffsetYDp,
+            controlsContainerInclude = displayPrefs.portraitTransportContainerInclude,
         )
     }
 }
@@ -5888,8 +5850,14 @@ private fun PlayerTransport(
     controlsLocked: Boolean = false,
     onOpenScore: (() -> Unit)? = null,
     onOpenSettings: (() -> Unit)? = null,
-    /** 竖屏：仅进度条与播放按钮行的垂直偏移；底部设置条不参与 */
+    onOpenPoster: (() -> Unit)? = null,
+    /**
+     * 竖屏：进度条与播放按钮行的垂直偏移。
+     * 关闭「容器包含」时底部设置条不参与；开启后整块玻璃容器一并偏移。
+     */
     controlsOffsetYDp: Float = 0f,
+    /** 竖屏：半透明底是否包含进度 / 时长 / 播放控件（否则仅设置条） */
+    controlsContainerInclude: Boolean = false,
 ) {
     val maxF = durationMs.toFloat().coerceAtLeast(1f)
     val sliderPos = if (sliderDragging) sliderValue else positionMs.toFloat()
@@ -6088,97 +6056,70 @@ private fun PlayerTransport(
         // 半圆纳入进度条视觉长度：时长 / 缩短后的进度条 / 按钮 / 底栏共用同一水平边距
         val alignPad =
             if (portraitSlim) Modifier.padding(horizontal = portraitAlignPad) else Modifier
-
-        // 竖屏：进度 + 传输按钮可整体垂直偏移；底部设置条保持默认位置
-        Column(
+        val controlsOffsetMod = if (portraitSlim) {
+            Modifier.offset(
+                y = controlsOffsetYDp
+                    .coerceIn(
+                        PlayerDisplayPrefs.PORTRAIT_TRANSPORT_OFFSET_Y_MIN,
+                        PlayerDisplayPrefs.PORTRAIT_TRANSPORT_OFFSET_Y_MAX,
+                    )
+                    .dp,
+            )
+        } else {
             Modifier
-                .fillMaxWidth()
-                .then(
-                    if (portraitSlim) {
-                        Modifier.offset(
-                            y = controlsOffsetYDp
-                                .coerceIn(
-                                    PlayerDisplayPrefs.PORTRAIT_TRANSPORT_OFFSET_Y_MIN,
-                                    PlayerDisplayPrefs.PORTRAIT_TRANSPORT_OFFSET_Y_MAX,
-                                )
-                                .dp,
-                        )
-                    } else {
-                        Modifier
-                    },
-                ),
-        ) {
-            // 竖屏：当前时长 / 总时长分别贴在进度条左上、右上
-            if (portraitSlim) {
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .then(alignPad)
-                        .padding(bottom = 6.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = formatTimeMs(displayPosMs),
-                        style = timeStyle,
-                    )
-                    Text(
-                        text = formatTimeMs(durationMs),
-                        style = timeStyle,
-                    )
-                }
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .then(alignPad)
-                        .height(sliderH),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Slider(
-                        modifier = Modifier.fillMaxWidth(),
-                        value = sliderPos.coerceIn(0f, maxF),
-                        onValueChange = { v ->
-                            if (!sliderDragging) onSliderDragStart()
-                            onSliderChange(v)
-                        },
-                        onValueChangeFinished = onSliderDragEnd,
-                        valueRange = 0f..maxF,
-                        colors = sliderColors,
-                    )
-                }
-                Spacer(Modifier.height(16.dp))
-            } else {
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .height(sliderH),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Slider(
-                        modifier = Modifier.fillMaxWidth(),
-                        value = sliderPos.coerceIn(0f, maxF),
-                        onValueChange = { v ->
-                            if (!sliderDragging) onSliderDragStart()
-                            onSliderChange(v)
-                        },
-                        onValueChangeFinished = onSliderDragEnd,
-                        valueRange = 0f..maxF,
-                        colors = sliderColors,
-                    )
-                }
-            }
+        }
+        val glassBg = Color.Black.copy(alpha = 0.22f)
+        val glassShape = RoundedCornerShape(14.dp)
+        val includeInContainer = portraitSlim && controlsContainerInclude
+        val likeGlyphSize = if (portraitSlim) playSize * 0.70f else playSize
+        val modeGlyphSize = if (portraitSlim) playSize * 0.61f else playSize
+
+        @Composable
+        fun PortraitTimeAndSlider(rowPad: Modifier) {
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .then(alignPad)
+                    .then(rowPad)
+                    .padding(bottom = 6.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(text = formatTimeMs(displayPosMs), style = timeStyle)
+                Text(text = formatTimeMs(durationMs), style = timeStyle)
+            }
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .then(rowPad)
+                    .height(sliderH),
+                contentAlignment = Alignment.Center,
+            ) {
+                Slider(
+                    modifier = Modifier.fillMaxWidth(),
+                    value = sliderPos.coerceIn(0f, maxF),
+                    onValueChange = { v ->
+                        if (!sliderDragging) onSliderDragStart()
+                        onSliderChange(v)
+                    },
+                    onValueChangeFinished = onSliderDragEnd,
+                    valueRange = 0f..maxF,
+                    colors = sliderColors,
+                )
+            }
+            Spacer(Modifier.height(16.dp))
+        }
+
+        @Composable
+        fun TransportButtonsRow(rowPad: Modifier) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .then(rowPad)
                     .padding(vertical = if (portraitSlim) 4.dp else 2.dp),
                 // 左右两端贴齐进度条半圆外缘；中间 3 个控件之间形成 4 段等分间隙
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                // 竖屏：端点按实绘尺寸参与排布；模式图标更小更细，喜欢保持原视觉尺寸
-                val likeGlyphSize = if (portraitSlim) playSize * 0.70f else playSize
-                val modeGlyphSize = if (portraitSlim) playSize * 0.61f else playSize
                 PlaybackModeControl(
                     mode = playbackMode,
                     onClick = onCyclePlaybackMode,
@@ -6186,7 +6127,6 @@ private fun PlayerTransport(
                     tint = iconTint,
                     glyphFraction = if (portraitSlim) 1f else 0.625f,
                 )
-
                 Box(
                     modifier = Modifier
                         .size(playSize)
@@ -6196,7 +6136,6 @@ private fun PlayerTransport(
                 ) {
                     TransportSkipIcon(forward = false, size = transportIconSize, tint = iconTint)
                 }
-
                 Box(
                     modifier = Modifier
                         .graphicsLayer {
@@ -6216,7 +6155,6 @@ private fun PlayerTransport(
                         tint = Color(0xFFF5F7FA),
                     )
                 }
-
                 Box(
                     modifier = Modifier
                         .size(playSize)
@@ -6226,7 +6164,6 @@ private fun PlayerTransport(
                 ) {
                     TransportSkipIcon(forward = true, size = transportIconSize, tint = iconTint)
                 }
-
                 Box(
                     modifier = Modifier
                         .size(likeGlyphSize)
@@ -6243,33 +6180,111 @@ private fun PlayerTransport(
             }
         }
 
-        // 竖屏底部：区域延伸进系统导航条；玻璃条在剩余空白内垂直居中
-        // 背景与横屏底部播放条一致（半透明黑底 + 14dp 圆角）；位置固定，不受播放控件偏移影响
-        if (portraitSlim) {
+        if (includeInContainer) {
+            // 开启「容器包含」：半透明底包裹时长 / 进度 / 播放控件 / 设置；整体跟随垂直位置
             val navBottom = WindowInsets.navigationBars
                 .asPaddingValues()
                 .calculateBottomPadding()
-            val bottomZoneHeight = navBottom + 56.dp
-            Box(
-                modifier = Modifier
+            Column(
+                Modifier
                     .fillMaxWidth()
-                    .height(bottomZoneHeight),
-                contentAlignment = Alignment.Center,
+                    .then(alignPad)
+                    .then(controlsOffsetMod)
+                    .clip(glassShape)
+                    .background(glassBg)
+                    .padding(top = 10.dp, bottom = 4.dp),
             ) {
+                PortraitTimeAndSlider(rowPad = Modifier)
+                TransportButtonsRow(rowPad = Modifier)
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .then(alignPad)
-                        .height(portraitBottomBandHeight)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(Color.Black.copy(alpha = 0.22f)),
+                        .height(portraitBottomBandHeight),
                 ) {
+                    if (onOpenPoster != null) {
+                        NowPlayingPosterIconButton(
+                            onClick = onOpenPoster,
+                            chromeBackground = false,
+                            modifier = Modifier.align(Alignment.CenterStart),
+                        )
+                    }
                     if (onOpenSettings != null) {
                         NowPlayingSettingsIconButton(
                             onClick = onOpenSettings,
                             chromeBackground = false,
                             modifier = Modifier.align(Alignment.CenterEnd),
                         )
+                    }
+                }
+            }
+            Spacer(Modifier.height(navBottom.coerceAtLeast(8.dp)))
+        } else {
+            // 默认：进度 + 传输按钮可整体垂直偏移；底部设置条位置固定
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .then(controlsOffsetMod),
+            ) {
+                if (portraitSlim) {
+                    PortraitTimeAndSlider(rowPad = alignPad)
+                } else {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(sliderH),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Slider(
+                            modifier = Modifier.fillMaxWidth(),
+                            value = sliderPos.coerceIn(0f, maxF),
+                            onValueChange = { v ->
+                                if (!sliderDragging) onSliderDragStart()
+                                onSliderChange(v)
+                            },
+                            onValueChangeFinished = onSliderDragEnd,
+                            valueRange = 0f..maxF,
+                            colors = sliderColors,
+                        )
+                    }
+                }
+                TransportButtonsRow(rowPad = alignPad)
+            }
+
+            // 竖屏底部：区域延伸进系统导航条；玻璃条在剩余空白内垂直居中
+            // 背景与横屏底部播放条一致（半透明黑底 + 14dp 圆角）；位置固定，不受播放控件偏移影响
+            if (portraitSlim) {
+                val navBottom = WindowInsets.navigationBars
+                    .asPaddingValues()
+                    .calculateBottomPadding()
+                val bottomZoneHeight = navBottom + 56.dp
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(bottomZoneHeight),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .then(alignPad)
+                            .height(portraitBottomBandHeight)
+                            .clip(glassShape)
+                            .background(glassBg),
+                    ) {
+                        if (onOpenPoster != null) {
+                            NowPlayingPosterIconButton(
+                                onClick = onOpenPoster,
+                                chromeBackground = false,
+                                modifier = Modifier.align(Alignment.CenterStart),
+                            )
+                        }
+                        if (onOpenSettings != null) {
+                            NowPlayingSettingsIconButton(
+                                onClick = onOpenSettings,
+                                chromeBackground = false,
+                                modifier = Modifier.align(Alignment.CenterEnd),
+                            )
+                        }
                     }
                 }
             }

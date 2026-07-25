@@ -1,5 +1,9 @@
 <resources>
     <string name="app_name">ZMusic</string>
+    <string name="poster_make">制作海报</string>
     <string name="playback_notification_channel_name">正在播放</string>
     <string name="playback_notification_channel_desc">音乐播放控制与状态</string>
+    <string name="playback_mode_order">列表循环</string>
+    <string name="playback_mode_repeat_one">单曲循环</string>
+    <string name="playback_mode_shuffle">随机播放</string>
 </resources>
