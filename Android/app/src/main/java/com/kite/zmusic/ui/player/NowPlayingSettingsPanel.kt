@@ -118,6 +118,7 @@ private val SettingsRowBg = Color(0xF0141A24)
 private enum class SettingsPreviewKey {
     LineSpacing,
     OffsetX,
+    LyricOffsetY,
     UiScale,
     VinylSize,
     VinylOffsetY,
@@ -892,7 +893,32 @@ fun NowPlayingSettingsSheet(
                                     actionLabel = "编辑",
                                     onClick = onOpenLyricStyleEditor,
                                 )
+                                SettingsSwitchRow(
+                                    title = "自动播放",
+                                    subtitle = "点选歌词跳转后自动开始播放；播放中切歌始终播放",
+                                    checked = prefs.lyricTapAutoPlay,
+                                    colors = switchColors,
+                                    onCheckedChange = {
+                                        onPrefsChange(prefs.copy(lyricTapAutoPlay = it))
+                                    },
+                                )
                             }
+                        }
+                        SettingsAlpha(rowAlpha(SettingsPreviewKey.LyricOffsetY)) {
+                            SettingsSliderRow(
+                                title = "歌词垂直位置",
+                                valueLabel = String.format("%+.0f", prefs.lyricOffsetYDp),
+                                value = prefs.lyricOffsetYDp,
+                                valueRange = PlayerDisplayPrefs.LYRIC_OFFSET_MIN..
+                                    PlayerDisplayPrefs.LYRIC_OFFSET_MAX,
+                                colors = sliderColors,
+                                onValueChange = {
+                                    onPrefsChange(prefs.copy(lyricOffsetYDp = it))
+                                },
+                                onPreviewDragActiveChange = {
+                                    onPreviewDrag(SettingsPreviewKey.LyricOffsetY, it)
+                                },
+                            )
                         }
                         SettingsAlpha(rowAlpha(SettingsPreviewKey.LyricBackgroundTransparency)) {
                             SettingsSliderRow(
@@ -1007,7 +1033,7 @@ fun NowPlayingSettingsSheet(
                         SettingsAlpha(dim) {
                             SettingsSwitchRow(
                                 title = "容器包含",
-                                subtitle = "开启后半透明底包含进度、时长与播放控件",
+                                subtitle = "半透明底包裹控件；留边与内边距，避免贴边",
                                 checked = prefs.portraitTransportContainerInclude,
                                 colors = switchColors,
                                 onCheckedChange = {
@@ -1938,19 +1964,27 @@ private fun SettingsSliderRow(
 
 /**
  * 点击外部收回设置：无蒙版、无变暗，仅透明命中层。
+ * [enabled]=false 时不挂 clickable，避免收起动画尾帧继续吞全屏单击。
  */
 @Composable
 fun NowPlayingSettingsOutsideDismiss(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
 ) {
     Box(
         modifier
             .fillMaxSize()
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = onDismiss,
+            .then(
+                if (enabled) {
+                    Modifier.clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onDismiss,
+                    )
+                } else {
+                    Modifier
+                },
             ),
     )
 }

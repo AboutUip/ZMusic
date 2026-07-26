@@ -28,6 +28,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
@@ -113,6 +114,12 @@ fun ZMusicOrientationHost(
     LaunchedEffect(orientKey) {
         if (!orientationInitialized) {
             orientationInitialized = true
+            // 首帧若已预钉（冷启动即横屏 / 重建），仍需超时松钉，否则蒙版永驻
+            if (OrientationMaskGate.pinned) {
+                delay(OrientationMaskHoldMs)
+                orientationSwitchOverlay = false
+                OrientationMaskGate.unpin()
+            }
             return@LaunchedEffect
         }
         orientationSwitchOverlay = true
@@ -122,9 +129,15 @@ fun ZMusicOrientationHost(
         OrientationMaskGate.unpin()
     }
 
-    // 预钉时也推进 generation，保证立方体从点击帧开始播
+    // 预钉时推进 generation；若方向键未变（本已是横屏再点旋转），靠超时松钉
     LaunchedEffect(maskPinned) {
-        if (maskPinned) maskGeneration += 1
+        if (!maskPinned) return@LaunchedEffect
+        maskGeneration += 1
+        delay(OrientationMaskHoldMs + 80L)
+        if (OrientationMaskGate.pinned) {
+            orientationSwitchOverlay = false
+            OrientationMaskGate.unpin()
+        }
     }
 
     val maskAlpha by animateFloatAsState(
@@ -142,7 +155,8 @@ fun ZMusicOrientationHost(
                     Modifier
                         .fillMaxSize()
                         .zIndex(10_000f)
-                        .graphicsLayer { alpha = maskAlpha },
+                        // alpha()：接近 0 时不参与命中；graphicsLayer.alpha 仍会吞点击
+                        .alpha(maskAlpha),
                 ) {
                     key(maskGeneration) {
                         OrientationSwitchMask()

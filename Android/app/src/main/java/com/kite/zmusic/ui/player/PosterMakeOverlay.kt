@@ -42,6 +42,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
+import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
+import androidx.compose.foundation.lazy.staggeredgrid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Switch
@@ -538,20 +541,23 @@ private fun PosterPresetPickStep(
     onSelect: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // 单列弹性比例卡片；日后可改为 LazyVerticalStaggeredGrid 瀑布流
-    Column(
-        modifier
-            .fillMaxSize()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+    // 两列瀑布流：卡片高度随 thumbAspectRatio 变化，不同比例可交错密排
+    LazyVerticalStaggeredGrid(
+        columns = StaggeredGridCells.Fixed(2),
+        modifier = modifier.fillMaxSize(),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalItemSpacing = 12.dp,
     ) {
-        PosterPresetCatalog.forEach { preset ->
+        items(
+            items = PosterPresetCatalog,
+            key = { it.id },
+        ) { preset ->
             val selected = selectedId == preset.id
             val shape = RoundedCornerShape(16.dp)
             Column(
                 Modifier
-                    .fillMaxWidth(0.72f)
-                    .align(Alignment.CenterHorizontally)
+                    .fillMaxWidth()
                     .clip(shape)
                     .background(
                         if (selected) Color(0xFF1A1E26) else Color(0xFF12151C),
@@ -576,16 +582,13 @@ private fun PosterPresetPickStep(
                     )
                     else -> {
                         val ratio = preset.thumbAspectRatio.coerceIn(0.55f, 1.35f)
-                        BoxWithConstraints(Modifier.fillMaxWidth()) {
-                            val thumbH = maxWidth / ratio
-                            Box(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .height(thumbH)
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(Color(0xFF1C2028)),
-                            )
-                        }
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(ratio)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color(0xFF1C2028)),
+                        )
                     }
                 }
                 Spacer(Modifier.height(10.dp))

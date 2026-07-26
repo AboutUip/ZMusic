@@ -200,6 +200,9 @@ class PlaybackBridge(
 
     fun cyclePlaybackMode() = runOnCoordinator { it.cyclePlaybackMode() }
 
+    /** 竖屏评论打开时挂起曲末自动切歌；关闭后若已曲末则进下一首。 */
+    fun setHoldAutoAdvance(hold: Boolean) = runOnCoordinator { it.setHoldAutoAdvance(hold) }
+
     fun stopForLogout() {
         stateStore.clear()
         val c = coordinator

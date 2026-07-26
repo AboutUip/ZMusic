@@ -54,6 +54,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
@@ -835,6 +839,7 @@ private fun PortraitTransportHeightStub(
             PlayerDisplayPrefs.PORTRAIT_TRANSPORT_OFFSET_Y_MAX,
         ) * uiScale
     val glassBg = Color.Black.copy(alpha = 0.22f)
+    val containerGlassBg = Color.Black.copy(alpha = 0.34f)
     val glassShape = RoundedCornerShape(14.dp * uiScale)
     Column(
         Modifier
@@ -842,25 +847,43 @@ private fun PortraitTransportHeightStub(
             .padding(top = 1.dp * uiScale),
     ) {
         if (containerInclude) {
-            Column(
+            // 与未开启同高；玻璃用 drawBehind 包住，不占额外高度
+            val containerMarginH = 6.dp * uiScale
+            val containerMarginBottom = navBottom.coerceAtLeast(8.dp * uiScale)
+            val containerExpandTop = 22.dp * uiScale
+            val containerRadius = 20.dp * uiScale
+            Box(
                 Modifier
                     .fillMaxWidth()
                     .offset(y = oy.dp)
-                    .clip(glassShape)
-                    .background(glassBg)
-                    .padding(top = 10.dp * uiScale, bottom = 4.dp * uiScale),
+                    .drawBehind {
+                        val mh = containerMarginH.toPx()
+                        val mb = containerMarginBottom.toPx()
+                        val et = containerExpandTop.toPx()
+                        val r = containerRadius.toPx()
+                        drawRoundRect(
+                            color = containerGlassBg,
+                            topLeft = Offset(mh, -et),
+                            size = Size(
+                                (this.size.width - mh * 2f).coerceAtLeast(0f),
+                                (this.size.height - mb + et).coerceAtLeast(0f),
+                            ),
+                            cornerRadius = CornerRadius(r, r),
+                        )
+                    },
             ) {
-                Spacer(Modifier.height((14.dp + 6.dp) * uiScale))
-                Spacer(Modifier.height(sliderH))
-                Spacer(Modifier.height(16.dp * uiScale))
-                Spacer(
-                    Modifier
-                        .fillMaxWidth()
-                        .height(playSize + 8.dp * uiScale),
-                )
-                Spacer(Modifier.height(portraitBottomBandHeight))
+                Column(Modifier.fillMaxWidth()) {
+                    Spacer(Modifier.height((14.dp + 6.dp) * uiScale))
+                    Spacer(Modifier.height(sliderH))
+                    Spacer(Modifier.height(16.dp * uiScale))
+                    Spacer(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(playSize + 8.dp * uiScale),
+                    )
+                    Spacer(Modifier.height(bottomZoneHeight))
+                }
             }
-            Spacer(Modifier.height(navBottom.coerceAtLeast(8.dp * uiScale)))
         } else {
             Column(
                 Modifier

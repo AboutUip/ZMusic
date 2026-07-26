@@ -110,6 +110,10 @@ internal suspend fun LazyListState.scrollLyricToCenteredIndex(
             scrollBy(fine)
         }
     } finally {
+        // 等跟滚完全停稳再打开浏览检测，避免 isScrollInProgress 尾帧误进浏览态
+        while (isScrollInProgress) {
+            kotlinx.coroutines.yield()
+        }
         setSuppressBrowseDetect(false)
     }
 }

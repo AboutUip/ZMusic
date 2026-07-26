@@ -428,6 +428,11 @@ data class PlayerDisplayPrefs(
     /** 歌词水平偏移（dp），负左正右 */
     val lyricOffsetXDp: Float = 0f,
     /**
+     * 竖屏：歌词 band 整体垂直偏移（dp），负上正下；
+     * band 内播放行仍相对视口居中跟滚。
+     */
+    val lyricOffsetYDp: Float = 0f,
+    /**
      * 动态歌词：按黑胶右缘收缩歌词可用宽度；
      * 左右对称伸缩，保持中心（含 [lyricOffsetXDp]）不变。
      */
@@ -648,6 +653,7 @@ data class PlayerDisplayPrefs(
             vinylOffsetXDp = vinylOffsetXDp.finiteCoerceIn(VINYL_OFFSET_MIN, VINYL_OFFSET_MAX, 0f),
             vinylOffsetYDp = vinylOffsetYDp.finiteCoerceIn(VINYL_OFFSET_Y_MIN, VINYL_OFFSET_Y_MAX, 0f),
             lyricOffsetXDp = lyricOffsetXDp.finiteCoerceIn(LYRIC_OFFSET_MIN, LYRIC_OFFSET_MAX, 0f),
+            lyricOffsetYDp = lyricOffsetYDp.finiteCoerceIn(LYRIC_OFFSET_MIN, LYRIC_OFFSET_MAX, 0f),
             titleOffsetYDp = titleOffsetYDp.finiteCoerceIn(
                 TITLE_OFFSET_Y_MIN,
                 TITLE_OFFSET_Y_MAX,
@@ -871,6 +877,7 @@ class PlayerDisplayPrefsStore(
             vinylOffsetYDp = prefs.safeFloat(KEY_VINYL_Y, 0f),
             vinylAbsoluteCenter = prefs.safeBoolean(KEY_VINYL_ABS, false),
             lyricOffsetXDp = prefs.safeFloat(KEY_LYRIC_X, 0f),
+            lyricOffsetYDp = prefs.safeFloat(KEY_LYRIC_Y, 0f),
             dynamicLyrics = prefs.safeBoolean(KEY_DYNAMIC_LYRICS, false),
             vinylFullCover = prefs.safeBoolean(KEY_VINYL_FULL_COVER, false),
             vinylSizeScale = prefs.safeFloat(
@@ -949,6 +956,7 @@ class PlayerDisplayPrefsStore(
                 .putFloat(KEY_VINYL_Y, v.vinylOffsetYDp)
                 .putBoolean(KEY_VINYL_ABS, v.vinylAbsoluteCenter)
                 .putFloat(KEY_LYRIC_X, v.lyricOffsetXDp)
+                .putFloat(KEY_LYRIC_Y, v.lyricOffsetYDp)
                 .putBoolean(KEY_DYNAMIC_LYRICS, v.dynamicLyrics)
                 .putBoolean(KEY_VINYL_FULL_COVER, v.vinylFullCover)
                 .putFloat(KEY_VINYL_SIZE_SCALE, v.vinylSizeScale)
@@ -1001,6 +1009,7 @@ class PlayerDisplayPrefsStore(
         private const val KEY_VINYL_Y = "vinyl_offset_y_dp"
         private const val KEY_VINYL_ABS = "vinyl_absolute_center"
         private const val KEY_LYRIC_X = "lyric_offset_x_dp"
+        private const val KEY_LYRIC_Y = "lyric_offset_y_dp"
         private const val KEY_DYNAMIC_LYRICS = "dynamic_lyrics"
         private const val KEY_VINYL_FULL_COVER = "vinyl_full_cover"
         private const val KEY_VINYL_SIZE_SCALE = "vinyl_size_scale"

@@ -118,6 +118,11 @@ class PlaylistCoordinator(
     private var preparedShuffleNext: Int? = null
     /** 随机模式真实播放历史（队列下标），用于上一首回退 */
     private val shuffleHistory = ArrayDeque<Int>()
+    /**
+     * UI（如竖屏评论）打开时挂起曲末自动切歌：先停在曲末，关闭后再进下一首。
+     */
+    private var holdAutoAdvance = false
+    private var pendingAdvanceAfterHold = false
 
     private val playerListener = object : Player.Listener {
         override fun onPlaybackStateChanged(playbackState: Int) {
@@ -219,6 +224,7 @@ class PlaylistCoordinator(
         unplayableUntil.clear()
         preparedShuffleNext = null
         shuffleHistory.clear()
+        pendingAdvanceAfterHold = false
         retryCount = 0
         retryIndex = -1
         _ui.update {
@@ -240,6 +246,7 @@ class PlaylistCoordinator(
 
     /** 在当前队列内跳转到指定索引（保留队列与随机历史策略）。 */
     fun playIndex(index: Int) {
+        pendingAdvanceAfterHold = false
         val q = _ui.value.queue
         if (index !in q.indices) return
         if (index == _ui.value.index) {
@@ -290,6 +297,8 @@ class PlaylistCoordinator(
         unplayableUntil.clear()
         preparedShuffleNext = null
         shuffleHistory.clear()
+        holdAutoAdvance = false
+        pendingAdvanceAfterHold = false
         exoPlayer.stop()
         exoPlayer.clearMediaItems()
         playbackMode = _ui.value.playbackMode
@@ -350,6 +359,7 @@ class PlaylistCoordinator(
     }
 
     fun skipNext() {
+        pendingAdvanceAfterHold = false
         val i = _ui.value.index
         if (!_ui.value.hasQueue || i < 0) return
         // 单曲循环：手动下一首与列表模式相同；仅播完自动重播（见 onEnded）
@@ -358,6 +368,7 @@ class PlaylistCoordinator(
     }
 
     fun skipPrevious() {
+        pendingAdvanceAfterHold = false
         val i = _ui.value.index
         if (!_ui.value.hasQueue || i < 0) return
         if (playbackMode == PlaybackMode.SHUFFLE) {
@@ -435,7 +446,45 @@ class PlaylistCoordinator(
         }
     }
 
+    /**
+     * 竖屏评论等 UI 打开时：曲末先停住，不自动切歌；关闭后再进下一首。
+     */
+    fun setHoldAutoAdvance(hold: Boolean) {
+        if (holdAutoAdvance == hold) {
+            if (!hold && pendingAdvanceAfterHold) {
+                pendingAdvanceAfterHold = false
+                advanceAfterCommentsHold()
+            }
+            return
+        }
+        holdAutoAdvance = hold
+        if (hold) {
+            // 单曲循环时 Exo 可能不进 STATE_ENDED；评论打开期间强制 OFF
+            exoPlayer.repeatMode = Player.REPEAT_MODE_OFF
+        } else {
+            applyRepeatMode()
+            if (pendingAdvanceAfterHold) {
+                pendingAdvanceAfterHold = false
+                advanceAfterCommentsHold()
+            }
+        }
+    }
+
     private fun onEnded() {
+        if (holdAutoAdvance) {
+            pendingAdvanceAfterHold = true
+            exoPlayer.pause()
+            _ui.update {
+                it.copy(
+                    isPlaying = false,
+                    playWhenReady = false,
+                    buffering = false,
+                    loadPending = false,
+                )
+            }
+            persistSnapshot()
+            return
+        }
         when (playbackMode) {
             PlaybackMode.REPEAT_ONE -> {
                 exoPlayer.seekTo(0L)
@@ -458,6 +507,17 @@ class PlaylistCoordinator(
                     persistSnapshot()
                 }
             }
+        }
+    }
+
+    /** 评论关闭后：按「下一首」切歌并播放（含原单曲循环模式下的挂起曲末）。 */
+    private fun advanceAfterCommentsHold() {
+        val ni = nextPlayableIndex(_ui.value.index)
+        if (ni != null) {
+            loadAndPlayIndex(ni, recordShuffleHistory = true)
+        } else {
+            applyRepeatMode()
+            persistSnapshot()
         }
     }
 

@@ -100,7 +100,9 @@ import androidx.compose.runtime.withFrameMillis
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.composed
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -109,6 +111,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
@@ -120,6 +124,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.layout.onSizeChanged
@@ -177,30 +182,34 @@ import androidx.compose.ui.unit.lerp as lerpDp
 /**
  * 空白区域手势：
  * - 纯点击（相对按下点位移未超 touchSlop）→ [onTap]
- * - 单次按住并明确下拖超过阈值 → [onSwipeDown]
+ * - 单次按住并明确下拖超过阈值 → [onSwipeDown]；为 null 时不认领下滑（留给歌词列表滚动）
  * - 回调经 [rememberUpdatedState] 更新，避免动画重组重启 pointerInput
  * - 位移相对「按下坐标」计算
- * - Main 通道若子控件（歌词 LazyColumn / 黑胶横滑）已 consume，则本手势放弃退出/点击；
- *   但若 Initial 已判定明显下滑，优先认领退出（黑胶上的轻触检测不得抢占）
+ * - 按下即可跟踪（不要求 unconsumed）：子级 clickable 常在 down 时 consume，
+ *   否则空白区永远进不了下滑退出；已成形的下滑在 Initial 认领并 consume。
+ * - Main 上子控件已 consume 且位移明显不是下滑时，才让出给歌词列表 / 黑胶横滑等。
  */
 private fun Modifier.nowPlayingBlankGestures(
     dismissThresholdPx: Float,
     onTap: (() -> Unit)?,
-    onSwipeDown: () -> Unit,
+    onSwipeDown: (() -> Unit)?,
 ): Modifier = composed {
     val tapRef = rememberUpdatedState(onTap)
     val swipeRef = rememberUpdatedState(onSwipeDown)
-    Modifier.pointerInput(dismissThresholdPx) {
+    val swipeEnabled = onSwipeDown != null
+    Modifier.pointerInput(dismissThresholdPx, swipeEnabled) {
         val touchSlop = viewConfiguration.touchSlop
         val longPressMs = viewConfiguration.longPressTimeoutMillis
         awaitEachGesture {
-            val down = awaitFirstDown(requireUnconsumed = true)
+            // false：空白 clickable / 控件会先 consume down，仍需能跟踪下滑退出
+            val down = awaitFirstDown(requireUnconsumed = false)
             val pointerId = down.id
             val start = down.position
             val downUptime = System.currentTimeMillis()
             var decidedSwipeDown = false
             var dismissed = false
             var yieldedToChild = false
+            var childConsumed = false
 
             while (true) {
                 // Initial：在子控件消费前读取位移（下滑退出 / 防误触点击）
@@ -209,35 +218,55 @@ private fun Modifier.nowPlayingBlankGestures(
                 val dx = rawChange.position.x - start.x
                 val dy = rawChange.position.y - start.y
 
-                val event = awaitPointerEvent(PointerEventPass.Main)
-                val change = event.changes.find { it.id == pointerId } ?: break
-
                 // 退出判定用更大 slop，把常规 touchSlop 留给歌词 LazyColumn 优先认领垂直滚动。
-                // 须先于 isConsumed 让出：黑胶横滑可能中途 consume，但仍允许已成形的下滑退出。
                 val dismissSlop = touchSlop * 3.5f
                 val downDominant =
-                    dy > dismissSlop &&
+                    swipeEnabled &&
+                        dy > dismissSlop &&
                         dy > abs(dx) * 1.6f
-                if (downDominant) {
+                if (downDominant && !dismissed && dy >= dismissThresholdPx) {
+                    // 仅达退出阈值才在 Initial consume。
+                    // 过早 consume 会抢走右上角设置等子级 clickable（手指微抖即失效）。
+                    rawChange.consume()
                     decidedSwipeDown = true
-                    change.consume()
-                    if (!dismissed && dy >= dismissThresholdPx) {
-                        dismissed = true
-                        swipeRef.value()
-                        while (true) {
-                            val rest = awaitPointerEvent(PointerEventPass.Main)
-                            val c = rest.changes.find { it.id == pointerId } ?: return@awaitEachGesture
-                            c.consume()
-                            if (!c.pressed) return@awaitEachGesture
-                        }
-                    }
-                } else if (change.isConsumed && !decidedSwipeDown) {
-                    // 歌词列表 / 黑胶横滑已接手 → 不再争抢
-                    yieldedToChild = true
+                    dismissed = true
+                    swipeRef.value?.invoke()
                     while (true) {
                         val rest = awaitPointerEvent(PointerEventPass.Main)
                         val c = rest.changes.find { it.id == pointerId } ?: return@awaitEachGesture
+                        c.consume()
                         if (!c.pressed) return@awaitEachGesture
+                    }
+                }
+
+                val event = awaitPointerEvent(PointerEventPass.Main)
+                val change = event.changes.find { it.id == pointerId } ?: break
+                if (change.isConsumed) childConsumed = true
+
+                if (!decidedSwipeDown) {
+                    val movedEnough = abs(dx) > touchSlop || abs(dy) > touchSlop
+                    val verticalIntent = abs(dy) > touchSlop && abs(dy) >= abs(dx) * 0.65f
+                    // 禁用下滑退出时：竖直意图直接让给歌词列表，绝不 consume
+                    if (!swipeEnabled && verticalIntent) {
+                        yieldedToChild = true
+                        while (true) {
+                            val rest = awaitPointerEvent(PointerEventPass.Main)
+                            val c = rest.changes.find { it.id == pointerId } ?: return@awaitEachGesture
+                            if (!c.pressed) return@awaitEachGesture
+                        }
+                    } else if (change.isConsumed) {
+                        // 按下瞬间被 clickable consume 仍继续跟踪；
+                        // 仅在已有明显「非下滑」位移后让给子手势（横滑切歌 / 列表滚动）
+                        val maybeDismiss = swipeEnabled && dy > touchSlop && dy >= abs(dx) * 0.85f
+                        if (movedEnough && !maybeDismiss) {
+                            yieldedToChild = true
+                            while (true) {
+                                val rest = awaitPointerEvent(PointerEventPass.Main)
+                                val c = rest.changes.find { it.id == pointerId }
+                                    ?: return@awaitEachGesture
+                                if (!c.pressed) return@awaitEachGesture
+                            }
+                        }
                     }
                 }
 
@@ -246,13 +275,17 @@ private fun Modifier.nowPlayingBlankGestures(
                 if (!change.pressed) {
                     val heldLong =
                         System.currentTimeMillis() - downUptime >= longPressMs
-                    // 长按松手不当单击，避免误唤醒底部播放组件
+                    // 横屏空白单击放宽 slop：旋转后手指微抖不应判成无效点击
+                    val tapSlop = touchSlop * 3.25f
+                    // 子级按钮（设置/旋转锁等）已消费本次手势时，绝不能再触发空白单击，
+                    // 否则会 openSettings 后又被 toggleControls → closeSettings 瞬间关掉。
                     if (
+                        !childConsumed &&
                         !decidedSwipeDown &&
                         !yieldedToChild &&
                         !heldLong &&
-                        abs(dx) < touchSlop &&
-                        abs(dy) < touchSlop
+                        abs(dx) < tapSlop &&
+                        abs(dy) < tapSlop
                     ) {
                         tapRef.value?.invoke()
                     }
@@ -1043,6 +1076,8 @@ fun NowPlayingScreen(
     onCyclePlaybackMode: () -> Unit,
     onOpenSourcePlaylist: (() -> Unit)? = null,
     onPlayQueueIndex: (Int) -> Unit = {},
+    /** 竖屏评论打开时挂起曲末自动下一首 */
+    onHoldAutoAdvanceChange: (Boolean) -> Unit = {},
     /** 横屏额外左侧 inset（本页已无 Dock，通常为 0） */
     landscapeStartInset: Dp = 0.dp,
     spectrum: AudioSpectrumBands = AudioSpectrumBands.ZERO,
@@ -1052,13 +1087,6 @@ fun NowPlayingScreen(
     var portraitLyricsOpen by rememberSaveable { mutableStateOf(false) }
     var portraitPosterOpen by remember { mutableStateOf(false) }
     var portraitPosterFrozenPositionMs by remember { mutableLongStateOf(0L) }
-    // 旋转离开竖屏时清除歌词页状态，避免横竖切换残留
-    LaunchedEffect(isLandscape) {
-        if (isLandscape) {
-            portraitLyricsOpen = false
-            portraitPosterOpen = false
-        }
-    }
     var sliderDragging by remember { mutableStateOf(false) }
     var sliderValue by remember { mutableFloatStateOf(0f) }
 
@@ -1221,6 +1249,13 @@ fun NowPlayingScreen(
     // 设置面板磨砂源：横竖屏共用视觉源；配置数据彼此隔离
     val settingsHazeState = rememberHazeState()
     var portraitSettingsOpen by remember { mutableStateOf(false) }
+    var portraitScoreOpen by remember { mutableStateOf(false) }
+    var portraitLyricSelectOpen by remember { mutableStateOf(false) }
+    val portraitLyricSelectSelected: SnapshotStateSet<Int> = remember { mutableStateSetOf() }
+    val portraitLyricSelectPanel = remember { Animatable(0f) }
+    var portraitLyricSelectEverOpen by remember { mutableStateOf(false) }
+    var portraitLyricSelectResumeToken by remember { mutableIntStateOf(0) }
+    val portraitSelectEasing = remember { CubicBezierEasing(0.33f, 0f, 0.2f, 1f) }
     var portraitBackgroundEditorOpen by remember { mutableStateOf(false) }
     var portraitLyricStyleEditorOpen by remember { mutableStateOf(false) }
     var pendingPortraitLyricStyleEditor by remember { mutableStateOf(false) }
@@ -1242,6 +1277,13 @@ fun NowPlayingScreen(
     val portraitSheetScope = rememberCoroutineScope()
     val portraitSnapPoints = remember { floatArrayOf(1f / 3f, 2f / 3f, 1f) }
     var portraitSheetDragVel by remember { mutableFloatStateOf(0f) }
+    val portraitScorePanel = remember { Animatable(0f) }
+    val portraitScoreSheetFrac = remember { Animatable(2f / 3f) }
+    var portraitScoreSheetDragVel by remember { mutableFloatStateOf(0f) }
+    var portraitScoreRevealToken by remember { mutableIntStateOf(0) }
+    var portraitCommentsOpen by remember { mutableStateOf(false) }
+    val portraitCommentsPanel = remember { Animatable(0f) }
+    val portraitCommentsSheetFrac = remember { Animatable(2f / 3f) }
     LaunchedEffect(portraitSettingsOpen) {
         if (portraitSettingsOpen) {
             portraitSheetFrac.snapTo(1f / 3f)
@@ -1262,14 +1304,154 @@ fun NowPlayingScreen(
             )
         }
     }
+    LaunchedEffect(portraitScoreOpen) {
+        if (portraitScoreOpen) {
+            portraitScoreSheetFrac.snapTo(2f / 3f)
+            portraitScoreRevealToken++
+            portraitScorePanel.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(
+                    durationMillis = 420,
+                    easing = CubicBezierEasing(0.16f, 1.02f, 0.3f, 1f),
+                ),
+            )
+        } else {
+            portraitScorePanel.animateTo(
+                targetValue = 0f,
+                animationSpec = tween(
+                    durationMillis = 360,
+                    easing = CubicBezierEasing(0.4f, 0f, 0.2f, 1f),
+                ),
+            )
+        }
+    }
+    LaunchedEffect(portraitCommentsOpen) {
+        onHoldAutoAdvanceChange(portraitCommentsOpen)
+        if (portraitCommentsOpen) {
+            portraitCommentsSheetFrac.snapTo(2f / 3f)
+            portraitCommentsPanel.animateTo(
+                targetValue = 1f,
+                animationSpec = CommentSheetOpenSpec,
+            )
+        } else {
+            portraitCommentsPanel.animateTo(
+                targetValue = 0f,
+                animationSpec = CommentSheetCloseSpec,
+            )
+        }
+    }
+    DisposableEffect(onHoldAutoAdvanceChange) {
+        onDispose { onHoldAutoAdvanceChange(false) }
+    }
+    LaunchedEffect(portraitLyricSelectOpen) {
+        if (portraitLyricSelectOpen) {
+            portraitLyricSelectEverOpen = true
+            // 首帧先离开 0，避免 browsing 冻结与 selectT=0 叠出一帧浏览闪烁
+            if (portraitLyricSelectPanel.value < 0.001f) {
+                portraitLyricSelectPanel.snapTo(0.001f)
+            }
+            portraitLyricSelectPanel.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(
+                    durationMillis = 480,
+                    easing = portraitSelectEasing,
+                ),
+            )
+        } else if (portraitLyricSelectEverOpen) {
+            // 先播完收窗，再清选 / 回滚跟滚，避免出场闪烁
+            portraitLyricSelectPanel.animateTo(
+                targetValue = 0f,
+                animationSpec = tween(
+                    durationMillis = 480,
+                    easing = portraitSelectEasing,
+                ),
+            )
+            portraitLyricSelectSelected.clear()
+            portraitLyricSelectEverOpen = false
+            portraitLyricSelectResumeToken++
+        }
+    }
+    LaunchedEffect(track.id) {
+        portraitLyricSelectOpen = false
+        portraitLyricSelectSelected.clear()
+        portraitCommentsOpen = false
+    }
     val portraitSettingsT = portraitSettingsPanel.value
+    val portraitScoreT = portraitScorePanel.value
+    val portraitCommentsT = portraitCommentsPanel.value
+    val portraitLyricSelectT = portraitLyricSelectPanel.value
     fun closePortraitSettings() {
         flushPortraitDisplayPrefs()
         portraitSettingsOpen = false
     }
+    fun closePortraitScore() {
+        portraitScoreOpen = false
+    }
+    fun closePortraitComments() {
+        portraitCommentsOpen = false
+    }
+    fun closePortraitLyricSelect() {
+        portraitLyricSelectOpen = false
+    }
+
+    // 进入横屏：拆除全部竖屏叠层（含 Animatable），避免透明 OutsideDismiss 残留吞单击
+    LaunchedEffect(isLandscape) {
+        if (!isLandscape) return@LaunchedEffect
+        portraitLyricsOpen = false
+        portraitPosterOpen = false
+        portraitSettingsOpen = false
+        portraitScoreOpen = false
+        portraitCommentsOpen = false
+        portraitLyricSelectOpen = false
+        portraitLyricSelectSelected.clear()
+        portraitBackgroundEditorOpen = false
+        portraitLyricStyleEditorOpen = false
+        portraitLyricStyleSnapshot = null
+        portraitSettingsPanel.snapTo(0f)
+        portraitScorePanel.snapTo(0f)
+        portraitCommentsPanel.snapTo(0f)
+        portraitCommentsSheetFrac.snapTo(2f / 3f)
+        portraitLyricSelectPanel.snapTo(0f)
+        portraitLyricStylePanel.snapTo(0f)
+    }
+
+    fun openPortraitLyricSelect() {
+        if (portraitBackgroundEditorOpen || portraitLyricStyleEditorOpen ||
+            portraitPosterOpen
+        ) {
+            return
+        }
+        closePortraitSettings()
+        closePortraitScore()
+        closePortraitComments()
+        portraitLyricSelectSelected.clear()
+        portraitLyricsOpen = true
+        portraitLyricSelectOpen = true
+    }
+    fun openPortraitScore() {
+        closePortraitSettings()
+        closePortraitLyricSelect()
+        closePortraitComments()
+        portraitScoreOpen = true
+    }
+    fun openPortraitSettings() {
+        closePortraitScore()
+        closePortraitLyricSelect()
+        closePortraitComments()
+        portraitSettingsOpen = true
+    }
+    fun openPortraitComments() {
+        closePortraitSettings()
+        closePortraitScore()
+        closePortraitLyricSelect()
+        portraitCommentsOpen = true
+    }
 
     fun openPortraitPoster() {
         closePortraitSettings()
+        closePortraitScore()
+        closePortraitComments()
+        closePortraitLyricSelect()
         portraitPosterFrozenPositionMs = lyricPos
         portraitLyricsOpen = true
         portraitPosterOpen = true
@@ -1344,6 +1526,27 @@ fun NowPlayingScreen(
             )
         }
     }
+
+    fun snapPortraitScoreSheet() {
+        val cur = portraitScoreSheetFrac.value
+        val vel = portraitScoreSheetDragVel
+        portraitScoreSheetDragVel = 0f
+        if (cur < 0.20f && vel <= 0f) {
+            closePortraitScore()
+            return
+        }
+        val projected = (cur + vel * 10f).coerceIn(0f, 1f)
+        val target = portraitSnapPoints.minBy { kotlin.math.abs(it - projected) }
+        portraitSheetScope.launch {
+            portraitScoreSheetFrac.animateTo(
+                target,
+                animationSpec = spring(
+                    dampingRatio = 0.82f,
+                    stiffness = 380f,
+                ),
+            )
+        }
+    }
     BackHandler(
         enabled = !isLandscape && (
             portraitLyricStyleEditorOpen || portraitLyricStylePanel.value > 0.001f
@@ -1353,7 +1556,15 @@ fun NowPlayingScreen(
     }
     BackHandler(
         enabled = !isLandscape &&
+            (portraitLyricSelectOpen || portraitLyricSelectT > 0.001f),
+    ) {
+        closePortraitLyricSelect()
+    }
+    BackHandler(
+        enabled = !isLandscape &&
             portraitLyricsOpen &&
+            !portraitLyricSelectOpen &&
+            portraitLyricSelectT <= 0.001f &&
             !portraitLyricStyleEditorOpen &&
             !portraitPosterOpen &&
             portraitLyricStylePanel.value <= 0.001f,
@@ -1370,6 +1581,18 @@ fun NowPlayingScreen(
             !portraitLyricStyleEditorOpen,
     ) {
         closePortraitSettings()
+    }
+    BackHandler(enabled = !isLandscape && portraitScoreOpen) {
+        closePortraitScore()
+    }
+    BackHandler(enabled = !isLandscape && portraitCommentsOpen) {
+        if (portraitCommentsSheetFrac.value >= 0.97f) {
+            portraitSheetScope.launch {
+                portraitCommentsSheetFrac.animateCommentSheetFrac(2f / 3f)
+            }
+        } else {
+            closePortraitComments()
+        }
     }
 
     // 打开歌词样式：先确保歌词页铺开并量到 band，再钉克隆
@@ -1449,7 +1672,7 @@ fun NowPlayingScreen(
             }
             if (reopenSettingsAfterPortraitLyricStyle) {
                 reopenSettingsAfterPortraitLyricStyle = false
-                portraitSettingsOpen = true
+                openPortraitSettings()
             }
             if (!portraitLyricStyleEditorOpen) {
                 portraitLyricStyleSnapshot = null
@@ -1667,7 +1890,13 @@ fun NowPlayingScreen(
                     seekPositionMs = displayPos,
                     lyricsExpanded = portraitLyricsOpen,
                     onOpenLyrics = { portraitLyricsOpen = true },
-                    onCollapseLyrics = { portraitLyricsOpen = false },
+                    onCollapseLyrics = {
+                        if (portraitLyricSelectOpen || portraitLyricSelectT > 0.001f) {
+                            closePortraitLyricSelect()
+                        } else {
+                            portraitLyricsOpen = false
+                        }
+                    },
                     playWhenReady = state.playWhenReady,
                     buffering = state.loadPending,
                     onTogglePlay = onTogglePlay,
@@ -1691,10 +1920,16 @@ fun NowPlayingScreen(
                     },
                     onDismiss = onDismiss,
                     dismissSwipeThresholdPx = dismissSwipeThresholdPx,
-                    onOpenSettings = { portraitSettingsOpen = true },
+                    onOpenSettings = { openPortraitSettings() },
+                    onOpenScore = { openPortraitScore() },
                     onOpenPoster = { openPortraitPoster() },
+                    onOpenComments = { openPortraitComments() },
                     settingsOpen = portraitSettingsOpen,
+                    scoreOpen = portraitScoreOpen,
+                    commentsOpen = portraitCommentsOpen,
                     onCloseSettings = { closePortraitSettings() },
+                    onCloseScore = { closePortraitScore() },
+                    onCloseComments = { closePortraitComments() },
                     displayPrefs = portraitDisplayPrefs,
                     peekNextTrack = state.peekNextTrack,
                     peekPrevTrack = state.peekPrevTrack,
@@ -1706,6 +1941,27 @@ fun NowPlayingScreen(
                     } else {
                         null
                     },
+                    lyricSelectOpen = portraitLyricSelectOpen,
+                    lyricSelectProgress = portraitLyricSelectT,
+                    lyricSelectSelected = portraitLyricSelectSelected,
+                    lyricSelectResumeToken = portraitLyricSelectResumeToken,
+                    onLyricSelectLongPress = { openPortraitLyricSelect() },
+                    onLyricSelectToggle = { index ->
+                        if (index in portraitLyricSelectSelected) {
+                            portraitLyricSelectSelected.remove(index)
+                        } else {
+                            portraitLyricSelectSelected.add(index)
+                        }
+                    },
+                    onLyricSelectCancel = { closePortraitLyricSelect() },
+                    onLyricSelectCopy = {
+                        copyLyricSelection(
+                            context,
+                            lyricLines,
+                            portraitLyricSelectSelected.toSet(),
+                        )
+                        closePortraitLyricSelect()
+                    },
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -1716,6 +1972,7 @@ fun NowPlayingScreen(
             val density = LocalDensity.current
             NowPlayingSettingsOutsideDismiss(
                 onDismiss = { closePortraitSettings() },
+                enabled = portraitSettingsOpen || portraitSettingsT > 0.05f,
                 modifier = Modifier
                     .fillMaxSize()
                     .graphicsLayer { alpha = portraitSettingsT },
@@ -1769,6 +2026,109 @@ fun NowPlayingScreen(
                             transformOrigin = TransformOrigin(0.5f, 1f)
                             translationY = (1f - portraitSettingsT) * sheetHPx
                             alpha = portraitSettingsT
+                        },
+                )
+            }
+        }
+
+        // 竖屏曲谱：与设置同壳层动画；打开固定 2/3，可吸附 1/3·2/3·全屏
+        if (!isLandscape && (portraitScoreT > 0.001f || portraitScoreOpen)) {
+            val density = LocalDensity.current
+            NowPlayingSettingsOutsideDismiss(
+                onDismiss = { closePortraitScore() },
+                enabled = portraitScoreOpen || portraitScoreT > 0.05f,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { alpha = portraitScoreT },
+            )
+            BoxWithConstraints(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .fillMaxHeight(),
+            ) {
+                val screenH = constraints.maxHeight.toFloat().coerceAtLeast(1f)
+                val statusTopPx = with(density) {
+                    WindowInsets.statusBars.asPaddingValues().calculateTopPadding().toPx()
+                }
+                val maxSheetH = (screenH - statusTopPx).coerceAtLeast(screenH * 0.5f)
+                val sheetHPx = (portraitScoreSheetFrac.value * maxSheetH)
+                    .coerceIn(maxSheetH * 0.12f, maxSheetH)
+                val sheetHDp = with(density) { sheetHPx.toDp() }
+                PortraitQueueSheet(
+                    tracks = state.queue,
+                    currentIndex = state.index,
+                    revealToken = portraitScoreRevealToken,
+                    onPlayIndex = onPlayQueueIndex,
+                    onDragHandleVertical = { dragAmount ->
+                        val deltaFrac = -dragAmount / maxSheetH
+                        portraitScoreSheetDragVel =
+                            portraitScoreSheetDragVel * 0.62f + deltaFrac * 0.38f
+                        val next = (portraitScoreSheetFrac.value + deltaFrac)
+                            .coerceIn(0.12f, 1f)
+                        portraitSheetScope.launch { portraitScoreSheetFrac.snapTo(next) }
+                    },
+                    onDragHandleEnd = { snapPortraitScoreSheet() },
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .height(sheetHDp)
+                        .graphicsLayer {
+                            transformOrigin = TransformOrigin(0.5f, 1f)
+                            translationY = (1f - portraitScoreT) * sheetHPx
+                            alpha = portraitScoreT
+                        },
+                )
+            }
+        }
+
+        // 竖屏评论：与曲谱同壳层进出场；固定打开 2/3，上箭头扩全屏（不可拖拽改高）
+        if (!isLandscape && (portraitCommentsT > 0.001f || portraitCommentsOpen)) {
+            val density = LocalDensity.current
+            val commentCookie = app.sessionRepository.session.value?.cookie.orEmpty()
+            NowPlayingSettingsOutsideDismiss(
+                onDismiss = { closePortraitComments() },
+                enabled = portraitCommentsOpen || portraitCommentsT > 0.05f,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { alpha = portraitCommentsT },
+            )
+            BoxWithConstraints(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .fillMaxHeight(),
+            ) {
+                val screenH = constraints.maxHeight.toFloat().coerceAtLeast(1f)
+                // 全屏时弹窗/背景铺满到屏幕顶（含状态栏区域）；内容区仍自留安全边距
+                val maxSheetH = screenH
+                val sheetHPx = (portraitCommentsSheetFrac.value * maxSheetH)
+                    .coerceIn(maxSheetH * (2f / 3f), maxSheetH)
+                val sheetHDp = with(density) { sheetHPx.toDp() }
+                PortraitCommentsSheet(
+                    songId = track.id,
+                    cookie = commentCookie,
+                    userClient = userClient,
+                    openProgress = portraitCommentsT,
+                    sheetFrac = portraitCommentsSheetFrac.value,
+                    onExpandFullscreen = {
+                        portraitSheetScope.launch {
+                            portraitCommentsSheetFrac.animateCommentSheetFrac(1f)
+                        }
+                    },
+                    onCollapseToTwoThirds = {
+                        portraitSheetScope.launch {
+                            portraitCommentsSheetFrac.animateCommentSheetFrac(2f / 3f)
+                        }
+                    },
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .height(sheetHDp)
+                        .graphicsLayer {
+                            transformOrigin = TransformOrigin(0.5f, 1f)
+                            translationY = (1f - portraitCommentsT) * sheetHPx
+                            alpha = portraitCommentsT
                         },
                 )
             }
@@ -2206,9 +2566,15 @@ private fun PortraitPlayerBody(
     onDismiss: () -> Unit,
     dismissSwipeThresholdPx: Float,
     onOpenSettings: (() -> Unit)? = null,
+    onOpenScore: (() -> Unit)? = null,
     onOpenPoster: (() -> Unit)? = null,
+    onOpenComments: (() -> Unit)? = null,
     settingsOpen: Boolean = false,
+    scoreOpen: Boolean = false,
+    commentsOpen: Boolean = false,
     onCloseSettings: (() -> Unit)? = null,
+    onCloseScore: (() -> Unit)? = null,
+    onCloseComments: (() -> Unit)? = null,
     displayPrefs: PlayerDisplayPrefs = PlayerDisplayPrefs(),
     peekNextTrack: TrackRow? = null,
     peekPrevTrack: TrackRow? = null,
@@ -2216,6 +2582,14 @@ private fun PortraitPlayerBody(
     lyricContentAlpha: Float = 1f,
     onLyricBandCoords: ((LayoutCoordinates) -> Unit)? = null,
     frozenLyricPositionMs: Long? = null,
+    lyricSelectOpen: Boolean = false,
+    lyricSelectProgress: Float = 0f,
+    lyricSelectSelected: Set<Int> = emptySet(),
+    lyricSelectResumeToken: Int = 0,
+    onLyricSelectLongPress: (() -> Unit)? = null,
+    onLyricSelectToggle: ((Int) -> Unit)? = null,
+    onLyricSelectCancel: (() -> Unit)? = null,
+    onLyricSelectCopy: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val activity = LocalActivity.current
@@ -2223,7 +2597,6 @@ private fun PortraitPlayerBody(
     val rotationLocked = com.kite.zmusic.ui.orientation.SessionRotationLockStore.locked
     val systemAutoRotate =
         com.kite.zmusic.ui.orientation.rememberSystemAutoRotateEnabled()
-    val coverClickIx = remember { MutableInteractionSource() }
     var vinylSkipDir by remember { mutableStateOf(VinylSkipDirection.Next) }
     var vinylBusy by remember { mutableStateOf(false) }
     val vinylSizeScale = displayPrefs.vinylSizeScale
@@ -2234,8 +2607,21 @@ private fun PortraitPlayerBody(
     val vinylFullCover = displayPrefs.vinylFullCover
     val uiScale = displayPrefs.uiScale
         .coerceIn(PlayerDisplayPrefs.UI_MIN, PlayerDisplayPrefs.UI_MAX)
+    val selectT = lyricSelectProgress.coerceIn(0f, 1f)
+    val chromeT = (1f - selectT).coerceIn(0f, 1f)
+    val density = LocalDensity.current
+    val navBottom = WindowInsets.navigationBars
+        .asPaddingValues()
+        .calculateBottomPadding()
+    // 与 PortraitLyricSelectBar 占位一致；仅选句时收放占位。
+    // 进/出歌词页绝不切换 chrome 挂载方式，否则中间区高度突变导致黑胶上下跳。
+    val selectBarReserve = 48.dp + 16.dp + navBottom.coerceAtLeast(12.dp)
+    var transportReserve by remember { mutableStateOf(200.dp) }
+    val topReserve = 56.dp * chromeT
+    val bottomReserve = androidx.compose.ui.unit.lerp(selectBarReserve, transportReserve, chromeT)
+    val selectUiActive = lyricSelectOpen || selectT > 0.001f
 
-    Column(
+    Box(
         modifier
             .fillMaxSize()
             .graphicsLayer {
@@ -2247,190 +2633,333 @@ private fun PortraitPlayerBody(
             .nowPlayingBlankGestures(
                 dismissThresholdPx = dismissSwipeThresholdPx,
                 onTap = null,
-                onSwipeDown = {
-                    when {
-                        settingsOpen -> onCloseSettings?.invoke()
-                        lyricsExpanded -> onCollapseLyrics()
-                        else -> onDismiss()
-                    }
+                onSwipeDown = when {
+                    // 歌词页 / 选句：下滑只滚列表，点按收起或点取消；勿抢手势
+                    lyricSelectOpen || selectT > 0.001f || lyricsExpanded -> null
+                    commentsOpen -> onCloseComments
+                    settingsOpen -> onCloseSettings
+                    scoreOpen -> onCloseScore
+                    else -> onDismiss
                 },
             )
             .padding(horizontal = 4.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        // 顶部信息常显（封面页 / 歌词页共用）
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
+        Column(
+            Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            NowPlayingDismissIconButton(
-                onClick = onDismiss,
-                chromeBackground = false,
-            )
-            Text(
-                text = track.name,
-                style = TextStyle(
-                    color = LyricCurrent,
-                    fontFamily = FontFamily.SansSerif,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 19.sp,
-                    letterSpacing = 0.2.sp,
-                    textAlign = TextAlign.Start,
-                ),
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
-            NowPlayingRotationLockButton(
-                locked = rotationLocked,
-                forceToLandscape = if (systemAutoRotate) null else true,
-                chromeBackground = false,
-                onClick = {
-                    if (systemAutoRotate) {
-                        rotationLock.toggle(activity)
-                    } else {
-                        rotationLock.forceOrientation(activity, landscape = true)
-                    }
-                },
-            )
-        }
-        Spacer(Modifier.height(8.dp))
-
-        AnimatedContent(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth(),
-            targetState = lyricsExpanded,
-            transitionSpec = {
-                fadeIn(tween(280)) togetherWith fadeOut(tween(200))
-            },
-            label = "portraitLyricMode",
-        ) { expanded ->
-            if (!expanded) {
-                // 空白区点击进歌词；黑胶置顶承接水平拖拽切歌，避免父级 clickable 抢手势
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .fillMaxHeight(),
-                    contentAlignment = Alignment.Center,
+            if (!selectUiActive) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    NowPlayingDismissIconButton(
+                        onClick = onDismiss,
+                        chromeBackground = false,
+                    )
+                    Text(
+                        text = track.name,
+                        style = TextStyle(
+                            color = LyricCurrent,
+                            fontFamily = FontFamily.SansSerif,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 19.sp,
+                            letterSpacing = 0.2.sp,
+                            textAlign = TextAlign.Start,
+                        ),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    NowPlayingRotationLockButton(
+                        locked = rotationLocked,
+                        forceToLandscape = if (systemAutoRotate) null else true,
+                        chromeBackground = false,
+                        onClick = {
+                            if (systemAutoRotate) {
+                                rotationLock.toggle(activity)
+                            } else {
+                                rotationLock.forceOrientation(activity, landscape = true)
+                            }
+                        },
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+            } else {
+                // 选句：顶栏改为叠层，这里只保留连续插值占位
+                Spacer(Modifier.height(topReserve))
+            }
+
+            AnimatedContent(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                targetState = lyricsExpanded,
+                transitionSpec = {
+                    (
+                        fadeIn(tween(280)) togetherWith fadeOut(tween(200))
+                        ) using SizeTransform(clip = false)
+                },
+                label = "portraitLyricMode",
+            ) { expanded ->
+                if (!expanded) {
                     Box(
                         Modifier
-                            .matchParentSize()
-                            .clickable(
-                                interactionSource = coverClickIx,
-                                indication = null,
-                                onClick = onOpenLyrics,
-                            ),
-                    )
-                    BoxWithConstraints(Modifier.fillMaxWidth()) {
-                        val base = maxWidth.coerceAtMost(312.dp).coerceAtLeast(200.dp)
-                        val side = base * vinylSizeScale
+                            .fillMaxWidth()
+                            .fillMaxHeight(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        // 勿用 clickable：down 即 consume，空白区无法下滑退出播放页
                         Box(
                             Modifier
-                                .size(side)
-                                .align(Alignment.Center)
-                                .offset(y = vinylOffsetY),
-                        ) {
-                            VinylTransitionStage(
-                                track = track,
-                                peekNext = peekNextTrack,
-                                peekPrev = peekPrevTrack,
-                                spinning = playWhenReady && !buffering && !vinylBusy,
-                                direction = vinylSkipDir,
-                                gesturesEnabled = !settingsOpen,
-                                onTransitionRunningChange = { vinylBusy = it },
-                                onCommitSkip = { dir ->
-                                    vinylSkipDir = dir
-                                    when (dir) {
-                                        VinylSkipDirection.Next -> onSkipNext()
-                                        VinylSkipDirection.Previous -> onSkipPrev()
-                                    }
-                                },
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .vinylLightTapGestures(onTap = onOpenLyrics),
-                                fullCover = vinylFullCover,
-                                centerRadiusFrac = 0.20f,
-                                outerScale = 1f,
-                                plateColors = VinylPlateColors.Black,
-                                gestureDamping = displayPrefs.vinylGestureDamping,
-                            )
+                                .matchParentSize()
+                                .vinylLightTapGestures(onTap = onOpenLyrics),
+                        )
+                        BoxWithConstraints(Modifier.fillMaxWidth()) {
+                            val base = maxWidth.coerceAtMost(312.dp).coerceAtLeast(200.dp)
+                            val side = base * vinylSizeScale
+                            Box(
+                                Modifier
+                                    .size(side)
+                                    .align(Alignment.Center)
+                                    .offset(y = vinylOffsetY),
+                            ) {
+                                VinylTransitionStage(
+                                    track = track,
+                                    peekNext = peekNextTrack,
+                                    peekPrev = peekPrevTrack,
+                                    spinning = playWhenReady && !buffering && !vinylBusy,
+                                    direction = vinylSkipDir,
+                                    gesturesEnabled = !settingsOpen && !commentsOpen,
+                                    onTransitionRunningChange = { vinylBusy = it },
+                                    onCommitSkip = { dir ->
+                                        vinylSkipDir = dir
+                                        when (dir) {
+                                            VinylSkipDirection.Next -> onSkipNext()
+                                            VinylSkipDirection.Previous -> onSkipPrev()
+                                        }
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .vinylLightTapGestures(onTap = onOpenLyrics),
+                                    fullCover = vinylFullCover,
+                                    centerRadiusFrac = 0.20f,
+                                    outerScale = 1f,
+                                    plateColors = VinylPlateColors.Black,
+                                    gestureDamping = displayPrefs.vinylGestureDamping,
+                                )
+                            }
                         }
                     }
+                } else {
+                    val outerIx = remember { MutableInteractionSource() }
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .fillMaxHeight(),
+                    ) {
+                        if (!selectUiActive || chromeT > 0.35f) {
+                            Box(
+                                Modifier
+                                    .matchParentSize()
+                                    .clickable(
+                                        interactionSource = outerIx,
+                                        indication = null,
+                                        onClick = onCollapseLyrics,
+                                    ),
+                            )
+                        }
+                        PortraitCinemaLyrics(
+                            lines = lines,
+                            positionMs = frozenLyricPositionMs ?: positionMs,
+                            trackDurationMs = durationMs,
+                            playingStyle = displayPrefs.lyricPlayingStyle,
+                            playedStyle = displayPrefs.lyricPlayedStyle,
+                            unplayedStyle = displayPrefs.lyricUnplayedStyle,
+                            playedCount = displayPrefs.lyricPlayedCount,
+                            upcomingCount = displayPrefs.lyricUpcomingCount,
+                            lineSpacingDp = displayPrefs.lyricLineSpacingDp,
+                            offsetYDp = displayPrefs.lyricOffsetYDp,
+                            contentAlpha = lyricContentAlpha,
+                            selectProgress = selectT,
+                            selectOpen = lyricSelectOpen,
+                            selectedIndices = lyricSelectSelected,
+                            onToggleSelect = onLyricSelectToggle,
+                            onLongPressLine = { onLyricSelectLongPress?.invoke() },
+                            resumeScrollToken = lyricSelectResumeToken,
+                            onSeekToMs = { ms ->
+                                onSeek(ms.coerceIn(0L, durationMs.coerceAtLeast(0L)))
+                                if (displayPrefs.lyricTapAutoPlay && !playWhenReady) {
+                                    onTogglePlay()
+                                }
+                            },
+                            onCollapse = onCollapseLyrics,
+                            onBandCoords = onLyricBandCoords,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .fillMaxHeight(),
+                        )
+                    }
                 }
-            } else {
-                val outerIx = remember { MutableInteractionSource() }
-                // 磨砂已由全屏 PortraitLyricReadingVeil 提供；此处仅歌词内容与收起手势
+            }
+
+            if (!selectUiActive) {
                 Box(
                     Modifier
                         .fillMaxWidth()
-                        .fillMaxHeight(),
-                ) {
-                    Box(
-                        Modifier
-                            .matchParentSize()
-                            .clickable(
-                                interactionSource = outerIx,
-                                indication = null,
-                                onClick = onCollapseLyrics,
-                            ),
-                    )
-                    PortraitCinemaLyrics(
-                        lines = lines,
-                        positionMs = frozenLyricPositionMs ?: positionMs,
-                        trackDurationMs = durationMs,
-                        playingStyle = displayPrefs.lyricPlayingStyle,
-                        playedStyle = displayPrefs.lyricPlayedStyle,
-                        unplayedStyle = displayPrefs.lyricUnplayedStyle,
-                        playedCount = displayPrefs.lyricPlayedCount,
-                        upcomingCount = displayPrefs.lyricUpcomingCount,
-                        lineSpacingDp = displayPrefs.lyricLineSpacingDp,
-                        contentAlpha = lyricContentAlpha,
-                        onSeekToMs = { ms ->
-                            onSeek(ms.coerceIn(0L, durationMs.coerceAtLeast(0L)))
+                        .onSizeChanged { sz ->
+                            if (sz.height > 0) {
+                                val h = with(density) { sz.height.toDp() }
+                                if (h > transportReserve) transportReserve = h
+                            }
                         },
-                        onCollapse = onCollapseLyrics,
-                        onBandCoords = onLyricBandCoords,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .fillMaxHeight()
-                            .padding(bottom = 20.dp),
+                ) {
+                    PlayerTransport(
+                        isPlaying = playWhenReady,
+                        buffering = buffering,
+                        onTogglePlay = onTogglePlay,
+                        onSkipNext = {
+                            vinylSkipDir = VinylSkipDirection.Next
+                            onSkipNext()
+                        },
+                        onSkipPrev = {
+                            vinylSkipDir = VinylSkipDirection.Previous
+                            onSkipPrev()
+                        },
+                        durationMs = durationMs,
+                        positionMs = seekPositionMs,
+                        sliderDragging = sliderDragging,
+                        sliderValue = sliderValue,
+                        onSliderDragStart = onSliderDragStart,
+                        onSliderChange = onSliderChange,
+                        onSliderDragEnd = onSliderDragEnd,
+                        playbackMode = playbackMode,
+                        onCyclePlaybackMode = onCyclePlaybackMode,
+                        trackLiked = trackLiked,
+                        onToggleLike = onToggleLike,
+                        portraitSlim = true,
+                        landscapeDense = false,
+                        onOpenSettings = onOpenSettings,
+                        onOpenScore = onOpenScore,
+                        onOpenPoster = onOpenPoster,
+                        onOpenComments = onOpenComments,
+                        controlsOffsetYDp = displayPrefs.portraitTransportOffsetYDp,
+                        controlsContainerInclude = displayPrefs.portraitTransportContainerInclude,
                     )
                 }
+            } else {
+                Spacer(Modifier.height(bottomReserve))
             }
         }
 
-        PlayerTransport(
-            isPlaying = playWhenReady,
-            buffering = buffering,
-            onTogglePlay = onTogglePlay,
-            onSkipNext = {
-                vinylSkipDir = VinylSkipDirection.Next
-                onSkipNext()
-            },
-            onSkipPrev = {
-                vinylSkipDir = VinylSkipDirection.Previous
-                onSkipPrev()
-            },
-            durationMs = durationMs,
-            positionMs = seekPositionMs,
-            sliderDragging = sliderDragging,
-            sliderValue = sliderValue,
-            onSliderDragStart = onSliderDragStart,
-            onSliderChange = onSliderChange,
-            onSliderDragEnd = onSliderDragEnd,
-            playbackMode = playbackMode,
-            onCyclePlaybackMode = onCyclePlaybackMode,
-            trackLiked = trackLiked,
-            onToggleLike = onToggleLike,
-            portraitSlim = true,
-            landscapeDense = false,
-            onOpenSettings = onOpenSettings,
-            onOpenPoster = onOpenPoster,
-            controlsOffsetYDp = displayPrefs.portraitTransportOffsetYDp,
-            controlsContainerInclude = displayPrefs.portraitTransportContainerInclude,
-        )
+        if (selectUiActive) {
+            // 顶栏叠层：只淡出位移，不改播放条测量约束
+            Column(
+                Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+                    .graphicsLayer {
+                        alpha = chromeT
+                        translationY = -(1f - chromeT) * 24f
+                    },
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    NowPlayingDismissIconButton(
+                        onClick = onDismiss,
+                        chromeBackground = false,
+                    )
+                    Text(
+                        text = track.name,
+                        style = TextStyle(
+                            color = LyricCurrent,
+                            fontFamily = FontFamily.SansSerif,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 19.sp,
+                            letterSpacing = 0.2.sp,
+                            textAlign = TextAlign.Start,
+                        ),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    NowPlayingRotationLockButton(
+                        locked = rotationLocked,
+                        forceToLandscape = if (systemAutoRotate) null else true,
+                        chromeBackground = false,
+                        onClick = {
+                            if (systemAutoRotate) {
+                                rotationLock.toggle(activity)
+                            } else {
+                                rotationLock.forceOrientation(activity, landscape = true)
+                            }
+                        },
+                    )
+                }
+            }
+
+            Box(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .onSizeChanged { sz ->
+                        if (sz.height > 0) {
+                            val h = with(density) { sz.height.toDp() }
+                            // 只抬高、不回落，避免淡出过程测量抖动改写占位
+                            if (h > transportReserve) transportReserve = h
+                        }
+                    }
+                    .graphicsLayer {
+                        alpha = chromeT
+                        translationY = (1f - chromeT) * 28f
+                    },
+            ) {
+                PlayerTransport(
+                    isPlaying = playWhenReady,
+                    buffering = buffering,
+                    onTogglePlay = onTogglePlay,
+                    onSkipNext = {
+                        vinylSkipDir = VinylSkipDirection.Next
+                        onSkipNext()
+                    },
+                    onSkipPrev = {
+                        vinylSkipDir = VinylSkipDirection.Previous
+                        onSkipPrev()
+                    },
+                    durationMs = durationMs,
+                    positionMs = seekPositionMs,
+                    sliderDragging = sliderDragging,
+                    sliderValue = sliderValue,
+                    onSliderDragStart = onSliderDragStart,
+                    onSliderChange = onSliderChange,
+                    onSliderDragEnd = onSliderDragEnd,
+                    playbackMode = playbackMode,
+                    onCyclePlaybackMode = onCyclePlaybackMode,
+                    trackLiked = trackLiked,
+                    onToggleLike = onToggleLike,
+                    portraitSlim = true,
+                    landscapeDense = false,
+                    onOpenSettings = onOpenSettings,
+                    onOpenScore = onOpenScore,
+                    onOpenPoster = onOpenPoster,
+                    onOpenComments = onOpenComments,
+                    controlsOffsetYDp = displayPrefs.portraitTransportOffsetYDp,
+                    controlsContainerInclude = displayPrefs.portraitTransportContainerInclude,
+                )
+            }
+
+            PortraitLyricSelectBar(
+                selectedCount = lyricSelectSelected.size,
+                progress = selectT,
+                onCancel = { onLyricSelectCancel?.invoke() },
+                onCopy = { onLyricSelectCopy?.invoke() },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth(),
+            )
+        }
     }
 }
 
@@ -3950,14 +4479,7 @@ private fun PlaybackCornerNotice(
                 )
             }
             .padding(end = endPad)
-            .graphicsLayer { alpha = panelAlpha.value }
-            // 明确不可点击，不拦截下层
-            .clickable(
-                enabled = false,
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = {},
-            ),
+            .graphicsLayer { alpha = panelAlpha.value },
     ) {
         Text(
             text = msg,
@@ -4140,10 +4662,28 @@ private fun LandscapePlayerBody(
 
     val settingsPanel = remember { Animatable(0f) }
     LaunchedEffect(settingsOpen) {
-        settingsPanel.animateTo(
-            targetValue = if (settingsOpen) 1f else 0f,
-            animationSpec = tween(durationMillis = 460, easing = settingsCurve),
-        )
+        if (settingsOpen) {
+            settingsPanel.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(durationMillis = 460, easing = settingsCurve),
+            )
+        } else {
+            settingsPanel.animateTo(
+                targetValue = 0f,
+                animationSpec = tween(durationMillis = 460, easing = settingsCurve),
+            )
+            // 面板收完再恢复常显 chrome，避免图标露在 OutsideDismiss 下面点不中
+            if (transportPinned &&
+                !forceVinylYCentered &&
+                !lyricSelectOpen &&
+                !scoreOpen &&
+                !lyricStyleEditorOpen &&
+                !titleStyleEditorOpen &&
+                !vinylSongPickOpen
+            ) {
+                controlsVisible = true
+            }
+        }
     }
     val settingsT = settingsPanel.value
 
@@ -4474,11 +5014,7 @@ private fun LandscapePlayerBody(
     fun closeSettings() {
         onDisplayPrefsFlush()
         settingsOpen = false
-        if (transportPinned && !forceVinylYCentered && !lyricSelectOpen && !scoreOpen &&
-            !lyricStyleEditorOpen && !titleStyleEditorOpen
-        ) {
-            controlsVisible = true
-        }
+        // 常显 chrome 改由 settingsPanel 收完后再亮，见 LaunchedEffect(settingsOpen)
     }
 
     fun commitLyricStyleDraft() {
@@ -4709,8 +5245,9 @@ private fun LandscapePlayerBody(
         ) {
             return
         }
-        controlsVisible = false
+        // 先打开面板，再收 chrome，避免同帧空白手势误关
         settingsOpen = true
+        controlsVisible = false
     }
 
     fun openVinylSongPick() {
@@ -4808,28 +5345,27 @@ private fun LandscapePlayerBody(
     }
 
     fun toggleControls() {
-        if (vinylSongPickOpen || vinylSongPickT > 0.001f) {
-            // 选歌态：空白点击不关闭；仅左上角/系统返回取消
+        // 只用 Open 意图拦截；Animatable 收起尾帧的 *T 残留不再把单击变成空操作
+        if (vinylSongPickOpen) {
             return
         }
-        if (lyricSelectOpen || lyricSelectT > 0.001f) {
-            // 打开手势的松手一律忽略；解锁后才允许空白单击关闭
+        if (lyricSelectOpen) {
             if (lyricSelectOutsideArmed) closeLyricSelect()
             return
         }
-        if (lyricStyleEditorOpen || lyricStyleT > 0.001f) {
+        if (lyricStyleEditorOpen) {
             closeLyricStyleEditor()
             return
         }
-        if (titleStyleEditorOpen || titleStyleT > 0.001f) {
+        if (titleStyleEditorOpen) {
             closeTitleStyleEditor()
             return
         }
-        if (vinylColorEditorOpen || editorVinylCentered || editorT > 0.001f) {
+        if (vinylColorEditorOpen || editorVinylCentered) {
             closeVinylColorEditor()
             return
         }
-        if (scoreOpen || scoreT > 0.001f) {
+        if (scoreOpen) {
             closeScore()
             return
         }
@@ -4838,7 +5374,8 @@ private fun LandscapePlayerBody(
             return
         }
         if (transportPinned) {
-            // 常显：点击不收回，仅刷新计时无意义，保持展开
+            // 常显：刷新空闲计时，避免「点了没反应」的体感
+            idleBump++
             return
         }
         if (controlsVisible) {
@@ -4977,31 +5514,7 @@ private fun LandscapePlayerBody(
     BoxWithConstraints(
         modifier
             .fillMaxSize()
-            .onGloballyPositioned { playerRootCoords = it }
-            .nowPlayingBlankGestures(
-                dismissThresholdPx = dismissSwipeThresholdPx,
-                onTap = {
-                    lyricResumeToken++
-                    toggleControls()
-                },
-                onSwipeDown = {
-                    when {
-                        vinylSongPickOpen || vinylSongPickT > 0.001f -> Unit
-                        lyricSelectOpen || lyricSelectT > 0.001f -> {
-                            if (lyricSelectOutsideArmed) closeLyricSelect()
-                        }
-                        lyricStyleEditorOpen || lyricStyleT > 0.001f ->
-                            closeLyricStyleEditor()
-                        titleStyleEditorOpen || titleStyleT > 0.001f ->
-                            closeTitleStyleEditor()
-                        vinylColorEditorOpen || editorVinylCentered || editorT > 0.001f ->
-                            closeVinylColorEditor()
-                        scoreOpen || scoreT > 0.001f -> closeScore()
-                        settingsOpen -> closeSettings()
-                        else -> onDismiss()
-                    }
-                },
-            ),
+            .onGloballyPositioned { playerRootCoords = it },
     ) {
         // 与左侧歌曲信息同一上边距（按左栏 discExpanded / edgeInset 推算）
         val rootMaxW = maxWidth
@@ -5013,6 +5526,37 @@ private fun LandscapePlayerBody(
             .coerceAtMost(leftColW * 0.99f)
             .coerceAtMost(286.dp)
         val songMetaTopPad = ((leftColW - discExpandedForPad) / 2).coerceAtLeast(6.dp)
+
+        // 空白手势只包内容/叠层；右上 chrome 与底栏是兄弟节点，
+        // 点击设置等按钮时 blankGestures 不在命中祖先链上，避免 open 后又被 toggle 关掉。
+        Box(
+            Modifier
+                .fillMaxSize()
+                .nowPlayingBlankGestures(
+                    dismissThresholdPx = dismissSwipeThresholdPx,
+                    onTap = {
+                        lyricResumeToken++
+                        toggleControls()
+                    },
+                    onSwipeDown = {
+                        when {
+                            vinylSongPickOpen || vinylSongPickT > 0.001f -> Unit
+                            lyricSelectOpen || lyricSelectT > 0.001f -> {
+                                if (lyricSelectOutsideArmed) closeLyricSelect()
+                            }
+                            lyricStyleEditorOpen || lyricStyleT > 0.001f ->
+                                closeLyricStyleEditor()
+                            titleStyleEditorOpen || titleStyleT > 0.001f ->
+                                closeTitleStyleEditor()
+                            vinylColorEditorOpen || editorVinylCentered || editorT > 0.001f ->
+                                closeVinylColorEditor()
+                            scoreOpen || scoreT > 0.001f -> closeScore()
+                            settingsOpen -> closeSettings()
+                            else -> onDismiss()
+                        }
+                    },
+                ),
+        ) {
 
         // 与左栏同源的黑胶几何：供动态歌词计算右缘侵入
         // 自选编辑 / 曲谱态强制垂直居中（忽略个性化 Y，保留 X）
@@ -5051,10 +5595,10 @@ private fun LandscapePlayerBody(
         val vinylCenterX = leftColW - discExpandedForPad / 2 + vinylOx
         val vinylRightEdge = vinylCenterX + discForLyric * vinylScaleForLyric * vinylVisualScale / 2f
         val lyricsColStart = leftColW + rowGap
-        val lyricsColWidth = (maxWidth - leftColW - rowGap - 4.dp).coerceAtLeast(0.dp)
+        val lyricsColWidth = (rootMaxW - leftColW - rowGap - 4.dp).coerceAtLeast(0.dp)
         val lyricsCenterX = lyricsColStart + lyricsColWidth / 2 + displayPrefs.lyricOffsetXDp.dp
-        val screenCenterX = maxWidth / 2
-        val titleMaxWidth = (discExpandedForPad * 1.08f).coerceAtMost(maxWidth * 0.52f)
+        val screenCenterX = rootMaxW / 2
+        val titleMaxWidth = (discExpandedForPad * 1.08f).coerceAtMost(rootMaxW * 0.52f)
         // 黑胶右缘越过歌词栏左缘的部分 + 间隙
         val vinylLyricClearance = 10.dp
         val vinylLeftInset = (vinylRightEdge + vinylLyricClearance - lyricsColStart)
@@ -5064,8 +5608,8 @@ private fun LandscapePlayerBody(
             playingStyle = displayPrefs.lyricPlayingStyle,
             playedStyle = displayPrefs.lyricPlayedStyle,
             unplayedStyle = displayPrefs.lyricUnplayedStyle,
-            screenWidth = maxWidth,
-            screenHeight = maxHeight,
+            screenWidth = rootMaxW,
+            screenHeight = rootMaxH,
         )
         val lyricSelectGeom = rememberAnimatedLyricSelectGeom(
             target = lyricSelectGeomTarget,
@@ -5341,165 +5885,14 @@ private fun LandscapePlayerBody(
             titleMaxWidth = titleMaxWidth,
             contentAlpha = liveTitleMetaAlpha * pickUiFade,
             onMetaVisualBoundsInRoot = { songMetaVisualBoundsInRoot = it },
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .align(Alignment.TopStart),
         )
         } // uiScale 内容层
+        } // hazeSource：仅播放内容作磨砂源（chrome 提到叠层之上，避免被 OutsideDismiss 盖住）
 
-        // 吸附：贴底、仅上方圆角；悬浮：离底间距、四角圆角
-        if (showBar || chromeT > 0.001f) {
-            val transportDocked = displayPrefs.transportDocked
-            val insetDp = displayPrefs.transportBottomInsetDp
-                .takeIf { it.isFinite() }
-                ?.coerceIn(
-                    PlayerDisplayPrefs.TRANSPORT_BOTTOM_INSET_MIN,
-                    PlayerDisplayPrefs.TRANSPORT_BOTTOM_INSET_MAX,
-                )
-                ?: 16f
-            val transportBottomPad = if (transportDocked) 0.dp else insetDp.dp
-            val transportShape = if (transportDocked) {
-                RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp)
-            } else {
-                RoundedCornerShape(14.dp)
-            }
-            Box(
-                Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .graphicsLayer {
-                        alpha = chromeT
-                        translationY = (1f - chromeT) * barSlidePx
-                        scaleX = uiScale
-                        scaleY = uiScale
-                        transformOrigin = TransformOrigin(0.5f, 1f)
-                    }
-                    .padding(
-                        start = chromeSidePad,
-                        end = chromeSidePad,
-                        bottom = transportBottomPad,
-                    )
-                    .clip(transportShape)
-                    .background(Color.Black.copy(alpha = 0.22f))
-                    .clickable(
-                        enabled = chromeT > 0.2f,
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = { revealControls() },
-                    )
-                    .padding(horizontal = 14.dp, vertical = 8.dp),
-            ) {
-                PlayerTransport(
-                    isPlaying = playWhenReady,
-                    buffering = loadPending,
-                    controlsLocked = controlsLocked,
-                    onTogglePlay = {
-                        if (!controlsLocked) {
-                            revealControls()
-                            onTogglePlay()
-                        }
-                    },
-                    onSkipNext = {
-                        if (!controlsLocked) {
-                            revealControls()
-                            vinylSkipDir = VinylSkipDirection.Next
-                            onSkipNext()
-                        }
-                    },
-                    onSkipPrev = {
-                        if (!controlsLocked) {
-                            revealControls()
-                            vinylSkipDir = VinylSkipDirection.Previous
-                            onSkipPrev()
-                        }
-                    },
-                    durationMs = durationMs,
-                    positionMs = seekPositionMs,
-                    sliderDragging = sliderDragging,
-                    sliderValue = sliderValue,
-                    onSliderDragStart = {
-                        if (!controlsLocked) {
-                            revealControls()
-                            onSliderDragStart()
-                        }
-                    },
-                    onSliderChange = onSliderChange,
-                    onSliderDragEnd = {
-                        revealControls()
-                        onSliderDragEnd()
-                    },
-                    playbackMode = playbackMode,
-                    onCyclePlaybackMode = {
-                        if (!controlsLocked) {
-                            revealControls()
-                            onCyclePlaybackMode()
-                        }
-                    },
-                    trackLiked = trackLiked,
-                    onToggleLike = {
-                        if (!controlsLocked) {
-                            revealControls()
-                            onToggleLike()
-                        }
-                    },
-                    portraitSlim = false,
-                    landscapeDense = true,
-                    onOpenScore = {
-                        if (!controlsLocked) openScore()
-                    },
-                )
-            }
-
-            // 右上：退出 | 旋转锁定 | 设置（与底部播放条同显隐 / 同底 / 右缘对齐）
-            Row(
-                Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(top = songMetaTopPad, end = chromeSidePad)
-                    .graphicsLayer {
-                        alpha = chromeT
-                        scaleX = uiScale
-                        scaleY = uiScale
-                        transformOrigin = TransformOrigin(1f, 0f)
-                    },
-                horizontalArrangement = Arrangement.spacedBy(NowPlayingChromeIconGap),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                NowPlayingDismissIconButton(
-                    onClick = onDismiss,
-                )
-                NowPlayingRotationLockButton(
-                    locked = rotationLocked,
-                    forceToLandscape = if (systemAutoRotate) null else false,
-                    onClick = {
-                        if (systemAutoRotate) {
-                            rotationLock.toggle(activity)
-                        } else {
-                            rotationLock.forceOrientation(activity, landscape = false)
-                        }
-                    },
-                )
-                NowPlayingSettingsIconButton(
-                    onClick = { openSettings() },
-                )
-            }
-        }
-
-        // 右上短通知：避让 chrome 图标；入场/出场/Y 位移可打断
-        PlaybackCornerNotice(
-            notice = notice,
-            chromeProgress = chromeT,
-            topBase = songMetaTopPad,
-            endPad = chromeSidePad,
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .graphicsLayer {
-                    scaleX = uiScale
-                    scaleY = uiScale
-                    transformOrigin = TransformOrigin(1f, 0f)
-                },
-        )
-        } // hazeSource：播放内容
-
-        // 设置层：从右向左曲线展开；点外部 / 返回收回；无蒙版变暗
-        // 卡片顶/底边距 = 右侧边距（chromeSidePad）
+        // 设置层：命中层仅在打开意图时启用；收起过程不吞右上角设置
         if (settingsT > 0.001f || settingsOpen) {
             NowPlayingSettingsOutsideDismiss(
                 onDismiss = {
@@ -5507,13 +5900,18 @@ private fun LandscapePlayerBody(
                         closeSettings()
                     }
                 },
-                modifier = Modifier.fillMaxSize(),
+                enabled = settingsOpen,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .zIndex(8f)
+                    .graphicsLayer { alpha = settingsT.coerceIn(0f, 1f) },
             )
             BoxWithConstraints(
                 Modifier
                     .align(Alignment.CenterEnd)
                     .fillMaxHeight()
                     .fillMaxWidth(0.45f)
+                    .zIndex(9f)
                     .padding(
                         top = chromeSidePad,
                         bottom = chromeSidePad,
@@ -5542,30 +5940,38 @@ private fun LandscapePlayerBody(
             }
         }
 
+        // PLACEHOLDER_SCORE_AND_EDITORS_KEEP_EXISTING
+        // 吸附：贴底、仅上方圆角；悬浮：离底间距、四角圆角
+
         // 曲谱层：玻璃/间距同设置；左边界使黑胶两侧留白相等（1:1 构图）
         // 「<」加宽后左/右边距对称 = chromeSidePad，动画覆盖黑胶
         if (scoreT > 0.001f || scoreOpen) {
-            val scaleOriginX = maxWidth / 2
+            val scaleOriginX = rootMaxW / 2
             val visualVinylCx = scaleOriginX + (vinylCenterX - scaleOriginX) * uiScale
             val visualVinylR = discExpandedForPad / 2 * uiScale * vinylSizeScale *
                 maxOf(vinylOuterScale, 1f)
             val vinylLeftVisual = visualVinylCx - visualVinylR
             val equalGap = vinylLeftVisual.coerceAtLeast(0.dp)
             val scoreCollapsedStart = visualVinylCx + visualVinylR + equalGap
-            val scoreCollapsedWidth = (maxWidth - scoreCollapsedStart).coerceAtLeast(96.dp)
+            val scoreCollapsedWidth = (rootMaxW - scoreCollapsedStart).coerceAtLeast(96.dp)
             // 加宽：左缘 = chromeSidePad，与右缘对称
-            val scoreExpandedWidth = (maxWidth - chromeSidePad).coerceAtLeast(96.dp)
+            val scoreExpandedWidth = (rootMaxW - chromeSidePad).coerceAtLeast(96.dp)
             val scoreOuterWidth = lerpDp(scoreCollapsedWidth, scoreExpandedWidth, scoreCoverT)
             // 内宽：外边距在外侧，避免宽含 endPad 导致左缘与磨砂错位出黑边
             val scoreSheetWidth = (scoreOuterWidth - chromeSidePad).coerceAtLeast(80.dp)
             NowPlayingSettingsOutsideDismiss(
                 onDismiss = { closeScore() },
-                modifier = Modifier.fillMaxSize(),
+                enabled = scoreOpen,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .zIndex(8f)
+                    .graphicsLayer { alpha = scoreT.coerceIn(0f, 1f) },
             )
             Box(
                 Modifier
                     .align(Alignment.CenterEnd)
                     .fillMaxHeight()
+                    .zIndex(9f)
                     .padding(
                         top = chromeSidePad,
                         bottom = chromeSidePad,
@@ -5633,9 +6039,9 @@ private fun LandscapePlayerBody(
         // 自选黑胶颜色编辑：黑胶先居中就位，再渐显弹窗
         if (editorT > 0.001f) {
             // 与内容层同源：bottom pad + uiScale（绕内容中心）后的视觉几何
-            val contentH = (maxHeight - 6.dp).coerceAtLeast(1.dp)
+            val contentH = (rootMaxH - 6.dp).coerceAtLeast(1.dp)
             val layoutVinylCy = contentH / 2
-            val scaleOriginX = maxWidth / 2
+            val scaleOriginX = rootMaxW / 2
             val editorVinylRadius = discExpandedForPad / 2 * uiScale * vinylSizeScale *
                 maxOf(vinylOuterScale, 1f)
             val editorVinylCx = scaleOriginX + (vinylCenterX - scaleOriginX) * uiScale
@@ -5648,8 +6054,8 @@ private fun LandscapePlayerBody(
                 vinylCenterX = editorVinylCx,
                 vinylCenterY = editorVinylCy,
                 vinylRadius = editorVinylRadius,
-                screenWidth = maxWidth,
-                screenHeight = maxHeight,
+                screenWidth = rootMaxW,
+                screenHeight = rootMaxH,
                 onDismiss = { closeVinylColorEditor() },
                 onBackToSettings = { closeVinylColorEditorToSettings() },
                 modifier = Modifier.fillMaxSize(),
@@ -5757,8 +6163,8 @@ private fun LandscapePlayerBody(
 
         // 黑胶选歌：全屏雾气 + 堆叠/散开/横滑吸附
         if (vinylSongPickT > 0.001f) {
-            val contentH = (maxHeight - 6.dp).coerceAtLeast(1.dp)
-            val scaleOriginX = maxWidth / 2
+            val contentH = (rootMaxH - 6.dp).coerceAtLeast(1.dp)
+            val scaleOriginX = rootMaxW / 2
             // 优先用主黑胶实测锚点（个性化 X/尺寸）；否则回退几何推算
             val rootBounds = playerRootCoords?.takeIf { it.isAttached }?.boundsInRoot()
             val measuredOk = rootBounds != null &&
@@ -5823,6 +6229,167 @@ private fun LandscapePlayerBody(
                 modifier = Modifier.fillMaxSize(),
             )
         }
+
+        } // blankGestures：播放内容 + 设置/曲谱等叠层
+
+        if (showBar || chromeT > 0.001f) {
+            val transportDocked = displayPrefs.transportDocked
+            val insetDp = displayPrefs.transportBottomInsetDp
+                .takeIf { it.isFinite() }
+                ?.coerceIn(
+                    PlayerDisplayPrefs.TRANSPORT_BOTTOM_INSET_MIN,
+                    PlayerDisplayPrefs.TRANSPORT_BOTTOM_INSET_MAX,
+                )
+                ?: 16f
+            val transportBottomPad = if (transportDocked) 0.dp else insetDp.dp
+            val transportShape = if (transportDocked) {
+                RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp)
+            } else {
+                RoundedCornerShape(14.dp)
+            }
+            Box(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .zIndex(40f)
+                    .graphicsLayer {
+                        translationY = (1f - chromeT) * barSlidePx
+                        scaleX = uiScale
+                        scaleY = uiScale
+                        transformOrigin = TransformOrigin(0.5f, 1f)
+                    }
+                    // alpha()：淡出到 0 时不命中，避免挡住下方空白手势 / 设置层
+                    .alpha(chromeT)
+                    .padding(
+                        start = chromeSidePad,
+                        end = chromeSidePad,
+                        bottom = transportBottomPad,
+                    )
+                    .clip(transportShape)
+                    .background(Color.Black.copy(alpha = 0.22f))
+                    .clickable(
+                        enabled = chromeT > 0.2f,
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = { revealControls() },
+                    )
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
+            ) {
+                PlayerTransport(
+                    isPlaying = playWhenReady,
+                    buffering = loadPending,
+                    controlsLocked = controlsLocked,
+                    onTogglePlay = {
+                        if (!controlsLocked) {
+                            revealControls()
+                            onTogglePlay()
+                        }
+                    },
+                    onSkipNext = {
+                        if (!controlsLocked) {
+                            revealControls()
+                            vinylSkipDir = VinylSkipDirection.Next
+                            onSkipNext()
+                        }
+                    },
+                    onSkipPrev = {
+                        if (!controlsLocked) {
+                            revealControls()
+                            vinylSkipDir = VinylSkipDirection.Previous
+                            onSkipPrev()
+                        }
+                    },
+                    durationMs = durationMs,
+                    positionMs = seekPositionMs,
+                    sliderDragging = sliderDragging,
+                    sliderValue = sliderValue,
+                    onSliderDragStart = {
+                        if (!controlsLocked) {
+                            revealControls()
+                            onSliderDragStart()
+                        }
+                    },
+                    onSliderChange = onSliderChange,
+                    onSliderDragEnd = {
+                        revealControls()
+                        onSliderDragEnd()
+                    },
+                    playbackMode = playbackMode,
+                    onCyclePlaybackMode = {
+                        if (!controlsLocked) {
+                            revealControls()
+                            onCyclePlaybackMode()
+                        }
+                    },
+                    trackLiked = trackLiked,
+                    onToggleLike = {
+                        if (!controlsLocked) {
+                            revealControls()
+                            onToggleLike()
+                        }
+                    },
+                    portraitSlim = false,
+                    landscapeDense = true,
+                    onOpenScore = {
+                        if (!controlsLocked) openScore()
+                    },
+                )
+            }
+
+            // 右上：退出 | 旋转锁定 | 设置（叠在 OutsideDismiss 之上，保证可点）
+            Row(
+                Modifier
+                    .align(Alignment.TopEnd)
+                    .zIndex(40f)
+                    .padding(top = songMetaTopPad, end = chromeSidePad)
+                    .graphicsLayer {
+                        scaleX = uiScale
+                        scaleY = uiScale
+                        transformOrigin = TransformOrigin(1f, 0f)
+                    }
+                    .alpha(chromeT),
+                horizontalArrangement = Arrangement.spacedBy(NowPlayingChromeIconGap),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                NowPlayingDismissIconButton(
+                    onClick = onDismiss,
+                )
+                NowPlayingRotationLockButton(
+                    locked = rotationLocked,
+                    forceToLandscape = if (systemAutoRotate) null else false,
+                    onClick = {
+                        if (systemAutoRotate) {
+                            rotationLock.toggle(activity)
+                        } else {
+                            rotationLock.forceOrientation(activity, landscape = false)
+                        }
+                    },
+                )
+                NowPlayingSettingsIconButton(
+                    onClick = {
+                        // 直接开设置；勿依赖空白手势链路
+                        openSettings()
+                    },
+                )
+            }
+        }
+
+        // 右上短通知：避让 chrome 图标；入场/出场/Y 位移可打断
+        // 通知不要盖住设置按钮命中区：往下错开一档 chrome 高度
+        PlaybackCornerNotice(
+            notice = notice,
+            chromeProgress = chromeT,
+            topBase = songMetaTopPad + NowPlayingChromeIconHeight + 8.dp,
+            endPad = chromeSidePad,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .zIndex(35f)
+                .graphicsLayer {
+                    scaleX = uiScale
+                    scaleY = uiScale
+                    transformOrigin = TransformOrigin(1f, 0f)
+                },
+        )
     }
 }
 
@@ -5851,6 +6418,8 @@ private fun PlayerTransport(
     onOpenScore: (() -> Unit)? = null,
     onOpenSettings: (() -> Unit)? = null,
     onOpenPoster: (() -> Unit)? = null,
+    /** 竖屏：总时长上方评论入口；仅非「容器包含」时展示 */
+    onOpenComments: (() -> Unit)? = null,
     /**
      * 竖屏：进度条与播放按钮行的垂直偏移。
      * 关闭「容器包含」时底部设置条不参与；开启后整块玻璃容器一并偏移。
@@ -5897,10 +6466,16 @@ private fun PlayerTransport(
     val portraitAlignPad = trackCapRadius
     val portraitBottomBandHeight = 36.dp
     val timeStyle = TextStyle(
-        color = LyricDim.copy(alpha = 0.7f),
+        color = if (portraitSlim) {
+            // 竖屏进度/总时长：提高对比，避免压在背景上发灰看不清
+            Color(0xFFE8EEF5).copy(alpha = 0.92f)
+        } else {
+            LyricDim.copy(alpha = 0.7f)
+        },
         fontFamily = FontFamily.Monospace,
         fontSize = if (landscapeDense) 11.sp else if (portraitSlim) 11.sp else 10.sp,
         letterSpacing = 0.3.sp,
+        fontWeight = if (portraitSlim) FontWeight.Medium else FontWeight.Normal,
     )
     val sliderColors = SliderDefaults.colors(
         thumbColor = Color(0xFFE8EEF5),
@@ -6071,21 +6646,37 @@ private fun PlayerTransport(
         val glassBg = Color.Black.copy(alpha = 0.22f)
         val glassShape = RoundedCornerShape(14.dp)
         val includeInContainer = portraitSlim && controlsContainerInclude
+        /** 容器包含时略加深，增强包裹感 */
+        val containerGlassBg = Color.Black.copy(alpha = 0.34f)
         val likeGlyphSize = if (portraitSlim) playSize * 0.70f else playSize
         val modeGlyphSize = if (portraitSlim) playSize * 0.61f else playSize
 
         @Composable
         fun PortraitTimeAndSlider(rowPad: Modifier) {
-            Row(
+            Column(
                 Modifier
                     .fillMaxWidth()
                     .then(rowPad)
                     .padding(bottom = 6.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(text = formatTimeMs(displayPosMs), style = timeStyle)
-                Text(text = formatTimeMs(durationMs), style = timeStyle)
+                // 评论入口独立在上一行，不与时长共列，避免左右时间垂直错位
+                if (portraitSlim && onOpenComments != null) {
+                    Box(Modifier.fillMaxWidth()) {
+                        NowPlayingCommentsIconButton(
+                            onClick = onOpenComments,
+                            modifier = Modifier.align(Alignment.CenterEnd),
+                        )
+                    }
+                    Spacer(Modifier.height(2.dp))
+                }
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(text = formatTimeMs(displayPosMs), style = timeStyle)
+                    Text(text = formatTimeMs(durationMs), style = timeStyle)
+                }
             }
             Box(
                 Modifier
@@ -6181,43 +6772,81 @@ private fun PlayerTransport(
         }
 
         if (includeInContainer) {
-            // 开启「容器包含」：半透明底包裹时长 / 进度 / 播放控件 / 设置；整体跟随垂直位置
+            // 开启「容器包含」：与未开启同高占位（防黑胶上移）；
+            // 一块加深玻璃画在背后真正包住进度 / 控件 / 底栏图标（左右留边、底避开导航条）。
             val navBottom = WindowInsets.navigationBars
                 .asPaddingValues()
                 .calculateBottomPadding()
-            Column(
+            val bottomZoneHeight = navBottom + 56.dp
+            val containerMarginH = 6.dp
+            val containerMarginBottom = navBottom.coerceAtLeast(8.dp)
+            val containerPadH = 18.dp
+            val containerExpandTop = 22.dp
+            val containerRadius = 20.dp
+            val contentPad = Modifier.padding(horizontal = containerPadH)
+            Box(
                 Modifier
                     .fillMaxWidth()
-                    .then(alignPad)
                     .then(controlsOffsetMod)
-                    .clip(glassShape)
-                    .background(glassBg)
-                    .padding(top = 10.dp, bottom = 4.dp),
+                    .drawBehind {
+                        val mh = containerMarginH.toPx()
+                        val mb = containerMarginBottom.toPx()
+                        val et = containerExpandTop.toPx()
+                        val r = containerRadius.toPx()
+                        drawRoundRect(
+                            color = containerGlassBg,
+                            topLeft = Offset(mh, -et),
+                            size = Size(
+                                (this.size.width - mh * 2f).coerceAtLeast(0f),
+                                (this.size.height - mb + et).coerceAtLeast(0f),
+                            ),
+                            cornerRadius = CornerRadius(r, r),
+                        )
+                    },
             ) {
-                PortraitTimeAndSlider(rowPad = Modifier)
-                TransportButtonsRow(rowPad = Modifier)
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(portraitBottomBandHeight),
-                ) {
-                    if (onOpenPoster != null) {
-                        NowPlayingPosterIconButton(
-                            onClick = onOpenPoster,
-                            chromeBackground = false,
-                            modifier = Modifier.align(Alignment.CenterStart),
-                        )
-                    }
-                    if (onOpenSettings != null) {
-                        NowPlayingSettingsIconButton(
-                            onClick = onOpenSettings,
-                            chromeBackground = false,
-                            modifier = Modifier.align(Alignment.CenterEnd),
-                        )
+                Column(Modifier.fillMaxWidth()) {
+                    PortraitTimeAndSlider(rowPad = contentPad)
+                    TransportButtonsRow(rowPad = contentPad)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(bottomZoneHeight),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .then(contentPad)
+                                .height(portraitBottomBandHeight),
+                        ) {
+                            if (onOpenPoster != null) {
+                                NowPlayingPosterIconButton(
+                                    onClick = onOpenPoster,
+                                    chromeBackground = false,
+                                    modifier = Modifier.align(Alignment.CenterStart),
+                                )
+                            }
+                            if (onOpenScore != null || onOpenSettings != null) {
+                                Row(
+                                    Modifier.align(Alignment.CenterEnd),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                                ) {
+                                    if (onOpenScore != null) {
+                                        NowPlayingScoreIconButton(onClick = onOpenScore)
+                                    }
+                                    if (onOpenSettings != null) {
+                                        NowPlayingSettingsIconButton(
+                                            onClick = onOpenSettings,
+                                            chromeBackground = false,
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
-            Spacer(Modifier.height(navBottom.coerceAtLeast(8.dp)))
         } else {
             // 默认：进度 + 传输按钮可整体垂直偏移；底部设置条位置固定
             Column(
@@ -6278,12 +6907,22 @@ private fun PlayerTransport(
                                 modifier = Modifier.align(Alignment.CenterStart),
                             )
                         }
-                        if (onOpenSettings != null) {
-                            NowPlayingSettingsIconButton(
-                                onClick = onOpenSettings,
-                                chromeBackground = false,
-                                modifier = Modifier.align(Alignment.CenterEnd),
-                            )
+                        if (onOpenScore != null || onOpenSettings != null) {
+                            Row(
+                                Modifier.align(Alignment.CenterEnd),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                            ) {
+                                if (onOpenScore != null) {
+                                    NowPlayingScoreIconButton(onClick = onOpenScore)
+                                }
+                                if (onOpenSettings != null) {
+                                    NowPlayingSettingsIconButton(
+                                        onClick = onOpenSettings,
+                                        chromeBackground = false,
+                                    )
+                                }
+                            }
                         }
                     }
                 }

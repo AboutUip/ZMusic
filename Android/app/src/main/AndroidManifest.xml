@@ -30,6 +30,7 @@
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize"
             android:exported="true"
             android:launchMode="singleTop"
+            android:windowSoftInputMode="adjustNothing"
             android:theme="@style/Theme.ZMusic">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

@@ -61,4 +61,6 @@ class PlaybackViewModel(
     fun skipPrevious() = bridge.skipPrevious()
 
     fun cyclePlaybackMode() = bridge.cyclePlaybackMode()
+
+    fun setHoldAutoAdvance(hold: Boolean) = bridge.setHoldAutoAdvance(hold)
 }
