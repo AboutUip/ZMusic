@@ -7,6 +7,7 @@ import androidx.activity.compose.LocalActivity
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -40,6 +41,7 @@ import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -103,12 +105,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerInputChange
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.CornerRadius
@@ -1374,7 +1377,14 @@ fun NowPlayingScreen(
     LaunchedEffect(track.id) {
         portraitLyricSelectOpen = false
         portraitLyricSelectSelected.clear()
+        portraitLyricSelectResumeToken = 0
         portraitCommentsOpen = false
+    }
+    // 退出歌词页后清零：否则 token 残留会在下次进入时触发从头动画滚
+    LaunchedEffect(portraitLyricsOpen) {
+        if (!portraitLyricsOpen) {
+            portraitLyricSelectResumeToken = 0
+        }
     }
     val portraitSettingsT = portraitSettingsPanel.value
     val portraitScoreT = portraitScorePanel.value
@@ -1404,6 +1414,7 @@ fun NowPlayingScreen(
         portraitCommentsOpen = false
         portraitLyricSelectOpen = false
         portraitLyricSelectSelected.clear()
+        portraitLyricSelectResumeToken = 0
         portraitBackgroundEditorOpen = false
         portraitLyricStyleEditorOpen = false
         portraitLyricStyleSnapshot = null
@@ -1945,6 +1956,7 @@ fun NowPlayingScreen(
                     lyricSelectProgress = portraitLyricSelectT,
                     lyricSelectSelected = portraitLyricSelectSelected,
                     lyricSelectResumeToken = portraitLyricSelectResumeToken,
+                    onLyricSelectResumeConsumed = { portraitLyricSelectResumeToken = 0 },
                     onLyricSelectLongPress = { openPortraitLyricSelect() },
                     onLyricSelectToggle = { index ->
                         if (index in portraitLyricSelectSelected) {
@@ -2586,6 +2598,7 @@ private fun PortraitPlayerBody(
     lyricSelectProgress: Float = 0f,
     lyricSelectSelected: Set<Int> = emptySet(),
     lyricSelectResumeToken: Int = 0,
+    onLyricSelectResumeConsumed: (() -> Unit)? = null,
     onLyricSelectLongPress: (() -> Unit)? = null,
     onLyricSelectToggle: ((Int) -> Unit)? = null,
     onLyricSelectCancel: (() -> Unit)? = null,
@@ -2787,6 +2800,7 @@ private fun PortraitPlayerBody(
                             onToggleSelect = onLyricSelectToggle,
                             onLongPressLine = { onLyricSelectLongPress?.invoke() },
                             resumeScrollToken = lyricSelectResumeToken,
+                            onResumeScrollConsumed = onLyricSelectResumeConsumed,
                             onSeekToMs = { ms ->
                                 onSeek(ms.coerceIn(0L, durationMs.coerceAtLeast(0L)))
                                 if (displayPrefs.lyricTapAutoPlay && !playWhenReady) {
@@ -4506,6 +4520,30 @@ private fun PlaybackCornerNotice(
     }
 }
 
+/**
+ * 曲谱加宽进度只在此子树读取，避免 [LandscapePlayerBody] 每帧重组合。
+ */
+@Composable
+private fun BoxScope.ScoreCoverWidthHost(
+    coverAnim: Animatable<Float, AnimationVector1D>,
+    collapsedWidth: Dp,
+    expandedWidth: Dp,
+    endPad: Dp,
+    content: @Composable (panelW: Float) -> Unit,
+) {
+    val coverT = coverAnim.value
+    val outerWidth = lerpDp(collapsedWidth, expandedWidth, coverT)
+    val sheetWidth = (outerWidth - endPad).coerceAtLeast(80.dp)
+    BoxWithConstraints(
+        Modifier
+            .align(Alignment.CenterEnd)
+            .fillMaxHeight()
+            .width(sheetWidth),
+    ) {
+        content(constraints.maxWidth.toFloat().coerceAtLeast(1f))
+    }
+}
+
 @Composable
 private fun LandscapePlayerBody(
     track: TrackRow,
@@ -4661,13 +4699,25 @@ private fun LandscapePlayerBody(
     val chromeT = chrome.value
 
     val settingsPanel = remember { Animatable(0f) }
+    /**
+     * 入场期间先静态壳，等 chrome/黑胶动画停稳再开实时磨砂，
+     * 既保留播放条与黑胶过渡，又避免源层变形把 Haze 打成实色。
+     */
+    var settingsHazeLive by remember { mutableStateOf(false) }
     LaunchedEffect(settingsOpen) {
         if (settingsOpen) {
+            settingsHazeLive = false
+            // 走 showBar → chrome.animateTo，保留播放组件消失与黑胶缩放动画
+            controlsVisible = false
             settingsPanel.animateTo(
                 targetValue = 1f,
                 animationSpec = tween(durationMillis = 460, easing = settingsCurve),
             )
+            // chrome 360ms 与面板 460ms 并行；停稳后再开实时磨砂
+            delay(64)
+            if (settingsOpen) settingsHazeLive = true
         } else {
+            settingsHazeLive = false
             settingsPanel.animateTo(
                 targetValue = 0f,
                 animationSpec = tween(durationMillis = 460, easing = settingsCurve),
@@ -4719,7 +4769,7 @@ private fun LandscapePlayerBody(
         }
     }
     val scoreT = scorePanel.value
-    val scoreCoverT = scoreCoverAnim.value
+    // 勿在此读取 scoreCoverAnim.value：加宽动画会整页重组合；宽度读数下沉到曲谱面板子树
 
     // 切歌 / 加载结束：设置等面板重挂磨砂，避免源内容突变后退回纯色 fallback
     fun hazePanelsOpen(): Boolean =
@@ -5013,6 +5063,7 @@ private fun LandscapePlayerBody(
 
     fun closeSettings() {
         onDisplayPrefsFlush()
+        settingsHazeLive = false
         settingsOpen = false
         // 常显 chrome 改由 settingsPanel 收完后再亮，见 LaunchedEffect(settingsOpen)
     }
@@ -5245,9 +5296,8 @@ private fun LandscapePlayerBody(
         ) {
             return
         }
-        // 先打开面板，再收 chrome，避免同帧空白手势误关
+        // 先开面板；chrome 与 haze 恢复见上方 LaunchedEffect(settingsOpen)
         settingsOpen = true
-        controlsVisible = false
     }
 
     fun openVinylSongPick() {
@@ -5912,11 +5962,9 @@ private fun LandscapePlayerBody(
                     .fillMaxHeight()
                     .fillMaxWidth(0.45f)
                     .zIndex(9f)
-                    .padding(
-                        top = chromeSidePad,
-                        bottom = chromeSidePad,
-                        end = chromeSidePad,
-                    ),
+                    // 仅上下留白；右缘贴屏，避免 endPad 黑边，并让滑入从屏幕边缘开始
+                    .padding(top = chromeSidePad, bottom = chromeSidePad)
+                    .clipToBounds(),
             ) {
                 val panelW = constraints.maxWidth.toFloat().coerceAtLeast(1f)
                 NowPlayingSettingsSheet(
@@ -5927,14 +5975,19 @@ private fun LandscapePlayerBody(
                     onOpenLyricStyleEditor = { openLyricStyleEditor() },
                     onOpenTitleStyleEditor = { openTitleStyleEditor() },
                     hazeNonce = hazeNonce,
+                    // 入场跟 chrome 动画时用静态壳；停稳后再实时磨砂
+                    enableRealtimeHaze = settingsHazeLive,
+                    // 右侧贴边：只圆左侧，避免右上/右下圆弧透出黑边
+                    panelShape = RoundedCornerShape(
+                        topStart = 18.dp,
+                        bottomStart = 18.dp,
+                    ),
                     transferDismissGate = settingsTransferDismissGate,
                     modifier = Modifier
                         .fillMaxSize()
                         .graphicsLayer {
-                            transformOrigin = TransformOrigin(1f, 0.5f)
+                            // 从右缘外整板滑入；裁剪在父级 clipToBounds
                             translationX = (1f - settingsT) * panelW
-                            scaleX = 0.88f + 0.12f * settingsT
-                            alpha = settingsT
                         },
                 )
             }
@@ -5956,9 +6009,6 @@ private fun LandscapePlayerBody(
             val scoreCollapsedWidth = (rootMaxW - scoreCollapsedStart).coerceAtLeast(96.dp)
             // 加宽：左缘 = chromeSidePad，与右缘对称
             val scoreExpandedWidth = (rootMaxW - chromeSidePad).coerceAtLeast(96.dp)
-            val scoreOuterWidth = lerpDp(scoreCollapsedWidth, scoreExpandedWidth, scoreCoverT)
-            // 内宽：外边距在外侧，避免宽含 endPad 导致左缘与磨砂错位出黑边
-            val scoreSheetWidth = (scoreOuterWidth - chromeSidePad).coerceAtLeast(80.dp)
             NowPlayingSettingsOutsideDismiss(
                 onDismiss = { closeScore() },
                 enabled = scoreOpen,
@@ -5978,13 +6028,13 @@ private fun LandscapePlayerBody(
                         end = chromeSidePad,
                     ),
             ) {
-                BoxWithConstraints(
-                    Modifier
-                        .align(Alignment.CenterEnd)
-                        .fillMaxHeight()
-                        .width(scoreSheetWidth),
-                ) {
-                    val panelW = constraints.maxWidth.toFloat().coerceAtLeast(1f)
+                // 仅此子树订阅 cover 进度，避免 LandscapePlayerBody 每帧重组合
+                ScoreCoverWidthHost(
+                    coverAnim = scoreCoverAnim,
+                    collapsedWidth = scoreCollapsedWidth,
+                    expandedWidth = scoreExpandedWidth,
+                    endPad = chromeSidePad,
+                ) { panelW ->
                     ScoreSheetOverlay(
                         coverExpanded = scoreCoverExpanded,
                         onToggleCoverExpand = { scoreCoverExpanded = !scoreCoverExpanded },

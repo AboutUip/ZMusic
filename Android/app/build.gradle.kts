@@ -11,6 +11,20 @@ val localProperties = Properties().apply {
     if (f.exists()) f.inputStream().use { load(it) }
 }
 
+/** 发行签名：真实密钥在 `Android/keystore/`（已 gitignore）；缺省回退 debug。 */
+val releaseKeystoreProperties = Properties().apply {
+    val f = rootProject.file("keystore/keystore.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+val releaseStoreFile = releaseKeystoreProperties.getProperty("storeFile")
+    ?.let { rootProject.file(it) }
+    ?.takeIf { it.isFile }
+val hasReleaseSigning =
+    releaseStoreFile != null &&
+        !releaseKeystoreProperties.getProperty("storePassword").isNullOrBlank() &&
+        !releaseKeystoreProperties.getProperty("keyAlias").isNullOrBlank() &&
+        !releaseKeystoreProperties.getProperty("keyPassword").isNullOrBlank()
+
 /**
  * 默认固定为线上 API 基址；若本地调试可在 `Android/local.properties` 设置 `ncm.api.base.url`（无末尾 `/`）覆盖。
  */
@@ -35,10 +49,25 @@ android {
         buildConfigField("String", "NCM_API_BASE_URL", "\"$escaped\"")
     }
 
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = releaseStoreFile
+                storePassword = releaseKeystoreProperties.getProperty("storePassword")
+                keyAlias = releaseKeystoreProperties.getProperty("keyAlias")
+                keyPassword = releaseKeystoreProperties.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // 正式包暂用调试密钥签名，便于安装验证
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = if (hasReleaseSigning) {
+                signingConfigs.getByName("release")
+            } else {
+                // 开源默认：无 keystore.properties 时用 debug 签名，克隆即可编译
+                signingConfigs.getByName("debug")
+            }
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

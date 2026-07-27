@@ -11,7 +11,12 @@ Android/*.iml
 /build
 Android/app/src/androidTest
 Android/app/src/test
-Android/dev
+
+# 发行签名私钥：保留模版，忽略真实口令与密钥库
+Android/keystore/keystore.properties
+Android/keystore/*.jks
+Android/keystore/*.keystore
+!Android/keystore/keystore.properties.example
 
 # --- Windows (WPF / .NET SDK / Visual Studio) ---
 Windows/.vs/
@@ -61,3 +66,6 @@ Windows/**/project.fragment.lock.json
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# --- 开发临时目录 ---
+dev/

@@ -101,8 +101,9 @@ fun PortraitCinemaLyrics(
     selectedIndices: Set<Int> = emptySet(),
     onToggleSelect: ((Int) -> Unit)? = null,
     onLongPressLine: ((Int) -> Unit)? = null,
-    /** 退出选句后递增：滚回播放行 */
+    /** 退出选句后递增：滚回播放行；消费后应由父级清零，避免重进歌词页再触发 */
     resumeScrollToken: Int = 0,
+    onResumeScrollConsumed: (() -> Unit)? = null,
     onSeekToMs: (Long) -> Unit,
     onCollapse: () -> Unit,
     onBandCoords: ((LayoutCoordinates) -> Unit)? = null,
@@ -328,11 +329,14 @@ fun PortraitCinemaLyrics(
             }
         }
 
+        val onResumeScrollConsumedUpdated = rememberUpdatedState(onResumeScrollConsumed)
         LaunchedEffect(resumeScrollToken) {
             if (resumeScrollToken <= 0) return@LaunchedEffect
             browsing = false
             dragSession = false
             scrollToCenteredIndex(playFocusUpdated, animated = true)
+            // 边沿消费：避免退出再进入歌词页时 sticky token 再次带动画从头滚
+            onResumeScrollConsumedUpdated.value?.invoke()
         }
 
         Box(

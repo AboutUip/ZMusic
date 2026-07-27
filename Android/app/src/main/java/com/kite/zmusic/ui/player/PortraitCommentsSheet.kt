@@ -1309,441 +1309,455 @@ private fun CommentRow(
         else -> 0f
     }
 
-    Box(Modifier.fillMaxWidth()) {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .commentHugPinch(
-                    enabled = !hugBusy,
-                    onPinchProgress = { onPinchProgress.value(it) },
-                    onPinchHug = { onPinchHug.value() },
-                ),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Box(
-                    Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .then(
-                            if (hugged) {
-                                Modifier.border(1.5.dp, Color(0xFFFF5A5F), CircleShape)
-                            } else {
-                                Modifier
-                            },
-                        )
-                        .background(Color(0xFF1C2028)),
-                ) {
-                    UrlImage(
-                        url = comment.avatarUrl,
-                        contentDescription = comment.nickname,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop,
-                    )
-                }
-                if (hugged) {
-                    Text(
-                        text = "收到了抱抱",
-                        style = TextStyle(
-                            color = Color(0xFFFF5A5F),
-                            fontFamily = FontFamily.SansSerif,
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Medium,
-                        ),
-                        maxLines = 1,
-                        modifier = Modifier.padding(top = 3.dp),
-                    )
-                }
-            }
-            Column(Modifier.weight(1f)) {
+    // 外层 Column：抱抱叠层只锚评论本体；回复/抱抱列表在锚点外，避免展开后小人落到回复底部
+    Column(Modifier.fillMaxWidth()) {
+        Box(Modifier.fillMaxWidth()) {
             Row(
-                Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = comment.nickname,
-                    style = TextStyle(
-                        color = CommentLabel.copy(alpha = 0.92f),
-                        fontFamily = FontFamily.SansSerif,
-                        fontWeight = FontWeight.Medium,
-                        fontSize = 13.sp,
-                    ),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false),
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    text = comment.timeLabel,
-                    style = TextStyle(
-                        color = CommentHint.copy(alpha = 0.75f),
-                        fontFamily = FontFamily.SansSerif,
-                        fontSize = 11.sp,
-                    ),
-                    maxLines = 1,
-                )
-            }
-            Spacer(Modifier.height(4.dp))
-            if (!comment.repliedContent.isNullOrBlank()) {
-                Text(
-                    text = "回复 ${comment.repliedNickname.orEmpty()}：${comment.repliedContent}",
-                    style = TextStyle(
-                        color = CommentHint.copy(alpha = 0.8f),
-                        fontFamily = FontFamily.SansSerif,
-                        fontSize = 12.sp,
-                        lineHeight = 17.sp,
-                    ),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(CommentQuoteBg.copy(alpha = 0.85f))
-                        .padding(horizontal = 8.dp, vertical = 6.dp),
-                )
-                Spacer(Modifier.height(6.dp))
-            }
-            Text(
-                text = comment.content,
-                style = TextStyle(
-                    color = CommentLabel.copy(alpha = 0.88f),
-                    fontFamily = FontFamily.SansSerif,
-                    fontSize = 14.sp,
-                    lineHeight = 21.sp,
-                    letterSpacing = 0.15.sp,
-                ),
-                maxLines = if (textExpanded || !maybeLong) Int.MAX_VALUE else collapseLines,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier
+                Modifier
                     .fillMaxWidth()
-                    .then(
-                        if (maybeLong) {
-                            Modifier.clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                                onClick = { textExpanded = !textExpanded },
-                            )
-                        } else {
-                            Modifier
-                        },
+                    .commentHugPinch(
+                        enabled = !hugBusy,
+                        onPinchProgress = { onPinchProgress.value(it) },
+                        onPinchHug = { onPinchHug.value() },
                     ),
-            )
-            if (maybeLong) {
-                Text(
-                    text = if (textExpanded) "收起" else "展开",
-                    style = TextStyle(
-                        color = CommentAccent.copy(alpha = 0.9f),
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium,
-                    ),
-                    modifier = Modifier
-                        .padding(top = 4.dp)
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = { textExpanded = !textExpanded },
-                        ),
-                )
-            }
-            Spacer(Modifier.height(8.dp))
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    modifier = Modifier.clickable(
-                        enabled = !likeBusy,
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = { scope.launch { toggleLike() } },
-                    ),
-                ) {
-                    CommentLikeIcon(
-                        size = 14.dp,
-                        tint = if (comment.liked) {
-                            Color(0xFFFF6B81)
-                        } else {
-                            CommentHint.copy(alpha = 0.85f)
-                        },
-                        filled = comment.liked,
-                    )
-                    Text(
-                        text = if (comment.likedCount > 0) {
-                            formatCount(comment.likedCount)
-                        } else {
-                            "赞"
-                        },
-                        style = TextStyle(
-                            color = if (comment.liked) {
-                                Color(0xFFFF6B81).copy(alpha = 0.92f)
-                            } else {
-                                CommentHint.copy(alpha = 0.8f)
-                            },
-                            fontSize = 12.sp,
-                        ),
-                    )
-                }
-                // 抱抱：双指捏合评论触发（对齐网易云）；图标点按也可，长按看列表
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    modifier = Modifier
-                        .combinedClickable(
-                            enabled = !hugBusy && !hugListLoading,
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = { scope.launch { doHug(playAnim = true) } },
-                            onLongClick = { scope.launch { loadHugList() } },
-                        ),
-                ) {
-                    CommentHugIcon(
-                        size = 15.dp,
-                        tint = if (hugged || overlayProgress > 0.12f) {
-                            Color(0xFFFF6B81).copy(alpha = 0.95f)
-                        } else {
-                            CommentHint.copy(alpha = 0.88f)
-                        },
-                    )
-                    Text(
-                        text = if (hugged) "已抱抱" else "抱抱",
-                        style = TextStyle(
-                            color = if (hugged || overlayProgress > 0.12f) {
-                                Color(0xFFFF6B81).copy(alpha = 0.92f)
-                            } else {
-                                CommentHint.copy(alpha = 0.8f)
-                            },
-                            fontSize = 12.sp,
-                        ),
-                    )
-                }
-                Text(
-                    text = if (replyActive) "回复中" else "回复",
-                    style = TextStyle(
-                        color = if (replyActive) {
-                            CommentAccent.copy(alpha = 0.95f)
-                        } else {
-                            CommentHint.copy(alpha = 0.85f)
-                        },
-                        fontSize = 12.sp,
-                        fontWeight = if (replyActive) FontWeight.Medium else FontWeight.Normal,
-                    ),
-                    modifier = Modifier.clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = onReplyClick,
-                    ),
-                )
-                if (comment.replyCount > 0) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        modifier = Modifier.clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = {
-                                val next = !repliesOpen
-                                repliesOpen = next
-                                if (next) {
-                                    // 用户再次展开：取消置顶，拉真实顺序
-                                    scope.launch {
-                                        loadReplies(reset = true, consumePending = true)
-                                    }
-                                }
-                            },
-                        ),
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Box(
+                        Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .then(
+                                if (hugged) {
+                                    Modifier.border(1.5.dp, Color(0xFFFF5A5F), CircleShape)
+                                } else {
+                                    Modifier
+                                },
+                            )
+                            .background(Color(0xFF1C2028)),
                     ) {
+                        UrlImage(
+                            url = comment.avatarUrl,
+                            contentDescription = comment.nickname,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop,
+                        )
+                    }
+                    if (hugged) {
                         Text(
-                            text = if (repliesOpen) {
-                                "收起回复"
-                            } else {
-                                "回复 ${formatCount(comment.replyCount)}"
-                            },
+                            text = "收到了抱抱",
                             style = TextStyle(
-                                color = CommentAccent.copy(alpha = 0.88f),
-                                fontSize = 12.sp,
+                                color = Color(0xFFFF5A5F),
+                                fontFamily = FontFamily.SansSerif,
+                                fontSize = 9.sp,
                                 fontWeight = FontWeight.Medium,
                             ),
-                        )
-                        CommentChevronIcon(
-                            expanded = repliesOpen,
-                            size = 11.dp,
-                            tint = CommentAccent.copy(alpha = 0.88f),
+                            maxLines = 1,
+                            modifier = Modifier.padding(top = 3.dp),
                         )
                     }
                 }
-            }
-
-            if (hugListOpen) {
-                Spacer(Modifier.height(10.dp))
-                Column(
-                    Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(CommentQuoteBg.copy(alpha = 0.8f))
-                        .padding(horizontal = 10.dp, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
+                Column(Modifier.weight(1f)) {
                     Row(
                         Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
-                            text = "抱抱了这些人",
-                            color = CommentLabel.copy(alpha = 0.9f),
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium,
-                            modifier = Modifier.weight(1f),
+                            text = comment.nickname,
+                            style = TextStyle(
+                                color = CommentLabel.copy(alpha = 0.92f),
+                                fontFamily = FontFamily.SansSerif,
+                                fontWeight = FontWeight.Medium,
+                                fontSize = 13.sp,
+                            ),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false),
                         )
+                        Spacer(Modifier.width(8.dp))
                         Text(
-                            text = "收起",
-                            color = CommentAccent,
-                            fontSize = 12.sp,
+                            text = comment.timeLabel,
+                            style = TextStyle(
+                                color = CommentHint.copy(alpha = 0.75f),
+                                fontFamily = FontFamily.SansSerif,
+                                fontSize = 11.sp,
+                            ),
+                            maxLines = 1,
+                        )
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    if (!comment.repliedContent.isNullOrBlank()) {
+                        Text(
+                            text = "回复 ${comment.repliedNickname.orEmpty()}：${comment.repliedContent}",
+                            style = TextStyle(
+                                color = CommentHint.copy(alpha = 0.8f),
+                                fontFamily = FontFamily.SansSerif,
+                                fontSize = 12.sp,
+                                lineHeight = 17.sp,
+                            ),
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(CommentQuoteBg.copy(alpha = 0.85f))
+                                .padding(horizontal = 8.dp, vertical = 6.dp),
+                        )
+                        Spacer(Modifier.height(6.dp))
+                    }
+                    Text(
+                        text = comment.content,
+                        style = TextStyle(
+                            color = CommentLabel.copy(alpha = 0.88f),
+                            fontFamily = FontFamily.SansSerif,
+                            fontSize = 14.sp,
+                            lineHeight = 21.sp,
+                            letterSpacing = 0.15.sp,
+                        ),
+                        maxLines = if (textExpanded || !maybeLong) Int.MAX_VALUE else collapseLines,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .then(
+                                if (maybeLong) {
+                                    Modifier.clickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null,
+                                        onClick = { textExpanded = !textExpanded },
+                                    )
+                                } else {
+                                    Modifier
+                                },
+                            ),
+                    )
+                    if (maybeLong) {
+                        Text(
+                            text = if (textExpanded) "收起" else "展开",
+                            style = TextStyle(
+                                color = CommentAccent.copy(alpha = 0.9f),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium,
+                            ),
+                            modifier = Modifier
+                                .padding(top = 4.dp)
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null,
+                                    onClick = { textExpanded = !textExpanded },
+                                ),
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            modifier = Modifier.clickable(
+                                enabled = !likeBusy,
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = { scope.launch { toggleLike() } },
+                            ),
+                        ) {
+                            CommentLikeIcon(
+                                size = 14.dp,
+                                tint = if (comment.liked) {
+                                    Color(0xFFFF6B81)
+                                } else {
+                                    CommentHint.copy(alpha = 0.85f)
+                                },
+                                filled = comment.liked,
+                            )
+                            Text(
+                                text = if (comment.likedCount > 0) {
+                                    formatCount(comment.likedCount)
+                                } else {
+                                    "赞"
+                                },
+                                style = TextStyle(
+                                    color = if (comment.liked) {
+                                        Color(0xFFFF6B81).copy(alpha = 0.92f)
+                                    } else {
+                                        CommentHint.copy(alpha = 0.8f)
+                                    },
+                                    fontSize = 12.sp,
+                                ),
+                            )
+                        }
+                        // 抱抱：双指捏合评论触发（对齐网易云）；图标点按也可，长按看列表
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            modifier = Modifier
+                                .combinedClickable(
+                                    enabled = !hugBusy && !hugListLoading,
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null,
+                                    onClick = { scope.launch { doHug(playAnim = true) } },
+                                    onLongClick = { scope.launch { loadHugList() } },
+                                ),
+                        ) {
+                            CommentHugIcon(
+                                size = 15.dp,
+                                tint = if (hugged || overlayProgress > 0.12f) {
+                                    Color(0xFFFF6B81).copy(alpha = 0.95f)
+                                } else {
+                                    CommentHint.copy(alpha = 0.88f)
+                                },
+                            )
+                            Text(
+                                text = if (hugged) "已抱抱" else "抱抱",
+                                style = TextStyle(
+                                    color = if (hugged || overlayProgress > 0.12f) {
+                                        Color(0xFFFF6B81).copy(alpha = 0.92f)
+                                    } else {
+                                        CommentHint.copy(alpha = 0.8f)
+                                    },
+                                    fontSize = 12.sp,
+                                ),
+                            )
+                        }
+                        Text(
+                            text = if (replyActive) "回复中" else "回复",
+                            style = TextStyle(
+                                color = if (replyActive) {
+                                    CommentAccent.copy(alpha = 0.95f)
+                                } else {
+                                    CommentHint.copy(alpha = 0.85f)
+                                },
+                                fontSize = 12.sp,
+                                fontWeight = if (replyActive) FontWeight.Medium else FontWeight.Normal,
+                            ),
                             modifier = Modifier.clickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null,
-                                onClick = { hugListOpen = false },
+                                onClick = onReplyClick,
                             ),
                         )
-                    }
-                    if (hugUsers.isEmpty()) {
-                        Text(
-                            text = "暂时还没有人抱抱",
-                            color = CommentHint.copy(alpha = 0.75f),
-                            fontSize = 12.sp,
-                        )
-                    } else {
-                        hugUsers.take(30).forEach { user ->
+                        if (comment.replyCount > 0) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
-                                Box(
-                                    Modifier
-                                        .size(24.dp)
-                                        .clip(CircleShape)
-                                        .background(Color(0xFF1C2028)),
-                                ) {
-                                    UrlImage(
-                                        url = user.avatarUrl,
-                                        contentDescription = user.nickname,
-                                        modifier = Modifier.fillMaxSize(),
-                                        contentScale = ContentScale.Crop,
-                                    )
-                                }
-                                Text(
-                                    text = user.nickname,
-                                    color = CommentLabel.copy(alpha = 0.88f),
-                                    fontSize = 12.sp,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            if (repliesOpen) {
-                Spacer(Modifier.height(10.dp))
-                Column(
-                    Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(CommentQuoteBg.copy(alpha = 0.72f))
-                        .padding(horizontal = 10.dp, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    when {
-                        repliesLoading && displayReplies.isEmpty() -> {
-                            Box(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 8.dp),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                CircularProgressIndicator(
-                                    color = CommentAccent.copy(alpha = 0.7f),
-                                    strokeWidth = 2.dp,
-                                    modifier = Modifier.size(18.dp),
-                                )
-                            }
-                        }
-                        repliesError != null && displayReplies.isEmpty() -> {
-                            Text(
-                                text = repliesError ?: "加载失败",
-                                color = CommentHint,
-                                fontSize = 12.sp,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
                                 modifier = Modifier.clickable(
                                     interactionSource = remember { MutableInteractionSource() },
                                     indication = null,
                                     onClick = {
-                                        scope.launch {
-                                            loadReplies(reset = true, consumePending = true)
+                                        val next = !repliesOpen
+                                        repliesOpen = next
+                                        if (next) {
+                                            // 用户再次展开：取消置顶，拉真实顺序
+                                            scope.launch {
+                                                loadReplies(reset = true, consumePending = true)
+                                            }
                                         }
                                     },
                                 ),
-                            )
-                        }
-                        displayReplies.isEmpty() -> {
-                            Text(
-                                text = "暂无回复",
-                                color = CommentHint.copy(alpha = 0.7f),
-                                fontSize = 12.sp,
-                            )
-                        }
-                        else -> {
-                            displayReplies.forEach { reply ->
-                                CommentReplyRow(
-                                    comment = reply,
-                                    justSent = pendingTopReply?.commentId == reply.commentId,
-                                )
-                            }
-                            when {
-                                repliesLoading -> Box(
-                                    Modifier.fillMaxWidth(),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    CircularProgressIndicator(
-                                        color = CommentAccent.copy(alpha = 0.65f),
-                                        strokeWidth = 2.dp,
-                                        modifier = Modifier.size(16.dp),
-                                    )
-                                }
-                                repliesHasMore -> Text(
-                                    text = "加载更多回复",
-                                    color = CommentAccent.copy(alpha = 0.9f),
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    modifier = Modifier.clickable(
-                                        interactionSource = remember {
-                                            MutableInteractionSource()
-                                        },
-                                        indication = null,
-                                        onClick = {
-                                            scope.launch { loadReplies(reset = false) }
-                                        },
+                            ) {
+                                Text(
+                                    text = if (repliesOpen) {
+                                        "收起回复"
+                                    } else {
+                                        "回复 ${formatCount(comment.replyCount)}"
+                                    },
+                                    style = TextStyle(
+                                        color = CommentAccent.copy(alpha = 0.88f),
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Medium,
                                     ),
+                                )
+                                CommentChevronIcon(
+                                    expanded = repliesOpen,
+                                    size = 11.dp,
+                                    tint = CommentAccent.copy(alpha = 0.88f),
                                 )
                             }
                         }
                     }
                 }
             }
-        }
+
+            // matchParentSize：叠在评论本体上，不参与测量；不随回复/抱抱列表增高
+            if (overlayProgress > 0.01f) {
+                Box(
+                    Modifier.matchParentSize(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CommentHugPeopleOverlay(
+                        progress = overlayProgress,
+                        modifier = Modifier.size(132.dp),
+                    )
+                }
+            }
         }
 
-        // matchParentSize：叠层不参与测量，避免抱抱动画把整条评论撑高再缩回
-        if (overlayProgress > 0.01f) {
-            Box(
-                Modifier.matchParentSize(),
-                contentAlignment = Alignment.Center,
+        if (hugListOpen || repliesOpen) {
+            // 与正文列对齐：头像 40 + spacedBy 12
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                CommentHugPeopleOverlay(
-                    progress = overlayProgress,
-                    modifier = Modifier.size(132.dp),
-                )
+                Spacer(Modifier.width(40.dp))
+                Column(Modifier.weight(1f)) {
+                    if (hugListOpen) {
+                        Spacer(Modifier.height(10.dp))
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(CommentQuoteBg.copy(alpha = 0.8f))
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    text = "抱抱了这些人",
+                                    color = CommentLabel.copy(alpha = 0.9f),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                Text(
+                                    text = "收起",
+                                    color = CommentAccent,
+                                    fontSize = 12.sp,
+                                    modifier = Modifier.clickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null,
+                                        onClick = { hugListOpen = false },
+                                    ),
+                                )
+                            }
+                            if (hugUsers.isEmpty()) {
+                                Text(
+                                    text = "暂时还没有人抱抱",
+                                    color = CommentHint.copy(alpha = 0.75f),
+                                    fontSize = 12.sp,
+                                )
+                            } else {
+                                hugUsers.take(30).forEach { user ->
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    ) {
+                                        Box(
+                                            Modifier
+                                                .size(24.dp)
+                                                .clip(CircleShape)
+                                                .background(Color(0xFF1C2028)),
+                                        ) {
+                                            UrlImage(
+                                                url = user.avatarUrl,
+                                                contentDescription = user.nickname,
+                                                modifier = Modifier.fillMaxSize(),
+                                                contentScale = ContentScale.Crop,
+                                            )
+                                        }
+                                        Text(
+                                            text = user.nickname,
+                                            color = CommentLabel.copy(alpha = 0.88f),
+                                            fontSize = 12.sp,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if (repliesOpen) {
+                        Spacer(Modifier.height(10.dp))
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(CommentQuoteBg.copy(alpha = 0.72f))
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            when {
+                                repliesLoading && displayReplies.isEmpty() -> {
+                                    Box(
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 8.dp),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        CircularProgressIndicator(
+                                            color = CommentAccent.copy(alpha = 0.7f),
+                                            strokeWidth = 2.dp,
+                                            modifier = Modifier.size(18.dp),
+                                        )
+                                    }
+                                }
+                                repliesError != null && displayReplies.isEmpty() -> {
+                                    Text(
+                                        text = repliesError ?: "加载失败",
+                                        color = CommentHint,
+                                        fontSize = 12.sp,
+                                        modifier = Modifier.clickable(
+                                            interactionSource = remember { MutableInteractionSource() },
+                                            indication = null,
+                                            onClick = {
+                                                scope.launch {
+                                                    loadReplies(reset = true, consumePending = true)
+                                                }
+                                            },
+                                        ),
+                                    )
+                                }
+                                displayReplies.isEmpty() -> {
+                                    Text(
+                                        text = "暂无回复",
+                                        color = CommentHint.copy(alpha = 0.7f),
+                                        fontSize = 12.sp,
+                                    )
+                                }
+                                else -> {
+                                    displayReplies.forEach { reply ->
+                                        CommentReplyRow(
+                                            comment = reply,
+                                            justSent = pendingTopReply?.commentId == reply.commentId,
+                                        )
+                                    }
+                                    when {
+                                        repliesLoading -> Box(
+                                            Modifier.fillMaxWidth(),
+                                            contentAlignment = Alignment.Center,
+                                        ) {
+                                            CircularProgressIndicator(
+                                                color = CommentAccent.copy(alpha = 0.65f),
+                                                strokeWidth = 2.dp,
+                                                modifier = Modifier.size(16.dp),
+                                            )
+                                        }
+                                        repliesHasMore -> Text(
+                                            text = "加载更多回复",
+                                            color = CommentAccent.copy(alpha = 0.9f),
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            modifier = Modifier.clickable(
+                                                interactionSource = remember {
+                                                    MutableInteractionSource()
+                                                },
+                                                indication = null,
+                                                onClick = {
+                                                    scope.launch { loadReplies(reset = false) }
+                                                },
+                                            ),
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }

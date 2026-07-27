@@ -109,7 +109,7 @@ private val SettingsGlassStyle = HazeStyle(
     ),
     blurRadius = 84.dp,
     noiseFactor = 0.20f,
-    fallbackTint = HazeTint(Color(0xCC05080E)),
+    fallbackTint = HazeTint(Color(0x9905080E)),
 )
 /** 功能行：近不透明实底，与磨砂壳分层。 */
 private val SettingsRowBg = Color(0xF0141A24)
@@ -715,18 +715,30 @@ fun NowPlayingSettingsSheet(
     ) {
         key(hazeNonce) {
             if (enableRealtimeHaze) {
+                // 实时磨砂：勿再垫不透明静态底，否则模糊被盖死只剩实色
                 Box(
                     Modifier
                         .matchParentSize()
-                        .graphicsLayer { alpha = dim }
-                        .hazeEffect(state = hazeState, style = SettingsGlassStyle) {
-                            blurRadius = glassBlurRadius
-                            noiseFactor = 0.16f
-                            fallbackTint = HazeTint(Color(0xCC05080E))
-                        },
-                )
+                        .graphicsLayer { alpha = dim },
+                ) {
+                    // 底色在下：与 fallback 同浓度，haze 失效时不跳亮度
+                    Box(
+                        Modifier
+                            .matchParentSize()
+                            .background(Color(0x9905080E)),
+                    )
+                    Box(
+                        Modifier
+                            .matchParentSize()
+                            .hazeEffect(state = hazeState, style = SettingsGlassStyle) {
+                                blurRadius = glassBlurRadius
+                                noiseFactor = 0.16f
+                                fallbackTint = HazeTint(Color.Transparent)
+                            },
+                    )
+                }
             } else {
-                // 静态玻璃：无实时 blur，避免弹出动画卡顿
+                // 静态玻璃：无实时 blur（竖屏 / 横屏入场过渡）
                 Box(
                     Modifier
                         .matchParentSize()
@@ -743,7 +755,7 @@ fun NowPlayingSettingsSheet(
                 )
             }
         }
-        // 半透罩层：切歌 blur 短暂失效时也不致死实色；高模糊时略减实色以透出玻璃
+        // 半透罩层：实时磨砂略减实色以透出玻璃
         Box(
             Modifier
                 .matchParentSize()
@@ -751,8 +763,7 @@ fun NowPlayingSettingsSheet(
                 .background(
                     when {
                         !enableRealtimeHaze -> Color(0x3305080E)
-                        glassBlurRadius >= 110.dp -> Color(0x6605080E)
-                        else -> Color(0x9905080E)
+                        else -> Color(0x4405080E)
                     },
                 ),
         )
@@ -765,7 +776,7 @@ fun NowPlayingSettingsSheet(
                         colors = listOf(
                             Color.White.copy(alpha = 0.03f),
                             Color.Transparent,
-                            Color.Black.copy(alpha = 0.55f),
+                            Color.Black.copy(alpha = 0.42f),
                         ),
                     ),
                 ),

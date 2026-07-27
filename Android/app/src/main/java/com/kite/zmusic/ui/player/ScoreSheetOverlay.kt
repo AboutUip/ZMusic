@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -100,7 +101,8 @@ private const val ScorePrefetchAhead = 36
  * @param onCommitCoverWidth 遮挡后提交面板宽度（suspend，应带动画）；切列在其完成后再做
  * @param onPlayTrack 点选：带回卡片黑胶根坐标，供飞入动画
  *
- * 列数切换不播网格 morph：不透明唱机遮挡下离散切换 2↔4 列；宽度仍平滑动画。
+ * 列数切换不播网格 morph：不透明遮挡下离散切换 2↔4 列；宽度仍平滑动画。
+ * 加宽动画期间必须卸下网格——遮罩挡不住 measure/layout，否则每帧 O(n) 重排会严重卡顿。
  */
 @Composable
 fun ScoreSheetOverlay(
@@ -118,6 +120,8 @@ fun ScoreSheetOverlay(
     var gridExpanded by remember(openGeneration) { mutableStateOf(coverExpanded) }
     var transitionBusy by remember { mutableStateOf(false) }
     var showTurntable by remember { mutableStateOf(false) }
+    /** 为 true 时不组合 ScoreMorphGrid，避免宽度动画帧拖着全表重排 */
+    var gridSuspended by remember { mutableStateOf(false) }
     val chevronT = remember { Animatable(if (coverExpanded) 1f else 0f) }
 
     LaunchedEffect(coverExpanded) {
@@ -131,15 +135,19 @@ fun ScoreSheetOverlay(
         if (coverExpanded == gridExpanded) {
             showTurntable = false
             transitionBusy = false
+            gridSuspended = false
             return@LaunchedEffect
         }
         transitionBusy = true
-        // ① 实底挡住 → ② 宽度动画 → ③ 切列 → ④ 布局就绪立刻揭开（不等 loading 演完）
+        // ① 遮罩 → ② 卸网格 → ③ 宽度动画（无网格）→ ④ 切列并挂回网格 → ⑤ 揭开
         showTurntable = true
         withFrameNanos { }
         withFrameNanos { }
+        gridSuspended = true
+        withFrameNanos { }
         onCommitCoverWidth(coverExpanded)
         gridExpanded = coverExpanded
+        gridSuspended = false
         // 等网格完成至少两帧布局/绘制后再揭开
         withFrameNanos { }
         withFrameNanos { }
@@ -273,22 +281,25 @@ fun ScoreSheetOverlay(
                     .fillMaxWidth()
                     .clip(CardShape),
             ) {
-                key(openGeneration) {
-                    ScoreMorphGrid(
-                        expandT = layoutT,
-                        gridGap = gridGap,
-                        tracks = tracks,
-                        currentIndex = currentIndex,
-                        plateColors = plateColors,
-                        initialIndex = initialIndex,
-                        onPlayTrack = onPlayTrack,
-                        interactionEnabled = !transitionBusy,
-                    )
+                // 加宽动画帧不挂网格：否则每帧 cellPx 变化会拖着全表重排
+                if (!gridSuspended) {
+                    key(openGeneration) {
+                        ScoreMorphGrid(
+                            expandT = layoutT,
+                            gridGap = gridGap,
+                            tracks = tracks,
+                            currentIndex = currentIndex,
+                            plateColors = plateColors,
+                            initialIndex = initialIndex,
+                            onPlayTrack = onPlayTrack,
+                            interactionEnabled = !transitionBusy,
+                        )
+                    }
                 }
             }
         }
 
-        // 不透明整页遮挡 + 精致曲谱 loading；盖住切宽/切列重组
+        // 不透明整页遮挡 + loading；盖住卸网格 / 切宽 / 切列
         if (showTurntable) {
             ScoreExpandLoadingBlocker(
                 expanding = coverExpanded,
@@ -504,6 +515,7 @@ private fun ScoreMorphGrid(
 /**
  * 曲谱展开/收起 loading：舞台式黑胶 + 谱线氛围（非玩具唱机壳）。
  * 盘在实底之上保持清晰；遮挡仅用于切列重组。
+ * 唱臂绘在更大的 Canvas 上，避免针尖出界被裁成「短/长」跳变。
  */
 @Composable
 private fun ScoreExpandLoadingBlocker(
@@ -732,16 +744,24 @@ private fun ScoreExpandLoadingBlocker(
 
                 Canvas(
                     Modifier
-                        .align(Alignment.TopEnd)
-                        .offset(x = 6.dp, y = (-2).dp)
-                        .size(78.dp),
+                        .align(Alignment.Center)
+                        // 大于舞台：支点在右上、臂长探出时仍落在可绘区内，避免短/长跳变
+                        .requiredSize(220.dp),
                 ) {
-                    val pivot = Offset(size.width * 0.82f, size.height * 0.18f)
-                    val rest = -48f
-                    val play = 28f
+                    val c = Offset(size.width / 2f, size.height / 2f)
+                    // 与舞台内 122.dp 黑胶同心
+                    val vinylR = size.minDimension * (122f / 220f) / 2f
+                    val pivot = Offset(
+                        c.x + vinylR * 0.82f,
+                        c.y - vinylR * 0.88f,
+                    )
+                    // 原 -48°→28° 背对黑胶；整体 +180° 后按落针语义取 208°→132°（抬起→落盘）
+                    val rest = 208f
+                    val play = 132f
                     val deg = rest + (play - rest) * arm
                     val rad = Math.toRadians(deg.toDouble()).toFloat()
-                    val len = size.minDimension * 0.78f
+                    // 略短于原比例，保证 rest/play 两态针尖都在 Canvas 内
+                    val len = vinylR * 1.05f
                     val tip = Offset(pivot.x + cos(rad) * len, pivot.y + sin(rad) * len)
                     val back = Math.toRadians((deg + 180f).toDouble()).toFloat()
                     val counter = Offset(
@@ -752,26 +772,26 @@ private fun ScoreExpandLoadingBlocker(
                         color = Color.Black.copy(alpha = 0.35f),
                         start = Offset(counter.x + 1.5f, counter.y + 2f),
                         end = Offset(tip.x + 1.5f, tip.y + 2f),
-                        strokeWidth = size.minDimension * 0.038f,
+                        strokeWidth = size.minDimension * 0.014f,
                         cap = StrokeCap.Round,
                     )
                     drawCircle(
                         color = Color(0xFF1A222E),
-                        radius = size.minDimension * 0.09f,
+                        radius = size.minDimension * 0.032f,
                         center = pivot,
                     )
                     drawCircle(
                         brush = Brush.radialGradient(
                             listOf(Color(0xFFE8EEF4), Color(0xFF7A8694)),
                             center = pivot,
-                            radius = size.minDimension * 0.055f,
+                            radius = size.minDimension * 0.02f,
                         ),
-                        radius = size.minDimension * 0.055f,
+                        radius = size.minDimension * 0.02f,
                         center = pivot,
                     )
                     drawCircle(
                         color = Color(0xFFC5CED8),
-                        radius = size.minDimension * 0.048f,
+                        radius = size.minDimension * 0.017f,
                         center = counter,
                     )
                     drawLine(
@@ -782,17 +802,17 @@ private fun ScoreExpandLoadingBlocker(
                         ),
                         start = counter,
                         end = tip,
-                        strokeWidth = size.minDimension * 0.032f,
+                        strokeWidth = size.minDimension * 0.012f,
                         cap = StrokeCap.Round,
                     )
                     drawCircle(
                         color = Color(0xFF151C26),
-                        radius = size.minDimension * 0.048f,
+                        radius = size.minDimension * 0.017f,
                         center = tip,
                     )
                     drawCircle(
                         color = Accent.copy(alpha = 0.35f + 0.55f * arm),
-                        radius = size.minDimension * 0.02f,
+                        radius = size.minDimension * 0.007f,
                         center = tip,
                     )
                 }

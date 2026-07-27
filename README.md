@@ -74,6 +74,18 @@ Windows / Linux 实现网易云兼容 API、会话、播放与缓存时，可参
 
 > API 基址可在编译期通过 `local.properties` 覆盖；运行期也可在 App 内「服务器配置」修改并持久化。请勿将含私有地址或密钥的 `local.properties` 提交到仓库。
 
+### 发行签名（可选）
+
+开源克隆后**无需配置密钥**：`release` 未找到本地签名时会**默认使用 debug 签名**，可直接编译安装。
+
+若要打正式签名包：
+
+1. 将密钥库放到 [`Android/keystore/`](./Android/keystore)（例如 `ZMusic-release.jks`）
+2. 复制 [`Android/keystore/keystore.properties.example`](./Android/keystore/keystore.properties.example) → `keystore.properties`，填入真实 `storeFile` / 口令 / alias
+3. 再执行 `./gradlew :app:assembleRelease`
+
+`keystore.properties` 与 `*.jks` / `*.keystore` 已在 [`.gitignore`](./.gitignore) 中忽略；仓库只保留模版，请勿提交私钥或口令。
+
 ## 文档导航
 
 | 路径 | 内容 |
