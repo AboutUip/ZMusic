@@ -2,7 +2,7 @@
 
 本文描述 `ZMusic` **Android** 客户端当前可维护的主链路：从 UI 交互到播放内核，再到接口请求与缓存。
 
-**与 Windows 的关系**：Windows 客户端为**独立工程**（`Windows/`），实现方式不必与本文一致。若需对齐**项目核心**（播放状态语义、接口与缓存链路），可将下文中的 **数据层、播放协调层、缓存与配置** 当作**行为级参考**；具体类名与 UI 仅适用于 Android。
+**与 Windows 的关系**：Windows 客户端为**独立工程**（`Windows/`），实现方式不必与本文一致。若需对齐**项目核心**（播放状态语义、接口与缓存链路），可将下文中的 **数据层、播放协调层、缓存与配置** 当作**行为级参考**；具体类名与 UI 仅适用于 Android。Windows 实现细节见 [`WINDOWS.md`](./WINDOWS.md)。
 
 ---
 
@@ -69,12 +69,28 @@
 
 ## 6. 配置与环境
 
-- 默认 API：`http://47.110.72.65:3000`；`local.properties` 可覆盖 `ncm.api.base.url`
+- 默认 API 基址：`http://120.27.244.170:3000`（`app/build.gradle.kts` → `BuildConfig.NCM_API_BASE_URL`）
+- `local.properties` 可覆盖 `ncm.api.base.url`
+- 应用内「服务器配置」可运行期覆盖并持久化
 - Splash → 连通性探测 → 主流程
+
+> 历史文档或示例中的 `47.x` 地址已废弃，请勿再作为默认云端。
 
 ---
 
-## 7. 后续建议
+## 7. 播放模式（跨端语义）
+
+| 枚举 | 含义 |
+|------|------|
+| `ORDER` | 列表循环 |
+| `REPEAT_ONE` | 单曲循环 |
+| `SHUFFLE` | 随机播放 |
+
+循环切换顺序：`ORDER` → `REPEAT_ONE` → `SHUFFLE` → `ORDER`。
+
+---
+
+## 8. 后续建议
 
 - 缓存 TTL / 版本策略
 - 关键链路仪器测试（息屏连播、通知 play/pause 同步）
