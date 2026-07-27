@@ -4,20 +4,205 @@
                  xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
                  xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
                  xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+                 xmlns:nav="clr-namespace:ZMusic.Navigation"
+                 xmlns:vm="clr-namespace:ZMusic.ViewModels"
+                 xmlns:ctrl="clr-namespace:ZMusic.Views.Controls"
                  mc:Ignorable="d"
+                 d:DataContext="{d:DesignInstance Type=vm:ShellViewModel}"
                  Title="ZMusic"
-                 Width="800"
-                 Height="450"
+                 Width="1120"
+                 Height="720"
+                 MinWidth="900"
+                 MinHeight="560"
+                 WindowStartupLocation="CenterScreen"
                  ExtendsContentIntoTitleBar="True"
-                 WindowBackdropType="Mica">
+                 WindowBackdropType="Acrylic"
+                 Background="Transparent"
+                 Icon="pack://application:,,,/Assets/app-icon.png">
+    <ui:FluentWindow.Resources>
+        <Style x:Key="NavButton" TargetType="Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="#A8FFFFFF" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Padding" Value="14,12" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Margin" Value="10,2" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="8"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Left"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#18FFFFFF" />
+                                <Setter Property="Foreground" Value="#F2FFFFFF" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="NavButtonActive" TargetType="Button" BasedOn="{StaticResource NavButton}">
+            <Setter Property="Background" Value="#28FFFFFF" />
+            <Setter Property="Foreground" Value="#F5FFFFFF" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+
+        <Style x:Key="NavIcon" TargetType="ui:SymbolIcon">
+            <Setter Property="FontSize" Value="18" />
+            <Setter Property="Margin" Value="0,0,12,0" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
+        <Style x:Key="NavLabel" TargetType="TextBlock">
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="FontSize" Value="14" />
+        </Style>
+    </ui:FluentWindow.Resources>
+
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <ui:TitleBar Grid.Row="0" Title="ZMusic" />
+        <Border Grid.RowSpan="2" Background="#B208080C" IsHitTestVisible="False" />
 
-        <Grid Grid.Row="1" />
+        <ui:TitleBar Grid.Row="0"
+                     Title="ZMusic"
+                     Icon="{ui:ImageIcon 'pack://application:,,,/Assets/app-icon.png'}">
+            <ui:TitleBar.CenterContent>
+                <Border x:Name="TopBarExtensionHost"
+                        Height="32"
+                        MinWidth="120"
+                        VerticalAlignment="Center"
+                        Background="Transparent" />
+            </ui:TitleBar.CenterContent>
+        </ui:TitleBar>
+
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="248" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <DockPanel Grid.Column="0" Margin="6,14,0,10">
+                <StackPanel DockPanel.Dock="Bottom" Margin="10,0,10,4">
+                    <Button x:Name="SettingsNavButton"
+                            Command="{Binding NavigateCommand}"
+                            CommandParameter="{x:Static nav:AppPage.Settings}"
+                            Style="{StaticResource NavButton}">
+                        <StackPanel Orientation="Horizontal">
+                            <ui:SymbolIcon Symbol="Settings24" Style="{StaticResource NavIcon}" />
+                            <TextBlock Text="设置" Style="{StaticResource NavLabel}" />
+                        </StackPanel>
+                    </Button>
+                    <ctrl:UserAccountCard Margin="0,10,0,0"
+                                          DisplayName="{Binding UserDisplayName}"
+                                          AvatarUrl="{Binding UserAvatarUrl}" />
+                </StackPanel>
+
+                <StackPanel>
+                    <Button x:Name="RecommendNavButton"
+                            Command="{Binding NavigateCommand}"
+                            CommandParameter="{x:Static nav:AppPage.Recommend}"
+                            Style="{StaticResource NavButton}">
+                        <StackPanel Orientation="Horizontal">
+                            <ui:SymbolIcon Symbol="Sparkle24" Style="{StaticResource NavIcon}" />
+                            <TextBlock Text="推荐" Style="{StaticResource NavLabel}" />
+                        </StackPanel>
+                    </Button>
+                    <Button x:Name="PlaylistsNavButton"
+                            Command="{Binding NavigateCommand}"
+                            CommandParameter="{x:Static nav:AppPage.Playlists}"
+                            Style="{StaticResource NavButton}">
+                        <StackPanel Orientation="Horizontal">
+                            <ui:SymbolIcon Symbol="Library24" Style="{StaticResource NavIcon}" />
+                            <TextBlock Text="歌单" Style="{StaticResource NavLabel}" />
+                        </StackPanel>
+                    </Button>
+                    <Button x:Name="LikedNavButton"
+                            Command="{Binding NavigateCommand}"
+                            CommandParameter="{x:Static nav:AppPage.Liked}"
+                            Style="{StaticResource NavButton}">
+                        <StackPanel Orientation="Horizontal">
+                            <ui:SymbolIcon Symbol="Heart24" Style="{StaticResource NavIcon}" />
+                            <TextBlock Text="喜欢" Style="{StaticResource NavLabel}" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </DockPanel>
+
+            <Border Grid.Column="1"
+                    Width="1"
+                    Margin="0,10"
+                    Background="#28FFFFFF" />
+
+            <Grid Grid.Column="2" Margin="4,10,10,10">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0"
+                           Margin="24,10,24,12"
+                           Text="{Binding PageTitle}"
+                           FontSize="22"
+                           FontWeight="SemiBold"
+                           Foreground="#F5FFFFFF"
+                           Focusable="False">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Visibility" Value="Visible" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding ShowPageChrome}" Value="False">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+
+                <Border Grid.Row="1"
+                        Height="1"
+                        Margin="24,0,24,0"
+                        Background="#18FFFFFF">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Visibility" Value="Visible" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding ShowPageChrome}" Value="False">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                </Border>
+
+                <!-- Page content; bottom margin expands when mini player docks -->
+                <ContentControl x:Name="PageHost"
+                                Grid.Row="2"
+                                Margin="12,8,12,8"
+                                Focusable="False"
+                                IsTabStop="False"
+                                FocusVisualStyle="{x:Null}" />
+
+                <!-- Floating mini player overlays the reserved bottom band -->
+                <ctrl:MiniPlayerBar x:Name="MiniPlayer"
+                                   Grid.Row="2"
+                                   VerticalAlignment="Bottom"
+                                   Panel.ZIndex="20" />
+            </Grid>
+        </Grid>
     </Grid>
 </ui:FluentWindow>

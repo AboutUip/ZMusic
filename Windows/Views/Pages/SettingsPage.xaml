@@ -1,0 +1,18 @@
+<UserControl x:Class="ZMusic.Views.Pages.SettingsPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid>
+        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+            <TextBlock Text="设置"
+                       FontSize="28"
+                       FontWeight="SemiBold"
+                       Foreground="#F2FFFFFF"
+                       HorizontalAlignment="Center" />
+            <TextBlock Margin="0,10,0,0"
+                       Text="服务器、账号与外观稍后放这里"
+                       FontSize="14"
+                       Foreground="#88FFFFFF"
+                       HorizontalAlignment="Center" />
+        </StackPanel>
+    </Grid>
+</UserControl>

@@ -1,0 +1,490 @@
+<UserControl x:Class="ZMusic.Views.Pages.LikedPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ctrl="clr-namespace:ZMusic.Views.Controls"
+             xmlns:conv="clr-namespace:ZMusic.Converters"
+             Focusable="False"
+             FocusVisualStyle="{x:Null}"
+             Loaded="OnLoaded">
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis" />
+        <conv:InverseBooleanToVisibilityConverter x:Key="InvBoolToVis" />
+        <conv:NullOrEmptyToVisibilityConverter x:Key="NullToVis" />
+        <conv:LongEqualsToVisibilityConverter x:Key="LongEqVis" />
+        <conv:LongEqualsToBoolConverter x:Key="LongEqBool" />
+
+        <Storyboard x:Key="ShimmerPulse" RepeatBehavior="Forever" AutoReverse="True">
+            <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                             From="0.32"
+                             To="0.72"
+                             Duration="0:0:0.95">
+                <DoubleAnimation.EasingFunction>
+                    <SineEase EasingMode="EaseInOut" />
+                </DoubleAnimation.EasingFunction>
+            </DoubleAnimation>
+        </Storyboard>
+
+        <Storyboard x:Key="NowPlayingPulse" RepeatBehavior="Forever" AutoReverse="True">
+            <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                             From="0.55"
+                             To="1"
+                             Duration="0:0:0.7">
+                <DoubleAnimation.EasingFunction>
+                    <SineEase EasingMode="EaseInOut" />
+                </DoubleAnimation.EasingFunction>
+            </DoubleAnimation>
+        </Storyboard>
+
+        <Style x:Key="SkeletonBlock" TargetType="Border">
+            <Setter Property="Background" Value="#28FFFFFF" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Style.Triggers>
+                <EventTrigger RoutedEvent="Loaded">
+                    <BeginStoryboard Storyboard="{StaticResource ShimmerPulse}" />
+                </EventTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="PlayingDot" TargetType="Ellipse">
+            <Setter Property="Width" Value="7" />
+            <Setter Property="Height" Value="7" />
+            <Setter Property="Fill" Value="#E6FFFFFF" />
+            <Style.Triggers>
+                <EventTrigger RoutedEvent="Loaded">
+                    <BeginStoryboard Storyboard="{StaticResource NowPlayingPulse}" />
+                </EventTrigger>
+            </Style.Triggers>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid x:Name="ContentRoot"
+          Focusable="False"
+          FocusVisualStyle="{x:Null}">
+        <!-- Skeleton: sticky header + list placeholders -->
+        <Grid Focusable="False" FocusVisualStyle="{x:Null}">
+            <Grid.Style>
+                <Style TargetType="Grid">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding ShowSkeleton}" Value="True">
+                            <Setter Property="Visibility" Value="Visible" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Grid.Style>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <Grid Grid.Row="0" Margin="16,4,16,16" IsHitTestVisible="False">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Border Width="148" Height="148" CornerRadius="14" Style="{StaticResource SkeletonBlock}" />
+                <StackPanel Grid.Column="1" Margin="22,16,24,0" VerticalAlignment="Center">
+                    <Border Height="26" Width="180" HorizontalAlignment="Left" Style="{StaticResource SkeletonBlock}" />
+                    <Border Margin="0,14,0,0" Height="14" Width="260" HorizontalAlignment="Left" Style="{StaticResource SkeletonBlock}" />
+                    <Border Margin="0,10,0,0" Height="14" Width="200" HorizontalAlignment="Left" Style="{StaticResource SkeletonBlock}" />
+                    <Border Margin="0,18,0,0" Height="12" Width="80" HorizontalAlignment="Left" Style="{StaticResource SkeletonBlock}" />
+                </StackPanel>
+            </Grid>
+
+            <Border Grid.Row="1" Height="1" Margin="16,0,16,8" Background="#14FFFFFF" />
+
+            <ScrollViewer Grid.Row="2"
+                          Padding="4,0,4,8"
+                          VerticalScrollBarVisibility="Disabled"
+                          Focusable="False"
+                          IsTabStop="False"
+                          FocusVisualStyle="{x:Null}"
+                          IsHitTestVisible="False">
+                <StackPanel>
+                    <Grid Margin="16,10"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <Border Width="48" Height="48" Style="{StaticResource SkeletonBlock}" />
+                        <StackPanel Grid.Column="1" Margin="14,4,16,0" VerticalAlignment="Center">
+                            <Border Height="14" Width="160" HorizontalAlignment="Left" Style="{StaticResource SkeletonBlock}" />
+                            <Border Margin="0,10,0,0" Height="12" Width="110" HorizontalAlignment="Left" Style="{StaticResource SkeletonBlock}" />
+                        </StackPanel>
+                        <Border Grid.Column="2" Height="12" Width="36" VerticalAlignment="Center" Style="{StaticResource SkeletonBlock}" />
+                    </Grid>
+                    <Grid Margin="16,10"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <Border Width="48" Height="48" Style="{StaticResource SkeletonBlock}" />
+                        <StackPanel Grid.Column="1" Margin="14,4,16,0" VerticalAlignment="Center">
+                            <Border Height="14" Width="150" HorizontalAlignment="Left" Style="{StaticResource SkeletonBlock}" />
+                            <Border Margin="0,10,0,0" Height="12" Width="100" HorizontalAlignment="Left" Style="{StaticResource SkeletonBlock}" />
+                        </StackPanel>
+                        <Border Grid.Column="2" Height="12" Width="36" VerticalAlignment="Center" Style="{StaticResource SkeletonBlock}" />
+                    </Grid>
+                    <Grid Margin="16,10"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <Border Width="48" Height="48" Style="{StaticResource SkeletonBlock}" />
+                        <StackPanel Grid.Column="1" Margin="14,4,16,0" VerticalAlignment="Center">
+                            <Border Height="14" Width="170" HorizontalAlignment="Left" Style="{StaticResource SkeletonBlock}" />
+                            <Border Margin="0,10,0,0" Height="12" Width="120" HorizontalAlignment="Left" Style="{StaticResource SkeletonBlock}" />
+                        </StackPanel>
+                        <Border Grid.Column="2" Height="12" Width="36" VerticalAlignment="Center" Style="{StaticResource SkeletonBlock}" />
+                    </Grid>
+                    <Grid Margin="16,10"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <Border Width="48" Height="48" Style="{StaticResource SkeletonBlock}" />
+                        <StackPanel Grid.Column="1" Margin="14,4,16,0" VerticalAlignment="Center">
+                            <Border Height="14" Width="140" HorizontalAlignment="Left" Style="{StaticResource SkeletonBlock}" />
+                            <Border Margin="0,10,0,0" Height="12" Width="90" HorizontalAlignment="Left" Style="{StaticResource SkeletonBlock}" />
+                        </StackPanel>
+                        <Border Grid.Column="2" Height="12" Width="36" VerticalAlignment="Center" Style="{StaticResource SkeletonBlock}" />
+                    </Grid>
+                    <Grid Margin="16,10"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <Border Width="48" Height="48" Style="{StaticResource SkeletonBlock}" />
+                        <StackPanel Grid.Column="1" Margin="14,4,16,0" VerticalAlignment="Center">
+                            <Border Height="14" Width="155" HorizontalAlignment="Left" Style="{StaticResource SkeletonBlock}" />
+                            <Border Margin="0,10,0,0" Height="12" Width="105" HorizontalAlignment="Left" Style="{StaticResource SkeletonBlock}" />
+                        </StackPanel>
+                        <Border Grid.Column="2" Height="12" Width="36" VerticalAlignment="Center" Style="{StaticResource SkeletonBlock}" />
+                    </Grid>
+                    <Grid Margin="16,10"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <Border Width="48" Height="48" Style="{StaticResource SkeletonBlock}" />
+                        <StackPanel Grid.Column="1" Margin="14,4,16,0" VerticalAlignment="Center">
+                            <Border Height="14" Width="165" HorizontalAlignment="Left" Style="{StaticResource SkeletonBlock}" />
+                            <Border Margin="0,10,0,0" Height="12" Width="95" HorizontalAlignment="Left" Style="{StaticResource SkeletonBlock}" />
+                        </StackPanel>
+                        <Border Grid.Column="2" Height="12" Width="36" VerticalAlignment="Center" Style="{StaticResource SkeletonBlock}" />
+                    </Grid>
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+
+        <!-- Content: sticky playlist header + scrolling tracks -->
+        <Grid Focusable="False" FocusVisualStyle="{x:Null}">
+            <Grid.Style>
+                <Style TargetType="Grid">
+                    <Setter Property="Visibility" Value="Visible" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding ShowSkeleton}" Value="True">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Grid.Style>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <Grid Grid.Row="0"
+                  Margin="16,4,16,16"
+                  Focusable="False"
+                  FocusVisualStyle="{x:Null}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <Border Width="148"
+                        Height="148"
+                        CornerRadius="14"
+                        ClipToBounds="True"
+                        BorderBrush="#22FFFFFF"
+                        BorderThickness="1"
+                        Focusable="False"
+                        FocusVisualStyle="{x:Null}">
+                    <Grid Focusable="False" FocusVisualStyle="{x:Null}">
+                        <Border Focusable="False" FocusVisualStyle="{x:Null}">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                    <GradientStop Color="#33FFFFFF" Offset="0" />
+                                    <GradientStop Color="#14FFFFFF" Offset="1" />
+                                </LinearGradientBrush>
+                            </Border.Background>
+                        </Border>
+                        <TextBlock Text="♥"
+                                   FontSize="42"
+                                   Foreground="#66FFFFFF"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   Focusable="False"
+                                   Visibility="{Binding HasCover, Converter={StaticResource InvBoolToVis}}" />
+                        <ctrl:UrlImage Url="{Binding CoverUrl}"
+                                       Stretch="UniformToFill"
+                                       Focusable="False"
+                                       FocusVisualStyle="{x:Null}"
+                                       Visibility="{Binding HasCover, Converter={StaticResource BoolToVis}}" />
+                    </Grid>
+                </Border>
+
+                <StackPanel Grid.Column="1"
+                            Margin="22,8,8,0"
+                            VerticalAlignment="Center"
+                            Focusable="False"
+                            FocusVisualStyle="{x:Null}"
+                            Background="Transparent">
+                    <TextBlock Text="{Binding PlaylistName}"
+                               FontSize="26"
+                               FontWeight="SemiBold"
+                               Foreground="#F5FFFFFF"
+                               TextWrapping="Wrap"
+                               Focusable="False"
+                               FocusVisualStyle="{x:Null}" />
+                    <TextBlock Margin="0,10,0,0"
+                               Text="{Binding PlaylistDescription}"
+                               FontSize="13"
+                               Foreground="#99FFFFFF"
+                               TextWrapping="Wrap"
+                               LineHeight="20"
+                               Focusable="False"
+                               FocusVisualStyle="{x:Null}" />
+                    <TextBlock Margin="0,14,0,0"
+                               FontSize="12"
+                               Foreground="#77FFFFFF"
+                               Focusable="False"
+                               FocusVisualStyle="{x:Null}">
+                        <Run Text="{Binding TrackCount, Mode=OneWay}" />
+                        <Run Text=" 首歌曲" />
+                    </TextBlock>
+                </StackPanel>
+            </Grid>
+
+            <Border Grid.Row="1"
+                    Height="1"
+                    Margin="16,0,16,8"
+                    Background="#18FFFFFF"
+                    Focusable="False" />
+
+            <ScrollViewer Grid.Row="2"
+                          VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled"
+                          Padding="4,0,4,8"
+                          Focusable="False"
+                          IsTabStop="False"
+                          FocusVisualStyle="{x:Null}">
+                <StackPanel Focusable="False" FocusVisualStyle="{x:Null}">
+                    <TextBlock Margin="16,0,16,10"
+                               FontSize="12"
+                               Foreground="#66FFFFFF"
+                               Text="正在同步曲目…"
+                               Focusable="False"
+                               Visibility="{Binding IsLoading, Converter={StaticResource BoolToVis}}" />
+
+                    <ItemsControl ItemsSource="{Binding Tracks}"
+                                  Focusable="False"
+                                  IsTabStop="False"
+                                  FocusVisualStyle="{x:Null}">
+                        <ItemsControl.ItemContainerStyle>
+                            <Style TargetType="ContentPresenter">
+                                <Setter Property="Focusable" Value="False" />
+                                <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                            </Style>
+                        </ItemsControl.ItemContainerStyle>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Padding="12,10"
+                                        Margin="4,0,4,2"
+                                        CornerRadius="10"
+                                        Cursor="Hand"
+                                        Focusable="False"
+                                        FocusVisualStyle="{x:Null}"
+                                        MouseLeftButtonUp="OnTrackClick">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="Background" Value="Transparent" />
+                                            <Setter Property="Focusable" Value="False" />
+                                            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                                            <Style.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter Property="Background" Value="#18FFFFFF" />
+                                                </Trigger>
+                                                <DataTrigger Value="True">
+                                                    <DataTrigger.Binding>
+                                                        <MultiBinding Converter="{StaticResource LongEqBool}">
+                                                            <Binding Path="Id" />
+                                                            <Binding Path="DataContext.PlayingTrackId"
+                                                                     RelativeSource="{RelativeSource AncestorType=UserControl}" />
+                                                        </MultiBinding>
+                                                    </DataTrigger.Binding>
+                                                    <Setter Property="Background" Value="#1AFFFFFF" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <Grid Focusable="False" FocusVisualStyle="{x:Null}">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <!-- Now-playing accent (always reserved width) -->
+                                        <Border Width="3"
+                                                CornerRadius="2"
+                                                Margin="0,4,10,4"
+                                                VerticalAlignment="Stretch">
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Setter Property="Background" Value="Transparent" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Value="True">
+                                                            <DataTrigger.Binding>
+                                                                <MultiBinding Converter="{StaticResource LongEqBool}">
+                                                                    <Binding Path="Id" />
+                                                                    <Binding Path="DataContext.PlayingTrackId"
+                                                                             RelativeSource="{RelativeSource AncestorType=UserControl}" />
+                                                                </MultiBinding>
+                                                            </DataTrigger.Binding>
+                                                            <Setter Property="Background" Value="#E6FFFFFF" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                        </Border>
+
+                                        <Border Grid.Column="1"
+                                                Width="48"
+                                                Height="48"
+                                                CornerRadius="8"
+                                                ClipToBounds="True"
+                                                Background="#1AFFFFFF"
+                                                Focusable="False"
+                                                FocusVisualStyle="{x:Null}">
+                                            <Grid>
+                                                <ctrl:UrlImage Url="{Binding CoverUrl}"
+                                                               Stretch="UniformToFill"
+                                                               Focusable="False"
+                                                               FocusVisualStyle="{x:Null}" />
+                                                <Border Background="#66000000">
+                                                    <Border.Style>
+                                                        <Style TargetType="Border">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Value="True">
+                                                                    <DataTrigger.Binding>
+                                                                        <MultiBinding Converter="{StaticResource LongEqBool}">
+                                                                            <Binding Path="Id" />
+                                                                            <Binding Path="DataContext.PlayingTrackId"
+                                                                                     RelativeSource="{RelativeSource AncestorType=UserControl}" />
+                                                                        </MultiBinding>
+                                                                    </DataTrigger.Binding>
+                                                                    <Setter Property="Visibility" Value="Visible" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Border.Style>
+                                                    <Ellipse Style="{StaticResource PlayingDot}"
+                                                             HorizontalAlignment="Center"
+                                                             VerticalAlignment="Center" />
+                                                </Border>
+                                            </Grid>
+                                        </Border>
+
+                                        <StackPanel Grid.Column="2"
+                                                    Margin="14,0,16,0"
+                                                    VerticalAlignment="Center"
+                                                    Focusable="False"
+                                                    FocusVisualStyle="{x:Null}">
+                                            <TextBlock Text="{Binding Name}"
+                                                       FontSize="14"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       Focusable="False">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Foreground" Value="#F2FFFFFF" />
+                                                        <Setter Property="FontWeight" Value="Normal" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Value="True">
+                                                                <DataTrigger.Binding>
+                                                                    <MultiBinding Converter="{StaticResource LongEqBool}">
+                                                                        <Binding Path="Id" />
+                                                                        <Binding Path="DataContext.PlayingTrackId"
+                                                                                 RelativeSource="{RelativeSource AncestorType=UserControl}" />
+                                                                    </MultiBinding>
+                                                                </DataTrigger.Binding>
+                                                                <Setter Property="Foreground" Value="#FFFFFFFF" />
+                                                                <Setter Property="FontWeight" Value="SemiBold" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                            <TextBlock Margin="0,4,0,0"
+                                                       Text="{Binding Artists}"
+                                                       FontSize="12"
+                                                       Foreground="#88FFFFFF"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       Focusable="False" />
+                                        </StackPanel>
+
+                                        <Grid Grid.Column="3" VerticalAlignment="Center" MinWidth="40">
+                                            <TextBlock Text="{Binding DurationText}"
+                                                       VerticalAlignment="Center"
+                                                       HorizontalAlignment="Right"
+                                                       FontSize="12"
+                                                       Foreground="#77FFFFFF"
+                                                       FontFamily="Consolas"
+                                                       Focusable="False">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Value="True">
+                                                                <DataTrigger.Binding>
+                                                                    <MultiBinding Converter="{StaticResource LongEqBool}">
+                                                                        <Binding Path="Id" />
+                                                                        <Binding Path="DataContext.PlayingTrackId"
+                                                                                 RelativeSource="{RelativeSource AncestorType=UserControl}" />
+                                                                    </MultiBinding>
+                                                                </DataTrigger.Binding>
+                                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                            <TextBlock Text="正在播放"
+                                                       VerticalAlignment="Center"
+                                                       HorizontalAlignment="Right"
+                                                       FontSize="11"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="#CCFFFFFF"
+                                                       Focusable="False">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Value="True">
+                                                                <DataTrigger.Binding>
+                                                                    <MultiBinding Converter="{StaticResource LongEqBool}">
+                                                                        <Binding Path="Id" />
+                                                                        <Binding Path="DataContext.PlayingTrackId"
+                                                                                 RelativeSource="{RelativeSource AncestorType=UserControl}" />
+                                                                    </MultiBinding>
+                                                                </DataTrigger.Binding>
+                                                                <Setter Property="Visibility" Value="Visible" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </Grid>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+
+        <TextBlock HorizontalAlignment="Center"
+                   VerticalAlignment="Center"
+                   Text="{Binding ErrorMessage}"
+                   Foreground="#CCFFFFFF"
+                   FontSize="14"
+                   TextWrapping="Wrap"
+                   Margin="40"
+                   Focusable="False"
+                   Visibility="{Binding ErrorMessage, Converter={StaticResource NullToVis}}" />
+    </Grid>
+</UserControl>

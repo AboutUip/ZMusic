@@ -1,28 +1,46 @@
+# =============================================================================
+# ZMusic — repository .gitignore
+# =============================================================================
+
 # --- Android ---
 .gradle/
+**/build/
 Android/.gradle/
-Android/**/build/
+Android/.idea/
 Android/local.properties
 Android/captures/
+Android/.externalNativeBuild/
+Android/.cxx/
+Android/**/build/
 Android/*.iml
-*.iml
-.kotlin
+Android/app/*.iml
+*.apk
+*.aab
+*.ap_
+*.dex
 
-/build
-Android/app/src/androidTest
-Android/app/src/test
+# 单元 / 仪器测试源（若本地生成）
+Android/app/src/androidTest/
+Android/app/src/test/
 
-# 发行签名私钥：保留模版，忽略真实口令与密钥库
+# Kotlin incremental
+.kotlin/
+
+# 发行签名：保留模版，忽略真实口令与密钥库
 Android/keystore/keystore.properties
 Android/keystore/*.jks
 Android/keystore/*.keystore
 !Android/keystore/keystore.properties.example
 
-# --- Windows (WPF / .NET SDK / Visual Studio) ---
+# --- Windows (WPF / .NET SDK / Visual Studio / Rider) ---
 Windows/.vs/
+Windows/.idea/
 Windows/packages/
 Windows/TestResults/
 Windows/publish/
+Windows/AppPackages/
+Windows/**/BundleArtifacts/
+Windows/**/artifacts/
 
 # 构建输出
 Windows/**/[Dd]ebug/
@@ -34,10 +52,7 @@ Windows/obj/
 Windows/**/[Ll]og/
 Windows/**/[Ll]ogs/
 
-# 发布 / 打包
-Windows/AppPackages/
-Windows/**/BundleArtifacts/
-Windows/**/artifacts/
+# 发布包
 Windows/**/*.appx
 Windows/**/*.msix
 Windows/**/*.msixbundle
@@ -51,6 +66,7 @@ Windows/**/*.suo
 Windows/**/*.sln.docstates
 Windows/**/*.DotSettings.user
 Windows/**/*.~vs*
+Windows/**/*_wpftmp.csproj
 
 # NuGet
 Windows/**/*.nupkg
@@ -58,14 +74,35 @@ Windows/**/*.snupkg
 Windows/**/project.lock.json
 Windows/**/project.fragment.lock.json
 
-# --- IDE / 系统 ---
-.idea
+# --- IDE / 编辑器 / 系统 ---
+.idea/
 .vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json.example
+*.iml
 *.swp
 *~
 .DS_Store
 Thumbs.db
 desktop.ini
+ehthumbs.db
+Desktop.ini
+
+# --- 环境与本地机密 ---
+.env
+.env.*
+!.env.example
+*.pem
+*.p12
+
+# --- 日志与临时 ---
+*.log
+*.tmp
+*.temp
+*.bak
+*.orig
+*~
+/build/
 
 # --- 开发临时目录 ---
 dev/
