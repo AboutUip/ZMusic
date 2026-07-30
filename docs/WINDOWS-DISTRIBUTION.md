@@ -62,7 +62,11 @@ python build.py --skip-setup         # 只出两份 MSI（调试用）
 静默安装示例：
 
 ```bash
+# 整机（需管理员）
 msiexec /i ZMusic-Silent.msi /qn INSTALLDIR="C:\Program Files\ZMusic" ALLUSERS=1
+
+# 当前用户（勿写 ALLUSERS= 空值；须成对使用下列属性）
+msiexec /i ZMusic-Silent.msi /qn INSTALLDIR="%LOCALAPPDATA%\Programs\ZMusic" MSIINSTALLPERUSER=1 ALLUSERS=2
 ```
 
 ## 卸载与数据清单

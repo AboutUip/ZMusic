@@ -54,13 +54,15 @@ public static class MsiExec
         if (request.Scope == InstallScope.PerMachine)
         {
             args.Add("ALLUSERS=1");
-            args.Add("MSIINSTALLPERUSER=");
         }
         else
         {
-            // Dual-purpose package: force per-user context.
-            args.Add("ALLUSERS=");
+            // Dual-purpose (perUserOrMachine): never pass ALLUSERS= with an empty value.
+            // msiexec treats the next token as the value, so "ALLUSERS= MSIINSTALLPERUSER=1"
+            // becomes ALLUSERS=MSIINSTALLPERUSER=1 → machine install without elevation → Error 1925.
+            // MS dual-purpose contract: MSIINSTALLPERUSER=1 + ALLUSERS=2.
             args.Add("MSIINSTALLPERUSER=1");
+            args.Add("ALLUSERS=2");
         }
 
         var exit = await RunAsync(args, elevate: request.Scope == InstallScope.PerMachine, cancellationToken);
