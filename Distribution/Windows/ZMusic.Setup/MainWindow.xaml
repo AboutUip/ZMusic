@@ -1,0 +1,116 @@
+﻿<Window x:Class="ZMusic.Setup.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="安装 ZMusic"
+        Height="640"
+        Width="920"
+        MinHeight="560"
+        MinWidth="780"
+        WindowStartupLocation="CenterScreen"
+        WindowStyle="None"
+        ResizeMode="CanMinimize"
+        Background="{StaticResource BrushBlack}"
+        Foreground="{StaticResource BrushBright}"
+        Icon="pack://application:,,,/Assets/app.ico">
+  <Border BorderBrush="{StaticResource BrushLine}" BorderThickness="1">
+    <Grid>
+      <!-- Immersive grayscale atmosphere -->
+      <Grid IsHitTestVisible="False">
+        <Grid.Background>
+          <RadialGradientBrush Center="0.15,0.1" RadiusX="0.85" RadiusY="0.7" GradientOrigin="0.12,0.08">
+            <GradientStop Color="#FF1A1A1A" Offset="0" />
+            <GradientStop Color="#FF0A0A0A" Offset="0.45" />
+            <GradientStop Color="#FF050505" Offset="1" />
+          </RadialGradientBrush>
+        </Grid.Background>
+        <Ellipse x:Name="GlowA"
+                 Width="520" Height="520"
+                 HorizontalAlignment="Left" VerticalAlignment="Top"
+                 Margin="-160,-200,0,0"
+                 Opacity="0.18">
+          <Ellipse.Fill>
+            <RadialGradientBrush>
+              <GradientStop Color="#FFFFFFFF" Offset="0" />
+              <GradientStop Color="#00FFFFFF" Offset="1" />
+            </RadialGradientBrush>
+          </Ellipse.Fill>
+        </Ellipse>
+        <Ellipse x:Name="GlowB"
+                 Width="640" Height="420"
+                 HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                 Margin="0,0,-220,-160"
+                 Opacity="0.10">
+          <Ellipse.Fill>
+            <RadialGradientBrush>
+              <GradientStop Color="#CCFFFFFF" Offset="0" />
+              <GradientStop Color="#00FFFFFF" Offset="1" />
+            </RadialGradientBrush>
+          </Ellipse.Fill>
+        </Ellipse>
+      </Grid>
+
+      <Grid>
+        <Grid.RowDefinitions>
+          <RowDefinition Height="48" />
+          <RowDefinition Height="*" />
+          <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Title bar -->
+        <Border Grid.Row="0"
+                Background="#66000000"
+                MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+          <Grid Margin="18,0">
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Left">
+              <Image Source="pack://application:,,,/Assets/app-icon.png"
+                     Width="20" Height="20"
+                     RenderOptions.BitmapScalingMode="HighQuality" />
+              <TextBlock Text="ZMusic 安装"
+                         Margin="10,0,0,0"
+                         FontFamily="{StaticResource DisplayFont}"
+                         FontSize="13"
+                         Foreground="{StaticResource BrushSoft}"
+                         VerticalAlignment="Center" />
+            </StackPanel>
+            <Button HorizontalAlignment="Right"
+                    VerticalAlignment="Center"
+                    Style="{StaticResource CloseButton}"
+                    Click="Close_Click"
+                    ToolTip="关闭" />
+          </Grid>
+        </Border>
+
+        <!-- Page host -->
+        <Grid Grid.Row="1" Margin="48,20,48,8">
+          <ContentControl x:Name="PageHost" />
+        </Grid>
+
+        <!-- Footer -->
+        <Border Grid.Row="2"
+                Background="#99000000"
+                BorderBrush="{StaticResource BrushLine}"
+                BorderThickness="0,1,0,0"
+                Padding="48,16,48,20">
+          <DockPanel>
+            <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
+              <Ellipse x:Name="Step1" Width="8" Height="8" Margin="0,0,8,0" Fill="{StaticResource BrushWhite}" />
+              <Ellipse x:Name="Step2" Width="8" Height="8" Margin="0,0,8,0" Fill="{StaticResource BrushLine}" />
+              <Ellipse x:Name="Step3" Width="8" Height="8" Margin="0,0,8,0" Fill="{StaticResource BrushLine}" />
+              <Ellipse x:Name="Step4" Width="8" Height="8" Margin="0,0,8,0" Fill="{StaticResource BrushLine}" />
+              <Ellipse x:Name="Step5" Width="8" Height="8" Margin="0,0,8,0" Fill="{StaticResource BrushLine}" />
+              <Ellipse x:Name="Step6" Width="8" Height="8" Margin="0,0,16,0" Fill="{StaticResource BrushLine}" />
+              <TextBlock x:Name="StepLabel"
+                         VerticalAlignment="Center"
+                         Foreground="{StaticResource BrushMuted}"
+                         FontSize="12" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+              <Button x:Name="BackButton" Content="上一步" Margin="0,0,10,0" Click="Back_Click" />
+              <Button x:Name="NextButton" Content="下一步" Style="{StaticResource PrimaryButton}" Click="Next_Click" />
+            </StackPanel>
+          </DockPanel>
+        </Border>
+      </Grid>
+    </Grid>
+  </Border>
+</Window>

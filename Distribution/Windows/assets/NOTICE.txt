@@ -1,0 +1,27 @@
+ZMusic
+=======
+
+Copyright (C) ZMusic Contributors
+
+This program is free software; you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation; either version 2 of the License, or (at your option) any later
+version.
+
+The full GPL-2.0 text is distributed as the LICENSE file alongside this notice
+and is also shown during installation.
+
+Source offer (GPL-2.0)
+----------------------
+Corresponding source for binary distributions of ZMusic is available from:
+
+  https://github.com/AboutUip/ZMusic
+
+If you redistribute a modified binary, update this notice and ProductIdentity.SourceOfferUrl
+to the location where the corresponding source is offered.
+
+Trademarks
+----------
+NetEase Cloud Music and related marks are property of their respective owners.
+ZMusic is an independent client that speaks a community-compatible API; it is
+not affiliated with or endorsed by NetEase.

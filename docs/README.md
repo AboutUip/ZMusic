@@ -17,7 +17,8 @@
 1. 根入门与核心约定：[`../README.md`](../README.md)
 2. Android 架构与主链路：[`ARCHITECTURE.md`](./ARCHITECTURE.md)
 3. Windows 架构与已实现能力：[`WINDOWS.md`](./WINDOWS.md)
-4. 接口契约离线全文：[`raw/home.md`](./raw/home.md)
+4. Windows 安装包分发：[`WINDOWS-DISTRIBUTION.md`](./WINDOWS-DISTRIBUTION.md)
+5. 接口契约离线全文：[`raw/home.md`](./raw/home.md)
 
 ---
 
@@ -28,8 +29,11 @@
 | [`../LICENSE`](../LICENSE) | 项目许可证（GNU GPL v2.0） |
 | [`../Android/`](../Android) | Android 客户端（Compose · Media3） |
 | [`../Windows/`](../Windows) | Windows 客户端（WPF · .NET 9 · WPF-UI） |
+| [`../Distribution/Windows/`](../Distribution/Windows) | Windows 安装包（Setup / MSI / Uninstall） |
+| [`../Distribution/Android/`](../Distribution/Android) | Android 发行产物脚本（输出到 `artifacts/android/`） |
 | [`ARCHITECTURE.md`](./ARCHITECTURE.md) | Android 端架构、核心模块与数据流 |
 | [`WINDOWS.md`](./WINDOWS.md) | Windows 端架构、启动流、播放与目录 |
+| [`WINDOWS-DISTRIBUTION.md`](./WINDOWS-DISTRIBUTION.md) | Windows 分发：Setup.exe + 静默 MSI / 卸载 / 签名 |
 | [`raw/home.md`](./raw/home.md) | 网易云兼容 API 文档离线全文 |
 | [`netease/netease-api/INDEX.md`](./netease/netease-api/INDEX.md) | API 章节索引（分篇入口） |
 | [`netease/netease-api/endpoints/*.md`](./netease/netease-api/endpoints) | API 细分端点文档 |

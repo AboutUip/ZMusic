@@ -80,6 +80,17 @@ public sealed class NcmUserClient : IDisposable
             ["timestamp"] = Ts(),
         }, ct);
 
+    public Task<JsonElement> LyricAsync(
+        long id,
+        string cookie,
+        CancellationToken ct = default) =>
+        GetAsync("/lyric", new Dictionary<string, string>
+        {
+            ["id"] = id.ToString(),
+            ["cookie"] = cookie,
+            ["timestamp"] = Ts(),
+        }, ct);
+
     private async Task<JsonElement> GetAsync(
         string path,
         IReadOnlyDictionary<string, string> query,

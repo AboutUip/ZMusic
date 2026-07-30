@@ -1,0 +1,54 @@
+<UserControl x:Class="ZMusic.Setup.Pages.ProgressPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Grid>
+    <StackPanel VerticalAlignment="Center" MaxWidth="520" HorizontalAlignment="Center">
+      <Grid Width="88" Height="88" Margin="0,0,0,28" HorizontalAlignment="Center">
+        <Ellipse Width="88" Height="88"
+                 Stroke="{StaticResource BrushLine}"
+                 StrokeThickness="1" />
+        <Ellipse x:Name="SpinArc"
+                 Width="88" Height="88"
+                 Stroke="{StaticResource BrushWhite}"
+                 StrokeThickness="1.5"
+                 StrokeDashArray="14 90"
+                 StrokeStartLineCap="Round"
+                 RenderTransformOrigin="0.5,0.5">
+          <Ellipse.RenderTransform>
+            <RotateTransform x:Name="SpinTransform" Angle="0" />
+          </Ellipse.RenderTransform>
+        </Ellipse>
+        <Image Source="pack://application:,,,/Assets/app-icon.png"
+               Width="36" Height="36"
+               HorizontalAlignment="Center" VerticalAlignment="Center"
+               RenderOptions.BitmapScalingMode="HighQuality" />
+      </Grid>
+
+      <TextBlock Text="正在安装"
+                 Style="{StaticResource DisplayTitle}"
+                 FontSize="28"
+                 HorizontalAlignment="Center" />
+      <TextBlock x:Name="StatusText"
+                 Margin="0,12,0,28"
+                 HorizontalAlignment="Center"
+                 TextAlignment="Center"
+                 Foreground="{StaticResource BrushSoft}"
+                 TextWrapping="Wrap"
+                 Text="准备中…" />
+
+      <Grid x:Name="Track" Height="3" ClipToBounds="True">
+        <Border Background="{StaticResource BrushElevated}" CornerRadius="1" />
+        <Border x:Name="Sweep"
+                Width="140"
+                HorizontalAlignment="Left"
+                Background="{StaticResource BrushWhite}"
+                CornerRadius="1"
+                Opacity="0.95">
+          <Border.RenderTransform>
+            <TranslateTransform x:Name="SweepTransform" X="-140" />
+          </Border.RenderTransform>
+        </Border>
+      </Grid>
+    </StackPanel>
+  </Grid>
+</UserControl>

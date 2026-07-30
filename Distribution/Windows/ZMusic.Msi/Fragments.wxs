@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <!-- Shared payload for Silent + UI MSI variants. ProductCode aligns with ProductIdentity. -->
+  <Fragment>
+    <Property Id="INSTALLDESKTOPSHORTCUT" Value="1" Secure="yes" />
+    <Property Id="INSTALLSTARTMENUSHORTCUT" Value="1" Secure="yes" />
+    <Property Id="INSTALLDIR" Secure="yes" />
+    <SetDirectory Id="INSTALLFOLDER" Value="[INSTALLDIR]" Condition="INSTALLDIR" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="ZMusic" />
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="ApplicationProgramsFolder" Name="ZMusic" />
+    </StandardDirectory>
+
+    <StandardDirectory Id="DesktopFolder" />
+  </Fragment>
+
+  <Fragment>
+    <ComponentGroup Id="AppPayload" Directory="INSTALLFOLDER">
+      <Files Include="$(AppPublishDir)**">
+        <Exclude Files="$(AppPublishDir)Uninstall.exe" />
+        <Exclude Files="$(AppPublishDir)Uninstall.dll" />
+        <Exclude Files="$(AppPublishDir)Uninstall.pdb" />
+        <Exclude Files="$(AppPublishDir)Uninstall.deps.json" />
+        <Exclude Files="$(AppPublishDir)Uninstall.runtimeconfig.json" />
+        <Exclude Files="$(AppPublishDir)**\*.pdb" />
+        <Exclude Files="$(AppPublishDir)LICENSE" />
+        <Exclude Files="$(AppPublishDir)NOTICE.txt" />
+        <Exclude Files="$(AppPublishDir)ThirdPartyNotices.txt" />
+      </Files>
+    </ComponentGroup>
+
+    <Component Id="CmpLicense" Directory="INSTALLFOLDER" Guid="D1E2F3A4-B5C6-4789-8A01-23456789ABCD">
+      <File Id="FileLicense" Source="..\assets\LICENSE" Name="LICENSE" KeyPath="yes" />
+    </Component>
+
+    <Component Id="CmpNotice" Directory="INSTALLFOLDER" Guid="E2F3A4B5-C6D7-4890-9B12-3456789ABCDE">
+      <File Id="FileNotice" Source="..\assets\NOTICE.txt" Name="NOTICE.txt" KeyPath="yes" />
+    </Component>
+
+    <Component Id="CmpThirdPartyNotices" Directory="INSTALLFOLDER" Guid="F3A4B5C6-D7E8-4901-AC23-456789ABCDEF">
+      <File Id="FileThirdParty" Source="..\assets\ThirdPartyNotices.txt" Name="ThirdPartyNotices.txt" KeyPath="yes" />
+    </Component>
+
+    <Component Id="CmpUninstallExe" Directory="INSTALLFOLDER" Guid="A4B5C6D7-E8F9-4012-BD34-56789ABCDEF0">
+      <File Id="FileUninstall" Source="$(AppPublishDir)Uninstall.exe" Name="Uninstall.exe" KeyPath="yes" />
+    </Component>
+
+    <Component Id="CmpStartMenuShortcut" Directory="ApplicationProgramsFolder" Guid="B5C6D7E8-F9A0-4123-CE45-6789ABCDEF01" Condition="INSTALLSTARTMENUSHORTCUT=&quot;1&quot;">
+      <Shortcut
+          Id="StartMenuShortcut"
+          Name="ZMusic"
+          Description="ZMusic"
+          Target="[INSTALLFOLDER]ZMusic.exe"
+          WorkingDirectory="INSTALLFOLDER" />
+      <RemoveFolder Id="RemoveApplicationProgramsFolder" Directory="ApplicationProgramsFolder" On="uninstall" />
+      <RegistryValue Root="HKCU" Key="Software\ZMusic\Installer" Name="StartMenuShortcut" Type="integer" Value="1" KeyPath="yes" />
+    </Component>
+
+    <Component Id="CmpDesktopShortcut" Directory="DesktopFolder" Guid="C6D7E8F9-A0B1-4234-DF56-789ABCDEF012" Condition="INSTALLDESKTOPSHORTCUT=&quot;1&quot;">
+      <Shortcut
+          Id="DesktopShortcut"
+          Name="ZMusic"
+          Description="ZMusic"
+          Target="[INSTALLFOLDER]ZMusic.exe"
+          WorkingDirectory="INSTALLFOLDER" />
+      <RegistryValue Root="HKCU" Key="Software\ZMusic\Installer" Name="DesktopShortcut" Type="integer" Value="1" KeyPath="yes" />
+    </Component>
+
+    <Component Id="CmpArpEntry" Directory="INSTALLFOLDER" Guid="D7E8F9A0-B1C2-4345-EA67-89ABCDEF0123">
+      <RegistryKey Root="HKMU" Key="Software\Microsoft\Windows\CurrentVersion\Uninstall\ZMusic">
+        <RegistryValue Name="DisplayName" Type="string" Value="ZMusic" />
+        <RegistryValue Name="Publisher" Type="string" Value="ZMusic Contributors" />
+        <RegistryValue Name="DisplayVersion" Type="string" Value="0.1.0" />
+        <RegistryValue Name="InstallLocation" Type="string" Value="[INSTALLFOLDER]" />
+        <RegistryValue Name="DisplayIcon" Type="string" Value="[INSTALLFOLDER]ZMusic.exe" />
+        <RegistryValue Name="UninstallString" Type="string" Value="&quot;[INSTALLFOLDER]Uninstall.exe&quot;" />
+        <RegistryValue Name="QuietUninstallString" Type="string" Value="&quot;[INSTALLFOLDER]Uninstall.exe&quot; /silent" />
+        <RegistryValue Name="NoModify" Type="integer" Value="1" />
+        <RegistryValue Name="NoRepair" Type="integer" Value="1" />
+        <RegistryValue Name="ProductCode" Type="string" Value="{C8F5D3B2-9E4A-5F02-AD17-3B6C9E8F2051}" />
+      </RegistryKey>
+      <RegistryValue Root="HKMU" Key="Software\ZMusic\Installer" Name="InstallFolder" Type="string" Value="[INSTALLFOLDER]" KeyPath="yes" />
+    </Component>
+  </Fragment>
+
+  <Fragment>
+    <Feature Id="ProductFeature" Title="ZMusic" Level="1">
+      <ComponentGroupRef Id="AppPayload" />
+      <ComponentRef Id="CmpLicense" />
+      <ComponentRef Id="CmpNotice" />
+      <ComponentRef Id="CmpThirdPartyNotices" />
+      <ComponentRef Id="CmpUninstallExe" />
+      <ComponentRef Id="CmpStartMenuShortcut" />
+      <ComponentRef Id="CmpDesktopShortcut" />
+      <ComponentRef Id="CmpArpEntry" />
+    </Feature>
+  </Fragment>
+</Wix>

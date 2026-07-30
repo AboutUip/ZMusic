@@ -29,5 +29,7 @@ public sealed class PlaybackBridge : IDisposable
 
     public void SkipNext() => _coordinator.SkipNext();
 
+    public void SkipPrevious() => _coordinator.SkipPrevious();
+
     public void Dispose() => _coordinator.Dispose();
 }

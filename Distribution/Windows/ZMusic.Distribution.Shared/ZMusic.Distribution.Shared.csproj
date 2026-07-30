@@ -1,0 +1,9 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <RootNamespace>ZMusic.Distribution</RootNamespace>
+    <AssemblyName>ZMusic.Distribution.Shared</AssemblyName>
+  </PropertyGroup>
+
+</Project>

@@ -121,3 +121,35 @@ dependencies {
     androidTestImplementation(libs.espresso.core)
     debugImplementation(libs.compose.ui.tooling)
 }
+
+// ---------------------------------------------------------------------------
+// Distribution: copy release APK/AAB into repo-level artifacts/android/
+// (same top-level artifacts/ tree used by Windows Setup/MSI; gitignored)
+// ---------------------------------------------------------------------------
+val releaseArtifactsDir = rootProject.file("../artifacts/android")
+val releaseVersionName = android.defaultConfig.versionName ?: "0.0"
+
+tasks.register("publishReleaseToArtifacts") {
+    group = "distribution"
+    description =
+        "Assemble release APK + AAB and copy them to ../artifacts/android/ (repo root)"
+    dependsOn("assembleRelease", "bundleRelease")
+
+    doLast {
+        releaseArtifactsDir.mkdirs()
+        copy {
+            from(layout.buildDirectory.dir("outputs/apk/release"))
+            include("*.apk")
+            into(releaseArtifactsDir)
+            rename { _ -> "ZMusic-$releaseVersionName-release.apk" }
+        }
+        copy {
+            from(layout.buildDirectory.dir("outputs/bundle/release"))
+            include("*.aab")
+            into(releaseArtifactsDir)
+            rename { _ -> "ZMusic-$releaseVersionName-release.aab" }
+        }
+        logger.lifecycle("Release artifacts → ${releaseArtifactsDir.canonicalPath}")
+        releaseArtifactsDir.listFiles()?.forEach { logger.lifecycle("  ${it.name}") }
+    }
+}

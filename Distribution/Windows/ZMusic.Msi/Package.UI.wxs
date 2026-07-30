@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+  <!-- Standard Windows Installer UI for users who prefer a controllable .msi. -->
+  <Package
+      Name="ZMusic"
+      Manufacturer="ZMusic Contributors"
+      Version="0.1.0"
+      UpgradeCode="B7E4C2A1-8F3D-4E91-9C06-2A5B8D7E1F40"
+      ProductCode="C8F5D3B2-9E4A-5F02-AD17-3B6C9E8F2051"
+      Scope="perUserOrMachine"
+      Compressed="yes"
+      Language="1033">
+
+    <MajorUpgrade
+        DowngradeErrorMessage="A newer version of ZMusic is already installed."
+        Schedule="afterInstallInitialize" />
+
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+
+    <!-- Hide default MSI ARP; custom ARP points at Uninstall.exe -->
+    <Property Id="ARPSYSTEMCOMPONENT" Value="1" />
+
+    <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+    <WixVariable Id="WixUILicenseRtf" Value="..\assets\License.rtf" />
+
+    <FeatureRef Id="ProductFeature" />
+  </Package>
+</Wix>

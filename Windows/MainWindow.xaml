@@ -96,7 +96,7 @@
             </Grid.ColumnDefinitions>
 
             <DockPanel Grid.Column="0" Margin="6,14,0,10">
-                <StackPanel DockPanel.Dock="Bottom" Margin="10,0,10,4">
+                <StackPanel DockPanel.Dock="Bottom" Margin="10,0,10,0">
                     <Button x:Name="SettingsNavButton"
                             Command="{Binding NavigateCommand}"
                             CommandParameter="{x:Static nav:AppPage.Settings}"
@@ -197,12 +197,16 @@
                                 IsTabStop="False"
                                 FocusVisualStyle="{x:Null}" />
 
-                <!-- Floating mini player overlays the reserved bottom band -->
+                <!-- Bottom-aligned with sidebar UserAccountCard (shared 10px inset) -->
                 <ctrl:MiniPlayerBar x:Name="MiniPlayer"
                                    Grid.Row="2"
                                    VerticalAlignment="Bottom"
                                    Panel.ZIndex="20" />
             </Grid>
         </Grid>
+
+        <ctrl:NowPlayingOverlay x:Name="NowPlaying"
+                                Grid.RowSpan="2"
+                                Panel.ZIndex="40" />
     </Grid>
 </ui:FluentWindow>

@@ -17,17 +17,32 @@ public class UrlImage : Image
         typeof(UrlImage),
         new PropertyMetadata(null, OnUrlChanged));
 
+    public static readonly DependencyProperty DecodePixelWidthProperty = DependencyProperty.Register(
+        nameof(DecodePixelWidth),
+        typeof(int),
+        typeof(UrlImage),
+        new PropertyMetadata(0, OnUrlChanged));
+
     public string? Url
     {
         get => (string?)GetValue(UrlProperty);
         set => SetValue(UrlProperty, value);
     }
 
+    /// <summary>
+    /// Preferred decode width in pixels. When &lt;= 0, falls back to layout-based sizing.
+    /// </summary>
+    public int DecodePixelWidth
+    {
+        get => (int)GetValue(DecodePixelWidthProperty);
+        set => SetValue(DecodePixelWidthProperty, value);
+    }
+
     private static void OnUrlChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         if (d is UrlImage image)
         {
-            _ = image.LoadAsync(e.NewValue as string);
+            _ = image.LoadAsync(image.Url);
         }
     }
 
@@ -58,12 +73,16 @@ public class UrlImage : Image
                 return;
             }
 
+            var decodeWidth = DecodePixelWidth > 0
+                ? DecodePixelWidth
+                : (int)Math.Max(ActualWidth > 0 ? ActualWidth * 2 : 120, 64);
+
             using var stream = new MemoryStream(bytes);
             var image = new BitmapImage();
             image.BeginInit();
             image.CacheOption = BitmapCacheOption.OnLoad;
             image.CreateOptions = BitmapCreateOptions.IgnoreColorProfile;
-            image.DecodePixelWidth = (int)Math.Max(ActualWidth > 0 ? ActualWidth * 2 : 120, 64);
+            image.DecodePixelWidth = decodeWidth;
             image.StreamSource = stream;
             image.EndInit();
             image.Freeze();

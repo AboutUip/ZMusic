@@ -1,0 +1,50 @@
+<UserControl x:Class="ZMusic.Setup.Pages.LicensePage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Grid>
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="2*" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="*" />
+      <RowDefinition Height="Auto" />
+    </Grid.RowDefinitions>
+
+    <StackPanel Grid.Row="0" Margin="0,0,0,12">
+      <TextBlock Text="许可协议与署名" Style="{StaticResource PageTitle}" />
+      <TextBlock Style="{StaticResource PageSubtitle}" Margin="0"
+                 Text="安装前请阅读 GPL-2.0 与第三方致谢。同意后即可继续。" />
+    </StackPanel>
+
+    <TextBox Grid.Row="1"
+             x:Name="LicenseBox"
+             IsReadOnly="True"
+             TextWrapping="Wrap"
+             VerticalScrollBarVisibility="Auto"
+             AcceptsReturn="True"
+             FontFamily="{StaticResource MonoFont}"
+             FontSize="11.5"
+             Background="{StaticResource BrushPanel}"
+             BorderBrush="{StaticResource BrushLine}" />
+
+    <TextBlock Grid.Row="2" Margin="0,14,0,8" Style="{StaticResource FieldLabel}"
+               Text="署名与第三方致谢" />
+
+    <TextBox Grid.Row="3"
+             x:Name="NoticeBox"
+             IsReadOnly="True"
+             TextWrapping="Wrap"
+             VerticalScrollBarVisibility="Auto"
+             AcceptsReturn="True"
+             FontSize="12"
+             Background="{StaticResource BrushPanel}"
+             BorderBrush="{StaticResource BrushLine}" />
+
+    <CheckBox Grid.Row="4"
+              x:Name="AcceptCheck"
+              Margin="0,16,0,0"
+              Content="我已阅读并同意 GNU GPL v2.0 许可条款"
+              Checked="Accept_Changed"
+              Unchecked="Accept_Changed" />
+  </Grid>
+</UserControl>

@@ -25,7 +25,8 @@ public sealed class AppServices
         var sessions = new SessionStore();
         var auth = new NcmAuthClient();
         var user = new NcmUserClient();
-        var coordinator = new PlaylistCoordinator(sessions, user);
+        var lyrics = new LyricRepository(user);
+        var coordinator = new PlaylistCoordinator(sessions, user, lyrics);
         var services = new AppServices
         {
             Sessions = sessions,

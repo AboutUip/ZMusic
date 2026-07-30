@@ -1,6 +1,7 @@
 ﻿using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media.Animation;
 using System.Windows.Shell;
 using Wpf.Ui.Controls;
@@ -12,12 +13,13 @@ namespace ZMusic;
 
 public partial class MainWindow : FluentWindow
 {
-    private const double PlayerDockBottom = 100;
+    private const double PlayerDockBottom = 96;
 
     private readonly ShellViewModel _shell;
     private readonly PlaybackViewModel _playback;
     private readonly Dictionary<AppPage, UserControl> _pages = new();
     private bool _playerDockOpen;
+    private bool _nowPlayingOpen;
 
     public MainWindow()
     {
@@ -27,6 +29,10 @@ public partial class MainWindow : FluentWindow
         InitializeComponent();
 
         MiniPlayer.DataContext = _playback;
+        NowPlaying.DataContext = _playback;
+        MiniPlayer.ExpandRequested += (_, _) => OpenNowPlaying();
+        NowPlaying.DismissRequested += (_, _) => CloseNowPlaying();
+        PreviewKeyDown += OnPreviewKeyDown;
         Loaded += OnLoaded;
         Closed += (_, _) => _playback.Dispose();
         _shell.PropertyChanged += OnShellPropertyChanged;
@@ -41,6 +47,44 @@ public partial class MainWindow : FluentWindow
         SetPlayerDock(_playback.HasQueue, animate: false);
         AppServices.Current.Liked.Prefetch();
         await _shell.LoadUserAsync();
+    }
+
+    private void OnPreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape && _nowPlayingOpen)
+        {
+            CloseNowPlaying();
+            e.Handled = true;
+        }
+    }
+
+    private void OpenNowPlaying()
+    {
+        if (!_playback.HasQueue || _nowPlayingOpen)
+        {
+            return;
+        }
+
+        _nowPlayingOpen = true;
+        MiniPlayer.SetVisible(false, animate: true);
+        NowPlaying.Open(animate: true);
+    }
+
+    private void CloseNowPlaying()
+    {
+        if (!_nowPlayingOpen)
+        {
+            return;
+        }
+
+        _nowPlayingOpen = false;
+        NowPlaying.Close(animate: true, completed: () =>
+        {
+            if (_playback.HasQueue && !_nowPlayingOpen)
+            {
+                MiniPlayer.SetVisible(true, animate: true);
+            }
+        });
     }
 
     private void WidenResizeBorder()
@@ -68,6 +112,14 @@ public partial class MainWindow : FluentWindow
         if (e.PropertyName is nameof(PlaybackViewModel.HasQueue))
         {
             SetPlayerDock(_playback.HasQueue, animate: true);
+            if (!_playback.HasQueue && _nowPlayingOpen)
+            {
+                CloseNowPlaying();
+            }
+            else if (_playback.HasQueue && !_nowPlayingOpen)
+            {
+                MiniPlayer.SetVisible(true, animate: true);
+            }
         }
     }
 

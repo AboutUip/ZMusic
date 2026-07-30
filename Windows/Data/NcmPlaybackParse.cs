@@ -39,4 +39,27 @@ internal static class NcmPlaybackParse
 
         return null;
     }
+
+    public static string? LrcText(JsonElement json)
+    {
+        var code = NcmJson.ApiCode(json);
+        var hasLrc = json.TryGetProperty("lrc", out _);
+        if (code != 200 && code != -1 && !hasLrc)
+        {
+            return null;
+        }
+
+        if (!json.TryGetProperty("lrc", out var lrc) || lrc.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        if (!lrc.TryGetProperty("lyric", out var lyricEl) || lyricEl.ValueKind != JsonValueKind.String)
+        {
+            return null;
+        }
+
+        var text = lyricEl.GetString();
+        return string.IsNullOrWhiteSpace(text) ? null : text;
+    }
 }

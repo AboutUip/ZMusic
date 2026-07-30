@@ -1,6 +1,9 @@
 using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Media.Animation;
 using ZMusic.Playback;
 using ZMusic.ViewModels;
@@ -12,6 +15,8 @@ public partial class MiniPlayerBar : UserControl
     private PlaybackViewModel? _vm;
     private bool _visible;
 
+    public event EventHandler? ExpandRequested;
+
     public MiniPlayerBar()
     {
         InitializeComponent();
@@ -22,6 +27,33 @@ public partial class MiniPlayerBar : UserControl
             IsHitTestVisible = false;
             ApplyModeIcons();
         };
+    }
+
+    private void OnCardClick(object sender, MouseButtonEventArgs e)
+    {
+        // Ignore clicks on transport buttons (and other interactive controls).
+        if (IsInsideInteractiveControl(e.OriginalSource as DependencyObject))
+        {
+            return;
+        }
+
+        ExpandRequested?.Invoke(this, EventArgs.Empty);
+        e.Handled = true;
+    }
+
+    private static bool IsInsideInteractiveControl(DependencyObject? source)
+    {
+        while (source is not null)
+        {
+            if (source is ButtonBase)
+            {
+                return true;
+            }
+
+            source = VisualTreeHelper.GetParent(source);
+        }
+
+        return false;
     }
 
     private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
@@ -83,7 +115,7 @@ public partial class MiniPlayerBar : UserControl
                 EasingFunction = easeOut,
             };
             BeginAnimation(OpacityProperty, fade);
-            SlideTransform.BeginAnimation(System.Windows.Media.TranslateTransform.YProperty, slide);
+            SlideTransform.BeginAnimation(TranslateTransform.YProperty, slide);
             Card.BeginAnimation(OpacityProperty, cardFade);
         }
         else
@@ -91,7 +123,7 @@ public partial class MiniPlayerBar : UserControl
             var fade = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(180)) { EasingFunction = easeIn };
             var slide = new DoubleAnimation(0, 10, TimeSpan.FromMilliseconds(200)) { EasingFunction = easeIn };
             BeginAnimation(OpacityProperty, fade);
-            SlideTransform.BeginAnimation(System.Windows.Media.TranslateTransform.YProperty, slide);
+            SlideTransform.BeginAnimation(TranslateTransform.YProperty, slide);
             Card.BeginAnimation(OpacityProperty, fade);
         }
     }

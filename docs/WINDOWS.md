@@ -154,7 +154,15 @@ dotnet run --project Windows/ZMusic.csproj
 
 ---
 
-## 8. 后续建议
+## 8. 分发（安装包）
+
+Windows **安装 / 卸载**属于产品分发能力，代码在 [`Distribution/Windows/`](../Distribution/Windows/)，不进入本目录主业务工程。
+
+说明与构建：[`WINDOWS-DISTRIBUTION.md`](./WINDOWS-DISTRIBUTION.md)。
+
+---
+
+## 9. 后续建议
 
 - 队列 / 进度快照（对齐 `PlaybackStateStore`）
 - 上一首 / 下一首显式控件

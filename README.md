@@ -82,7 +82,20 @@ Windows / Linux 实现网易云兼容 API、会话、播放与缓存时，可参
 
 1. 将密钥库放到 [`Android/keystore/`](./Android/keystore)（例如 `ZMusic-release.jks`）
 2. 复制 [`Android/keystore/keystore.properties.example`](./Android/keystore/keystore.properties.example) → `keystore.properties`，填入真实 `storeFile` / 口令 / alias
-3. 再执行 `./gradlew :app:assembleRelease`
+3. 再执行 `./gradlew :app:assembleRelease`，或把发行包拷到统一产物目录：
+
+```powershell
+cd Distribution\Android
+python build.py
+```
+
+产物：`artifacts/android/ZMusic-<version>-release.apk`（及 `.aab`）。整个 `artifacts/` 已 gitignore，与 Windows 安装包并列：
+
+```text
+artifacts/
+  android/    # APK / AAB
+  windows/    # ZMusic-Setup.exe / MSI
+```
 
 `keystore.properties` 与 `*.jks` / `*.keystore` 已在 [`.gitignore`](./.gitignore) 中忽略；仓库只保留模版，请勿提交私钥或口令。
 
@@ -107,6 +120,17 @@ dotnet run --project Windows/ZMusic.csproj
 
 更细的模块说明见 [`docs/WINDOWS.md`](./docs/WINDOWS.md)。
 
+### Windows 安装包（可选）
+
+安装器与主工程隔离，见 [`Distribution/Windows/`](./Distribution/Windows/) 与 [`docs/WINDOWS-DISTRIBUTION.md`](./docs/WINDOWS-DISTRIBUTION.md)：
+
+```bash
+cd Distribution/Windows
+python build.py
+```
+
+产物（三份）：`artifacts/windows/ZMusic-Setup.exe`、`ZMusic-Silent.msi`、`ZMusic-UI.msi`。
+
 ## 文档导航
 
 | 路径 | 内容 |
@@ -114,6 +138,7 @@ dotnet run --project Windows/ZMusic.csproj
 | [`docs/README.md`](./docs/README.md) | 文档总入口与推荐阅读顺序 |
 | [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) | Android 端架构、核心模块与数据流（亦作其他端逻辑参考） |
 | [`docs/WINDOWS.md`](./docs/WINDOWS.md) | Windows 端架构、已实现能力与目录说明 |
+| [`docs/WINDOWS-DISTRIBUTION.md`](./docs/WINDOWS-DISTRIBUTION.md) | Windows 安装包分发 |
 | [`docs/raw/home.md`](./docs/raw/home.md) | 网易云兼容 API 文档离线全文 |
 | [`docs/netease/`](./docs/netease) | API 端点细分文档与功能特性索引 |
 

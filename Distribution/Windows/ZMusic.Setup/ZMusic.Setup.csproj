@@ -1,0 +1,32 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>ZMusic-Setup</AssemblyName>
+    <RootNamespace>ZMusic.Setup</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
+    <Version>$(ZMusicProductVersion)</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ZMusic.Distribution.Shared\ZMusic.Distribution.Shared.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\app-icon.png" />
+    <Resource Include="Assets\app.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="..\assets\LICENSE" Link="Embedded\LICENSE" LogicalName="ZMusic.Setup.LICENSE" />
+    <EmbeddedResource Include="..\assets\NOTICE.txt" Link="Embedded\NOTICE.txt" LogicalName="ZMusic.Setup.NOTICE" />
+    <EmbeddedResource Include="..\assets\ThirdPartyNotices.txt" Link="Embedded\ThirdPartyNotices.txt" LogicalName="ZMusic.Setup.ThirdPartyNotices" />
+    <EmbeddedResource Include="Payload\ZMusic.msi" Condition="Exists('Payload\ZMusic.msi')" LogicalName="ZMusic.Setup.ZMusic.msi" />
+  </ItemGroup>
+
+</Project>

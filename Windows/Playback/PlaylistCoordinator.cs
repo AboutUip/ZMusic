@@ -12,6 +12,7 @@ public sealed class PlaylistCoordinator : IDisposable
 {
     private readonly SessionStore _sessions;
     private readonly NcmUserClient _user;
+    private readonly LyricRepository _lyrics;
     private readonly MediaPlayer _player = new();
     private readonly DispatcherTimer _ticker;
     private readonly Dispatcher _dispatcher;
@@ -25,13 +26,15 @@ public sealed class PlaylistCoordinator : IDisposable
     private int? _preparedShuffleNext;
     private bool _suppressEnded;
     private bool _disposed;
+    private IReadOnlyList<LrcLine> _lyricLines = Array.Empty<LrcLine>();
 
     public event Action? Changed;
 
-    public PlaylistCoordinator(SessionStore sessions, NcmUserClient user)
+    public PlaylistCoordinator(SessionStore sessions, NcmUserClient user, LyricRepository lyrics)
     {
         _sessions = sessions;
         _user = user;
+        _lyrics = lyrics;
         _dispatcher = Application.Current?.Dispatcher ?? Dispatcher.CurrentDispatcher;
 
         _player.MediaOpened += OnMediaOpened;
@@ -56,6 +59,8 @@ public sealed class PlaylistCoordinator : IDisposable
     public long DurationMs { get; private set; }
     public long? SourcePlaylistId { get; private set; }
     public string? SourcePlaylistTitle { get; private set; }
+    public IReadOnlyList<LrcLine> LyricLines => _lyricLines;
+    public bool HasLyrics => _lyricLines.Count > 0;
 
     public void PlayQueue(
         IReadOnlyList<QueueTrack> tracks,
@@ -82,6 +87,7 @@ public sealed class PlaylistCoordinator : IDisposable
             LoadPending = true;
             PositionMs = 0;
             DurationMs = _queue[_index].DurationMs;
+            _lyricLines = Array.Empty<LrcLine>();
             RaiseChanged();
             _ = LoadAndPlayAsync(_index, recordShuffleHistory: false);
         });
@@ -174,6 +180,57 @@ public sealed class PlaylistCoordinator : IDisposable
         });
     }
 
+    public void SkipPrevious()
+    {
+        RunOnUi(() =>
+        {
+            if (!HasQueue || _index < 0)
+            {
+                return;
+            }
+
+            // Restart current track when past the first few seconds.
+            if (PositionMs > 3000)
+            {
+                SeekTo(0);
+                if (!IsPlaying && _player.Source is not null)
+                {
+                    _player.Play();
+                    IsPlaying = true;
+                    _ticker.Start();
+                    RaiseChanged();
+                }
+
+                return;
+            }
+
+            if (_mode == PlaybackMode.RepeatOne)
+            {
+                SeekTo(0);
+                return;
+            }
+
+            if (_mode == PlaybackMode.Shuffle)
+            {
+                if (_shuffleHistory.Count > 0)
+                {
+                    var prev = _shuffleHistory[^1];
+                    _shuffleHistory.RemoveAt(_shuffleHistory.Count - 1);
+                    _ = LoadAndPlayAsync(prev, recordShuffleHistory: false);
+                    return;
+                }
+
+                // No history yet — pick another track like shuffle next.
+                var other = PickShuffle(_index);
+                _ = LoadAndPlayAsync(other, recordShuffleHistory: false);
+                return;
+            }
+
+            var prevIndex = _index > 0 ? _index - 1 : _queue.Count - 1;
+            _ = LoadAndPlayAsync(prevIndex, recordShuffleHistory: false);
+        });
+    }
+
     public void Dispose()
     {
         if (_disposed)
@@ -218,6 +275,9 @@ public sealed class PlaylistCoordinator : IDisposable
         PositionMs = resumeAtMs ?? 0;
         DurationMs = track.DurationMs > 0 ? track.DurationMs : DurationMs;
         Notice = null;
+
+        var peeked = _lyrics.PeekMemory(track.Id);
+        _lyricLines = peeked ?? Array.Empty<LrcLine>();
         RaiseChanged();
 
         var cookie = _sessions.Current?.Cookie ?? _sessions.Load()?.Cookie;
@@ -228,6 +288,9 @@ public sealed class PlaylistCoordinator : IDisposable
             RaiseChanged();
             return;
         }
+
+        _ = LoadLyricsAsync(track.Id, cookie, cts.Token);
+        PrefetchNeighborLyrics(cookie);
 
         string? url;
         try
@@ -314,6 +377,51 @@ public sealed class PlaylistCoordinator : IDisposable
             Notice = $"播放失败：{ex.Message}";
             RaiseChanged();
         }
+    }
+
+    private async Task LoadLyricsAsync(long trackId, string cookie, CancellationToken ct)
+    {
+        try
+        {
+            var lines = await _lyrics.LoadBestEffortAsync(trackId, cookie, ct).ConfigureAwait(true);
+            if (ct.IsCancellationRequested)
+            {
+                return;
+            }
+
+            // Only apply if still on the same track.
+            if (CurrentTrack?.Id != trackId)
+            {
+                return;
+            }
+
+            _lyricLines = lines;
+            RaiseChanged();
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch
+        {
+            if (!ct.IsCancellationRequested && CurrentTrack?.Id == trackId)
+            {
+                _lyricLines = Array.Empty<LrcLine>();
+                RaiseChanged();
+            }
+        }
+    }
+
+    private void PrefetchNeighborLyrics(string cookie)
+    {
+        if (_queue.Count == 0 || _index < 0)
+        {
+            return;
+        }
+
+        var prev = _index > 0 ? _index - 1 : _queue.Count - 1;
+        var next = _index + 1 < _queue.Count ? _index + 1 : 0;
+        _lyrics.Prefetch(_queue[prev].Id, cookie);
+        _lyrics.Prefetch(_queue[next].Id, cookie);
     }
 
     private async Task<string?> ResolvePlayUrlAsync(long trackId, string cookie, CancellationToken ct)

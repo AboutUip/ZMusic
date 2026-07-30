@@ -1,0 +1,15 @@
+# Copy to signing.properties (gitignored) and fill in local values.
+# Never commit the real signing.properties, .pfx, or passwords.
+# Used by Distribution/Windows/build.py when Authenticode signing is enabled.
+
+# Path to Authenticode PFX (absolute or relative to Distribution/Windows)
+pfxFile=
+
+# PFX password (leave empty if the certificate has no password — not recommended)
+pfxPassword=
+
+# RFC 3161 timestamp server
+timestampUrl=http://timestamp.digicert.com
+
+# Optional: subject name when using a certificate from the Windows certificate store instead of a PFX
+# storeSubject=

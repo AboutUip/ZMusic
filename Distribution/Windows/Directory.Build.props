@@ -1,0 +1,10 @@
+<Project>
+  <PropertyGroup>
+    <ZMusicProductVersion>0.1.0</ZMusicProductVersion>
+    <ZMusicProductName>ZMusic</ZMusicProductName>
+    <ZMusicManufacturer>ZMusic Contributors</ZMusicManufacturer>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+</Project>

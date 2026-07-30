@@ -1,0 +1,31 @@
+Third-party notices for ZMusic Windows distribution
+=====================================================
+
+This binary distribution may include components under their own licenses.
+Summaries below are for attribution; see each project's license for full terms.
+
+.NET Runtime / Windows Desktop runtime
+--------------------------------------
+Copyright (c) .NET Foundation and Contributors
+License: MIT
+https://github.com/dotnet/runtime
+
+WPF-UI
+------
+Copyright (c) Leszek Pomianowski and WPF UI Contributors
+License: MIT
+https://github.com/lepoco/wpfui
+
+CommunityToolkit.Mvvm
+---------------------
+Copyright (c) .NET Foundation and Contributors
+License: MIT
+https://github.com/CommunityToolkit/dotnet
+
+NeteaseCloudMusicApi (API convention / documentation reference)
+--------------------------------------------------------------
+The client consumes a NeteaseCloudMusicApi-compatible HTTP surface.
+Upstream project: https://gitlab.com/Binaryify/NeteaseCloudMusicApi
+This repository does not vendor that server; API docs in docs/ are offline
+copies for developers. Respect upstream licensing when redistributing those
+docs or running a compatible server.

@@ -74,6 +74,42 @@ Windows/**/*.snupkg
 Windows/**/project.lock.json
 Windows/**/project.fragment.lock.json
 
+# --- Distribution (Windows Setup / MSI / Uninstall) ---
+# 构建中间产物与输出（与主业务 Windows/ 隔离）
+Distribution/.vs/
+Distribution/.idea/
+Distribution/Windows/**/[Bb]in/
+Distribution/Windows/**/[Oo]bj/
+Distribution/Windows/**/[Dd]ebug/
+Distribution/Windows/**/[Rr]elease/
+Distribution/Windows/**/*.user
+Distribution/Windows/**/*.wixpdb
+Distribution/Windows/**/*.wixobj
+Distribution/Windows/ZMusic.Setup/Payload/*.msi
+!Distribution/Windows/ZMusic.Setup/Payload/README.md
+
+# 本地签名配置与证书（只保留 *.example）
+Distribution/Windows/signing.properties
+!Distribution/Windows/signing.properties.example
+Distribution/Windows/certs/
+Distribution/Windows/**/*.pfx
+Distribution/Windows/**/*.p12
+Distribution/Windows/**/*.pem
+Distribution/Windows/**/*.key
+Distribution/Windows/**/*.cer
+Distribution/Windows/**/*.crt
+Distribution/Windows/**/*.p7b
+
+# 仓库级发行产物（各端共用，勿提交）
+#   artifacts/android/   APK / AAB
+#   artifacts/windows/   Setup.exe / MSI
+artifacts/
+
+# 安装包二进制（产物已由 artifacts/ 与 Payload/*.msi 规则覆盖；
+# 勿使用全局 *.msi，否则会误忽略 WiX 工程目录 Distribution/Windows/ZMusic.Msi/）
+*.msix
+*.msixbundle
+
 # --- IDE / 编辑器 / 系统 ---
 .idea/
 .vscode/*
@@ -94,6 +130,8 @@ Desktop.ini
 !.env.example
 *.pem
 *.p12
+*.pfx
+*.key
 
 # --- 日志与临时 ---
 *.log

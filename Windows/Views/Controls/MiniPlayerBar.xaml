@@ -10,7 +10,7 @@
         <BooleanToVisibilityConverter x:Key="BoolToVis" />
         <conv:InverseBooleanToVisibilityConverter x:Key="InvBoolToVis" />
 
-        <Style x:Key="TransportIconButton" TargetType="Button">
+        <Style x:Key="InkIconButton" TargetType="Button">
             <Setter Property="Width" Value="36" />
             <Setter Property="Height" Value="36" />
             <Setter Property="Background" Value="Transparent" />
@@ -28,10 +28,10 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#18FFFFFF" />
+                                <Setter TargetName="Bd" Property="Background" Value="#22FFFFFF" />
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#28FFFFFF" />
+                                <Setter TargetName="Bd" Property="Background" Value="#33FFFFFF" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -39,35 +39,28 @@
             </Setter>
         </Style>
 
-        <!-- Ink primary control: white disc + black glyph -->
-        <Style x:Key="PlayPauseButton" TargetType="Button">
-            <Setter Property="Width" Value="44" />
-            <Setter Property="Height" Value="44" />
+        <Style x:Key="InkPlayButton" TargetType="Button">
+            <Setter Property="Width" Value="42" />
+            <Setter Property="Height" Value="42" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="FocusVisualStyle" Value="{x:Null}" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Border x:Name="Bd"
-                                Width="44"
-                                Height="44"
-                                CornerRadius="22"
-                                Background="#F2FFFFFF">
-                            <Border.Effect>
-                                <DropShadowEffect BlurRadius="12"
-                                                  ShadowDepth="0"
-                                                  Opacity="0.35"
-                                                  Color="#000000" />
-                            </Border.Effect>
+                                Width="42"
+                                Height="42"
+                                CornerRadius="21"
+                                Background="#FFFFFFFF">
                             <ContentPresenter HorizontalAlignment="Center"
                                               VerticalAlignment="Center" />
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#FFFFFFFF" />
+                                <Setter TargetName="Bd" Property="Background" Value="#E6E6E6" />
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#CCFFFFFF" />
+                                <Setter TargetName="Bd" Property="Background" Value="#CCCCCC" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -75,9 +68,8 @@
             </Setter>
         </Style>
 
-        <!-- Progress: ink rail + ink fill (no accent) -->
-        <Style x:Key="ReadOnlyProgress" TargetType="ProgressBar">
-            <Setter Property="Height" Value="4" />
+        <Style x:Key="InkProgress" TargetType="ProgressBar">
+            <Setter Property="Height" Value="3" />
             <Setter Property="Minimum" Value="0" />
             <Setter Property="Maximum" Value="1" />
             <Setter Property="IsHitTestVisible" Value="False" />
@@ -86,14 +78,11 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="ProgressBar">
                         <Grid>
-                            <Border x:Name="PART_Track"
-                                    Height="4"
-                                    CornerRadius="2"
-                                    Background="#28FFFFFF" />
+                            <Border Height="3" CornerRadius="1.5" Background="#28FFFFFF" />
                             <Border x:Name="PART_Indicator"
-                                    Height="4"
+                                    Height="3"
                                     HorizontalAlignment="Left"
-                                    CornerRadius="2"
+                                    CornerRadius="1.5"
                                     Background="#E6FFFFFF"
                                     SnapsToDevicePixels="True" />
                         </Grid>
@@ -104,23 +93,26 @@
     </UserControl.Resources>
 
     <Grid x:Name="Root"
-          Margin="12,0,12,10"
-          RenderTransformOrigin="0.5,1">
+          Margin="12,0,12,0"
+          RenderTransformOrigin="0.5,1"
+          Cursor="Hand">
         <Grid.RenderTransform>
             <TranslateTransform x:Name="SlideTransform" Y="16" />
         </Grid.RenderTransform>
 
         <Border x:Name="Card"
-                Background="#66000000"
+                Background="#E6000000"
                 BorderBrush="#22FFFFFF"
                 BorderThickness="1"
                 CornerRadius="14"
-                Padding="14,12"
-                Opacity="0">
+                Padding="14,10"
+                Opacity="0"
+                Cursor="Hand"
+                MouseLeftButtonUp="OnCardClick">
             <Border.Effect>
                 <DropShadowEffect BlurRadius="16"
                                   ShadowDepth="0"
-                                  Opacity="0.28"
+                                  Opacity="0.35"
                                   Color="#000000" />
             </Border.Effect>
 
@@ -134,9 +126,10 @@
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" MinWidth="160" />
                         <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" MinWidth="140" />
+                        <ColumnDefinition Width="*" MinWidth="120" />
                     </Grid.ColumnDefinitions>
 
+                    <!-- Track meta (clicks bubble to Card → expand) -->
                     <Grid Margin="0,0,12,0" HorizontalAlignment="Left">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
@@ -147,19 +140,12 @@
                                 Height="44"
                                 CornerRadius="10"
                                 ClipToBounds="True"
-                                Background="#1AFFFFFF">
+                                Background="#1AFFFFFF"
+                                IsHitTestVisible="False">
                             <Grid>
-                                <Border>
-                                    <Border.Background>
-                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                                            <GradientStop Color="#33FFFFFF" Offset="0" />
-                                            <GradientStop Color="#14FFFFFF" Offset="1" />
-                                        </LinearGradientBrush>
-                                    </Border.Background>
-                                </Border>
                                 <TextBlock Text="♪"
                                            FontSize="16"
-                                           Foreground="#99FFFFFF"
+                                           Foreground="#88FFFFFF"
                                            HorizontalAlignment="Center"
                                            VerticalAlignment="Center"
                                            Visibility="{Binding HasCover, Converter={StaticResource InvBoolToVis}}" />
@@ -172,11 +158,12 @@
                         <StackPanel Grid.Column="1"
                                     Margin="12,0,0,0"
                                     VerticalAlignment="Center"
-                                    MaxWidth="280">
+                                    MaxWidth="280"
+                                    IsHitTestVisible="False">
                             <TextBlock Text="{Binding Title}"
                                        FontSize="13"
                                        FontWeight="SemiBold"
-                                       Foreground="#F2FFFFFF"
+                                       Foreground="#FFFFFFFF"
                                        TextTrimming="CharacterEllipsis" />
                             <TextBlock Margin="0,3,0,0"
                                        Text="{Binding Artists}"
@@ -186,45 +173,64 @@
                         </StackPanel>
                     </Grid>
 
+                    <!-- Transport: buttons consume click; do not expand -->
                     <StackPanel Grid.Column="1"
                                 Orientation="Horizontal"
                                 VerticalAlignment="Center"
                                 HorizontalAlignment="Center">
-                        <Button Style="{StaticResource TransportIconButton}"
-                                Command="{Binding CycleModeCommand}"
-                                ToolTip="{Binding ModeLabel}"
-                                Margin="0,0,8,0">
-                            <Grid Width="18" Height="18">
-                                <ui:SymbolIcon x:Name="ModeOrderIcon"
-                                               Symbol="ArrowRepeatAll24"
+                        <Button Style="{StaticResource InkIconButton}"
+                                Command="{Binding SkipPreviousCommand}"
+                                ToolTip="上一首"
+                                Margin="0,0,4,0">
+                            <ui:SymbolIcon Symbol="Previous24"
+                                           FontSize="15"
+                                           Foreground="#E6FFFFFF" />
+                        </Button>
+
+                        <Button Style="{StaticResource InkPlayButton}"
+                                Command="{Binding TogglePlayPauseCommand}"
+                                ToolTip="播放 / 暂停"
+                                Margin="4,0">
+                            <Grid>
+                                <ui:SymbolIcon Symbol="Play24"
                                                FontSize="15"
-                                               Foreground="#C8FFFFFF"
-                                               Visibility="Visible" />
-                                <ui:SymbolIcon x:Name="ModeOneIcon"
-                                               Symbol="ArrowRepeat124"
+                                               Foreground="#FF000000"
+                                               Visibility="{Binding IsPlaying, Converter={StaticResource InvBoolToVis}}" />
+                                <ui:SymbolIcon Symbol="Pause24"
                                                FontSize="15"
-                                               Foreground="#C8FFFFFF"
-                                               Visibility="Collapsed" />
-                                <ui:SymbolIcon x:Name="ModeShuffleIcon"
-                                               Symbol="ArrowShuffle24"
-                                               FontSize="15"
-                                               Foreground="#C8FFFFFF"
-                                               Visibility="Collapsed" />
+                                               Foreground="#FF000000"
+                                               Visibility="{Binding IsPlaying, Converter={StaticResource BoolToVis}}" />
                             </Grid>
                         </Button>
 
-                        <Button Style="{StaticResource PlayPauseButton}"
-                                Command="{Binding TogglePlayPauseCommand}"
-                                ToolTip="播放 / 暂停">
-                            <Grid>
-                                <ui:SymbolIcon Symbol="Play24"
-                                               FontSize="16"
-                                               Foreground="#FF0A0A0A"
-                                               Visibility="{Binding IsPlaying, Converter={StaticResource InvBoolToVis}}" />
-                                <ui:SymbolIcon Symbol="Pause24"
-                                               FontSize="16"
-                                               Foreground="#FF0A0A0A"
-                                               Visibility="{Binding IsPlaying, Converter={StaticResource BoolToVis}}" />
+                        <Button Style="{StaticResource InkIconButton}"
+                                Command="{Binding SkipNextCommand}"
+                                ToolTip="下一首"
+                                Margin="4,0,8,0">
+                            <ui:SymbolIcon Symbol="Next24"
+                                           FontSize="15"
+                                           Foreground="#E6FFFFFF" />
+                        </Button>
+
+                        <Button Style="{StaticResource InkIconButton}"
+                                Command="{Binding CycleModeCommand}"
+                                ToolTip="{Binding ModeLabel}">
+                            <Grid Width="16" Height="16">
+                                <ui:SymbolIcon x:Name="ModeOrderIcon"
+                                               Symbol="ArrowRepeatAll24"
+                                               FontSize="14"
+                                               Foreground="#AAFFFFFF"
+                                               Visibility="Visible" />
+                                <ui:SymbolIcon x:Name="ModeOneIcon"
+                                               Symbol="ArrowRepeat124"
+                                               FontSize="14"
+                                               Foreground="#AAFFFFFF"
+                                               Visibility="Collapsed" />
+                                <ui:SymbolIcon x:Name="ModeShuffleIcon"
+                                               Symbol="ArrowShuffle24"
+                                               FontSize="14"
+                                               Foreground="#AAFFFFFF"
+                                               Visibility="Collapsed" />
                             </Grid>
                         </Button>
                     </StackPanel>
@@ -232,7 +238,8 @@
                     <StackPanel Grid.Column="2"
                                 Orientation="Horizontal"
                                 HorizontalAlignment="Right"
-                                VerticalAlignment="Center">
+                                VerticalAlignment="Center"
+                                IsHitTestVisible="False">
                         <TextBlock Text="{Binding PositionText}"
                                    FontSize="11"
                                    FontFamily="Consolas"
@@ -240,18 +247,18 @@
                                    VerticalAlignment="Center" />
                         <TextBlock Text=" / "
                                    FontSize="11"
-                                   Foreground="#55FFFFFF"
+                                   Foreground="#44FFFFFF"
                                    VerticalAlignment="Center" />
                         <TextBlock Text="{Binding DurationText}"
                                    FontSize="11"
                                    FontFamily="Consolas"
-                                   Foreground="#77FFFFFF"
+                                   Foreground="#66FFFFFF"
                                    VerticalAlignment="Center" />
                     </StackPanel>
                 </Grid>
 
-                <Grid Grid.Row="1" Margin="0,12,0,0">
-                    <ProgressBar Style="{StaticResource ReadOnlyProgress}"
+                <Grid Grid.Row="1" Margin="0,10,0,0" IsHitTestVisible="False">
+                    <ProgressBar Style="{StaticResource InkProgress}"
                                  Value="{Binding Progress, Mode=OneWay}" />
                 </Grid>
             </Grid>
