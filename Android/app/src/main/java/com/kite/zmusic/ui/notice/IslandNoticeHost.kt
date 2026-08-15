@@ -311,9 +311,11 @@ private fun IslandNoticeHost(
         }
     }
 
-    val current = notice
-    val visible = current != null && (mounted || alpha.value > 0.02f)
-    if (!visible || current == null) {
+    val current = notice ?: run {
+        Box(modifier.size(0.dp))
+        return
+    }
+    if (!mounted && alpha.value <= 0.02f) {
         Box(modifier.size(0.dp))
         return
     }

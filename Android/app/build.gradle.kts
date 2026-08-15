@@ -12,19 +12,28 @@ val localProperties = Properties().apply {
     if (f.exists()) f.inputStream().use { load(it) }
 }
 
-/** 发行签名：真实密钥在 `Android/keystore/`（已 gitignore）；缺省回退 debug。 */
+val releaseKeystorePropertiesFile = rootProject.file("keystore/keystore.properties")
 val releaseKeystoreProperties = Properties().apply {
-    val f = rootProject.file("keystore/keystore.properties")
-    if (f.exists()) f.inputStream().use { load(it) }
+    if (releaseKeystorePropertiesFile.exists()) {
+        releaseKeystorePropertiesFile.inputStream().use { load(it) }
+    }
 }
 val releaseStoreFile = releaseKeystoreProperties.getProperty("storeFile")
-    ?.let { rootProject.file(it) }
-    ?.takeIf { it.isFile }
+    ?.let { path ->
+        val configured = rootProject.file(path)
+        when {
+            configured.isFile -> configured
+            else -> rootProject.file("keystore/${configured.name}").takeIf { it.isFile }
+        }
+    }
 val hasReleaseSigning =
     releaseStoreFile != null &&
         !releaseKeystoreProperties.getProperty("storePassword").isNullOrBlank() &&
         !releaseKeystoreProperties.getProperty("keyAlias").isNullOrBlank() &&
         !releaseKeystoreProperties.getProperty("keyPassword").isNullOrBlank()
+if (hasReleaseSigning) {
+    logger.lifecycle("Release signing: ${releaseStoreFile!!.name} (Android/keystore)")
+}
 
 /**
  * 默认固定为线上 API 基址；若本地调试可在 `Android/local.properties` 设置 `ncm.api.base.url`（无末尾 `/`）覆盖。
@@ -73,6 +82,18 @@ android {
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
+            )
+        }
+    }
+    packaging {
+        jniLibs {
+            // 这些预编译 .so 没有可剥离符号，AGP 默认 strip 会打警告。
+            keepDebugSymbols.addAll(
+                listOf(
+                    "**/libandroidx.graphics.path.so",
+                    "**/libimage_processing_util_jni.so",
+                    "**/libsurface_util_jni.so",
+                ),
             )
         }
     }
