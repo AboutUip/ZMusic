@@ -29,8 +29,8 @@ object UrlImageCache {
             .build()
     }
 
-    /** 曲谱网格可能一次露出多枚封面，内存池需盖住常见歌单体量 */
-    private const val MEMORY_MAX_ENTRIES = 96
+    /** 曲谱网格 / 歌单翻页后仍要留住已出图的封面 */
+    private const val MEMORY_MAX_ENTRIES = 256
     private const val DISK_MAX_BYTES = 96L * 1024 * 1024
     private const val DISK_MAX_FILES = 400
 
@@ -63,7 +63,7 @@ object UrlImageCache {
                 val bytes = when {
                     file.exists() -> file.readBytes()
                     else -> {
-                        val req = Request.Builder().url(key).get().build()
+                        val req = imageRequest(key)
                         client.newCall(req).execute().use { resp ->
                             if (!resp.isSuccessful) return@runCatching
                             val body = resp.body?.bytes() ?: return@runCatching
@@ -122,6 +122,18 @@ object UrlImageCache {
             }
         }
     }
+
+    /** 网易图床常校验 Referer，封面/背景统一带上。 */
+    fun imageRequest(url: String): Request =
+        Request.Builder()
+            .url(url)
+            .header(
+                "User-Agent",
+                "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36",
+            )
+            .header("Referer", "https://music.163.com/")
+            .get()
+            .build()
 
     /** 缓存键：trim 后的完整 URL，严格一对一，禁止用曲目 id 顶替以免换封面后串图。 */
     fun normalizeKey(url: String?): String? =

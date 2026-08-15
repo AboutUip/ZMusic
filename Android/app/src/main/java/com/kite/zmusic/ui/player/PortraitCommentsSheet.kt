@@ -1,6 +1,5 @@
 package com.kite.zmusic.ui.player
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -8,10 +7,6 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -42,8 +37,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -71,10 +66,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
@@ -88,6 +83,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -107,6 +103,12 @@ import com.kite.zmusic.data.NcmJson
 import com.kite.zmusic.data.NcmUserClient
 import com.kite.zmusic.data.SongComment
 import com.kite.zmusic.ui.common.UrlImage
+import com.kite.zmusic.ui.main.MainPalette
+import com.kite.zmusic.ui.notice.showIslandNotice
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.HazeStyle
+import dev.chrisbanes.haze.HazeTint
+import dev.chrisbanes.haze.hazeEffect
 import kotlin.math.hypot
 import kotlin.math.min
 import kotlinx.coroutines.Job
@@ -114,21 +116,37 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
-private val CommentLabel = Color(0xFFF4F0E8)
-private val CommentHint = Color(0xFF9AA3B0)
-private val CommentAccent = Color(0xFF9AF0F0)
-private val CommentIconTint = Color(0xFFD5DEE8)
-private val CommentQuoteBg = Color(0xFF141A24)
-private val CommentPanelShape = RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp)
+private val CommentLabel = MainPalette.Ink
+private val CommentHint = MainPalette.Secondary
+private val CommentAccent = MainPalette.Accent
+private val CommentIconTint = MainPalette.Ink
+private val CommentQuoteBg = Color(0xFFF0F1F3)
+private val CommentPanelShape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp)
 private val CommentOpenEasing = CubicBezierEasing(0.16f, 1.02f, 0.3f, 1f)
 private val CommentCloseEasing = CubicBezierEasing(0.4f, 0f, 0.2f, 1f)
+private val CommentGlassStyle = HazeStyle(
+    backgroundColor = MainPalette.Page,
+    tints = listOf(
+        HazeTint(Color.White.copy(alpha = 0.78f)),
+        HazeTint(MainPalette.Page.copy(alpha = 0.52f)),
+    ),
+    blurRadius = 56.dp,
+    noiseFactor = 0.08f,
+    fallbackTint = HazeTint(MainPalette.Page.copy(alpha = 0.94f)),
+)
+private val CommentAvatarBg = Color(0xFFE8E8ED)
+private val CommentComposerFill = Color.White.copy(alpha = 0.82f)
 
 private const val CommentPageSize = 20
 
-/** 评论排序：热度=2，时间=3（对齐 `/comment/new` sortType）。 */
+/**
+ * `/comment/new`：与 NeteaseCloudMusicApi 一致。
+ * 2=热度（服务端用 pageNo 生成 `normalHot#offset`，不要传 time cursor）；
+ * 3=时间（第二页起传上一条 `time`）。
+ */
 private enum class CommentSortMode(val sortType: Int, val label: String) {
-    Hot(2, "按热度"),
-    Time(3, "按时间"),
+    Hot(2, "热度"),
+    Time(3, "时间"),
 }
 
 private data class CommentReplyTarget(
@@ -200,7 +218,7 @@ fun TransportCommentsIcon(
 
 /**
  * 竖屏评论底栏面板：默认 2/3；上箭头扩至全屏；无拖拽改高。
- * 支持热度/时间排序、楼层展开，以及点击「回复」后弹出输入框。
+ * 浅色液态玻璃；热度/时间排序、楼层、发评与回复。
  */
 @Composable
 fun PortraitCommentsSheet(
@@ -212,11 +230,15 @@ fun PortraitCommentsSheet(
     onExpandFullscreen: () -> Unit,
     onCollapseToTwoThirds: () -> Unit,
     modifier: Modifier = Modifier,
+    coverUrl: String? = null,
+    hazeState: HazeState? = null,
 ) {
     val t = openProgress.coerceIn(0f, 1f)
     val fullscreen = sheetFrac >= 0.97f
-    val listState = rememberLazyListState()
+    var listGeneration by remember { mutableIntStateOf(0) }
+    val listState = remember(listGeneration) { LazyListState() }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     val focusManager = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
     val authClient = remember { NcmAuthClient() }
@@ -232,11 +254,11 @@ fun PortraitCommentsSheet(
     var selfUid by remember { mutableLongStateOf(0L) }
     var selfNickname by remember { mutableStateOf("我") }
     var selfAvatar by remember { mutableStateOf<String?>(null) }
-    var actionHint by remember { mutableStateOf<String?>(null) }
     var sortMode by remember { mutableStateOf(CommentSortMode.Hot) }
     var replyTarget by remember { mutableStateOf<CommentReplyTarget?>(null) }
     var replyDraft by remember { mutableStateOf("") }
     var replySending by remember { mutableStateOf(false) }
+    var composerFocused by remember { mutableStateOf(false) }
     // 回复时若从 2/3 升全屏，关闭输入框后还原
     var restoreSheetAfterReply by remember { mutableStateOf(false) }
     var composerHeightPx by remember { mutableIntStateOf(0) }
@@ -247,9 +269,14 @@ fun PortraitCommentsSheet(
     val density = LocalDensity.current
     val songIdUpdated by rememberUpdatedState(songId)
     val cookieUpdated by rememberUpdatedState(cookie)
-    val sortModeUpdated by rememberUpdatedState(sortMode)
     val expandFullscreenUpdated by rememberUpdatedState(onExpandFullscreen)
+    var fetchSeq by remember { mutableIntStateOf(0) }
     val collapseToTwoThirdsUpdated by rememberUpdatedState(onCollapseToTwoThirds)
+    val coverUrlUpdated by rememberUpdatedState(coverUrl)
+
+    fun hint(msg: String) {
+        context.showIslandNotice(msg, coverUrlUpdated)
+    }
 
     fun patchComment(id: Long, transform: (SongComment) -> SongComment) {
         val i = comments.indexOfFirst { it.commentId == id }
@@ -262,7 +289,7 @@ fun PortraitCommentsSheet(
         replyTarget = null
         replyDraft = ""
         replySending = false
-        composerHeightPx = 0
+        composerFocused = false
         keyboard?.hide()
         focusManager.clearFocus(force = true)
         if (shouldRestore) {
@@ -285,15 +312,10 @@ fun PortraitCommentsSheet(
         }
     }
 
-    LaunchedEffect(actionHint) {
-        if (actionHint == null) return@LaunchedEffect
-        delay(1800)
-        actionHint = null
-    }
-
-    // 回复：先升全屏再弹键盘，避免 2/3 面板被整页 imePadding 压扁错位
-    LaunchedEffect(replyTarget?.commentId) {
-        val target = replyTarget ?: return@LaunchedEffect
+    // 回复或输入主评：先升全屏再弹键盘，避免 2/3 面板被 imePadding 压扁
+    LaunchedEffect(replyTarget?.commentId, composerFocused) {
+        val typing = replyTarget != null || composerFocused
+        if (!typing) return@LaunchedEffect
         if (sheetFrac < 0.97f) {
             restoreSheetAfterReply = true
             expandFullscreenUpdated()
@@ -301,22 +323,26 @@ fun PortraitCommentsSheet(
         } else {
             delay(60)
         }
-        val index = comments.indexOfFirst { it.commentId == target.commentId }
-        if (index >= 0) {
-            runCatching { listState.animateScrollToItem(index) }
+        val target = replyTarget
+        if (target != null) {
+            val index = comments.indexOfFirst { it.commentId == target.commentId }
+            if (index >= 0) {
+                runCatching { listState.animateScrollToItem(index) }
+            }
         }
         runCatching { replyFocus.requestFocus() }
         keyboard?.show()
     }
 
-    suspend fun loadMore(reset: Boolean) {
-        if (loading) return
-        if (!reset && !hasMore) return
+    suspend fun loadMore(reset: Boolean, requested: CommentSortMode = sortMode) {
+        if (!reset && (loading || !hasMore)) return
+        val seq = fetchSeq + 1
+        fetchSeq = seq
         loading = true
         if (reset) error = null
         try {
             val nextPage = if (reset) 1 else pageNo + 1
-            val mode = sortModeUpdated
+            val mode = requested
             val page = if (!useLegacy) {
                 try {
                     val json = userClient.commentNew(
@@ -326,22 +352,25 @@ fun PortraitCommentsSheet(
                         pageSize = CommentPageSize,
                         sortType = mode.sortType,
                         cursor = when {
-                            mode == CommentSortMode.Time && !reset -> cursor
+                            // 接口按 sortType=3 要 cursor，与 UI 文案无关
+                            mode.sortType == 3 && !reset -> cursor
                             else -> null
                         },
                     )
                     NcmCommentParse.pageFromCommentNew(json)
-                } catch (_: Exception) {
-                    if (mode == CommentSortMode.Time) throw IllegalStateException("时间序加载失败")
+                } catch (e: Exception) {
+                    // 翻页失败不切旧接口，避免热度/时间列表被混进另一套排序
+                    if (!reset) throw e
+                    if (mode != CommentSortMode.Time) throw e
                     useLegacy = true
                     val json = userClient.commentMusic(
                         songId = songIdUpdated,
                         cookie = cookieUpdated,
                         limit = CommentPageSize,
-                        offset = if (reset) 0 else comments.size,
+                        offset = 0,
                         before = null,
                     )
-                    NcmCommentParse.pageFromCommentMusic(json, includeHotFirst = reset)
+                    NcmCommentParse.pageFromCommentMusic(json, includeHotFirst = false)
                 }
             } else {
                 val json = userClient.commentMusic(
@@ -355,8 +384,9 @@ fun PortraitCommentsSheet(
                         null
                     },
                 )
-                NcmCommentParse.pageFromCommentMusic(json, includeHotFirst = reset)
+                    NcmCommentParse.pageFromCommentMusic(json, includeHotFirst = reset)
             }
+            if (seq != fetchSeq) return
             if (reset) comments.clear()
             val existing = comments.mapTo(HashSet()) { it.commentId }
             var added = 0
@@ -367,7 +397,12 @@ fun PortraitCommentsSheet(
                 }
             }
             pageNo = nextPage
-            cursor = page.cursor ?: page.comments.lastOrNull()?.timeMs?.takeIf { it > 0L }?.toString()
+            cursor = when {
+                mode.sortType == 3 ->
+                    page.comments.lastOrNull()?.timeMs?.takeIf { it > 0L }?.toString()
+                        ?: page.cursor
+                else -> null
+            }
             hasMore = when {
                 !page.hasMore -> false
                 page.comments.isEmpty() -> false
@@ -377,56 +412,73 @@ fun PortraitCommentsSheet(
             if (page.total > 0L) total = page.total
             bootstrapped = true
             error = null
+            if (reset) {
+                runCatching { listState.scrollToItem(0) }
+            }
         } catch (e: Exception) {
-            error = e.message?.takeIf { it.isNotBlank() } ?: "加载失败"
+            if (seq != fetchSeq) return
+            error = NcmJson.userFacingThrowable(e, "加载失败")
             bootstrapped = true
             if (!reset) {
                 hasMore = true
             }
         } finally {
-            loading = false
+            if (seq == fetchSeq) loading = false
         }
     }
 
     suspend fun switchSort(mode: CommentSortMode) {
-        if (mode == sortMode && bootstrapped) {
-            comments.clear()
-            pageNo = 0
-            cursor = null
-            hasMore = true
-            bootstrapped = false
-            error = null
-            useLegacy = false
-            pendingFloorTop = emptyMap()
-            listState.scrollToItem(0)
-            loadMore(reset = true)
-            return
+        if (mode == sortMode && !bootstrapped) return
+        if (mode != sortMode) {
+            sortMode = mode
+            dismissReplyComposer()
+            total = 0L
         }
-        if (mode == sortMode) return
-        sortMode = mode
-        dismissReplyComposer()
-        comments.clear()
         pageNo = 0
         cursor = null
         hasMore = true
         bootstrapped = false
         error = null
-        total = 0L
         useLegacy = false
         pendingFloorTop = emptyMap()
-        listState.scrollToItem(0)
-        loadMore(reset = true)
+        comments.clear()
+        listGeneration += 1
+        loadMore(reset = true, requested = mode)
     }
 
-    suspend fun sendReply() {
-        val target = replyTarget ?: return
+    fun optimisticPosted(
+        posted: SongComment?,
+        text: String,
+        repliedNickname: String?,
+    ): SongComment = posted?.copy(
+        nickname = posted.nickname.ifBlank { selfNickname },
+        avatarUrl = posted.avatarUrl ?: selfAvatar,
+        timeLabel = posted.timeLabel.ifBlank { "刚刚" },
+        repliedNickname = posted.repliedNickname ?: repliedNickname,
+    ) ?: SongComment(
+        commentId = -System.currentTimeMillis(),
+        content = text,
+        timeMs = System.currentTimeMillis(),
+        timeLabel = "刚刚",
+        likedCount = 0,
+        liked = false,
+        replyCount = 0,
+        userId = selfUid,
+        nickname = selfNickname,
+        avatarUrl = selfAvatar,
+        repliedContent = null,
+        repliedNickname = repliedNickname,
+    )
+
+    suspend fun sendComposer() {
+        val target = replyTarget
         val text = replyDraft.trim()
         if (text.isEmpty()) {
-            actionHint = "请输入回复内容"
+            hint(if (target != null) "请输入回复内容" else "请输入评论")
             return
         }
         if (cookieUpdated.isBlank() || selfUid <= 0L) {
-            actionHint = "请先登录后再回复"
+            hint(if (target != null) "请先登录后再回复" else "请先登录后再评论")
             return
         }
         if (replySending) return
@@ -436,48 +488,38 @@ fun PortraitCommentsSheet(
                 songId = songIdUpdated,
                 content = text,
                 cookie = cookieUpdated,
-                replyCommentId = target.commentId,
+                replyCommentId = target?.commentId,
             )
+            val failHint = if (target != null) "回复失败，请稍后重试" else "评论失败，请稍后重试"
             val code = json.optInt("code", -1)
             if (code != 200) {
-                val msg = json.optString("msg").ifBlank { json.optString("message") }
-                throw IllegalStateException(msg.ifBlank { "回复失败 code=$code" })
+                throw IllegalStateException(NcmJson.userFacingMessage(json, failHint))
             }
             val posted = NcmCommentParse.commentFromPostResponse(json)
-            val optimistic = posted?.copy(
-                nickname = posted.nickname.ifBlank { selfNickname },
-                avatarUrl = posted.avatarUrl ?: selfAvatar,
-                timeLabel = posted.timeLabel.ifBlank { "刚刚" },
-                repliedNickname = posted.repliedNickname ?: target.nickname,
-            ) ?: SongComment(
-                commentId = -System.currentTimeMillis(),
-                content = text,
-                timeMs = System.currentTimeMillis(),
-                timeLabel = "刚刚",
-                likedCount = 0,
-                liked = false,
-                replyCount = 0,
-                userId = selfUid,
-                nickname = selfNickname,
-                avatarUrl = selfAvatar,
-                repliedContent = null,
-                repliedNickname = target.nickname,
-            )
-            // 先置顶自己的回复，方便确认发送成功；用户再次展开/刷新楼层后再用真实顺序
-            pendingFloorTop = pendingFloorTop + (target.commentId to optimistic)
-            patchComment(target.commentId) { it.copy(replyCount = it.replyCount + 1) }
-            floorRefreshTick = floorRefreshTick + (
-                target.commentId to ((floorRefreshTick[target.commentId] ?: 0) + 1)
-                )
-            if (total > 0L) total += 1L
-            actionHint = "回复成功"
-            dismissReplyComposer(restoreSheet = false)
-            val parentIndex = comments.indexOfFirst { it.commentId == target.commentId }
-            if (parentIndex >= 0) {
-                runCatching { listState.animateScrollToItem(parentIndex) }
+            val optimistic = optimisticPosted(posted, text, target?.nickname)
+            if (target != null) {
+                pendingFloorTop = pendingFloorTop + (target.commentId to optimistic)
+                patchComment(target.commentId) { it.copy(replyCount = it.replyCount + 1) }
+                floorRefreshTick = floorRefreshTick + (
+                    target.commentId to ((floorRefreshTick[target.commentId] ?: 0) + 1)
+                    )
+                if (total > 0L) total += 1L
+                hint("回复成功")
+                dismissReplyComposer(restoreSheet = false)
+                val parentIndex = comments.indexOfFirst { it.commentId == target.commentId }
+                if (parentIndex >= 0) {
+                    runCatching { listState.animateScrollToItem(parentIndex) }
+                }
+            } else {
+                comments.add(0, optimistic)
+                if (total > 0L) total += 1L else total = comments.size.toLong()
+                hint("评论成功")
+                dismissReplyComposer(restoreSheet = true)
+                runCatching { listState.animateScrollToItem(0) }
             }
         } catch (e: Exception) {
-            actionHint = e.message?.takeIf { it.isNotBlank() } ?: "回复失败，请稍后重试"
+            val failHint = if (target != null) "回复失败，请稍后重试" else "评论失败，请稍后重试"
+            hint(NcmJson.userFacingThrowable(e, failHint))
         } finally {
             replySending = false
         }
@@ -495,41 +537,38 @@ fun PortraitCommentsSheet(
         dismissReplyComposer()
         floorRefreshTick = emptyMap()
         pendingFloorTop = emptyMap()
-        loadMore(reset = true)
+        listGeneration += 1
+        loadMore(reset = true, requested = sortMode)
     }
 
-    LaunchedEffect(listState, songId, sortMode) {
+    LaunchedEffect(listGeneration, bootstrapped) {
+        if (!bootstrapped || comments.isEmpty()) return@LaunchedEffect
+        runCatching { listState.scrollToItem(0) }
+    }
+
+    LaunchedEffect(listState, listGeneration, songId) {
         snapshotFlow {
-            val last = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
-            val size = comments.size
-            val can = bootstrapped && hasMore && !loading && size > 0
-            Triple(last, size, can)
+            val info = listState.layoutInfo
+            val last = info.visibleItemsInfo.lastOrNull()?.index ?: -1
+            val totalItems = info.totalItemsCount
+            val can = bootstrapped && hasMore && !loading && comments.size >= CommentPageSize
+            Triple(last, totalItems, can)
         }
             .distinctUntilChanged()
-            .collect { (last, size, can) ->
-                if (can && last >= (size - 2).coerceAtLeast(0)) {
+            .collect { (last, totalItems, can) ->
+                if (can && totalItems > 0 && last >= (totalItems - 3).coerceAtLeast(0)) {
                     loadMore(reset = false)
                 }
             }
     }
 
-    val navBottom = WindowInsets.navigationBars
-        .asPaddingValues()
-        .calculateBottomPadding()
     val statusTop = WindowInsets.statusBars
         .asPaddingValues()
         .calculateTopPadding()
-    // 仅 Compose inset 抬输入栏；Manifest 已 adjustNothing，禁止系统再 pan/resize 一次
-    val composerBottomInset = WindowInsets.ime
-        .union(WindowInsets.navigationBars)
-        .asPaddingValues()
-        .calculateBottomPadding()
-    val composerOpen = replyTarget != null
-    val listBottomPad = if (composerOpen) {
+    val typingComposer = replyTarget != null || composerFocused
+    val listBottomPad = run {
         val measured = with(density) { composerHeightPx.toDp() }
-        (measured + composerBottomInset + 12.dp).coerceAtLeast(120.dp)
-    } else {
-        12.dp
+        (measured + 12.dp).coerceAtLeast(108.dp)
     }
 
     Box(
@@ -538,11 +577,18 @@ fun PortraitCommentsSheet(
             .fillMaxWidth()
             .clip(if (fullscreen) RoundedCornerShape(0.dp) else CommentPanelShape)
             .then(
-                if (composerOpen) {
+                if (typingComposer) {
                     Modifier.clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
-                        onClick = { dismissReplyComposer() },
+                        onClick = {
+                            if (replyTarget != null) dismissReplyComposer()
+                            else {
+                                composerFocused = false
+                                keyboard?.hide()
+                                focusManager.clearFocus(force = true)
+                            }
+                        },
                     )
                 } else {
                     Modifier
@@ -552,50 +598,32 @@ fun PortraitCommentsSheet(
                 this.clip = true
             },
     ) {
+        val panelShape = if (fullscreen) RoundedCornerShape(0.dp) else CommentPanelShape
+        if (hazeState != null) {
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .hazeEffect(state = hazeState, style = CommentGlassStyle),
+            )
+        } else {
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .background(MainPalette.Page.copy(alpha = 0.96f)),
+            )
+        }
         Box(
             Modifier
                 .matchParentSize()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            Color(0xE6080C14),
-                            Color(0xF005080E),
-                            Color(0xF0020408),
-                        ),
-                    ),
-                ),
-        )
-        Box(
-            Modifier
-                .matchParentSize()
-                .background(Color(0x3305080E)),
-        )
-        Box(
-            Modifier
-                .matchParentSize()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            Color.White.copy(alpha = 0.03f),
-                            Color.Transparent,
-                            Color.Black.copy(alpha = 0.55f),
-                        ),
-                    ),
-                ),
+                .background(Color.White.copy(alpha = 0.22f)),
         )
         Box(
             Modifier
                 .matchParentSize()
                 .border(
                     width = 1.dp,
-                    brush = Brush.verticalGradient(
-                        colors = listOf(
-                            Color.White.copy(alpha = 0.16f),
-                            Color.White.copy(alpha = 0.05f),
-                            Color.White.copy(alpha = 0.08f),
-                        ),
-                    ),
-                    shape = if (fullscreen) RoundedCornerShape(0.dp) else CommentPanelShape,
+                    color = Color.White.copy(alpha = 0.55f),
+                    shape = panelShape,
                 ),
         )
 
@@ -607,7 +635,7 @@ fun PortraitCommentsSheet(
                 // 回复态底部由输入栏吃 inset，列表不再叠 nav，避免双重偏移
                 .padding(
                     top = 12.dp,
-                    bottom = if (composerOpen) 0.dp else navBottom.coerceAtLeast(8.dp),
+                    bottom = 0.dp,
                 ),
         ) {
             Row(
@@ -655,7 +683,8 @@ fun PortraitCommentsSheet(
                     Box(
                         Modifier
                             .fillMaxWidth()
-                            .weight(1f),
+                            .weight(1f)
+                            .padding(bottom = listBottomPad),
                         contentAlignment = Alignment.Center,
                     ) {
                         CircularProgressIndicator(
@@ -669,7 +698,8 @@ fun PortraitCommentsSheet(
                     Box(
                         Modifier
                             .fillMaxWidth()
-                            .weight(1f),
+                            .weight(1f)
+                            .padding(bottom = listBottomPad),
                         contentAlignment = Alignment.Center,
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -697,7 +727,8 @@ fun PortraitCommentsSheet(
                     Box(
                         Modifier
                             .fillMaxWidth()
-                            .weight(1f),
+                            .weight(1f)
+                            .padding(bottom = listBottomPad),
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(
@@ -732,7 +763,7 @@ fun PortraitCommentsSheet(
                                 pendingTopReply = pendingFloorTop[item.commentId],
                                 replyActive = replyTarget?.commentId == item.commentId,
                                 onPatchComment = ::patchComment,
-                                onHint = { actionHint = it },
+                                onHint = { hint(it) },
                                 onConsumePendingTopReply = {
                                     pendingFloorTop = pendingFloorTop - item.commentId
                                 },
@@ -790,45 +821,18 @@ fun PortraitCommentsSheet(
             Box(Modifier.matchParentSize())
         }
 
-        actionHint?.let { tip ->
-            Box(
-                Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(
-                        bottom = composerBottomInset +
-                            if (composerOpen) {
-                                with(density) { composerHeightPx.toDp() } + 12.dp
-                            } else {
-                                24.dp
-                            },
-                    )
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(Color(0xE6121822))
-                    .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(20.dp))
-                    .padding(horizontal = 14.dp, vertical = 8.dp),
-            ) {
-                Text(
-                    text = tip,
-                    color = CommentLabel.copy(alpha = 0.92f),
-                    fontSize = 13.sp,
-                )
-            }
-        }
-
-        CommentReplyComposerBar(
-            visible = composerOpen,
-            targetNickname = replyTarget?.nickname.orEmpty(),
+        CommentComposerBar(
+            targetNickname = replyTarget?.nickname,
             draft = replyDraft,
             sending = replySending,
             focusRequester = replyFocus,
             onDraftChange = { replyDraft = it },
-            onSend = { scope.launch { sendReply() } },
-            onDismiss = { dismissReplyComposer() },
+            onSend = { scope.launch { sendComposer() } },
+            onDismissReply = { dismissReplyComposer() },
+            onFocusChange = { focused -> composerFocused = focused },
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                // 用 inset modifier（会消费 inset），勿再叠加手动 padding(ime)
-                .windowInsetsPadding(WindowInsets.ime.union(WindowInsets.navigationBars))
                 .onSizeChanged { composerHeightPx = it.height },
         )
     }
@@ -842,23 +846,23 @@ private fun CommentSortSegment(
     Row(
         Modifier
             .clip(RoundedCornerShape(999.dp))
-            .background(Color.White.copy(alpha = 0.06f))
-            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(999.dp))
+            .background(Color(0x14000000))
+            .border(1.dp, MainPalette.Hairline, RoundedCornerShape(999.dp))
             .padding(2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         CommentSortMode.entries.forEach { mode ->
             val on = mode == selected
             Text(
-                text = mode.label.removePrefix("按"),
+                text = mode.label,
                 style = TextStyle(
-                    color = if (on) CommentLabel else CommentHint.copy(alpha = 0.75f),
+                    color = if (on) CommentAccent else CommentHint,
                     fontSize = 12.sp,
                     fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal,
                 ),
                 modifier = Modifier
                     .clip(RoundedCornerShape(999.dp))
-                    .background(if (on) Color.White.copy(alpha = 0.12f) else Color.Transparent)
+                    .background(if (on) Color.White else Color.Transparent)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
@@ -871,50 +875,33 @@ private fun CommentSortSegment(
 }
 
 @Composable
-private fun CommentReplyComposerBar(
-    visible: Boolean,
-    targetNickname: String,
+private fun CommentComposerBar(
+    targetNickname: String?,
     draft: String,
     sending: Boolean,
     focusRequester: FocusRequester,
     onDraftChange: (String) -> Unit,
     onSend: () -> Unit,
-    onDismiss: () -> Unit,
+    onDismissReply: () -> Unit,
+    onFocusChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val canSend = draft.trim().isNotEmpty() && !sending
-    AnimatedVisibility(
-        visible = visible,
-        modifier = modifier,
-        enter = slideInVertically(
-            animationSpec = tween(280, easing = FastOutSlowInEasing),
-            initialOffsetY = { it },
-        ) + fadeIn(animationSpec = tween(220)),
-        exit = slideOutVertically(
-            animationSpec = tween(220, easing = CommentCloseEasing),
-            targetOffsetY = { it },
-        ) + fadeOut(animationSpec = tween(180)),
+    val replying = !targetNickname.isNullOrBlank()
+    Column(
+        modifier
+            .fillMaxWidth()
+            .background(Color.White.copy(alpha = 0.88f))
+            .windowInsetsPadding(WindowInsets.ime.union(WindowInsets.navigationBars))
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = {},
+            )
+            .padding(horizontal = 14.dp)
+            .padding(top = 8.dp, bottom = 10.dp),
     ) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            Color(0x0005080E),
-                            Color(0xF20A1018),
-                            Color(0xF5080C14),
-                        ),
-                    ),
-                )
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = {},
-                )
-                .padding(horizontal = 14.dp)
-                .padding(top = 8.dp, bottom = 10.dp),
-        ) {
+        if (replying) {
             Row(
                 Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -922,7 +909,7 @@ private fun CommentReplyComposerBar(
                 Text(
                     text = "回复 @$targetNickname",
                     style = TextStyle(
-                        color = CommentAccent.copy(alpha = 0.9f),
+                        color = CommentAccent,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Medium,
                     ),
@@ -933,7 +920,7 @@ private fun CommentReplyComposerBar(
                 Text(
                     text = "取消",
                     style = TextStyle(
-                        color = CommentHint.copy(alpha = 0.85f),
+                        color = CommentHint,
                         fontSize = 12.sp,
                     ),
                     modifier = Modifier
@@ -941,95 +928,95 @@ private fun CommentReplyComposerBar(
                             enabled = !sending,
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
-                            onClick = onDismiss,
+                            onClick = onDismissReply,
                         )
                         .padding(horizontal = 4.dp, vertical = 2.dp),
                 )
             }
             Spacer(Modifier.height(8.dp))
-            Row(
-                Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.Bottom,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
+        }
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.Bottom,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Box(
+                Modifier
+                    .weight(1f)
+                    .heightIn(min = 40.dp, max = 120.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(CommentComposerFill)
+                    .border(1.dp, MainPalette.Hairline, RoundedCornerShape(14.dp))
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
             ) {
-                Box(
-                    Modifier
-                        .weight(1f)
-                        .heightIn(min = 40.dp, max = 120.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(Color(0xFF141A24))
-                        .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(14.dp))
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                ) {
-                    if (draft.isEmpty()) {
-                        Text(
-                            text = "写下你的回复…",
-                            color = CommentHint.copy(alpha = 0.55f),
-                            fontSize = 14.sp,
-                        )
-                    }
-                    BasicTextField(
-                        value = draft,
-                        onValueChange = { if (it.length <= 140) onDraftChange(it) },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .focusRequester(focusRequester),
-                        textStyle = TextStyle(
-                            color = CommentLabel.copy(alpha = 0.94f),
-                            fontSize = 14.sp,
-                            lineHeight = 20.sp,
-                        ),
-                        cursorBrush = SolidColor(CommentAccent),
-                        maxLines = 5,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                        keyboardActions = KeyboardActions(
-                            onSend = { if (canSend) onSend() },
-                        ),
-                        enabled = !sending,
+                if (draft.isEmpty()) {
+                    Text(
+                        text = if (replying) "写下你的回复…" else "说说你的想法…",
+                        color = CommentHint,
+                        fontSize = 14.sp,
                     )
                 }
-                Box(
-                    Modifier
-                        .widthIn(min = 56.dp)
-                        .height(40.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(
-                            if (canSend) CommentAccent.copy(alpha = 0.92f)
-                            else Color.White.copy(alpha = 0.08f),
-                        )
-                        .clickable(
-                            enabled = canSend,
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = onSend,
-                        ),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    if (sending) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(16.dp),
-                            color = Color(0xFF0A1018),
-                            strokeWidth = 2.dp,
-                        )
-                    } else {
-                        Text(
-                            text = "发送",
-                            color = if (canSend) Color(0xFF0A1018) else CommentHint.copy(alpha = 0.5f),
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                    }
+                BasicTextField(
+                    value = draft,
+                    onValueChange = { if (it.length <= 140) onDraftChange(it) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(focusRequester)
+                        .onFocusChanged { onFocusChange(it.isFocused) },
+                    textStyle = TextStyle(
+                        color = CommentLabel,
+                        fontSize = 14.sp,
+                        lineHeight = 20.sp,
+                    ),
+                    cursorBrush = SolidColor(CommentAccent),
+                    maxLines = 5,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                    keyboardActions = KeyboardActions(
+                        onSend = { if (canSend) onSend() },
+                    ),
+                    enabled = !sending,
+                )
+            }
+            Box(
+                Modifier
+                    .widthIn(min = 56.dp)
+                    .height(40.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(
+                        if (canSend) CommentAccent else Color(0xFFE8E8ED),
+                    )
+                    .clickable(
+                        enabled = canSend,
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onSend,
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (sending) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        color = Color.White,
+                        strokeWidth = 2.dp,
+                    )
+                } else {
+                    Text(
+                        text = "发送",
+                        color = if (canSend) Color.White else CommentHint,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
                 }
             }
-            Text(
-                text = "${draft.length}/140",
-                color = CommentHint.copy(alpha = 0.45f),
-                fontSize = 10.sp,
-                modifier = Modifier
-                    .align(Alignment.End)
-                    .padding(top = 4.dp, end = 66.dp),
-            )
         }
+        Text(
+            text = "${draft.length}/140",
+            color = CommentHint.copy(alpha = 0.8f),
+            fontSize = 10.sp,
+            modifier = Modifier
+                .align(Alignment.End)
+                .padding(top = 4.dp, end = 66.dp),
+        )
     }
 }
 
@@ -1050,8 +1037,8 @@ private fun CommentHeaderArrowButton(
         Modifier
             .size(36.dp)
             .clip(CircleShape)
-            .background(Color.White.copy(alpha = 0.06f))
-            .border(1.dp, Color.White.copy(alpha = 0.10f), CircleShape)
+            .background(Color.White.copy(alpha = 0.78f))
+            .border(1.dp, MainPalette.Hairline, CircleShape)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
@@ -1164,7 +1151,7 @@ private fun CommentRow(
             }
             repliesHasMore = page.hasMore && page.comments.isNotEmpty()
         } catch (e: Exception) {
-            repliesError = e.message?.takeIf { it.isNotBlank() } ?: "回复加载失败"
+            repliesError = NcmJson.userFacingThrowable(e, "回复加载失败")
         } finally {
             repliesLoading = false
         }
@@ -1257,7 +1244,7 @@ private fun CommentRow(
             )
             val code = json.optInt("code", -1)
             if (code != 200) {
-                throw IllegalStateException("抱抱失败 code=$code")
+                throw IllegalStateException(NcmJson.userFacingMessage(json, "抱抱失败"))
             }
             hugged = true
             onHint("已抱抱 ${comment.nickname}")
@@ -1334,7 +1321,7 @@ private fun CommentRow(
                                     Modifier
                                 },
                             )
-                            .background(Color(0xFF1C2028)),
+                            .background(CommentAvatarBg),
                     ) {
                         UrlImage(
                             url = comment.avatarUrl,
@@ -1649,7 +1636,7 @@ private fun CommentRow(
                                             Modifier
                                                 .size(24.dp)
                                                 .clip(CircleShape)
-                                                .background(Color(0xFF1C2028)),
+                                                .background(CommentAvatarBg),
                                         ) {
                                             UrlImage(
                                                 url = user.avatarUrl,
@@ -1789,7 +1776,7 @@ private fun CommentReplyRow(
             Modifier
                 .size(28.dp)
                 .clip(CircleShape)
-                .background(Color(0xFF1C2028)),
+                .background(CommentAvatarBg),
         ) {
             UrlImage(
                 url = comment.avatarUrl,

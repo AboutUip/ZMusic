@@ -29,14 +29,12 @@ class NcmConnectivityClient(
         try {
             client.newCall(req).execute().use { resp ->
                 if (!resp.isSuccessful) {
-                    return@withContext Result.failure(
-                        IOException("HTTP ${resp.code} ${resp.message}"),
-                    )
+                    return@withContext Result.failure(IOException("服务器无响应"))
                 }
                 Result.success(Unit)
             }
         } catch (e: Exception) {
-            Result.failure(IOException(e.message?.takeIf { it.isNotBlank() } ?: "无法连接服务器", e))
+            Result.failure(IOException("无法连接服务器", e))
         }
     }
 

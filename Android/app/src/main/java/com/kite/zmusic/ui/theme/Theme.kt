@@ -2,26 +2,26 @@ package com.kite.zmusic.ui.theme
 
 import android.app.Activity
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
-private val OledBlack = Color(0xFF000000)
-private val LabelPrimary = Color(0xFFF2F2F7)
-private val LabelSecondary = Color(0xFF8E8E93)
+private val Page = Color(0xFFEEF4F7)
+private val Ink = Color(0xFF2C2C2E)
+private val Accent = Color(0xFFEC4141)
 
-private val ZMusicDarkColors = darkColorScheme(
-    primary = LabelPrimary,
-    onPrimary = OledBlack,
-    secondary = LabelSecondary,
-    onSecondary = OledBlack,
-    background = OledBlack,
-    onBackground = LabelPrimary,
-    surface = OledBlack,
-    onSurface = LabelPrimary,
+private val ZMusicLightColors = lightColorScheme(
+    primary = Accent,
+    onPrimary = Color.White,
+    secondary = Color(0xFF8E8E93),
+    onSecondary = Color.White,
+    background = Page,
+    onBackground = Ink,
+    surface = Page,
+    onSurface = Ink,
 )
 
 @Composable
@@ -29,14 +29,13 @@ fun ZMusicTheme(content: @Composable () -> Unit) {
     val view = LocalView.current
     SideEffect {
         val window = (view.context as Activity).window
-        // 透明系统栏由 MainActivity.enableEdgeToEdge() 处理；此处只配置图标对比度
         WindowCompat.getInsetsController(window, view).apply {
-            isAppearanceLightStatusBars = false
-            isAppearanceLightNavigationBars = false
+            isAppearanceLightStatusBars = true
+            isAppearanceLightNavigationBars = true
         }
     }
     MaterialTheme(
-        colorScheme = ZMusicDarkColors,
+        colorScheme = ZMusicLightColors,
         content = content,
     )
 }

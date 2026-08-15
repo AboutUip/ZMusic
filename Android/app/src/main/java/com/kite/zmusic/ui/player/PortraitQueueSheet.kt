@@ -25,11 +25,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -44,15 +46,30 @@ import androidx.compose.ui.unit.sp
 import com.kite.zmusic.data.TrackRow
 import com.kite.zmusic.ui.common.UrlImage
 import com.kite.zmusic.ui.common.UrlImageCache
+import com.kite.zmusic.ui.main.MainPalette
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.HazeStyle
+import dev.chrisbanes.haze.HazeTint
+import dev.chrisbanes.haze.hazeEffect
 
-private val QueueLabel = Color(0xFFFFFFFF)
-private val QueueAccent = Color(0xFF9AF0F0)
-private val QueueHint = Color(0xFFB8C0CC)
+private val QueueLabel = MainPalette.Ink
+private val QueueAccent = MainPalette.Accent
+private val QueueHint = MainPalette.Secondary
 private val QueueIconTint = Color(0xFFD5DEE8)
-private val QueueRowBg = Color(0xF0141A24)
-private val QueueRowSelected = Color(0xFF1A2430)
-private val QueueCoverBg = Color(0xFF1C2028)
-private val QueuePanelShape = RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp)
+private val QueueRowBg = Color.White
+private val QueueRowSelected = Color.White
+private val QueueCoverBg = Color(0xFFE8E8ED)
+private val QueuePanelShape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp)
+private val QueueGlassStyle = HazeStyle(
+    backgroundColor = MainPalette.Page,
+    tints = listOf(
+        HazeTint(Color.White.copy(alpha = 0.78f)),
+        HazeTint(MainPalette.Page.copy(alpha = 0.52f)),
+    ),
+    blurRadius = 56.dp,
+    noiseFactor = 0.08f,
+    fallbackTint = HazeTint(MainPalette.Page.copy(alpha = 0.94f)),
+)
 
 private const val QueuePrefetchBehind = 8
 private const val QueuePrefetchAhead = 24
@@ -83,7 +100,7 @@ fun NowPlayingScoreIconButton(
 }
 
 /**
- * 竖屏曲谱 / 播放列表面板：玻璃壳、把手、顶圆角与设置面板一致；
+ * 竖屏曲谱 / 播放列表面板：浅色磨砂，与评论 / 竖屏显示同一套语言。
  * 内容为一行一首（方封面 + 歌名 / 制作人）。
  */
 @Composable
@@ -95,7 +112,9 @@ fun PortraitQueueSheet(
     revealToken: Int = 0,
     onDragHandleVertical: ((dragAmountPx: Float) -> Unit)? = null,
     onDragHandleEnd: (() -> Unit)? = null,
+    onApproachEnd: (lastVisibleIndex: Int) -> Unit = {},
     panelShape: RoundedCornerShape = QueuePanelShape,
+    hazeState: HazeState? = null,
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
@@ -106,7 +125,23 @@ fun PortraitQueueSheet(
         currentIndex.coerceIn(0, tracks.lastIndex)
     }
 
-    LaunchedEffect(revealToken, tracks.size) {
+    val onApproachUpdated = rememberUpdatedState(onApproachEnd)
+    val nearEnd by remember {
+        derivedStateOf {
+            val last = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            val total = tracks.size
+            total > 1 && last >= total - 8
+        }
+    }
+    LaunchedEffect(nearEnd, tracks.size) {
+        if (nearEnd && tracks.isNotEmpty()) {
+            val last = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index
+                ?: tracks.lastIndex
+            onApproachUpdated.value(last)
+        }
+    }
+
+    LaunchedEffect(revealToken) {
         if (tracks.isEmpty()) return@LaunchedEffect
         listState.scrollToItem(safeIndex)
     }
@@ -132,52 +167,23 @@ fun PortraitQueueSheet(
                 onClick = {},
             ),
     ) {
-        // 静态玻璃：与竖屏设置面板同一套，避免弹出卡顿
+        if (hazeState != null) {
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .hazeEffect(state = hazeState, style = QueueGlassStyle),
+            )
+        } else {
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .background(MainPalette.Page.copy(alpha = 0.96f)),
+            )
+        }
         Box(
             Modifier
                 .matchParentSize()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            Color(0xE6080C14),
-                            Color(0xF005080E),
-                            Color(0xF0020408),
-                        ),
-                    ),
-                ),
-        )
-        Box(
-            Modifier
-                .matchParentSize()
-                .background(Color(0x3305080E)),
-        )
-        Box(
-            Modifier
-                .matchParentSize()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            Color.White.copy(alpha = 0.03f),
-                            Color.Transparent,
-                            Color.Black.copy(alpha = 0.55f),
-                        ),
-                    ),
-                ),
-        )
-        Box(
-            Modifier
-                .matchParentSize()
-                .border(
-                    width = 1.dp,
-                    brush = Brush.verticalGradient(
-                        colors = listOf(
-                            Color.White.copy(alpha = 0.16f),
-                            Color.White.copy(alpha = 0.05f),
-                            Color.White.copy(alpha = 0.08f),
-                        ),
-                    ),
-                    shape = panelShape,
-                ),
+                .background(Color.White.copy(alpha = 0.22f)),
         )
 
         Column(
@@ -202,10 +208,10 @@ fun PortraitQueueSheet(
             ) {
                 Box(
                     Modifier
-                        .width(40.dp)
+                        .width(36.dp)
                         .height(4.dp)
                         .clip(RoundedCornerShape(2.dp))
-                        .background(Color.White.copy(alpha = 0.38f)),
+                        .background(MainPalette.Hint),
                 )
             }
             Text(
@@ -213,20 +219,20 @@ fun PortraitQueueSheet(
                 style = TextStyle(
                     color = QueueLabel,
                     fontFamily = FontFamily.SansSerif,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 17.sp,
-                    letterSpacing = 0.3.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 20.sp,
+                    letterSpacing = (-0.2).sp,
                 ),
             )
             Spacer(Modifier.height(4.dp))
             Text(
                 text = if (tracks.isEmpty()) "暂无播放列表" else "共 ${tracks.size} 首",
                 style = TextStyle(
-                    color = QueueHint.copy(alpha = 0.72f),
-                    fontSize = 12.sp,
+                    color = QueueHint,
+                    fontSize = 13.sp,
                 ),
             )
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(12.dp))
 
             if (tracks.isEmpty()) {
                 Box(
@@ -238,7 +244,7 @@ fun PortraitQueueSheet(
                     Text(
                         text = "队列为空",
                         style = TextStyle(
-                            color = QueueHint.copy(alpha = 0.45f),
+                            color = QueueHint,
                             fontSize = 14.sp,
                         ),
                     )
@@ -275,7 +281,7 @@ private fun PortraitQueueTrackRow(
     onClick: () -> Unit,
     coverSize: Dp = 56.dp,
 ) {
-    val shape = RoundedCornerShape(12.dp)
+    val shape = RoundedCornerShape(16.dp)
     Row(
         Modifier
             .fillMaxWidth()
@@ -283,8 +289,7 @@ private fun PortraitQueueTrackRow(
             .background(if (selected) QueueRowSelected else QueueRowBg)
             .border(
                 width = 1.dp,
-                color = if (selected) QueueAccent.copy(alpha = 0.55f)
-                else Color.White.copy(alpha = 0.06f),
+                color = if (selected) QueueAccent.copy(alpha = 0.45f) else MainPalette.Hairline,
                 shape = shape,
             )
             .clickable(
@@ -326,7 +331,7 @@ private fun PortraitQueueTrackRow(
             Text(
                 text = track.artists.ifBlank { "—" },
                 style = TextStyle(
-                    color = QueueHint.copy(alpha = if (selected) 0.88f else 0.72f),
+                    color = QueueHint,
                     fontSize = 12.sp,
                     lineHeight = 16.sp,
                 ),

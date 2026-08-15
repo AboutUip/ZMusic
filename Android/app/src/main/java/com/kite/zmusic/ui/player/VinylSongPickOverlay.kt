@@ -135,6 +135,7 @@ fun VinylSongPickOverlay(
     onConfirmExitFinished: () -> Unit,
     onStackingFinished: () -> Unit,
     onFanOutFinished: () -> Unit,
+    onApproachEnd: (lastVisibleIndex: Int) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val t = progress.coerceIn(0f, 1f)
@@ -164,6 +165,7 @@ fun VinylSongPickOverlay(
             onConfirmExitFinished = onConfirmExitFinished,
             onStackingFinished = onStackingFinished,
             onFanOutFinished = onFanOutFinished,
+            onApproachEnd = onApproachEnd,
             modifier = modifier,
         )
     }
@@ -193,6 +195,7 @@ private fun VinylSongPickOverlaySession(
     onConfirmExitFinished: () -> Unit,
     onStackingFinished: () -> Unit,
     onFanOutFinished: () -> Unit,
+    onApproachEnd: (lastVisibleIndex: Int) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val t = progress.coerceIn(0f, 1f)
@@ -213,6 +216,15 @@ private fun VinylSongPickOverlaySession(
             val q = queueUpdated
             sessionQueue = q
             sessionAnchor = queueIndexUpdated.coerceIn(0, (q.size - 1).coerceAtLeast(0))
+        }
+    }
+    LaunchedEffect(queue.size, phase) {
+        if (phase == VinylSongPickPhase.Confirming || phase == VinylSongPickPhase.Canceling) {
+            return@LaunchedEffect
+        }
+        val live = queueUpdated
+        if (live.size > sessionQueue.size) {
+            sessionQueue = com.kite.zmusic.playback.mergePlaylistQueue(sessionQueue, live)
         }
     }
 
@@ -508,6 +520,7 @@ private fun VinylSongPickOverlaySession(
                                 onConfirmFocused()
                             }
                         },
+                        onApproachEnd = onApproachEnd,
                     )
                 }
             }
@@ -825,6 +838,7 @@ private fun VinylSongPickBrowseRow(
     attachCovers: Boolean,
     onFocusedLocalChange: (Int) -> Unit,
     onConfirmLocal: (Int) -> Unit,
+    onApproachEnd: (lastVisibleIndex: Int) -> Unit = {},
 ) {
     val safeInitial = initialLocalIndex.coerceIn(0, tracks.lastIndex.coerceAtLeast(0))
     val listState = rememberLazyListState(
@@ -882,6 +896,18 @@ private fun VinylSongPickBrowseRow(
             }
                 .distinctUntilChanged()
                 .collect { idx -> onFocusedUpdated(idx) }
+        }
+        val onApproachUpdated = rememberUpdatedState(onApproachEnd)
+        LaunchedEffect(listState, tracks.size) {
+            snapshotFlow {
+                listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+            }
+                .distinctUntilChanged()
+                .collect { last ->
+                    if (last >= 0 && tracks.isNotEmpty() && last >= tracks.size - 6) {
+                        onApproachUpdated.value(last)
+                    }
+                }
         }
 
         fun scrollToIndex(index: Int) {

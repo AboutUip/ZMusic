@@ -82,6 +82,30 @@ class ServerConfigRepository(context: Context) {
             )
         }
 
+        fun maskHost(host: String): String {
+            val h = host.trim()
+            val ipv4 = h.split('.')
+            if (ipv4.size == 4 && ipv4.all { part -> part.toIntOrNull() != null }) {
+                return "${ipv4[0]}.***.***.${ipv4[3]}"
+            }
+            if (h.contains(':')) return "****"
+            val labels = h.split('.').filter { it.isNotEmpty() }
+            return when {
+                labels.size >= 3 -> "${labels.first()}.***.${labels.last()}"
+                labels.size == 2 -> "${labels.first()}.***"
+                else -> "***"
+            }
+        }
+
+        fun maskEndpoint(endpoint: Endpoint): String =
+            "${maskHost(endpoint.host)}:${endpoint.port}"
+
+        fun looksMasked(host: String): Boolean {
+            val h = host.trim()
+            if (h.isEmpty()) return false
+            return h.contains("***") || h == "****" || h.all { it == '*' }
+        }
+
         private fun createPrefs(context: Context): SharedPreferences = EncryptedSharedPreferences.create(
             context,
             PREFS_NAME,

@@ -60,6 +60,12 @@ class PlaybackBridge(
     private val _spectrum = MutableStateFlow(AudioSpectrumBands.ZERO)
     val spectrum: StateFlow<AudioSpectrumBands> = _spectrum.asStateFlow()
 
+    @Volatile
+    var onBindSessionPlayer: ((Player) -> Unit)? = null
+
+    @Volatile
+    var musicWillPlay: (() -> Unit)? = null
+
     private val pending = CopyOnWriteArrayList<() -> Unit>()
     private val connecting = AtomicBoolean(false)
 
@@ -150,10 +156,17 @@ class PlaybackBridge(
         startIndex: Int,
         sourcePlaylistId: Long? = null,
         sourcePlaylistTitle: String? = null,
+        fmSession: Boolean = false,
     ) {
+        musicWillPlay?.invoke()
         runOnCoordinator {
-            it.playQueue(tracks, startIndex, sourcePlaylistId, sourcePlaylistTitle)
+            it.playQueue(tracks, startIndex, sourcePlaylistId, sourcePlaylistTitle, fmSession)
         }
+    }
+
+    fun startPersonalFm(onStarted: () -> Unit = {}) {
+        musicWillPlay?.invoke()
+        runOnCoordinator { it.startPersonalFm(onStarted) }
     }
 
     fun playIndex(index: Int) = runOnCoordinator { it.playIndex(index) }
@@ -192,6 +205,40 @@ class PlaybackBridge(
 
     fun togglePlayPause() = runOnCoordinator { it.togglePlayPause() }
 
+    fun ensureService() = ensureController()
+
+    fun pauseForForeignPlayback() {
+        ensureController()
+        runOnCoordinator { it.yieldToForeignPlayback(true) }
+    }
+
+    fun resumeFromForeignPlayback() {
+        runOnCoordinator { it.yieldToForeignPlayback(false) }
+    }
+
+    fun bindSessionPlayer(player: Player) {
+        val bind: () -> Unit = {
+            onBindSessionPlayer?.invoke(player)
+            Unit
+        }
+        if (Looper.myLooper() == Looper.getMainLooper()) bind() else mainHandler.post(bind)
+        if (onBindSessionPlayer == null) {
+            pending.add {
+                onBindSessionPlayer?.invoke(player)
+                Unit
+            }
+            ensureController()
+        }
+    }
+
+    fun restoreMusicSessionPlayer() {
+        val bind: () -> Unit = {
+            coordinator?.player?.let { onBindSessionPlayer?.invoke(it) }
+            Unit
+        }
+        if (Looper.myLooper() == Looper.getMainLooper()) bind() else mainHandler.post(bind)
+    }
+
     fun seekTo(ms: Long) = runOnCoordinator { it.seekTo(ms) }
 
     fun skipNext() = runOnCoordinator { it.skipNext() }
@@ -204,6 +251,7 @@ class PlaybackBridge(
     fun setHoldAutoAdvance(hold: Boolean) = runOnCoordinator { it.setHoldAutoAdvance(hold) }
 
     fun stopForLogout() {
+        musicWillPlay?.invoke()
         stateStore.clear()
         val c = coordinator
         if (c != null) {

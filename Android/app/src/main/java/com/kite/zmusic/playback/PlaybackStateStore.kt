@@ -20,15 +20,7 @@ class PlaybackStateStore(context: Context) {
         runCatching {
             val arr = JSONArray()
             state.queue.forEach { t ->
-                arr.put(
-                    JSONObject()
-                        .put("id", t.id)
-                        .put("name", t.name)
-                        .put("artists", t.artists)
-                        .put("album", t.album ?: "")
-                        .put("durationMs", t.durationMs)
-                        .put("coverUrl", t.coverUrl ?: ""),
-                )
+                arr.put(com.kite.zmusic.data.NcmLibraryParse.trackToCacheJson(t))
             }
             prefs.edit()
                 .putString(KEY_QUEUE, arr.toString())
@@ -37,6 +29,7 @@ class PlaybackStateStore(context: Context) {
                 .putLong(KEY_POSITION, state.positionMs)
                 .putLong(KEY_SOURCE_ID, state.sourcePlaylistId ?: -1L)
                 .putString(KEY_SOURCE_TITLE, state.sourcePlaylistTitle)
+                .putBoolean(KEY_FM, state.fmActive)
                 .apply()
         }.onFailure { Log.w(TAG, "save failed", it) }
     }
@@ -49,16 +42,7 @@ class PlaybackStateStore(context: Context) {
             val queue = buildList {
                 for (i in 0 until arr.length()) {
                     val o = arr.getJSONObject(i)
-                    add(
-                        TrackRow(
-                            id = o.getLong("id"),
-                            name = o.getString("name"),
-                            artists = o.getString("artists"),
-                            album = o.optString("album").ifBlank { null },
-                            durationMs = o.getLong("durationMs"),
-                            coverUrl = o.optString("coverUrl").ifBlank { null },
-                        ),
-                    )
+                    com.kite.zmusic.data.NcmLibraryParse.trackFromCacheJson(o)?.let { add(it) }
                 }
             }
             val index = prefs.getInt(KEY_INDEX, 0).coerceIn(0, queue.lastIndex)
@@ -76,6 +60,7 @@ class PlaybackStateStore(context: Context) {
                 hasQueue = true,
                 sourcePlaylistId = prefs.getLong(KEY_SOURCE_ID, -1L).takeIf { it > 0 },
                 sourcePlaylistTitle = prefs.getString(KEY_SOURCE_TITLE, null),
+                fmActive = prefs.getBoolean(KEY_FM, false),
             ).withHydratedPeeks()
         }.onFailure { Log.w(TAG, "load failed", it) }.getOrNull()
     }
@@ -105,5 +90,6 @@ class PlaybackStateStore(context: Context) {
         private const val KEY_POSITION = "position_ms"
         private const val KEY_SOURCE_ID = "source_id"
         private const val KEY_SOURCE_TITLE = "source_title"
+        private const val KEY_FM = "fm_active"
     }
 }

@@ -27,6 +27,8 @@ data class PlaybackUiState(
     val hasQueue: Boolean = false,
     val sourcePlaylistId: Long? = null,
     val sourcePlaylistTitle: String? = null,
+    /** 私人漫游：顺序连播、禁止随机，并向后实时补歌。 */
+    val fmActive: Boolean = false,
     /** 手势/预览用：与真实 skipNext/Prev 目标一致（随机模式：下一首预选随机，上一首为播放历史） */
     val peekNextTrack: TrackRow? = null,
     val peekPrevTrack: TrackRow? = null,

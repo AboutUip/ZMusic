@@ -27,6 +27,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -81,6 +82,11 @@ class PlaybackService : MediaSessionService() {
                 ImmutableList.of(playbackModeButton(coord.ui.value.playbackMode)),
             )
             .build()
+        bridge.onBindSessionPlayer = { player ->
+            mediaSession?.let { session ->
+                if (session.player !== player) session.player = player
+            }
+        }
 
         val notificationProvider = ModeFirstMediaNotificationProvider(
             context = this,
@@ -91,9 +97,12 @@ class PlaybackService : MediaSessionService() {
         setMediaNotificationProvider(notificationProvider)
 
         serviceScope.launch {
-            coord.ui
-                .map { it.playbackMode }
-                .distinctUntilChanged()
+            combine(
+                coord.ui.map { it.playbackMode },
+                app.mvPlayback.ui.map { it.active to it.playbackMode },
+            ) { songMode, mv ->
+                if (mv.first) mv.second else songMode
+            }.distinctUntilChanged()
                 .collect { mode ->
                     mediaSession?.setMediaButtonPreferences(
                         ImmutableList.of(playbackModeButton(mode)),
@@ -121,6 +130,7 @@ class PlaybackService : MediaSessionService() {
             coord.release()
             coordinator = null
         }
+        app.playbackBridge.onBindSessionPlayer = null
         mediaSession?.run {
             release()
             mediaSession = null
@@ -176,7 +186,9 @@ class PlaybackService : MediaSessionService() {
             args: Bundle,
         ): ListenableFuture<SessionResult> {
             if (customCommand.customAction == ACTION_CYCLE_PLAYBACK_MODE) {
-                coordinator?.cyclePlaybackMode()
+                val mv = (application as ZMusicApplication).mvPlayback
+                if (mv.ui.value.active) mv.cyclePlaybackMode()
+                else coordinator?.cyclePlaybackMode()
                 return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
             }
             return super.onCustomCommand(session, controller, customCommand, args)

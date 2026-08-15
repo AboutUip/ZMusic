@@ -765,7 +765,6 @@ private suspend fun loadCoverFullResolution(
                 inSampleSize = sample
                 inPreferredConfig = Bitmap.Config.ARGB_8888
                 inScaled = false
-                inDither = false
             }
             val decoded = BitmapFactory.decodeFile(file.absolutePath, opts) ?: return@runCatching null
             if (decoded.config == Bitmap.Config.HARDWARE) {

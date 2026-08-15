@@ -40,6 +40,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
@@ -114,6 +115,7 @@ fun ScoreSheetOverlay(
     plateColors: VinylPlateColors,
     onPlayTrack: (index: Int, vinylCenterRoot: Offset, vinylSizePx: Float) -> Unit,
     openGeneration: Int,
+    onApproachEnd: (lastVisibleIndex: Int) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     // 网格实际列数：仅在实底遮挡下跳变
@@ -293,6 +295,7 @@ fun ScoreSheetOverlay(
                             initialIndex = initialIndex,
                             onPlayTrack = onPlayTrack,
                             interactionEnabled = !transitionBusy,
+                            onApproachEnd = onApproachEnd,
                         )
                     }
                 }
@@ -327,6 +330,7 @@ private fun ScoreMorphGrid(
     initialIndex: Int,
     onPlayTrack: (index: Int, vinylCenterRoot: Offset, vinylSizePx: Float) -> Unit,
     interactionEnabled: Boolean = true,
+    onApproachEnd: (lastVisibleIndex: Int) -> Unit = {},
 ) {
     val density = LocalDensity.current
     val context = LocalContext.current
@@ -453,6 +457,13 @@ private fun ScoreMorphGrid(
                 overscan = overscan,
                 count = n,
             )
+        }
+        val lastVisible = visibleIndices.maxOrNull() ?: -1
+        val onApproachUpdated = rememberUpdatedState(onApproachEnd)
+        LaunchedEffect(lastVisible, n) {
+            if (lastVisible >= 0 && n > 0 && lastVisible >= n - 10) {
+                onApproachUpdated.value(lastVisible)
+            }
         }
 
         val prefetchAnchor = remember(effectiveScrollY, n, cellPx, columns, gapPx) {

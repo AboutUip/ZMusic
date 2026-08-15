@@ -72,7 +72,7 @@ class LoginViewModel(
             try {
                 val keyJson = api.loginQrKey()
                 if (NcmJson.apiCode(keyJson) != 200) {
-                    bannerError = keyJson.optString("msg", "无法获取二维码")
+                    bannerError = NcmJson.userFacingMessage(keyJson, "无法获取二维码")
                     return@launch
                 }
                 val key = NcmJson.qrKey(keyJson) ?: run {
@@ -82,12 +82,12 @@ class LoginViewModel(
                 qrUnikey = key
                 val create = api.loginQrCreate(key)
                 if (NcmJson.apiCode(create) != 200) {
-                    bannerError = create.optString("msg", create.optString("message", "二维码生成失败"))
+                    bannerError = NcmJson.userFacingMessage(create, "二维码生成失败")
                     return@launch
                 }
                 val img = NcmJson.qrImgBase64(create)
                 if (img.isNullOrBlank()) {
-                    bannerError = "二维码数据为空（请确认服务端 /login/qr/create 返回 data.qrimg）"
+                    bannerError = "二维码数据为空，请稍后重试"
                     return@launch
                 }
                 qrImageBase64 = img
@@ -95,7 +95,7 @@ class LoginViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                bannerError = e.message ?: "网络错误"
+                bannerError = NcmJson.userFacingThrowable(e, "网络错误")
             } finally {
                 busy = false
             }
@@ -137,7 +137,7 @@ class LoginViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                bannerError = e.message
+                bannerError = NcmJson.userFacingThrowable(e, "二维码登录失败")
                 return
             }
         }
@@ -154,15 +154,16 @@ class LoginViewModel(
             bannerError = null
             var sentOk = false
             try {
+                if (!ensurePhoneRegistered()) return@launch
                 val j = api.captchaSent(phone.trim())
                 if (NcmJson.apiCode(j) != 200) {
-                    bannerError = j.optString("message", j.optString("msg", "发送失败"))
+                    bannerError = NcmJson.userFacingMessage(j, "发送失败")
                 } else {
                     smsCaptchaHint = "验证码已下发至手机，请查收短信"
                     sentOk = true
                 }
             } catch (e: Exception) {
-                bannerError = e.message ?: "发送失败"
+                bannerError = NcmJson.userFacingThrowable(e, "发送失败")
             } finally {
                 captchaSending = false
             }
@@ -189,10 +190,11 @@ class LoginViewModel(
             busy = true
             bannerError = null
             try {
+                if (!ensurePhoneRegistered()) return@launch
                 val j = api.loginCellphone(phone.trim(), captcha = captcha.trim())
                 if (consumeLoginSuccess(j)) onDone()
             } catch (e: Exception) {
-                bannerError = e.message ?: "登录失败"
+                bannerError = NcmJson.userFacingThrowable(e, "登录失败")
             } finally {
                 busy = false
             }
@@ -209,11 +211,12 @@ class LoginViewModel(
             busy = true
             bannerError = null
             try {
+                if (!ensurePhoneRegistered()) return@launch
                 val md5 = Md5Util.md5Hex(password)
                 val j = api.loginCellphone(phone.trim(), md5Password = md5)
                 if (consumeLoginSuccess(j)) onDone()
             } catch (e: Exception) {
-                bannerError = e.message ?: "登录失败"
+                bannerError = NcmJson.userFacingThrowable(e, "登录失败")
             } finally {
                 busy = false
             }
@@ -234,33 +237,7 @@ class LoginViewModel(
                 val j = api.loginEmail(email.trim(), md5Password = md5)
                 if (consumeLoginSuccess(j)) onDone()
             } catch (e: Exception) {
-                bannerError = e.message ?: "登录失败"
-            } finally {
-                busy = false
-            }
-        }
-    }
-
-    fun loginGuest(onDone: () -> Unit) {
-        viewModelScope.launch {
-            if (busy) return@launch
-            busy = true
-            bannerError = null
-            try {
-                val j = api.registerAnonymous()
-                if (NcmJson.apiCode(j) != 200) {
-                    bannerError = j.optString("msg", j.optString("message", "游客登录失败"))
-                    return@launch
-                }
-                val cookie = NcmJson.extractCookie(j)
-                if (cookie.isNullOrEmpty()) {
-                    bannerError = "未返回游客 cookie"
-                    return@launch
-                }
-                sessionRepository.persist(cookie, "游客", isGuest = true)
-                onDone()
-            } catch (e: Exception) {
-                bannerError = e.message ?: "游客登录失败"
+                bannerError = NcmJson.userFacingThrowable(e, "登录失败")
             } finally {
                 busy = false
             }
@@ -270,7 +247,7 @@ class LoginViewModel(
     /** @return true if login succeeded and session saved */
     private fun consumeLoginSuccess(j: JSONObject): Boolean {
         if (NcmJson.apiCode(j) != 200) {
-            bannerError = j.optString("msg", j.optString("message", "登录失败"))
+            bannerError = NcmJson.userFacingMessage(j, "登录失败")
             return false
         }
         val cookie = NcmJson.extractCookie(j)
@@ -280,6 +257,21 @@ class LoginViewModel(
         }
         sessionRepository.persist(cookie, NcmJson.displayLabelFromLogin(j))
         return true
+    }
+
+    private suspend fun ensurePhoneRegistered(): Boolean {
+        val existJson = api.cellphoneExistenceCheck(phone.trim())
+        return when (NcmJson.phoneAlreadyRegistered(existJson)) {
+            true -> true
+            false -> {
+                bannerError = "该手机号尚未注册，请先注册"
+                false
+            }
+            null -> {
+                bannerError = NcmJson.userFacingMessage(existJson, "无法确认该手机号是否已注册")
+                false
+            }
+        }
     }
 
     override fun onCleared() {

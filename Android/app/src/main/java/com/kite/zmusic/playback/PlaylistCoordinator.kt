@@ -18,12 +18,14 @@ import androidx.media3.exoplayer.audio.DefaultAudioSink
 import com.kite.zmusic.R
 import com.kite.zmusic.data.LikedPlaylistRepository
 import com.kite.zmusic.data.LyricRepository
+import com.kite.zmusic.data.NcmHomeParse
 import com.kite.zmusic.data.NcmLibraryParse
 import com.kite.zmusic.data.NcmPlaybackParse
 import com.kite.zmusic.data.NcmUserClient
 import com.kite.zmusic.data.SessionRepository
 import com.kite.zmusic.data.TrackRow
 import com.kite.zmusic.ui.common.UrlImageCache
+import com.kite.zmusic.ui.notice.showIslandNotice
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -31,6 +33,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -79,14 +82,13 @@ class PlaylistCoordinator(
         }
     }
 
+    private val musicAudioAttrs = AudioAttributes.Builder()
+        .setUsage(C.USAGE_MEDIA)
+        .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
+        .build()
+
     private val exoPlayer: ExoPlayer = ExoPlayer.Builder(context, renderersFactory).build().apply {
-        setAudioAttributes(
-            AudioAttributes.Builder()
-                .setUsage(C.USAGE_MEDIA)
-                .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
-                .build(),
-            true,
-        )
+        setAudioAttributes(musicAudioAttrs, true)
         setWakeMode(C.WAKE_MODE_NETWORK)
         pauseAtEndOfMediaItems = false
     }
@@ -97,6 +99,10 @@ class PlaylistCoordinator(
     val ui: StateFlow<PlaybackUiState> = _ui.asStateFlow()
 
     private var playbackMode: PlaybackMode = PlaybackMode.ORDER
+    private var fmActive: Boolean = false
+    private var fmHydrateJob: Job? = null
+    private var pendingFmAdvance: Boolean = false
+    private var fmKickExtra: Boolean = false
 
     private var loadJob: Job? = null
     private var lyricJob: Job? = null
@@ -189,12 +195,18 @@ class PlaylistCoordinator(
         // 从快照恢复模式与进度，不联网冲队列
         stateStore.load()?.let { snap ->
             playbackMode = snap.playbackMode
+            fmActive = snap.fmActive
+            fmKickExtra = fmActive
+            if (fmActive && playbackMode == PlaybackMode.SHUFFLE) {
+                playbackMode = PlaybackMode.ORDER
+            }
             val mem = snap.currentTrack?.id?.let { lyricRepository.peekMemory(it) }
             _ui.value = if (mem != null && mem.isNotEmpty()) {
-                snap.copy(lyricLines = mem)
+                snap.copy(lyricLines = mem, playbackMode = playbackMode, fmActive = fmActive)
             } else {
-                snap
+                snap.copy(playbackMode = playbackMode, fmActive = fmActive)
             }
+            if (fmActive) ensureFmLookahead()
             snap.currentTrack?.id?.let { songId ->
                 scope.launch {
                     val cookie = sessionRepository.session.value?.cookie.orEmpty()
@@ -216,9 +228,22 @@ class PlaylistCoordinator(
         startIndex: Int,
         sourcePlaylistId: Long? = null,
         sourcePlaylistTitle: String? = null,
+        fmSession: Boolean = false,
     ) {
         if (tracks.isEmpty()) return
         val idx = startIndex.coerceIn(0, tracks.lastIndex)
+        if (!fmSession) {
+            fmHydrateJob?.cancel()
+            fmHydrateJob = null
+            pendingFmAdvance = false
+        }
+        fmActive = fmSession
+        fmKickExtra = fmSession
+        if (fmSession && playbackMode == PlaybackMode.SHUFFLE) {
+            playbackMode = PlaybackMode.ORDER
+            preparedShuffleNext = null
+            shuffleHistory.clear()
+        }
         cancelLoads()
         urlCache.clear()
         unplayableUntil.clear()
@@ -238,10 +263,26 @@ class PlaylistCoordinator(
                 sourcePlaylistId = sourcePlaylistId,
                 sourcePlaylistTitle = sourcePlaylistTitle,
                 playbackMode = playbackMode,
+                fmActive = fmSession,
             )
         }
         persistSnapshot()
         loadAndPlayIndex(idx)
+        if (fmSession) ensureFmLookahead()
+    }
+
+    fun startPersonalFm(onStarted: () -> Unit = {}) {
+        fmHydrateJob?.cancel()
+        scope.launch {
+            val tracks = fetchPersonalFmBatch()
+            if (tracks.isEmpty()) {
+                context.showIslandNotice("暂时没有漫游歌曲")
+                return@launch
+            }
+            playQueue(tracks, 0, null, "私人漫游", fmSession = true)
+            context.showIslandNotice("已开启私人漫游")
+            onStarted()
+        }
     }
 
     /** 在当前队列内跳转到指定索引（保留队列与随机历史策略）。 */
@@ -299,6 +340,10 @@ class PlaylistCoordinator(
         shuffleHistory.clear()
         holdAutoAdvance = false
         pendingAdvanceAfterHold = false
+        fmHydrateJob?.cancel()
+        fmHydrateJob = null
+        pendingFmAdvance = false
+        fmActive = false
         exoPlayer.stop()
         exoPlayer.clearMediaItems()
         playbackMode = _ui.value.playbackMode
@@ -320,6 +365,16 @@ class PlaylistCoordinator(
             } else {
                 exoPlayer.play()
             }
+        }
+    }
+
+    /** MV 占用焦点时：暂停歌曲且不要在 MV 暂停时被系统焦点抢回去。 */
+    fun yieldToForeignPlayback(active: Boolean) {
+        if (active) {
+            if (exoPlayer.playWhenReady) exoPlayer.pause()
+            exoPlayer.setAudioAttributes(musicAudioAttrs, false)
+        } else {
+            exoPlayer.setAudioAttributes(musicAudioAttrs, true)
         }
     }
 
@@ -362,9 +417,16 @@ class PlaylistCoordinator(
         pendingAdvanceAfterHold = false
         val i = _ui.value.index
         if (!_ui.value.hasQueue || i < 0) return
-        // 单曲循环：手动下一首与列表模式相同；仅播完自动重播（见 onEnded）
-        val ni = nextPlayableIndex(i) ?: return
-        loadAndPlayIndex(ni, recordShuffleHistory = true)
+        val ni = nextPlayableIndex(i)
+        if (ni != null) {
+            loadAndPlayIndex(ni, recordShuffleHistory = true)
+            if (fmActive) ensureFmLookahead()
+            return
+        }
+        if (fmActive) {
+            pendingFmAdvance = true
+            ensureFmLookahead()
+        }
     }
 
     fun skipPrevious() {
@@ -395,10 +457,17 @@ class PlaylistCoordinator(
     }
 
     fun cyclePlaybackMode() {
-        playbackMode = when (playbackMode) {
-            PlaybackMode.ORDER -> PlaybackMode.REPEAT_ONE
-            PlaybackMode.REPEAT_ONE -> PlaybackMode.SHUFFLE
-            PlaybackMode.SHUFFLE -> PlaybackMode.ORDER
+        playbackMode = if (fmActive) {
+            when (playbackMode) {
+                PlaybackMode.ORDER -> PlaybackMode.REPEAT_ONE
+                PlaybackMode.REPEAT_ONE, PlaybackMode.SHUFFLE -> PlaybackMode.ORDER
+            }
+        } else {
+            when (playbackMode) {
+                PlaybackMode.ORDER -> PlaybackMode.REPEAT_ONE
+                PlaybackMode.REPEAT_ONE -> PlaybackMode.SHUFFLE
+                PlaybackMode.SHUFFLE -> PlaybackMode.ORDER
+            }
         }
         preparedShuffleNext = null
         if (playbackMode != PlaybackMode.SHUFFLE) {
@@ -494,6 +563,10 @@ class PlaylistCoordinator(
                 val ni = nextPlayableIndex(_ui.value.index)
                 if (ni != null) {
                     loadAndPlayIndex(ni, recordShuffleHistory = true)
+                    if (fmActive) ensureFmLookahead()
+                } else if (fmActive) {
+                    pendingFmAdvance = true
+                    ensureFmLookahead()
                 } else {
                     exoPlayer.pause()
                     _ui.update {
@@ -598,6 +671,9 @@ class PlaylistCoordinator(
                 ui.currentTrack?.id?.let { add(it) }
                 next?.id?.let { add(it) }
                 prev?.id?.let { add(it) }
+                if (ui.fmActive) {
+                    ui.queue.drop(ui.index + 1).take(FM_AHEAD).forEach { add(it.id) }
+                }
             },
         )
     }
@@ -614,7 +690,13 @@ class PlaylistCoordinator(
                 val ui = _ui.value
                 if (!ui.hasQueue) return@launch
                 val cookie = sessionRepository.session.value?.cookie.orEmpty()
-                val neighbors = listOfNotNull(ui.peekNextTrack, ui.peekPrevTrack)
+                val neighbors = buildList {
+                    ui.peekNextTrack?.let { add(it) }
+                    ui.peekPrevTrack?.let { add(it) }
+                    if (ui.fmActive) {
+                        addAll(ui.queue.drop(ui.index + 1).take(FM_AHEAD))
+                    }
+                }.distinctBy { it.id }
                 val current = ui.currentTrack
                 var marked = false
 
@@ -779,6 +861,7 @@ class PlaylistCoordinator(
             )
         }
         refreshPeeksAndPrefetch()
+        if (fmActive) ensureFmLookahead()
         val loadGen = track.id
         loadJob = scope.launch {
             val cookie = sessionRepository.session.value?.cookie.orEmpty()
@@ -859,6 +942,10 @@ class PlaylistCoordinator(
                 val ni = nextPlayableIndex(failedIndex)
                 if (ni != null) {
                     loadAndPlayIndex(ni, recordShuffleHistory = false)
+                    if (fmActive) ensureFmLookahead()
+                } else if (fmActive) {
+                    pendingFmAdvance = true
+                    ensureFmLookahead()
                 } else {
                     _ui.update { it.copy(loadPending = false, isPlaying = false, playWhenReady = false, buffering = false) }
                 }
@@ -915,6 +1002,59 @@ class PlaylistCoordinator(
         }
     }
 
+    private fun ensureFmLookahead() {
+        if (!fmActive) return
+        if (fmHydrateJob?.isActive == true) return
+        val remaining = _ui.value.queue.size - _ui.value.index - 1
+        if (remaining >= FM_AHEAD && !fmKickExtra) return
+        fmHydrateJob = scope.launch { hydrateFmLookahead() }
+    }
+
+    private suspend fun hydrateFmLookahead() {
+        var requests = 0
+        while (currentCoroutineContext().isActive && fmActive && requests < FM_MAX_REQUESTS) {
+            val remaining = _ui.value.queue.size - _ui.value.index - 1
+            if (remaining >= FM_AHEAD) break
+            val batch = fetchPersonalFmBatch()
+            requests++
+            if (batch.isEmpty()) break
+            if (!appendFmTracks(batch)) break
+        }
+        if (currentCoroutineContext().isActive && fmActive && requests < FM_MAX_REQUESTS) {
+            val extra = fetchPersonalFmBatch()
+            requests++
+            if (extra.isNotEmpty()) appendFmTracks(extra)
+        }
+        fmKickExtra = false
+        refreshPeeksAndPrefetch()
+        if (pendingFmAdvance && fmActive) {
+            val ni = nextPlayableIndex(_ui.value.index)
+            if (ni != null) {
+                pendingFmAdvance = false
+                loadAndPlayIndex(ni, recordShuffleHistory = false)
+            }
+        }
+    }
+
+    private fun appendFmTracks(tracks: List<TrackRow>): Boolean {
+        if (!fmActive || tracks.isEmpty()) return false
+        val seen = _ui.value.queue.mapTo(HashSet()) { it.id }
+        val extra = tracks.filter { it.id > 0L && seen.add(it.id) }
+        if (extra.isEmpty()) return false
+        _ui.update { it.copy(queue = it.queue + extra) }
+        persistSnapshot()
+        return true
+    }
+
+    private suspend fun fetchPersonalFmBatch(): List<TrackRow> {
+        val cookie = sessionRepository.session.value?.cookie.orEmpty()
+        if (cookie.isBlank()) return emptyList()
+        return runCatching {
+            val json = withContext(Dispatchers.IO) { userClient.personalFm(cookie) }
+            NcmHomeParse.personalFmTracks(json)
+        }.getOrDefault(emptyList())
+    }
+
     private fun cancelLoads(keepPrefetch: Boolean = false) {
         loadJob?.cancel()
         lyricJob?.cancel()
@@ -949,6 +1089,7 @@ class PlaylistCoordinator(
     private fun canSeekNext(): Boolean {
         val i = _ui.value.index
         if (!_ui.value.hasQueue || i < 0) return false
+        if (fmActive) return true
         return nextPlayableIndex(i) != null
     }
 
@@ -989,5 +1130,7 @@ class PlaylistCoordinator(
         private const val UNPLAYABLE_TTL_MS = 15 * 60 * 1000L
         private const val UNPLAYABLE_MAX = 64
         private const val MAX_SHUFFLE_HISTORY = 64
+        private const val FM_AHEAD = 4
+        private const val FM_MAX_REQUESTS = 8
     }
 }

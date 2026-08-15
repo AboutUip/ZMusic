@@ -15,8 +15,10 @@ class ServerConfigViewModel(
 ) : ViewModel() {
 
     private val initial = serverConfigRepository.currentEndpoint()
+    private var committedHost = initial.host
+    private var hostIsMask = true
 
-    var host by mutableStateOf(initial.host)
+    var host by mutableStateOf(ServerConfigRepository.maskHost(initial.host))
         private set
     var portText by mutableStateOf(initial.port.toString())
         private set
@@ -28,9 +30,25 @@ class ServerConfigViewModel(
         private set
 
     fun onHostChange(value: String) {
-        host = value.filter { !it.isWhitespace() }
+        val cleaned = value.filter { !it.isWhitespace() }
         bannerError = null
         statusHint = null
+        if (hostIsMask) {
+            val mask = ServerConfigRepository.maskHost(committedHost)
+            if (cleaned == mask) {
+                host = mask
+                return
+            }
+            hostIsMask = false
+            host = when {
+                cleaned.isEmpty() -> ""
+                ServerConfigRepository.looksMasked(cleaned) -> ""
+                mask.startsWith(cleaned) -> ""
+                else -> cleaned
+            }
+            return
+        }
+        host = cleaned
     }
 
     fun onPortChange(value: String) {
@@ -43,12 +61,32 @@ class ServerConfigViewModel(
         bannerError = null
     }
 
+    fun reloadFromStore() {
+        val endpoint = serverConfigRepository.currentEndpoint()
+        committedHost = endpoint.host
+        hostIsMask = true
+        host = ServerConfigRepository.maskHost(endpoint.host)
+        portText = endpoint.port.toString()
+        busy = false
+        bannerError = null
+        statusHint = null
+    }
+
     /**
      * 校验 → 探测 → 持久化；成功回调 [onSuccess]。
      */
     fun saveAndConnect(onSuccess: () -> Unit) {
         if (busy) return
-        val h = host.trim()
+        val typed = host.trim()
+        val h = when {
+            hostIsMask -> committedHost
+            typed.isEmpty() -> committedHost
+            ServerConfigRepository.looksMasked(typed) -> {
+                bannerError = "请输入完整主机或 IP"
+                return
+            }
+            else -> typed
+        }
         if (h.isEmpty()) {
             bannerError = "请输入服务器 IP 或主机名"
             return
@@ -68,12 +106,15 @@ class ServerConfigViewModel(
             result.fold(
                 onSuccess = {
                     serverConfigRepository.persist(h, port)
+                    committedHost = h
+                    hostIsMask = true
+                    host = ServerConfigRepository.maskHost(h)
                     statusHint = "连接成功"
                     onSuccess()
                 },
-                onFailure = { e ->
+                onFailure = {
                     statusHint = null
-                    bannerError = "无法连接 ${endpoint.toBaseUrl()}\n${e.message ?: "网络错误"}"
+                    bannerError = "无法连接该地址，请检查主机与端口"
                 },
             )
         }

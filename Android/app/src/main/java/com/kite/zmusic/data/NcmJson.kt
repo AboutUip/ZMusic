@@ -1,5 +1,6 @@
 package com.kite.zmusic.data
 
+import java.util.concurrent.CancellationException
 import org.json.JSONObject
 
 internal object NcmJson {
@@ -21,6 +22,23 @@ internal object NcmJson {
         val data = json.optJSONObject("data") ?: return false
         val account = data.opt("account")
         return account != null && account !== JSONObject.NULL
+    }
+
+    /**
+     * `/cellphone/existence/check`：exist == 1 视为已注册。
+     * @return null 表示接口未成功，调用方应中止。
+     */
+    fun phoneAlreadyRegistered(json: JSONObject): Boolean? {
+        if (apiCode(json) != 200) return null
+        val payload = json.optJSONObject("data") ?: json
+        val exist = if (payload.has("exist")) payload.opt("exist") else json.opt("exist")
+        return when (exist) {
+            null, JSONObject.NULL -> false
+            is Boolean -> exist
+            is Number -> exist.toInt() == 1
+            is String -> exist.trim() == "1" || exist.equals("true", ignoreCase = true)
+            else -> false
+        }
     }
 
     fun displayLabelFromLogin(json: JSONObject): String? {
@@ -105,4 +123,60 @@ internal object NcmJson {
             else -> obj.optString(key, "").trim().toLongOrNull()?.takeIf { it > 0L }
         }
     }
+
+    /**
+     * 从接口 JSON 取出可展示给用户的短句。
+     * 丢弃含 URL、IP、userId、原始 HTTP 堆栈的字段。
+     */
+    fun userFacingMessage(json: JSONObject, fallback: String): String {
+        val data = json.optJSONObject("data")
+        val candidates = listOf(
+            json.optString("message", ""),
+            json.optString("msg", ""),
+            data?.optString("message", "").orEmpty(),
+            data?.optString("msg", "").orEmpty(),
+        )
+        for (raw in candidates) {
+            val sanitized = sanitizeUserMessage(raw)
+            if (sanitized != null) return sanitized
+        }
+        return fallback
+    }
+
+    fun userFacingThrowable(error: Throwable, fallback: String): String {
+        if (error is CancellationException) return fallback
+        val raw = error.message.orEmpty()
+        if (raw.contains("coroutine", ignoreCase = true) &&
+            raw.contains("cancelled", ignoreCase = true)
+        ) {
+            return fallback
+        }
+        return sanitizeUserMessage(error.message) ?: fallback
+    }
+
+    private fun sanitizeUserMessage(raw: String?): String? {
+        val t = raw?.trim().orEmpty()
+        if (t.isEmpty()) return null
+        val lower = t.lowercase()
+        if (lower.startsWith("http ") || lower.contains("http://") || lower.contains("https://")) {
+            return null
+        }
+        if (t.contains('{') || t.contains('[') || t.contains("@ ")) return null
+        if (lower.contains("userid=") || lower.contains("cookie=") || lower.contains("timestamp=")) {
+            return null
+        }
+        if (
+            t.contains("/login") ||
+            t.contains("/register") ||
+            t.contains("/captcha") ||
+            t.contains("/inner/")
+        ) {
+            return null
+        }
+        if (IPV4.containsMatchIn(t) || HTTP_STATUS.containsMatchIn(t)) return null
+        return if (t.length > 80) t.take(80).trimEnd() + "…" else t
+    }
+
+    private val IPV4 = Regex("""\b\d{1,3}(?:\.\d{1,3}){3}\b""")
+    private val HTTP_STATUS = Regex("""\bHTTP\s+\d{3}\b""", RegexOption.IGNORE_CASE)
 }

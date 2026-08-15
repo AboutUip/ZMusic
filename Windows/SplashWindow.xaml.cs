@@ -131,11 +131,32 @@ public partial class SplashWindow : FluentWindow
                 EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut },
             };
 
-            fillFade.Completed += (_, _) => _animationCompleted.TrySetResult();
+            fillFade.Completed += (_, _) => ShowTaglineThenFinish();
             fillPath.BeginAnimation(UIElement.OpacityProperty, fillFade);
         };
 
         strokePath.BeginAnimation(Shape.StrokeDashOffsetProperty, drawAnimation);
+    }
+
+    private void ShowTaglineThenFinish()
+    {
+        if (Tagline is null)
+        {
+            _animationCompleted.TrySetResult();
+            return;
+        }
+
+        var fade = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(720))
+        {
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut },
+        };
+        var rise = new DoubleAnimation(8, 0, TimeSpan.FromMilliseconds(720))
+        {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+        };
+        fade.Completed += (_, _) => _animationCompleted.TrySetResult();
+        Tagline.BeginAnimation(UIElement.OpacityProperty, fade);
+        TaglineTranslate.BeginAnimation(TranslateTransform.YProperty, rise);
     }
 
     private static Typeface ResolveTypeface()

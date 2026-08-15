@@ -2,11 +2,12 @@ package com.kite.zmusic.ui.library
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.kite.zmusic.data.LibraryHomeRepository
 import com.kite.zmusic.data.LikedPlaylistRepository
-import com.kite.zmusic.data.NcmAuthClient
 import com.kite.zmusic.data.NcmJson
 import com.kite.zmusic.data.NcmLibraryParse
-import com.kite.zmusic.data.NcmUserClient
+import com.kite.zmusic.data.isDefaultPlaylistCover
+import com.kite.zmusic.data.PlaylistCollectionRepository
 import com.kite.zmusic.data.PlaylistSummary
 import com.kite.zmusic.data.PlaylistTracksCache
 import com.kite.zmusic.data.SessionRepository
@@ -49,8 +50,8 @@ class LibraryViewModel(
     private val sessionRepository: SessionRepository,
     private val likedPlaylistRepository: LikedPlaylistRepository,
     private val playlistTracksCache: PlaylistTracksCache,
-    private val authClient: NcmAuthClient = NcmAuthClient(),
-    private val userClient: NcmUserClient = NcmUserClient(),
+    private val playlistCollection: PlaylistCollectionRepository,
+    private val libraryHome: LibraryHomeRepository,
 ) : ViewModel() {
 
     private val _ui = MutableStateFlow(LibraryUiState())
@@ -61,24 +62,61 @@ class LibraryViewModel(
 
     init {
         viewModelScope.launch {
+            libraryHome.snapshot.collect { snap ->
+                _ui.update { state ->
+                    state.copy(
+                        loading = snap.loading && state.playlists.isEmpty(),
+                        refreshing = snap.refreshing,
+                        error = snap.error,
+                        isGuest = snap.isGuest,
+                        profile = snap.profile,
+                        subcount = snap.subcount,
+                        likedTrackCount = snap.likedTrackCount,
+                    )
+                }
+            }
+        }
+        viewModelScope.launch {
             likedPlaylistRepository.snapshot.collectLatest { snap ->
                 applyLikedSnapshot(snap)
             }
         }
         viewModelScope.launch {
-            playlistTracksCache.updates.collect { entry ->
+            playlistCollection.playlists.collect { list ->
+                val merged = LibraryHomeRepository.mergeHeartTrackCount(
+                    list,
+                    likedPlaylistRepository.peek(),
+                ).map { pl -> pl.withLiveCover() }
                 _ui.update { state ->
-                    val sheet = state.sheet
-                    if (sheet is LibrarySheet.Ready && sheet.id == entry.playlistId) {
-                        state.copy(
-                            sheet = sheet.copy(
-                                title = entry.title.ifBlank { sheet.title },
-                                tracks = entry.tracks,
-                            ),
-                        )
-                    } else {
-                        state
+                    state.copy(playlists = merged)
+                }
+            }
+        }
+        viewModelScope.launch {
+            playlistTracksCache.revision.collect {
+                _ui.update { state ->
+                    var next = state
+                    val cur = state.sheet
+                    if (cur is LibrarySheet.Ready) {
+                        val entry = playlistTracksCache.peek(cur.id)
+                        if (entry != null &&
+                            entry.tracks.isNotEmpty() &&
+                            (entry.tracks.size >= cur.tracks.size || entry.complete)
+                        ) {
+                            next = next.copy(
+                                sheet = cur.copy(
+                                    title = entry.title.ifBlank { cur.title },
+                                    tracks = if (entry.tracks.size >= cur.tracks.size) {
+                                        entry.tracks
+                                    } else {
+                                        cur.tracks
+                                    },
+                                ),
+                            )
+                        }
                     }
+                    val playlists = next.playlists.map { it.withLiveCover() }
+                    next.copy(playlists = playlists)
                 }
             }
         }
@@ -87,100 +125,7 @@ class LibraryViewModel(
 
     fun refresh() {
         viewModelScope.launch {
-            val session = sessionRepository.session.value
-            if (session == null) {
-                likedPlaylistRepository.clear()
-                playlistTracksCache.clear()
-                _ui.update {
-                    it.copy(
-                        loading = false,
-                        error = "未登录",
-                        profile = null,
-                        playlists = emptyList(),
-                        likedTrackCount = 0,
-                    )
-                }
-                return@launch
-            }
-            _ui.update {
-                it.copy(
-                    loading = it.playlists.isEmpty(),
-                    refreshing = it.playlists.isNotEmpty(),
-                    error = null,
-                )
-            }
-            try {
-                val status = authClient.loginStatus(session.cookie)
-                val uid = NcmJson.userIdFromLoginStatus(status)
-                if (uid == null) {
-                    _ui.update {
-                        it.copy(
-                            loading = false,
-                            refreshing = false,
-                            error = "无法获取用户信息：登录状态里缺少用户 ID，请重新登录或检查 API 返回格式",
-                            isGuest = session.isGuest,
-                        )
-                    }
-                    return@launch
-                }
-                val detailJson = userClient.userDetail(uid, session.cookie)
-                var profile = NcmLibraryParse.userProfileFromDetail(detailJson)
-                if (profile == null) {
-                    profile = UserProfileBrief(
-                        userId = uid,
-                        nickname = session.displayLabel?.trim().orEmpty().ifBlank { "用户" },
-                        avatarUrl = null,
-                        signature = null,
-                        level = null,
-                        listenSongs = null,
-                    )
-                }
-                val subJson = try {
-                    userClient.userSubcount(session.cookie)
-                } catch (_: Exception) {
-                    null
-                }
-                val sub = subJson?.let { NcmLibraryParse.subcountFromJson(it) }
-                val plJson = userClient.userPlaylist(uid, session.cookie, limit = 80, offset = 0)
-                val playlists = NcmLibraryParse.playlistsFromUserPlaylist(plJson, uid)
-                val likedSnap = likedPlaylistRepository.peek()
-                val likeN = likedSnap?.trackCount
-                    ?: run {
-                        val likeJson = try {
-                            userClient.likeList(uid, session.cookie)
-                        } catch (_: Exception) {
-                            null
-                        }
-                        likeJson?.let { NcmLibraryParse.likeIdsCount(it) } ?: 0
-                    }
-                val playlistsMerged = mergeHeartTrackCount(playlists, likedSnap)
-
-                _ui.update {
-                    it.copy(
-                        loading = false,
-                        refreshing = false,
-                        error = null,
-                        isGuest = session.isGuest,
-                        profile = profile,
-                        subcount = sub,
-                        playlists = playlistsMerged,
-                        likedTrackCount = likeN,
-                    )
-                }
-
-                // 首页刷新顺带确保喜欢歌单缓存（无缓存时后台补）
-                if (!session.isGuest) {
-                    likedPlaylistRepository.prefetchOnAppReady()
-                }
-            } catch (e: Exception) {
-                _ui.update {
-                    it.copy(
-                        loading = false,
-                        refreshing = false,
-                        error = e.message ?: "加载失败",
-                    )
-                }
-            }
+            libraryHome.refresh(force = true)
         }
     }
 
@@ -263,7 +208,7 @@ class LibraryViewModel(
                             sheetIsHeart = true,
                             sheet = LibrarySheet.Ready(snap.playlistId, snap.title, snap.tracks),
                             likedTrackCount = snap.trackCount,
-                            playlists = mergeHeartTrackCount(it.playlists, snap),
+                            playlists = LibraryHomeRepository.mergeHeartTrackCount(it.playlists, snap),
                         )
                     }
                 } catch (e: CancellationException) {
@@ -273,7 +218,11 @@ class LibraryViewModel(
                     _ui.update {
                         it.copy(
                             sheetRefreshing = false,
-                            sheet = LibrarySheet.Failed(id, title, e.message ?: "刷新失败"),
+                            sheet = LibrarySheet.Failed(
+                                id,
+                                title,
+                                NcmJson.userFacingThrowable(e, "刷新失败"),
+                            ),
                         )
                     }
                 }
@@ -301,19 +250,17 @@ class LibraryViewModel(
                         sheet = LibrarySheet.Ready(
                             id = openHeartPlaylistId ?: playlistId,
                             title = cached.title.ifBlank { title },
-                            tracks = cached.tracks,
+                            tracks = NcmLibraryParse.tracksUntilIdGap(
+                                cached.orderKey(),
+                                cached.tracks,
+                            ),
                         ),
                         likedTrackCount = cached.trackCount,
-                        playlists = mergeHeartTrackCount(it.playlists, cached),
+                        playlists = LibraryHomeRepository.mergeHeartTrackCount(it.playlists, cached),
                     )
-                }
-                // 未齐则依赖 snapshot 流 / prefetch 后台补全
-                if (!cached.complete) {
-                    likedPlaylistRepository.prefetchOnAppReady()
                 }
                 return@launch
             }
-
             _ui.update {
                 it.copy(
                     sheetIsHeart = true,
@@ -327,7 +274,12 @@ class LibraryViewModel(
                 if (snap == null) {
                     _ui.update {
                         it.copy(
-                            sheet = LibrarySheet.Failed(playlistId, title, "加载曲目失败"),
+                            sheetRefreshing = false,
+                            sheet = if (it.sheet is LibrarySheet.Ready) {
+                                it.sheet
+                            } else {
+                                LibrarySheet.Failed(playlistId, title, "加载曲目失败")
+                            },
                         )
                     }
                     return@launch
@@ -336,9 +288,14 @@ class LibraryViewModel(
                 _ui.update {
                     it.copy(
                         sheetIsHeart = true,
-                        sheet = LibrarySheet.Ready(snap.playlistId, snap.title, snap.tracks),
+                        sheetRefreshing = false,
+                        sheet = LibrarySheet.Ready(
+                            snap.playlistId,
+                            snap.title,
+                            NcmLibraryParse.tracksUntilIdGap(snap.orderKey(), snap.tracks),
+                        ),
                         likedTrackCount = snap.trackCount,
-                        playlists = mergeHeartTrackCount(it.playlists, snap),
+                        playlists = LibraryHomeRepository.mergeHeartTrackCount(it.playlists, snap),
                     )
                 }
             } catch (e: CancellationException) {
@@ -350,7 +307,7 @@ class LibraryViewModel(
                         sheet = LibrarySheet.Failed(
                             playlistId,
                             title,
-                            e.message ?: "加载曲目失败",
+                            NcmJson.userFacingThrowable(e, "加载曲目失败"),
                         ),
                     )
                 }
@@ -373,40 +330,28 @@ class LibraryViewModel(
         openHeartPlaylistId = null
         sheetLoadJob = viewModelScope.launch {
             val cookie = sessionRepository.session.value?.cookie ?: return@launch
-            if (!forceNetwork) {
-                val cached = playlistTracksCache.peek(playlistId)
-                if (cached != null && cached.tracks.isNotEmpty()) {
-                    _ui.update {
-                        it.copy(
-                            sheetIsHeart = isHeart,
-                            sheetRefreshing = false,
-                            sheet = LibrarySheet.Ready(
-                                playlistId,
-                                cached.title.ifBlank { title },
-                                cached.tracks,
-                            ),
-                        )
-                    }
-                    // 触发未齐补全（getOrFetch 内部也会 schedule）
-                    if (!cached.complete) {
-                        runCatching {
-                            playlistTracksCache.getOrFetch(playlistId, title, cookie)
-                        }
-                    }
-                    return@launch
+            val cached = playlistTracksCache.peek(playlistId)
+            if (cached != null && cached.tracks.isNotEmpty()) {
+                _ui.update {
+                    it.copy(
+                        sheetIsHeart = isHeart,
+                        sheetRefreshing = forceNetwork,
+                        sheet = LibrarySheet.Ready(
+                            playlistId,
+                            cached.title.ifBlank { title },
+                            cached.tracks,
+                        ),
+                    )
                 }
-            }
-
-            _ui.update {
-                it.copy(
-                    sheetIsHeart = isHeart,
-                    sheetRefreshing = forceNetwork && it.sheet is LibrarySheet.Ready,
-                    sheet = if (forceNetwork && it.sheet is LibrarySheet.Ready) {
-                        it.sheet
-                    } else {
-                        LibrarySheet.Loading(playlistId, title)
-                    },
-                )
+                if (!forceNetwork) return@launch
+            } else {
+                _ui.update {
+                    it.copy(
+                        sheetIsHeart = isHeart,
+                        sheetRefreshing = false,
+                        sheet = LibrarySheet.Loading(playlistId, title),
+                    )
+                }
             }
             try {
                 val entry = if (forceNetwork) {
@@ -414,14 +359,20 @@ class LibraryViewModel(
                 } else {
                     playlistTracksCache.getOrFetch(playlistId, title, cookie)
                 }
+                val keepCount = cached?.tracks?.size ?: 0
+                val next = if (!entry.complete && keepCount > entry.tracks.size) {
+                    playlistTracksCache.ensureLoadedThrough(playlistId, title, cookie, keepCount)
+                } else {
+                    entry
+                }
                 if (!isActive) return@launch
                 _ui.update {
                     it.copy(
                         sheetRefreshing = false,
                         sheet = LibrarySheet.Ready(
-                            entry.playlistId,
-                            entry.title.ifBlank { title },
-                            entry.tracks,
+                            next.playlistId,
+                            next.title.ifBlank { title },
+                            next.tracks,
                         ),
                     )
                 }
@@ -429,14 +380,19 @@ class LibraryViewModel(
                 return@launch
             } catch (e: Exception) {
                 if (!isActive) return@launch
-                _ui.update {
-                    it.copy(
+                _ui.update { state ->
+                    val sheet = state.sheet
+                    state.copy(
                         sheetRefreshing = false,
-                        sheet = LibrarySheet.Failed(
-                            playlistId,
-                            title,
-                            e.message ?: if (forceNetwork) "刷新失败" else "加载曲目失败",
-                        ),
+                        sheet = if (sheet is LibrarySheet.Ready) {
+                            sheet
+                        } else {
+                            LibrarySheet.Failed(
+                                playlistId,
+                                title,
+                                NcmJson.userFacingThrowable(e, "加载曲目失败"),
+                            )
+                        },
                     )
                 }
             }
@@ -445,6 +401,7 @@ class LibraryViewModel(
 
     private fun applyLikedSnapshot(snap: LikedPlaylistRepository.Snapshot?) {
         if (snap == null) return
+        libraryHome.applyLikedTrackCount(snap.trackCount)
         _ui.update { state ->
             val sheet = state.sheet
             val viewingHeart = state.sheetIsHeart ||
@@ -462,31 +419,32 @@ class LibraryViewModel(
                             ?: (sheet as? LibrarySheet.Loading)?.title
                             ?: "我喜欢的音乐"
                     },
-                    tracks = snap.tracks,
+                    tracks = NcmLibraryParse.mergeLoadedInOrder(
+                        snap.orderKey(),
+                        snap.tracks,
+                        (sheet as? LibrarySheet.Ready)?.tracks.orEmpty(),
+                    ),
                 )
             } else {
                 sheet
             }
             state.copy(
                 likedTrackCount = snap.trackCount,
-                playlists = mergeHeartTrackCount(state.playlists, snap),
+                playlists = LibraryHomeRepository.mergeHeartTrackCount(state.playlists, snap)
+                    .map { it.withLiveCover() },
                 sheet = nextSheet,
                 sheetIsHeart = if (viewingHeart) true else state.sheetIsHeart,
             )
         }
     }
 
-    private fun mergeHeartTrackCount(
-        playlists: List<PlaylistSummary>,
-        snap: LikedPlaylistRepository.Snapshot?,
-    ): List<PlaylistSummary> {
-        if (snap == null) return playlists
-        return playlists.map { pl ->
-            if (pl.isHeartPlaylist || (snap.playlistId > 0L && pl.id == snap.playlistId)) {
-                pl.copy(trackCount = snap.trackCount)
-            } else {
-                pl
-            }
-        }
+    private fun PlaylistSummary.withLiveCover(): PlaylistSummary {
+        val forced = playlistCollection.forcedCover(id)
+        if (forced != null) return copy(coverUrl = forced)
+        val first = playlistTracksCache.peek(id)?.tracks?.firstOrNull()?.coverUrl
+            ?.takeIf { it.isNotBlank() }
+            ?.takeUnless { isDefaultPlaylistCover(it) }
+        if (first != null) return copy(coverUrl = first)
+        return copy(coverUrl = resolvedCoverUrl())
     }
 }

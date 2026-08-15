@@ -31,7 +31,7 @@ class MainActivity : ComponentActivity() {
             ZMusicTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
-                    color = Color.Black,
+                    color = Color(0xFFEEF4F7),
                 ) {
                     ZMusicOrientationHost(modifier = Modifier.fillMaxSize()) {
                         ZMusicNavHost(modifier = Modifier.fillMaxSize())

@@ -39,6 +39,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -48,6 +49,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -74,6 +76,7 @@ import androidx.compose.ui.unit.sp
 import com.kite.zmusic.data.PlayerDisplayPrefs
 import com.kite.zmusic.data.TitleAlignMode
 import com.kite.zmusic.data.VinylColorStyle
+import com.kite.zmusic.ui.main.MainPalette
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeStyle
 import dev.chrisbanes.haze.HazeTint
@@ -113,6 +116,46 @@ private val SettingsGlassStyle = HazeStyle(
 )
 /** 功能行：近不透明实底，与磨砂壳分层。 */
 private val SettingsRowBg = Color(0xF0141A24)
+/** 竖屏「竖屏显示」：与评论面板同一套浅色磨砂。 */
+private val PortraitSettingsGlassStyle = HazeStyle(
+    backgroundColor = MainPalette.Page,
+    tints = listOf(
+        HazeTint(Color.White.copy(alpha = 0.78f)),
+        HazeTint(MainPalette.Page.copy(alpha = 0.52f)),
+    ),
+    blurRadius = 56.dp,
+    noiseFactor = 0.08f,
+    fallbackTint = HazeTint(MainPalette.Page.copy(alpha = 0.94f)),
+)
+
+private data class SettingsPanelChrome(
+    val light: Boolean,
+    val label: Color,
+    val hint: Color,
+    val accent: Color,
+    val rowBg: Color,
+    val titleShadow: Shadow?,
+)
+
+private val DarkSettingsChrome = SettingsPanelChrome(
+    light = false,
+    label = LabelColor,
+    hint = HintColor,
+    accent = Accent,
+    rowBg = SettingsRowBg,
+    titleShadow = TextShadow,
+)
+
+private val LightSettingsChrome = SettingsPanelChrome(
+    light = true,
+    label = MainPalette.Ink,
+    hint = MainPalette.Secondary,
+    accent = MainPalette.Accent,
+    rowBg = Color.White,
+    titleShadow = null,
+)
+
+private val LocalSettingsChrome = staticCompositionLocalOf { DarkSettingsChrome }
 
 /** 拖动布局相关滑条时，面板其余部分淡出以便预览真实效果。 */
 private enum class SettingsPreviewKey {
@@ -619,26 +662,53 @@ fun NowPlayingSettingsSheet(
         hazeState = hazeState,
         dismissGate = resolvedTransferGate,
     )
-    val sliderColors = SliderDefaults.colors(
-        thumbColor = Color(0xFFF8FAFC),
-        activeTrackColor = Accent.copy(alpha = 0.62f),
-        inactiveTrackColor = Color.White.copy(alpha = 0.16f),
-        activeTickColor = Color.Transparent,
-        inactiveTickColor = Color.Transparent,
-        disabledThumbColor = Color(0xFFD0D8E2).copy(alpha = 0.45f),
-        disabledActiveTrackColor = Accent.copy(alpha = 0.28f),
-        disabledInactiveTrackColor = Color.White.copy(alpha = 0.08f),
-        disabledActiveTickColor = Color.Transparent,
-        disabledInactiveTickColor = Color.Transparent,
-    )
-    val switchColors = SwitchDefaults.colors(
-        checkedThumbColor = Color(0xFFF8FAFC),
-        checkedTrackColor = Accent.copy(alpha = 0.62f),
-        uncheckedThumbColor = Color(0xFFD0D8E2),
-        uncheckedTrackColor = Color.White.copy(alpha = 0.16f),
-        uncheckedBorderColor = Color.White.copy(alpha = 0.14f),
-        checkedBorderColor = Color.Transparent,
-    )
+    val chrome = if (portraitContent) LightSettingsChrome else DarkSettingsChrome
+    val sliderColors = if (portraitContent) {
+        SliderDefaults.colors(
+            thumbColor = MainPalette.Accent,
+            activeTrackColor = MainPalette.Accent,
+            inactiveTrackColor = Color(0xFFE5E5EA),
+            activeTickColor = Color.Transparent,
+            inactiveTickColor = Color.Transparent,
+            disabledThumbColor = MainPalette.Hint,
+            disabledActiveTrackColor = MainPalette.Accent.copy(alpha = 0.28f),
+            disabledInactiveTrackColor = Color(0xFFE5E5EA).copy(alpha = 0.7f),
+            disabledActiveTickColor = Color.Transparent,
+            disabledInactiveTickColor = Color.Transparent,
+        )
+    } else {
+        SliderDefaults.colors(
+            thumbColor = Color(0xFFF8FAFC),
+            activeTrackColor = Accent.copy(alpha = 0.62f),
+            inactiveTrackColor = Color.White.copy(alpha = 0.16f),
+            activeTickColor = Color.Transparent,
+            inactiveTickColor = Color.Transparent,
+            disabledThumbColor = Color(0xFFD0D8E2).copy(alpha = 0.45f),
+            disabledActiveTrackColor = Accent.copy(alpha = 0.28f),
+            disabledInactiveTrackColor = Color.White.copy(alpha = 0.08f),
+            disabledActiveTickColor = Color.Transparent,
+            disabledInactiveTickColor = Color.Transparent,
+        )
+    }
+    val switchColors = if (portraitContent) {
+        SwitchDefaults.colors(
+            checkedThumbColor = Color.White,
+            checkedTrackColor = MainPalette.Accent,
+            uncheckedThumbColor = Color.White,
+            uncheckedTrackColor = Color(0xFFE5E5EA),
+            uncheckedBorderColor = Color.Transparent,
+            checkedBorderColor = Color.Transparent,
+        )
+    } else {
+        SwitchDefaults.colors(
+            checkedThumbColor = Color(0xFFF8FAFC),
+            checkedTrackColor = Accent.copy(alpha = 0.62f),
+            uncheckedThumbColor = Color(0xFFD0D8E2),
+            uncheckedTrackColor = Color.White.copy(alpha = 0.16f),
+            uncheckedBorderColor = Color.White.copy(alpha = 0.14f),
+            checkedBorderColor = Color.Transparent,
+        )
+    }
 
     var previewKey by remember { mutableStateOf<SettingsPreviewKey?>(null) }
     var focusKey by remember { mutableStateOf<SettingsPreviewKey?>(null) }
@@ -702,6 +772,7 @@ fun NowPlayingSettingsSheet(
     val scrollState = rememberScrollState()
 
     // hazeNonce：仅重挂磨砂层，保留滚动与控件状态
+    CompositionLocalProvider(LocalSettingsChrome provides chrome) {
     Box(
         modifier
             .fillMaxHeight()
@@ -713,6 +784,31 @@ fun NowPlayingSettingsSheet(
                 onClick = {},
             ),
     ) {
+        if (portraitContent) {
+            key(hazeNonce) {
+                if (enableRealtimeHaze) {
+                    Box(
+                        Modifier
+                            .matchParentSize()
+                            .graphicsLayer { alpha = dim }
+                            .hazeEffect(state = hazeState, style = PortraitSettingsGlassStyle),
+                    )
+                } else {
+                    Box(
+                        Modifier
+                            .matchParentSize()
+                            .graphicsLayer { alpha = dim }
+                            .background(MainPalette.Page.copy(alpha = 0.96f)),
+                    )
+                }
+            }
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .graphicsLayer { alpha = dim }
+                    .background(Color.White.copy(alpha = 0.22f)),
+            )
+        } else {
         key(hazeNonce) {
             if (enableRealtimeHaze) {
                 // 实时磨砂：勿再垫不透明静态底，否则模糊被盖死只剩实色
@@ -797,6 +893,7 @@ fun NowPlayingSettingsSheet(
                     shape = panelShape,
                 ),
         )
+        }
 
         Column(
             Modifier
@@ -821,10 +918,16 @@ fun NowPlayingSettingsSheet(
                 ) {
                     Box(
                         Modifier
-                            .width(40.dp)
+                            .width(36.dp)
                             .height(4.dp)
                             .clip(RoundedCornerShape(2.dp))
-                            .background(Color.White.copy(alpha = 0.38f)),
+                            .background(
+                                if (portraitContent) {
+                                    MainPalette.Hint
+                                } else {
+                                    Color.White.copy(alpha = 0.38f)
+                                },
+                            ),
                     )
                 }
             }
@@ -851,12 +954,12 @@ fun NowPlayingSettingsSheet(
                 Text(
                     text = headerTitle,
                     style = TextStyle(
-                        color = LabelColor,
+                        color = chrome.label,
                         fontFamily = FontFamily.SansSerif,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 17.sp,
-                        letterSpacing = 0.3.sp,
-                        shadow = TextShadow,
+                        fontWeight = if (portraitContent) FontWeight.Bold else FontWeight.SemiBold,
+                        fontSize = if (portraitContent) 20.sp else 17.sp,
+                        letterSpacing = if (portraitContent) (-0.2).sp else 0.3.sp,
+                        shadow = chrome.titleShadow,
                     ),
                     modifier = Modifier.weight(1f),
                 )
@@ -864,7 +967,7 @@ fun NowPlayingSettingsSheet(
                     PlayerDisplayTransferHeaderIcons(host = transferHost)
                 }
             }
-            Spacer(Modifier.height(if (portraitContent) 4.dp else 14.dp))
+            Spacer(Modifier.height(if (portraitContent) 12.dp else 14.dp))
 
             if (portraitContent) {
                 // 竖屏专用项（与横屏设置隔离）；预览淡出与横屏同一套 chromeAlpha / focusAlpha
@@ -1057,11 +1160,12 @@ fun NowPlayingSettingsSheet(
                     }
                 }
             } else {
-            Column(
-                Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .verticalScroll(scrollState, enabled = previewKey == null),
+                Column(
+                    Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .consumeUnclaimedVerticalDrag()
+                        .verticalScroll(scrollState, enabled = previewKey == null),
                 verticalArrangement = Arrangement.spacedBy(18.dp),
             ) {
                 SettingsCategory(title = "氛围", titleAlpha = dim) {
@@ -1353,6 +1457,7 @@ fun NowPlayingSettingsSheet(
         if (showTransferActions) {
             transferHost.Overlay()
         }
+    }
     }
 }
 
@@ -1741,17 +1846,29 @@ private fun SettingsCategory(
     titleAlpha: Float = 1f,
     content: @Composable () -> Unit,
 ) {
+    val chrome = LocalSettingsChrome.current
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
-            text = title.uppercase(),
-            modifier = Modifier.graphicsLayer { alpha = titleAlpha.coerceIn(0f, 1f) },
-            style = TextStyle(
-                color = Accent.copy(alpha = 0.85f),
-                fontFamily = FontFamily.Monospace,
-                fontSize = 9.sp,
-                letterSpacing = 1.6.sp,
-                fontWeight = FontWeight.Medium,
-            ),
+            text = if (chrome.light) title else title.uppercase(),
+            modifier = Modifier
+                .graphicsLayer { alpha = titleAlpha.coerceIn(0f, 1f) }
+                .padding(start = if (chrome.light) 4.dp else 0.dp),
+            style = if (chrome.light) {
+                TextStyle(
+                    color = MainPalette.Secondary,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    letterSpacing = 0.4.sp,
+                )
+            } else {
+                TextStyle(
+                    color = Accent.copy(alpha = 0.85f),
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 9.sp,
+                    letterSpacing = 1.6.sp,
+                    fontWeight = FontWeight.Medium,
+                )
+            },
         )
         content()
     }
@@ -1765,6 +1882,7 @@ private fun SettingsActionRow(
     onClick: () -> Unit,
     enabled: Boolean = true,
 ) {
+    val chrome = LocalSettingsChrome.current
     val enT by androidx.compose.animation.core.animateFloatAsState(
         targetValue = if (enabled) 1f else 0.40f,
         animationSpec = tween(280, easing = FastOutSlowInEasing),
@@ -1775,7 +1893,7 @@ private fun SettingsActionRow(
             .fillMaxWidth()
             .graphicsLayer { alpha = enT }
             .clip(RowShape)
-            .background(SettingsRowBg)
+            .background(chrome.rowBg)
             .clickable(
                 enabled = enabled,
                 interactionSource = remember { MutableInteractionSource() },
@@ -1789,29 +1907,30 @@ private fun SettingsActionRow(
             Text(
                 text = title,
                 style = TextStyle(
-                    color = LabelColor,
+                    color = chrome.label,
                     fontFamily = FontFamily.SansSerif,
                     fontWeight = FontWeight.SemiBold,
-                    fontSize = 14.sp,
-                    shadow = TextShadow,
+                    fontSize = if (chrome.light) 15.sp else 14.sp,
+                    shadow = chrome.titleShadow,
                 ),
             )
             Spacer(Modifier.height(2.dp))
             Text(
                 text = subtitle,
                 style = TextStyle(
-                    color = HintColor,
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 9.sp,
-                    letterSpacing = 0.3.sp,
-                    shadow = TextShadow,
+                    color = chrome.hint,
+                    fontFamily = if (chrome.light) FontFamily.SansSerif else FontFamily.Monospace,
+                    fontSize = if (chrome.light) 12.sp else 9.sp,
+                    letterSpacing = if (chrome.light) 0.sp else 0.3.sp,
+                    lineHeight = if (chrome.light) 16.sp else 12.sp,
+                    shadow = chrome.titleShadow,
                 ),
             )
         }
         Text(
             text = actionLabel,
             style = TextStyle(
-                color = Accent.copy(alpha = 0.95f),
+                color = chrome.accent.copy(alpha = 0.95f),
                 fontFamily = FontFamily.SansSerif,
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 13.sp,
@@ -1828,11 +1947,12 @@ private fun SettingsSwitchRow(
     colors: androidx.compose.material3.SwitchColors,
     onCheckedChange: (Boolean) -> Unit,
 ) {
+    val chrome = LocalSettingsChrome.current
     Row(
         Modifier
             .fillMaxWidth()
             .clip(RowShape)
-            .background(SettingsRowBg)
+            .background(chrome.rowBg)
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -1840,22 +1960,23 @@ private fun SettingsSwitchRow(
             Text(
                 text = title,
                 style = TextStyle(
-                    color = LabelColor,
+                    color = chrome.label,
                     fontFamily = FontFamily.SansSerif,
                     fontWeight = FontWeight.SemiBold,
-                    fontSize = 14.sp,
-                    shadow = TextShadow,
+                    fontSize = if (chrome.light) 15.sp else 14.sp,
+                    shadow = chrome.titleShadow,
                 ),
             )
             Spacer(Modifier.height(2.dp))
             Text(
                 text = subtitle,
                 style = TextStyle(
-                    color = HintColor,
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 9.sp,
-                    letterSpacing = 0.3.sp,
-                    shadow = TextShadow,
+                    color = chrome.hint,
+                    fontFamily = if (chrome.light) FontFamily.SansSerif else FontFamily.Monospace,
+                    fontSize = if (chrome.light) 12.sp else 9.sp,
+                    letterSpacing = if (chrome.light) 0.sp else 0.3.sp,
+                    lineHeight = if (chrome.light) 16.sp else 12.sp,
+                    shadow = chrome.titleShadow,
                 ),
             )
         }
@@ -1880,8 +2001,9 @@ private fun SettingsSliderRow(
     /** 非空时：交互期间通知预览态（松手 / 点选结束） */
     onPreviewDragActiveChange: ((Boolean) -> Unit)? = null,
 ) {
-    val titleColor = if (enabled) LabelColor else LabelColor.copy(alpha = 0.38f)
-    val valueColor = if (enabled) Accent.copy(alpha = 0.95f) else Accent.copy(alpha = 0.35f)
+    val chrome = LocalSettingsChrome.current
+    val titleColor = if (enabled) chrome.label else chrome.label.copy(alpha = 0.38f)
+    val valueColor = if (enabled) chrome.accent.copy(alpha = 0.95f) else chrome.accent.copy(alpha = 0.35f)
     val sliderIx = remember { MutableInteractionSource() }
     val safeValue = value
         .takeIf { it.isFinite() }
@@ -1895,7 +2017,7 @@ private fun SettingsSliderRow(
         Modifier
             .fillMaxWidth()
             .clip(RowShape)
-            .background(SettingsRowBg.copy(alpha = if (enabled) 1f else 0.72f))
+            .background(chrome.rowBg.copy(alpha = if (enabled) 1f else 0.72f))
             .padding(horizontal = 12.dp, vertical = 10.dp),
     ) {
         Row(
@@ -1908,8 +2030,8 @@ private fun SettingsSliderRow(
                     color = titleColor,
                     fontFamily = FontFamily.SansSerif,
                     fontWeight = FontWeight.SemiBold,
-                    fontSize = 14.sp,
-                    shadow = TextShadow,
+                    fontSize = if (chrome.light) 15.sp else 14.sp,
+                    shadow = chrome.titleShadow,
                 ),
                 modifier = Modifier.weight(1f),
             )
@@ -1917,11 +2039,11 @@ private fun SettingsSliderRow(
                 text = valueLabel,
                 style = TextStyle(
                     color = valueColor,
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 11.sp,
-                    letterSpacing = 0.4.sp,
+                    fontFamily = if (chrome.light) FontFamily.SansSerif else FontFamily.Monospace,
+                    fontSize = if (chrome.light) 13.sp else 11.sp,
+                    letterSpacing = if (chrome.light) 0.sp else 0.4.sp,
                     fontWeight = FontWeight.Medium,
-                    shadow = TextShadow,
+                    shadow = chrome.titleShadow,
                 ),
             )
         }

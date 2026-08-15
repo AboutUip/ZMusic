@@ -1,4 +1,5 @@
 import java.util.Properties
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.android.application)
@@ -79,12 +80,15 @@ android {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
-    kotlinOptions {
-        jvmTarget = "11"
-    }
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_11)
     }
 }
 
@@ -98,6 +102,13 @@ dependencies {
     implementation(libs.activity.compose)
     implementation(libs.navigation.compose)
     implementation(libs.haze)
+    // Kyant Backdrop 1.0.6：真正的液体玻璃（lens 折射）。排除其 Compose 1.10，沿用工程 BOM。
+    implementation(libs.backdrop) {
+        exclude(group = "androidx.compose.ui")
+        exclude(group = "androidx.compose.foundation")
+        exclude(group = "org.jetbrains.kotlin")
+    }
+    implementation(libs.compose.material.icons.extended)
     implementation(libs.zxing.core)
     implementation(libs.androidx.camera.camera2)
     implementation(libs.androidx.camera.lifecycle)

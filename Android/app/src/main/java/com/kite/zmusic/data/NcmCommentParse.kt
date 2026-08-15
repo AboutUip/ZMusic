@@ -96,7 +96,7 @@ object NcmCommentParse {
     private fun ensureOk(json: JSONObject) {
         val code = json.optInt("code", -1)
         if (code != 200) {
-            throw IllegalStateException("评论接口失败 code=$code")
+            throw IllegalStateException(NcmJson.userFacingMessage(json, "评论加载失败"))
         }
     }
 

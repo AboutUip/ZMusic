@@ -12,17 +12,16 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.kite.zmusic.data.NcmConnectivityClient
 import com.kite.zmusic.data.ServerConfigRepository
 import com.kite.zmusic.ui.login.LoginScreen
 import com.kite.zmusic.ui.main.MainPlaceholderScreen
-import com.kite.zmusic.ui.server.ServerBootGate
 import com.kite.zmusic.ui.server.ServerConfigScreen
 import com.kite.zmusic.ui.splash.SplashScreen
 import com.kite.zmusic.ZMusicApplication
 
 private object Routes {
     const val Splash = "splash"
-    const val ServerBoot = "server_boot"
     const val ServerConfig = "server_config"
     const val MainPlaceholder = "main_placeholder"
     const val Login = "login"
@@ -44,26 +43,18 @@ fun ZMusicNavHost(modifier: Modifier = Modifier) {
     ) {
         composable(Routes.Splash) {
             SplashScreen(
-                onFinished = {
-                    navController.navigate(Routes.ServerBoot) {
+                checkReady = {
+                    serverConfigRepository.applyToRuntime()
+                    val connected = NcmConnectivityClient().checkReachable().isSuccess
+                    if (connected) {
+                        runCatching { app.sessionWarmup.prefetch() }
+                    }
+                    connected
+                },
+                onFinished = { connected ->
+                    val dest = if (connected) Routes.MainPlaceholder else Routes.ServerConfig
+                    navController.navigate(dest) {
                         popUpTo(Routes.Splash) { inclusive = true }
-                        launchSingleTop = true
-                    }
-                },
-            )
-        }
-        composable(Routes.ServerBoot) {
-            ServerBootGate(
-                serverConfigRepository = serverConfigRepository,
-                onReady = {
-                    navController.navigate(Routes.MainPlaceholder) {
-                        popUpTo(Routes.ServerBoot) { inclusive = true }
-                        launchSingleTop = true
-                    }
-                },
-                onNeedConfig = {
-                    navController.navigate(Routes.ServerConfig) {
-                        popUpTo(Routes.ServerBoot) { inclusive = true }
                         launchSingleTop = true
                     }
                 },

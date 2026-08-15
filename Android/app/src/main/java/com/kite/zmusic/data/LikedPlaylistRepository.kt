@@ -6,6 +6,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -22,8 +24,10 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * 「我喜欢的音乐」缓存：
- * - 首屏最多 [PlaylistTrackLoader.FIRST_BATCH] 首，后台补全并写盘
- * - like / 取消 like 立即改本地；完整列表补全后红心判定才对未收录曲返回 false
+ * - 展示序用心形歌单 `/playlist/detail` 的 trackIds（与官方 App 一致）
+ * - `/likelist` 只做红心集合（官方文档标明无序），不能当列表顺序
+ * - 进页只拉前 [PlaylistTrackLoader.FIRST_BATCH] 首，下滑再按页补
+ * - like / 取消 like 立即改本地，稍后用 `/likelist` + 歌单 trackIds 对齐
  */
 class LikedPlaylistRepository(
     context: Context,
@@ -40,9 +44,19 @@ class LikedPlaylistRepository(
         /** 歌单完整曲目数（来自 trackIds）；未齐前可能大于 tracks.size */
         val expectedCount: Int = tracks.size,
         val complete: Boolean = true,
+        /** `/likelist` 全量 id，只做红心判断，顺序无意义。 */
+        val allLikedIds: List<Long> = emptyList(),
+        /** 心形歌单 trackIds 展示序（新喜欢一般在前）；分页必须用它。 */
+        val displayIds: List<Long> = emptyList(),
     ) {
-        val likedIds: Set<Long> get() = tracks.map { it.id }.toSet()
-        val trackCount: Int get() = if (complete) tracks.size else expectedCount.coerceAtLeast(tracks.size)
+        val likedIds: Set<Long>
+            get() = allLikedIds.ifEmpty { displayIds.ifEmpty { tracks.map { it.id } } }.toSet()
+        val trackCount: Int
+            get() {
+                val expected = displayIds.size.takeIf { it > 0 } ?: expectedCount
+                return if (complete) tracks.size else expected.coerceAtLeast(tracks.size)
+            }
+        fun orderKey(): List<Long> = displayIds.ifEmpty { allLikedIds }
     }
 
     private val appContext = context.applicationContext
@@ -56,19 +70,25 @@ class LikedPlaylistRepository(
     private val _checkedLikes = MutableStateFlow<Map<Long, Boolean>>(emptyMap())
 
     private val syncScheduled = AtomicBoolean(false)
+    private val networkWarmed = AtomicBoolean(false)
+    @Volatile private var lastLikeListOk = false
     private var syncJob: Job? = null
     private var prefetchJob: Job? = null
     private val fillJobs = ConcurrentHashMap<Long, Job>()
     /** 补全用的完整 id 序（内存） */
     private val pendingAllIds = ConcurrentHashMap<Long, List<Long>>()
+    /** 本地刚喜欢、网易云 `/likelist` 还没跟上的曲目（进程 + 磁盘都保留）。 */
+    private val pendingAdds = ConcurrentHashMap<Long, TrackRow>()
+    /** 本地刚取消喜欢、`/likelist` 还没跟上的 id。 */
+    private val pendingRemoves = ConcurrentHashMap.newKeySet<Long>()
 
     init {
         scope.launch(Dispatchers.IO) {
-            loadFromDisk()?.let { snap ->
-                _snapshot.value = snap
-                if (!snap.complete && snap.playlistId > 0L) {
-                    scheduleFill(snap.playlistId, snap.title, snap.coverUrl, snap.tracks)
-                }
+            val disk = loadFromDisk() ?: return@launch
+            ioMutex.withLock {
+                if (_snapshot.value != null) return@withLock
+                restorePendingFromFile()
+                _snapshot.value = disk
             }
         }
     }
@@ -77,24 +97,36 @@ class LikedPlaylistRepository(
 
     /**
      * 是否喜欢：
-     * - 在缓存列表内 → true
-     * - 列表已完整且不在内 → false
-     * - 列表未完整且不在内 → 单曲检查缓存 / null
+     * - 在 `/likelist` 或本地待同步喜欢里 → true
+     * - 已有全量 id 且不在内 → false
+     * - 尚未拉到全量 → 单曲检查缓存 / null
      */
     fun isLiked(trackId: Long): Boolean? {
+        if (pendingAdds.containsKey(trackId)) return true
+        if (pendingRemoves.contains(trackId)) return false
         val snap = _snapshot.value
         if (snap != null) {
             if (snap.likedIds.contains(trackId)) return true
-            if (snap.complete) return false
+            if (snap.allLikedIds.isNotEmpty() || snap.complete) return false
             return _checkedLikes.value[trackId]
         }
         return _checkedLikes.value[trackId]
     }
 
     fun recordLikeStatus(track: TrackRow, liked: Boolean) {
+        if (liked && pendingRemoves.contains(track.id)) return
+        if (!liked && pendingAdds.containsKey(track.id)) return
         _checkedLikes.value = _checkedLikes.value + (track.id to liked)
-        val snap = _snapshot.value ?: return
-        if (snap.likedIds.contains(track.id) == liked) return
+        val snap = _snapshot.value ?: run {
+            if (liked) applyLocalLike(track, liked = true, scheduleSync = false)
+            return
+        }
+        val inTracks = snap.tracks.any { it.id == track.id }
+        if (liked && !inTracks) {
+            applyLocalLike(track, liked = true, scheduleSync = false)
+            return
+        }
+        if (snap.likedIds.contains(track.id) == liked && (liked == inTracks || !liked)) return
         applyLocalLike(track, liked = liked, scheduleSync = false)
     }
 
@@ -115,21 +147,23 @@ class LikedPlaylistRepository(
     fun prefetchOnAppReady() {
         val session = sessionRepository.session.value ?: return
         if (session.isGuest) return
-        val existing = _snapshot.value
-        if (existing != null && existing.playlistId > 0L && existing.tracks.isNotEmpty()) {
-            if (!existing.complete) {
-                scheduleFill(existing.playlistId, existing.title, existing.coverUrl, existing.tracks)
-            }
-            return
-        }
         if (prefetchJob?.isActive == true) return
         prefetchJob = scope.launch {
-            runCatching { refreshFromNetwork(force = false) }
+            runCatching { refreshFromNetwork(force = true) }
+                .onSuccess { snap ->
+                    if (lastLikeListOk && snap != null && snap.playlistId > 0L) {
+                        networkWarmed.set(true)
+                    }
+                }
                 .onFailure { Log.w(TAG, "prefetch liked playlist failed", it) }
         }
     }
 
-    suspend fun forceRefresh(): Snapshot? = refreshFromNetwork(force = true)
+    suspend fun forceRefresh(): Snapshot? {
+        val snap = refreshFromNetwork(force = true)
+        if (lastLikeListOk && snap != null && snap.playlistId > 0L) networkWarmed.set(true)
+        return snap
+    }
 
     fun applyLocalLike(
         track: TrackRow,
@@ -148,14 +182,24 @@ class LikedPlaylistRepository(
             val without = current.tracks.filterNot { it.id == track.id }
             if (liked) listOf(track) + without else without
         }
-        val expected = when {
-            current == null -> 1
-            liked && current.likedIds.contains(track.id).not() ->
-                (current.expectedCount + 1).coerceAtLeast(nextTracks.size)
-            !liked && current.likedIds.contains(track.id) ->
-                (current.expectedCount - 1).coerceAtLeast(nextTracks.size)
-            else -> current.expectedCount.coerceAtLeast(nextTracks.size)
+        val baseIds = current?.allLikedIds?.ifEmpty { current.tracks.map { it.id } }.orEmpty()
+        val nextIds = if (liked) {
+            listOf(track.id) + baseIds.filterNot { it == track.id }
+        } else {
+            baseIds.filterNot { it == track.id }
+        }.ifEmpty {
+            if (liked) listOf(track.id) else emptyList()
         }
+        val baseDisplay = current?.displayIds?.ifEmpty { current.tracks.map { it.id } }.orEmpty()
+        val nextDisplay = if (liked) {
+            listOf(track.id) + baseDisplay.filterNot { it == track.id }
+        } else {
+            baseDisplay.filterNot { it == track.id }
+        }.ifEmpty {
+            nextIds
+        }
+        val expected = nextDisplay.size.coerceAtLeast(nextIds.size).coerceAtLeast(nextTracks.size)
+        rememberPendingLike(track, liked)
         val next = Snapshot(
             playlistId = current?.playlistId ?: 0L,
             title = current?.title?.takeIf { it.isNotBlank() } ?: "我喜欢的音乐",
@@ -163,10 +207,14 @@ class LikedPlaylistRepository(
             tracks = nextTracks,
             updatedAtMs = System.currentTimeMillis(),
             expectedCount = expected,
-            // 本地改动后仍保持原完整标记；未齐时继续后台补
-            complete = current?.complete == true,
+            complete = false,
+            allLikedIds = nextIds,
+            displayIds = nextDisplay,
         )
         _snapshot.value = next
+        if (next.playlistId > 0L && nextDisplay.isNotEmpty()) {
+            pendingAllIds[next.playlistId] = nextDisplay
+        }
         scope.launch(Dispatchers.IO) { persistToDisk(next) }
         if (scheduleSync) scheduleDeferredSync()
         return next
@@ -181,6 +229,10 @@ class LikedPlaylistRepository(
         fillJobs.values.forEach { it.cancel() }
         fillJobs.clear()
         pendingAllIds.clear()
+        pendingAdds.clear()
+        pendingRemoves.clear()
+        networkWarmed.set(false)
+        lastLikeListOk = false
         _snapshot.value = null
         _checkedLikes.value = emptyMap()
         scope.launch(Dispatchers.IO) {
@@ -194,6 +246,11 @@ class LikedPlaylistRepository(
             try {
                 delay(DEBOUNCE_MS)
                 runCatching { refreshFromNetwork(force = true) }
+                    .onSuccess { snap ->
+                        if (lastLikeListOk && snap != null && snap.playlistId > 0L) {
+                            networkWarmed.set(true)
+                        }
+                    }
                     .onFailure { Log.w(TAG, "deferred liked sync failed", it) }
             } finally {
                 syncScheduled.set(false)
@@ -207,9 +264,6 @@ class LikedPlaylistRepository(
         if (!force) {
             val cached = _snapshot.value
             if (cached != null && cached.tracks.isNotEmpty() && cached.playlistId > 0L) {
-                if (!cached.complete) {
-                    scheduleFill(cached.playlistId, cached.title, cached.coverUrl, cached.tracks)
-                }
                 return cached
             }
         }
@@ -217,96 +271,293 @@ class LikedPlaylistRepository(
             if (!force) {
                 val cached = _snapshot.value
                 if (cached != null && cached.tracks.isNotEmpty() && cached.playlistId > 0L) {
-                    if (!cached.complete) {
-                        scheduleFill(cached.playlistId, cached.title, cached.coverUrl, cached.tracks)
-                    }
                     return@withLock cached
                 }
             }
             val cookie = session.cookie
+            val previous = _snapshot.value
             val status = withContext(Dispatchers.IO) { authClient.loginStatus(cookie) }
-            val uid = NcmJson.userIdFromLoginStatus(status) ?: return@withLock _snapshot.value
-            val plJson = withContext(Dispatchers.IO) {
-                userClient.userPlaylist(uid, cookie, limit = 80, offset = 0)
+            val uid = NcmJson.userIdFromLoginStatus(status) ?: return@withLock previous
+            val fetched = withContext(Dispatchers.IO) {
+                coroutineScope {
+                    val plDef = async {
+                        userClient.userPlaylist(uid, cookie, limit = 80, offset = 0)
+                    }
+                    val likeDef = async { fetchLikeIds(uid, cookie) }
+                    val playlists = NcmLibraryParse.playlistsFromUserPlaylist(plDef.await(), uid)
+                    val heart = playlists.firstOrNull { it.isHeartPlaylist }
+                        ?: playlists.firstOrNull { it.name == "我喜欢的音乐" }
+                    Pair(heart, likeDef.await())
+                }
             }
-            val playlists = NcmLibraryParse.playlistsFromUserPlaylist(plJson, uid)
-            val heart = playlists.firstOrNull { it.isHeartPlaylist }
-                ?: return@withLock _snapshot.value
-            fillJobs[heart.id]?.cancel()
-            fillJobs.remove(heart.id)
-            val first = withContext(Dispatchers.IO) {
-                PlaylistTrackLoader.loadFirstBatch(userClient, heart.id, cookie)
+            val heart = fetched.first
+            val playlistId = heart?.id?.takeIf { it > 0L }
+                ?: previous?.playlistId?.takeIf { it > 0L }
+                ?: 0L
+            val trackIds = if (playlistId > 0L) {
+                withContext(Dispatchers.IO) {
+                    runCatching {
+                        NcmLibraryParse.trackIdsFromPlaylistDetail(
+                            userClient.playlistDetail(
+                                playlistId,
+                                cookie,
+                                limit = PlaylistTrackLoader.FIRST_BATCH,
+                            ),
+                        )
+                    }.getOrDefault(emptyList())
+                }
+            } else {
+                emptyList()
             }
+            val likeOrder = fetched.second
+            if (likeOrder == null && trackIds.isEmpty()) {
+                lastLikeListOk = false
+                Log.w(TAG, "likelist unavailable, keep local liked snapshot")
+                return@withLock previous
+            }
+            if (likeOrder == null) {
+                lastLikeListOk = false
+                Log.w(TAG, "likelist unordered/unavailable, use heart playlist trackIds")
+            } else if (likeOrder.isEmpty()) {
+                val localCount = previous?.allLikedIds?.size?.takeIf { it > 0 }
+                    ?: previous?.tracks?.size
+                    ?: 0
+                if (localCount > 5) {
+                    lastLikeListOk = false
+                    Log.w(TAG, "likelist empty while local has songs, keep local liked snapshot")
+                    return@withLock previous
+                }
+                lastLikeListOk = true
+            } else {
+                lastLikeListOk = true
+            }
+            val membership = when {
+                likeOrder != null -> likeOrder
+                trackIds.isNotEmpty() -> trackIds
+                else -> previous?.allLikedIds.orEmpty()
+            }
+            if (playlistId > 0L) {
+                fillJobs[playlistId]?.cancel()
+                fillJobs.remove(playlistId)
+            }
+            reconcilePendingWithRemote(membership)
+            val mergedIds = mergeLikedIds(membership)
+            val displayIds = mergeDisplayIds(trackIds, membership)
+            if (mergedIds.isEmpty() && displayIds.isEmpty()) {
+                val empty = Snapshot(
+                    playlistId = playlistId,
+                    title = heart?.name ?: previous?.title ?: "我喜欢的音乐",
+                    coverUrl = heart?.coverUrl ?: previous?.coverUrl,
+                    tracks = emptyList(),
+                    updatedAtMs = System.currentTimeMillis(),
+                    expectedCount = 0,
+                    complete = pendingAdds.isEmpty(),
+                    allLikedIds = emptyList(),
+                    displayIds = emptyList(),
+                )
+                _snapshot.value = empty
+                withContext(Dispatchers.IO) { persistToDisk(empty) }
+                if (playlistId > 0L) pendingAllIds.remove(playlistId)
+                return@withLock empty
+            }
+            val orderedIds = displayIds.ifEmpty { mergedIds }
+            val known = buildList {
+                addAll(pendingAdds.values)
+                previous?.tracks.orEmpty().forEach { add(it) }
+            }.distinctBy { it.id }
+            val want = known.size
+                .coerceAtLeast(PlaylistTrackLoader.FIRST_BATCH)
+                .coerceAtMost(orderedIds.size.coerceAtLeast(1))
+            val loaded = withContext(Dispatchers.IO) {
+                PlaylistTrackLoader.loadOrderedIds(
+                    userClient = userClient,
+                    cookie = cookie,
+                    ids = orderedIds.take(want),
+                    known = known,
+                )
+            }
+            val tracks = NcmLibraryParse.mergeLoadedInOrder(
+                orderedIds,
+                loaded,
+                previous?.tracks.orEmpty(),
+            )
             val snap = Snapshot(
-                playlistId = heart.id,
-                title = heart.name,
-                coverUrl = heart.coverUrl,
-                tracks = first.tracks,
+                playlistId = playlistId,
+                title = heart?.name ?: previous?.title ?: "我喜欢的音乐",
+                coverUrl = heart?.coverUrl ?: previous?.coverUrl,
+                tracks = tracks,
                 updatedAtMs = System.currentTimeMillis(),
-                expectedCount = first.allIds.size.coerceAtLeast(first.tracks.size),
-                complete = first.complete,
+                expectedCount = orderedIds.size.coerceAtLeast(tracks.size),
+                complete = orderedIds.isEmpty() || tracks.size >= orderedIds.size,
+                allLikedIds = mergedIds.ifEmpty { orderedIds },
+                displayIds = orderedIds,
             )
             _snapshot.value = snap
+            _checkedLikes.value = _checkedLikes.value + mergedIds.associateWith { true }
             withContext(Dispatchers.IO) { persistToDisk(snap) }
-            if (!first.complete) {
-                pendingAllIds[heart.id] = first.allIds
-                scheduleFill(heart.id, heart.name, heart.coverUrl, first.tracks, first.allIds)
-            } else {
-                pendingAllIds.remove(heart.id)
+            if (playlistId > 0L) {
+                if (!snap.complete) {
+                    pendingAllIds[playlistId] = snap.displayIds.ifEmpty { snap.allLikedIds }
+                } else {
+                    pendingAllIds.remove(playlistId)
+                }
             }
             snap
         }
     }
 
-    private fun scheduleFill(
-        playlistId: Long,
-        title: String,
-        coverUrl: String?,
-        already: List<TrackRow>,
-        knownIds: List<Long>? = null,
-    ) {
-        if (playlistId <= 0L) return
-        if (fillJobs[playlistId]?.isActive == true) return
+    private suspend fun fetchLikeIds(uid: Long, cookie: String): List<Long>? {
+        repeat(2) { attempt ->
+            val json = runCatching { userClient.likeList(uid, cookie) }.getOrNull()
+            val ids = json?.let { NcmLibraryParse.tryLikeIdsInOrder(it) }
+            if (ids != null) return ids
+            if (attempt == 0) delay(400)
+        }
+        return null
+    }
+
+    private fun rememberPendingLike(track: TrackRow, liked: Boolean) {
+        if (liked) {
+            pendingRemoves.remove(track.id)
+            pendingAdds[track.id] = track
+        } else {
+            pendingAdds.remove(track.id)
+            pendingRemoves.add(track.id)
+        }
+    }
+
+    private fun reconcilePendingWithRemote(likeOrder: List<Long>) {
+        val remote = likeOrder.toSet()
+        pendingAdds.keys.toList().forEach { id ->
+            if (id in remote) pendingAdds.remove(id)
+        }
+        pendingRemoves.toList().forEach { id ->
+            if (id !in remote) pendingRemoves.remove(id)
+        }
+    }
+
+    private fun mergeLikedIds(likeOrder: List<Long>): List<Long> {
+        val removes = pendingRemoves.toSet()
+        val ids = ArrayList<Long>(likeOrder.size + pendingAdds.size)
+        pendingAdds.keys.forEach { id ->
+            if (id !in removes) ids.add(id)
+        }
+        likeOrder.forEach { id ->
+            if (id > 0L && id !in removes && id !in ids) ids.add(id)
+        }
+        return ids
+    }
+
+    /**
+     * 展示序：本地刚喜欢 → 尚未写入心形歌单的 likelist 差额 → 歌单 trackIds。
+     * `/likelist` 本身无序，不能整表拿来当列表。
+     */
+    private fun mergeDisplayIds(playlistTrackIds: List<Long>, likeIds: List<Long>): List<Long> {
+        val removes = pendingRemoves.toSet()
+        val pendingFront = ArrayList<Long>(pendingAdds.size)
+        val seen = HashSet<Long>()
+        pendingAdds.keys.forEach { id ->
+            if (id !in removes && seen.add(id)) pendingFront.add(id)
+        }
+        if (playlistTrackIds.isEmpty()) {
+            likeIds.forEach { id ->
+                if (id > 0L && id !in removes && seen.add(id)) pendingFront.add(id)
+            }
+            return pendingFront
+        }
+        val fromPlaylist = playlistTrackIds.filter { id ->
+            id > 0L && id !in removes && seen.add(id)
+        }
+        val extras = likeIds.filter { id ->
+            id > 0L && id !in removes && seen.add(id)
+        }
+        // `/likelist` 无序。差额过大说明 trackIds 不完整，不能把无序 id 堆到最前。
+        if (fromPlaylist.isNotEmpty() && extras.size > PlaylistTrackLoader.FIRST_BATCH) {
+            return pendingFront + fromPlaylist
+        }
+        return pendingFront + extras + fromPlaylist
+    }
+
+    fun ensureLoadedThrough(minCount: Int) {
+        val snap = _snapshot.value ?: return
+        if (snap.playlistId <= 0L) return
+        if (snap.complete || snap.tracks.size >= minCount) return
+        if (fillJobs[snap.playlistId]?.isActive == true) return
         val session = sessionRepository.session.value ?: return
         if (session.isGuest) return
+        val playlistId = snap.playlistId
+        val title = snap.title
+        val coverUrl = snap.coverUrl
+        val already = snap.tracks
         fillJobs[playlistId] = scope.launch {
             try {
-                runCatching {
+                ioMutex.withLock {
+                    val live = _snapshot.value
+                    if (live == null || live.playlistId != playlistId) return@withLock
+                    if (live.complete || live.tracks.size >= minCount) return@withLock
                     val cookie = session.cookie
-                    val allIds = knownIds
-                        ?: pendingAllIds[playlistId]
-                        ?: withContext(Dispatchers.IO) {
-                            val detail = userClient.playlistDetail(
-                                playlistId,
-                                cookie,
-                                limit = PlaylistTrackLoader.FIRST_BATCH,
-                            )
-                            NcmLibraryParse.trackIdsFromPlaylistDetail(detail)
-                        }
-                    if (allIds.isEmpty()) return@runCatching
-                    pendingAllIds[playlistId] = allIds
-                    PlaylistTrackLoader.loadRemaining(
+                    val displayIds = pendingAllIds[playlistId]
+                        ?: live.displayIds.takeIf { it.isNotEmpty() }
+                        ?: live.allLikedIds.takeIf { it.isNotEmpty() }
+                    if (displayIds.isNullOrEmpty()) return@withLock
+                    pendingAllIds[playlistId] = displayIds
+                    val page = (minCount - live.tracks.size)
+                        .coerceAtLeast(PlaylistTrackLoader.PAGE)
+                    val want = (live.tracks.size + page).coerceAtMost(displayIds.size)
+                    val ordered = PlaylistTrackLoader.loadOrderedIds(
                         userClient = userClient,
                         cookie = cookie,
-                        allIds = allIds,
-                        already = already,
-                    ) { ordered ->
-                        val snap = Snapshot(
-                            playlistId = playlistId,
-                            title = title,
-                            coverUrl = coverUrl ?: _snapshot.value?.coverUrl,
-                            tracks = ordered,
-                            updatedAtMs = System.currentTimeMillis(),
-                            expectedCount = allIds.size,
-                            complete = ordered.size >= allIds.size,
-                        )
-                        _snapshot.value = snap
-                        withContext(Dispatchers.IO) { persistToDisk(snap) }
-                    }
-                }.onFailure { Log.w(TAG, "liked playlist fill failed id=$playlistId", it) }
+                        ids = displayIds.take(want),
+                        known = live.tracks.ifEmpty { already },
+                    )
+                    val next = Snapshot(
+                        playlistId = playlistId,
+                        title = title,
+                        coverUrl = coverUrl ?: live.coverUrl,
+                        tracks = NcmLibraryParse.tracksUntilIdGap(displayIds, ordered),
+                        updatedAtMs = System.currentTimeMillis(),
+                        expectedCount = displayIds.size.coerceAtLeast(ordered.size),
+                        complete = ordered.size >= displayIds.size,
+                        allLikedIds = live.allLikedIds.ifEmpty { displayIds },
+                        displayIds = displayIds,
+                    )
+                    _snapshot.value = next
+                    withContext(Dispatchers.IO) { persistToDisk(next) }
+                }
+            } catch (t: Throwable) {
+                Log.w(TAG, "liked playlist page failed id=$playlistId", t)
             } finally {
                 fillJobs.remove(playlistId)
             }
+        }
+    }
+
+    /** 播放队列已比喜欢列表更长时，把多出来的曲目写回快照。 */
+    suspend fun absorbIfLonger(tracks: List<TrackRow>) {
+        if (tracks.size <= 1) return
+        ioMutex.withLock {
+            val live = _snapshot.value ?: return@withLock
+            if (tracks.size <= live.tracks.size) return@withLock
+            val ids = live.displayIds.ifEmpty { live.allLikedIds }
+            val merged = if (ids.isNotEmpty()) {
+                NcmLibraryParse.mergeLoadedInOrder(ids, tracks, live.tracks)
+            } else {
+                NcmLibraryParse.mergeTrackRows(live.tracks, tracks)
+            }
+            if (merged.size <= live.tracks.size) return@withLock
+            val expected = live.expectedCount.coerceAtLeast(ids.size).coerceAtLeast(merged.size)
+            val next = live.copy(
+                tracks = merged,
+                expectedCount = expected,
+                complete = when {
+                    ids.isNotEmpty() -> merged.size >= ids.size
+                    expected > 0 -> merged.size >= expected
+                    else -> live.complete
+                },
+                updatedAtMs = System.currentTimeMillis(),
+            )
+            _snapshot.value = next
+            withContext(Dispatchers.IO) { persistToDisk(next) }
         }
     }
 
@@ -322,29 +573,47 @@ class LikedPlaylistRepository(
             val tracks = buildList {
                 for (i in 0 until arr.length()) {
                     val o = arr.optJSONObject(i) ?: continue
-                    val id = o.optLong("id", 0L)
-                    if (id <= 0L) continue
-                    add(
-                        TrackRow(
-                            id = id,
-                            name = o.optString("name", "—"),
-                            artists = o.optString("artists", "—"),
-                            album = o.optString("album", "").takeIf { it.isNotBlank() },
-                            durationMs = o.optLong("durationMs", 0L),
-                            coverUrl = o.optString("coverUrl", "").takeIf { it.isNotBlank() },
-                        ),
-                    )
+                    NcmLibraryParse.trackFromCacheJson(o)?.let { add(it) }
                 }
             }
             val expectedCount = root.optInt("expectedCount", tracks.size).coerceAtLeast(tracks.size)
-            val complete = if (root.has("complete")) {
-                root.optBoolean("complete", true)
+            val idArr = root.optJSONArray("allLikedIds")
+            val allLikedIds = if (idArr != null && idArr.length() > 0) {
+                buildList {
+                    for (i in 0 until idArr.length()) {
+                        val id = idArr.optLong(i, 0L)
+                        if (id > 0L) add(id)
+                    }
+                }
             } else {
-                // 旧缓存无字段：视为完整，避免误伤；下次 force 会重拉
-                true
+                tracks.map { it.id }
             }
+            val displayArr = root.optJSONArray("displayIds")
+            val displayIds = if (displayArr != null && displayArr.length() > 0) {
+                buildList {
+                    for (i in 0 until displayArr.length()) {
+                        val id = displayArr.optLong(i, 0L)
+                        if (id > 0L) add(id)
+                    }
+                }
+            } else {
+                emptyList()
+            }
+            val order = displayIds.ifEmpty { allLikedIds }
+            val orderedTracks = NcmLibraryParse.tracksUntilIdGap(order, tracks)
+            val complete = orderedTracks.size >= order.size && order.isNotEmpty()
             if (playlistId <= 0L && tracks.isEmpty()) null
-            else Snapshot(playlistId, title, coverUrl, tracks, updatedAtMs, expectedCount, complete)
+            else Snapshot(
+                playlistId,
+                title,
+                coverUrl,
+                orderedTracks,
+                updatedAtMs,
+                expectedCount.coerceAtLeast(order.size),
+                complete,
+                allLikedIds,
+                displayIds,
+            )
         }.getOrNull()
     }
 
@@ -352,15 +621,7 @@ class LikedPlaylistRepository(
         runCatching {
             val arr = JSONArray()
             snap.tracks.forEach { t ->
-                arr.put(
-                    JSONObject()
-                        .put("id", t.id)
-                        .put("name", t.name)
-                        .put("artists", t.artists)
-                        .put("album", t.album ?: "")
-                        .put("durationMs", t.durationMs)
-                        .put("coverUrl", t.coverUrl ?: ""),
-                )
+                arr.put(NcmLibraryParse.trackToCacheJson(t))
             }
             val root = JSONObject()
                 .put("playlistId", snap.playlistId)
@@ -369,13 +630,75 @@ class LikedPlaylistRepository(
                 .put("updatedAtMs", snap.updatedAtMs)
                 .put("expectedCount", snap.expectedCount)
                 .put("complete", snap.complete)
+                .put("allLikedIds", JSONArray().also { arrIds ->
+                    snap.allLikedIds.forEach { arrIds.put(it) }
+                })
+                .put("displayIds", JSONArray().also { arrIds ->
+                    snap.displayIds.forEach { arrIds.put(it) }
+                })
+                .put("pendingAddIds", JSONArray().also { arrIds ->
+                    pendingAdds.keys.forEach { arrIds.put(it) }
+                })
+                .put("pendingAdds", JSONArray().also { arrAdds ->
+                    pendingAdds.values.forEach { t ->
+                        arrAdds.put(NcmLibraryParse.trackToCacheJson(t))
+                    }
+                })
+                .put("pendingRemoveIds", JSONArray().also { arrIds ->
+                    pendingRemoves.forEach { arrIds.put(it) }
+                })
                 .put("tracks", arr)
             cacheFile.writeText(root.toString(), Charsets.UTF_8)
         }.onFailure { Log.w(TAG, "persist liked playlist failed", it) }
     }
 
+    private fun restorePendingFromFile() {
+        if (!cacheFile.exists()) return
+        runCatching {
+            val root = JSONObject(cacheFile.readText(Charsets.UTF_8))
+            val arr = root.optJSONArray("tracks") ?: JSONArray()
+            val tracks = buildList {
+                for (i in 0 until arr.length()) {
+                    val o = arr.optJSONObject(i) ?: continue
+                    NcmLibraryParse.trackFromCacheJson(o)?.let { add(it) }
+                }
+            }
+            restorePendingFromDisk(root, tracks)
+        }
+    }
+
+    private fun restorePendingFromDisk(root: JSONObject, tracks: List<TrackRow>) {
+        pendingAdds.clear()
+        pendingRemoves.clear()
+        val byId = tracks.associateBy { it.id }
+        val addArr = root.optJSONArray("pendingAdds")
+        if (addArr != null) {
+            for (i in 0 until addArr.length()) {
+                val o = addArr.optJSONObject(i) ?: continue
+                val id = o.optLong("id", 0L)
+                if (id <= 0L) continue
+                pendingAdds[id] = NcmLibraryParse.trackFromCacheJson(o) ?: continue
+            }
+        }
+        val addIds = root.optJSONArray("pendingAddIds")
+        if (addIds != null) {
+            for (i in 0 until addIds.length()) {
+                val id = addIds.optLong(i, 0L)
+                if (id <= 0L || pendingAdds.containsKey(id)) continue
+                byId[id]?.let { pendingAdds[id] = it }
+            }
+        }
+        val removeIds = root.optJSONArray("pendingRemoveIds")
+        if (removeIds != null) {
+            for (i in 0 until removeIds.length()) {
+                val id = removeIds.optLong(i, 0L)
+                if (id > 0L) pendingRemoves.add(id)
+            }
+        }
+    }
+
     companion object {
         private const val TAG = "LikedPlaylistRepo"
-        private const val DEBOUNCE_MS = 3 * 60 * 1000L
+        private const val DEBOUNCE_MS = 2_000L
     }
 }

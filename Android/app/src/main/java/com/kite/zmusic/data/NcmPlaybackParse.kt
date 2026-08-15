@@ -23,4 +23,9 @@ internal object NcmPlaybackParse {
         val lrc = json.optJSONObject("lrc") ?: return null
         return lrc.optString("lyric").takeIf { it.isNotBlank() }
     }
+
+    fun translatedLrcText(json: JSONObject): String? {
+        val tlyric = json.optJSONObject("tlyric") ?: return null
+        return tlyric.optString("lyric").takeIf { it.isNotBlank() }
+    }
 }

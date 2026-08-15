@@ -2,12 +2,15 @@ package com.kite.zmusic.ui.common
 
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -16,7 +19,6 @@ import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
-import okhttp3.Request
 import java.util.concurrent.TimeUnit
 
 private val UrlImageClient by lazy {
@@ -32,6 +34,7 @@ fun UrlImage(
     contentDescription: String?,
     modifier: Modifier = Modifier,
     contentScale: ContentScale = ContentScale.Fit,
+    showPlaceholder: Boolean = true,
 ) {
     val context = LocalContext.current
     val urlKey = UrlImageCache.normalizeKey(url).orEmpty()
@@ -59,7 +62,7 @@ fun UrlImage(
                 val file = UrlImageCache.diskFile(context, urlKey)
                 if (!file.exists()) return@runCatching null
                 val bytes = file.readBytes()
-                BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
+                decodeSampledBitmap(bytes)
             }.getOrNull()
         }
         // 仍对应本 urlKey 才上屏，避免快速滑格时旧请求回写
@@ -69,18 +72,17 @@ fun UrlImage(
             return@LaunchedEffect
         }
 
-        // 3) 网络：仅此时允许短暂空白
-        bitmap = null
+        // 3) 网络：已有图就先留着，避免翻页重组把已加载封面清掉
         val fromNet = withContext(Dispatchers.IO) {
             runCatching {
-                val req = Request.Builder().url(urlKey).get().build()
+                val req = UrlImageCache.imageRequest(urlKey)
                 UrlImageClient.newCall(req).execute().use { resp ->
                     if (!resp.isSuccessful) return@use null
                     val bytes = resp.body?.bytes() ?: return@use null
                     val file = UrlImageCache.diskFile(context, urlKey)
                     runCatching { file.writeBytes(bytes) }
                     UrlImageCache.trimDisk(context)
-                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
+                    decodeSampledBitmap(bytes)
                 }
             }.getOrNull()
         }
@@ -90,12 +92,30 @@ fun UrlImage(
         }
     }
     val b = bitmap
-    if (b != null) {
-        Image(
-            bitmap = b,
-            contentDescription = contentDescription,
-            modifier = modifier,
-            contentScale = contentScale,
-        )
+    Box(modifier, contentAlignment = Alignment.Center) {
+        if (b != null) {
+            Image(
+                bitmap = b,
+                contentDescription = contentDescription,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = contentScale,
+            )
+        } else if (showPlaceholder) {
+            CoverPlaceholderVinyl(Modifier.fillMaxSize())
+        }
     }
+}
+
+private fun decodeSampledBitmap(bytes: ByteArray, maxPx: Int = 2048): ImageBitmap? {
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+    val w = bounds.outWidth
+    val h = bounds.outHeight
+    if (w <= 0 || h <= 0) return null
+    var sample = 1
+    while (w / sample > maxPx || h / sample > maxPx) {
+        sample *= 2
+    }
+    val opts = BitmapFactory.Options().apply { inSampleSize = sample }
+    return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)?.asImageBitmap()
 }

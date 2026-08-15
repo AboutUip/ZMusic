@@ -1,132 +1,117 @@
 package com.kite.zmusic.ui.library
 
-import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.togetherWith
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredHeight
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kite.zmusic.ZMusicApplication
-import com.kite.zmusic.playback.PlaybackUiState
 import com.kite.zmusic.data.PlaylistSummary
 import com.kite.zmusic.data.SessionRepository
-import com.kite.zmusic.data.SubcountBrief
-import com.kite.zmusic.data.TrackRow
 import com.kite.zmusic.data.UserProfileBrief
-import com.kite.zmusic.ui.scifi.SciFiBackdrop
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
+import com.kite.zmusic.data.VipKind
+import com.kite.zmusic.ui.catalog.MainOverlay
+import com.kite.zmusic.ui.common.GlassActionSheet
+import com.kite.zmusic.ui.common.GlassAlertDialog
+import com.kite.zmusic.ui.common.GlassPromptField
+import com.kite.zmusic.ui.common.GlassSheetAction
 import com.kite.zmusic.ui.common.UrlImage
-import com.kite.zmusic.ui.scifi.SciFiHudTextAction
+import com.kite.zmusic.ui.icons.ZIcons
+import com.kite.zmusic.ui.notice.showIslandNotice
+import com.kite.zmusic.ui.main.MainPalette
+import com.kite.zmusic.ui.main.mainContentPadH
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
 
-private val Cyan = Color(0xFF00FFD1)
-private val Dim = Color(0xFF8FA8B8)
-private val Green = Color(0xFF39FF9C)
-private val PanelBg = Color(0xFF0C1522)
-private val CardInner = Color(0xFF111C2E)
-private val MutedLine = Cyan.copy(alpha = 0.14f)
-
-@Composable
-private fun LibraryHomeHeader(
-    isLandscape: Boolean,
-    onRefresh: () -> Unit,
-) {
-    Row(
-        Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(
-                text = "我的",
-                style = TextStyle(
-                    color = Color.White.copy(alpha = 0.92f),
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = if (isLandscape) 18.sp else 22.sp,
-                    letterSpacing = 0.5.sp,
-                ),
-            )
-            Spacer(Modifier.height(4.dp))
-            Text(
-                text = if (isLandscape) "PROFILE // 资料与统计" else "资料 · 歌单 · 红心",
-                style = TextStyle(
-                    color = Dim.copy(alpha = 0.65f),
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = if (isLandscape) 9.sp else 10.sp,
-                    letterSpacing = if (isLandscape) 1.4.sp else 1.2.sp,
-                ),
-            )
-        }
-        SciFiHudTextAction(text = "刷新", onClick = onRefresh)
-    }
-}
+private val ProfileBlankBrush = Brush.verticalGradient(
+    colors = listOf(Color(0xFFFBFBFC), MainPalette.Page),
+)
+private val VipGold = Color(0xFFFFD789)
+private val SvipPlate = Color(0xFF1A120C)
+private val VipPlate = Color(0xFFEC4141)
+internal val ProfileAvatarBadgeHang = 6.dp
 
 @Composable
 private fun LibraryLoadingBlock() {
     Box(
         Modifier
             .fillMaxWidth()
-            .height(160.dp),
+            .height(120.dp),
         contentAlignment = Alignment.Center,
     ) {
         CircularProgressIndicator(
             modifier = Modifier.size(36.dp),
-            color = Cyan.copy(alpha = 0.85f),
+            color = MainPalette.Accent,
             strokeWidth = 2.dp,
         )
     }
@@ -137,10 +122,8 @@ private fun LibraryErrorText(err: String) {
     Text(
         text = err,
         style = TextStyle(
-            color = Color(0xFFFFB86C),
-            fontFamily = FontFamily.Monospace,
-            fontSize = 11.sp,
-            lineHeight = 16.sp,
+            color = MainPalette.Secondary,
+            fontSize = 14.sp,
         ),
     )
 }
@@ -148,99 +131,210 @@ private fun LibraryErrorText(err: String) {
 @Composable
 private fun LibraryGuestBanner() {
     Text(
-        text = "GUEST // 游客模式 · 数据与正式账号可能不一致",
+        text = "游客模式 · 数据与正式账号可能不一致",
         style = TextStyle(
-            color = Dim.copy(alpha = 0.75f),
-            fontFamily = FontFamily.Monospace,
-            fontSize = 10.sp,
-            letterSpacing = 0.8.sp,
+            color = MainPalette.Secondary,
+            fontSize = 13.sp,
         ),
     )
 }
 
 @Composable
-private fun LibraryFooterHint() {
+private fun LibrarySectionEmpty(text: String) {
     Text(
-        text = "在歌单详情中点击曲目即可播放",
+        text = text,
         style = TextStyle(
-            color = Dim.copy(alpha = 0.38f),
-            fontFamily = FontFamily.Monospace,
-            fontSize = 9.sp,
-            letterSpacing = 0.5.sp,
+            color = MainPalette.Hint,
+            fontSize = 13.sp,
         ),
+        modifier = Modifier.padding(vertical = 6.dp),
     )
 }
 
-/** 横屏：左栏资料、右栏歌单列表，内容区最大宽度居中，避免整屏拉满 */
 @Composable
 private fun LibraryHomeLandscape(
     ui: LibraryUiState,
-    vm: LibraryViewModel,
     padH: Dp,
-    padV: Dp,
+    contentBottomInset: Dp,
+    onOpenPlaylist: (PlaylistSummary) -> Unit,
+    pullState: UserSpaceRevealState,
+    spaceProgress: Float,
+    customBgPath: String?,
+    onAvatarPositioned: (Offset, Float) -> Unit,
+    onMorePlaylist: (PlaylistSummary) -> Unit,
+    onCreatePlaylist: () -> Unit,
 ) {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+    val listState = rememberLazyListState()
+    val hasPhoto = !customBgPath.isNullOrBlank() || !ui.profile?.backgroundUrl.isNullOrBlank()
+    val fade = (1f - spaceProgress / 0.28f).coerceIn(0f, 1f)
+    LazyColumn(
+        state = listState,
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MainPalette.Page)
+            .graphicsLayer { alpha = fade },
+        userScrollEnabled = !pullState.isOpen && !pullState.dragging && spaceProgress < 0.98f,
+        contentPadding = PaddingValues(bottom = contentBottomInset),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        item(key = "profile-banner") {
+            ProfileLandscapeBanner(
+                profile = ui.profile,
+                loading = ui.loading && ui.profile == null,
+                hasPhoto = hasPhoto,
+                customBgPath = customBgPath,
+                spaceProgress = spaceProgress,
+                onEnterSpace = { pullState.open() },
+                onAvatarPositioned = onAvatarPositioned,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(168.dp),
+            )
+        }
+        if (ui.loading && ui.playlists.isEmpty()) {
+            item { Box(Modifier.padding(horizontal = padH)) { LibraryLoadingBlock() } }
+        }
+        ui.error?.let { err ->
+            item { Box(Modifier.padding(horizontal = padH)) { LibraryErrorText(err) } }
+        }
+        if (ui.isGuest) {
+            item { Box(Modifier.padding(horizontal = padH)) { LibraryGuestBanner() } }
+        }
+        libraryPlaylistSections(
+            playlists = ui.playlists,
+            onOpenPlaylist = onOpenPlaylist,
+            onMorePlaylist = onMorePlaylist,
+            onCreatePlaylist = onCreatePlaylist,
+            padH = padH,
+        )
+    }
+}
+
+@Composable
+private fun ProfileLandscapeBanner(
+    profile: UserProfileBrief?,
+    loading: Boolean,
+    hasPhoto: Boolean,
+    customBgPath: String?,
+    spaceProgress: Float,
+    onEnterSpace: () -> Unit,
+    onAvatarPositioned: (Offset, Float) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(modifier.clipToBounds()) {
+        ProfileFixedBackground(
+            backgroundUrl = profile?.backgroundUrl,
+            localPath = customBgPath,
+            modifier = Modifier.fillMaxSize(),
+        )
+        Box(
+            Modifier
+                .align(Alignment.BottomStart)
+                .fillMaxWidth()
+                .height(120.dp)
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.55f)),
+                    ),
+                ),
+        )
         Row(
             Modifier
-                .widthIn(min = 520.dp, max = 960.dp)
-                .fillMaxWidth()
-                .fillMaxHeight()
-                .padding(horizontal = padH, vertical = padV),
-            horizontalArrangement = Arrangement.spacedBy(20.dp),
+                .fillMaxSize()
+                .padding(horizontal = 22.dp, vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column(
-                Modifier
-                    .weight(0.36f)
-                    .fillMaxHeight()
-                    .widthIn(min = 268.dp)
-                    .verticalScroll(rememberScrollState()),
-            ) {
-                LibraryHomeHeader(isLandscape = true, onRefresh = { vm.refresh() })
-                Spacer(Modifier.height(14.dp))
-                if (ui.loading && ui.playlists.isEmpty()) {
-                    LibraryLoadingBlock()
-                    Spacer(Modifier.height(12.dp))
-                }
-                ui.error?.let { err ->
-                    LibraryErrorText(err)
-                    Spacer(Modifier.height(10.dp))
-                }
-                if (ui.isGuest) {
-                    LibraryGuestBanner()
-                    Spacer(Modifier.height(10.dp))
-                }
-                ui.profile?.let { p ->
-                    ProfileCard(
-                        profile = p,
-                        likedCount = ui.likedTrackCount,
-                        subcount = ui.subcount,
-                        sideColumn = true,
-                    )
-                }
-                Spacer(Modifier.height(24.dp))
+            if (loading && profile == null) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(28.dp),
+                    color = if (hasPhoto) Color.White else MainPalette.Accent,
+                    strokeWidth = 2.dp,
+                )
+                return@Row
             }
-            Box(
-                Modifier
-                    .width(1.dp)
-                    .fillMaxHeight()
-                    .background(MutedLine.copy(alpha = 0.85f)),
-            )
-            LazyColumn(
-                Modifier
-                    .weight(0.64f)
-                    .fillMaxHeight(),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                item {
-                    LibrarySectionTitle("歌单 · ${ui.playlists.size}")
-                    Spacer(Modifier.height(4.dp))
+            val p = profile
+            if (p != null) {
+                ProfileAvatar(
+                    profile = p,
+                    size = 64.dp,
+                    placeholderSp = 22.sp,
+                    modifier = Modifier.onGloballyPositioned { coords ->
+                        if (spaceProgress <= SpaceAvatarHandoffProgress) {
+                            onAvatarPositioned(
+                                coords.positionInWindow(),
+                                coords.size.width.toFloat(),
+                            )
+                        }
+                    }.then(
+                        if (spaceProgress > SpaceAvatarHandoffProgress) {
+                            Modifier.graphicsLayer {
+                                alpha = 0f
+                                clip = false
+                            }
+                        } else {
+                            Modifier
+                        },
+                    ),
+                )
+                Spacer(Modifier.width(14.dp))
+                Column(Modifier.weight(1f)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(
+                            text = p.nickname,
+                            style = identityTitleStyle(hasPhoto).copy(fontSize = 20.sp),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false),
+                        )
+                        p.level?.let { lv ->
+                            ProfileLevelMark(level = lv, onPhoto = hasPhoto)
+                        }
+                    }
+                    p.signature?.let { sig ->
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = sig,
+                            style = identityCaptionStyle(hasPhoto),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    listenMetaLine(p)?.let { meta ->
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = meta,
+                            style = identityCaptionStyle(hasPhoto).copy(fontSize = 12.sp),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
-                items(ui.playlists, key = { it.id }) { pl ->
-                    PlaylistRow(pl = pl, onClick = { vm.openPlaylist(pl) })
-                }
-                item {
-                    Spacer(Modifier.height(16.dp))
-                    LibraryFooterHint()
+                Spacer(Modifier.width(12.dp))
+                Box(
+                    Modifier
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(
+                            if (hasPhoto) Color.White.copy(alpha = 0.94f)
+                            else MainPalette.Accent.copy(alpha = 0.12f),
+                        )
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = onEnterSpace,
+                        )
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                ) {
+                    Text(
+                        text = "进入用户空间",
+                        style = TextStyle(
+                            color = MainPalette.Accent,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        ),
+                    )
                 }
             }
         }
@@ -252,226 +346,713 @@ fun LibraryScreen(
     sessionRepository: SessionRepository,
     isLandscape: Boolean,
     modifier: Modifier = Modifier,
-    onPlaylistFullScreenChange: (Boolean) -> Unit = {},
-    playbackState: PlaybackUiState = PlaybackUiState(),
-    pendingLibraryOpen: Pair<Long, String>? = null,
-    onConsumePendingLibraryOpen: () -> Unit = {},
-    onPlayTracks: (List<TrackRow>, Int, Long?, String?) -> Unit = { _, _, _, _ -> },
+    onOpenOverlay: (MainOverlay) -> Unit = {},
+    contentBottomInset: Dp = 0.dp,
+    onUserSpaceProgress: (Float) -> Unit = {},
 ) {
     val app = LocalContext.current.applicationContext as ZMusicApplication
+    val context = LocalContext.current
     val vm: LibraryViewModel = viewModel(
         factory = LibraryViewModelFactory(
             sessionRepository,
             app.likedPlaylistRepository,
             app.playlistTracksCache,
+            app.playlistCollectionRepository,
+            app.libraryHomeRepository,
         ),
     )
     val ui by vm.ui.collectAsStateWithLifecycle()
-    val padH = if (isLandscape) 24.dp else 28.dp
-    val padV = if (isLandscape) 16.dp else 22.dp
+    val padH = mainContentPadH(isLandscape)
+    val scope = rememberCoroutineScope()
+    val density = LocalDensity.current
+    val pullState = rememberUserSpacePullState(scope)
+    val spaceProgress = pullState.progress
+    val screenHpx = with(density) { LocalConfiguration.current.screenHeightDp.dp.toPx() }
+    var avatarStart by remember { mutableStateOf(Offset.Zero) }
+    var avatarStartSize by remember { mutableFloatStateOf(0f) }
+    var avatarFlightLocked by remember { mutableStateOf(false) }
+    var morePlaylist by remember { mutableStateOf<PlaylistSummary?>(null) }
+    var renameTarget by remember { mutableStateOf<PlaylistSummary?>(null) }
+    var renameDraft by remember { mutableStateOf("") }
+    var createOpen by remember { mutableStateOf(false) }
+    var createDraft by remember { mutableStateOf("") }
+    var confirmDelete by remember { mutableStateOf<PlaylistSummary?>(null) }
+    var confirmUnsub by remember { mutableStateOf<PlaylistSummary?>(null) }
+    val uid = ui.profile?.userId ?: 0L
+    var customBgPath by remember(uid) { mutableStateOf(app.userSpaceBackgroundStore.pathFor(uid)) }
 
-    LaunchedEffect(pendingLibraryOpen?.first, pendingLibraryOpen?.second) {
-        val p = pendingLibraryOpen ?: return@LaunchedEffect
-        vm.openPlaylistFromId(p.first, p.second)
-        onConsumePendingLibraryOpen()
+    fun openPlaylist(pl: PlaylistSummary) {
+        onOpenOverlay(
+            MainOverlay.Playlist(
+                id = pl.id,
+                title = pl.name,
+                coverUrl = pl.resolvedCoverUrl(),
+                owned = pl.isOwned,
+                heart = pl.isHeartPlaylist,
+                collected = pl.isSubscribed,
+            ),
+        )
     }
 
-    val sheetOpen = ui.sheet !is LibrarySheet.Hidden
-    BackHandler(enabled = sheetOpen) { vm.dismissSheet() }
-
-    DisposableEffect(Unit) {
-        onDispose { onPlaylistFullScreenChange(false) }
+    LaunchedEffect(pullState) {
+        snapshotFlow { pullState.progress }
+            .distinctUntilChanged()
+            .collect { onUserSpaceProgress(it) }
     }
-    SideEffect {
-        onPlaylistFullScreenChange(ui.sheet !is LibrarySheet.Hidden)
+    LaunchedEffect(uid) {
+        customBgPath = app.userSpaceBackgroundStore.pathFor(uid)
     }
 
-    AnimatedContent(
-        targetState = ui.sheet,
-        modifier = modifier.fillMaxSize(),
-        transitionSpec = {
-            val toList = targetState is LibrarySheet.Hidden
-            val enter =
-                fadeIn(tween(280, easing = FastOutSlowInEasing)) +
-                    slideInHorizontally(
-                        animationSpec = tween(320, easing = FastOutSlowInEasing),
-                        initialOffsetX = { w -> if (toList) -w / 5 else w },
-                    )
-            val exit =
-                fadeOut(tween(220)) +
-                    slideOutHorizontally(
-                        animationSpec = tween(280, easing = FastOutSlowInEasing),
-                        targetOffsetX = { w -> if (toList) w / 5 else -w },
-                    )
-            enter togetherWith exit
-        },
-        contentKey = { s ->
-            when (s) {
-                is LibrarySheet.Hidden -> "list"
-                else -> "detail"
+    val pickBg = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia(),
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        if (uid <= 0L) {
+            context.showIslandNotice("登录后可设置空间背景")
+            return@rememberLauncherForActivityResult
+        }
+        scope.launch {
+            val path = app.userSpaceBackgroundStore.import(uid, uri)
+            if (path != null) {
+                customBgPath = path
+                context.showIslandNotice("已设置空间背景")
+            } else {
+                context.showIslandNotice("背景设置失败")
             }
-        },
-        label = "libraryListOrDetail",
-    ) { sheet ->
-        when (sheet) {
-            is LibrarySheet.Hidden -> {
-                Box(Modifier.fillMaxSize()) {
-                    if (isLandscape) {
-                        LibraryHomeLandscape(
-                            ui = ui,
-                            vm = vm,
-                            padH = padH,
-                            padV = padV,
+        }
+    }
+
+    SideEffect {
+        pullState.enabled = ui.profile != null
+        pullState.rangePx = (screenHpx * 0.78f).coerceAtLeast(1f)
+        pullState.activationPx = with(density) { 48.dp.toPx() }
+        if (spaceProgress <= SpaceAvatarHandoffProgress) {
+            avatarFlightLocked = false
+        } else if (!avatarFlightLocked && avatarStartSize > 1f) {
+            avatarFlightLocked = true
+        }
+    }
+
+    fun captureAvatar(pos: Offset, size: Float) {
+        if (avatarFlightLocked) return
+        avatarStart = pos
+        avatarStartSize = size
+    }
+
+    Box(modifier.fillMaxSize()) {
+        if (isLandscape) {
+            LibraryHomeLandscape(
+                ui = ui,
+                padH = padH,
+                contentBottomInset = contentBottomInset,
+                onOpenPlaylist = ::openPlaylist,
+                pullState = pullState,
+                spaceProgress = spaceProgress,
+                customBgPath = customBgPath,
+                onAvatarPositioned = ::captureAvatar,
+                onMorePlaylist = { morePlaylist = it },
+                onCreatePlaylist = {
+                    createDraft = ""
+                    createOpen = true
+                },
+            )
+        } else {
+            LibraryHomePortrait(
+                ui = ui,
+                padH = padH,
+                contentBottomInset = contentBottomInset,
+                onOpenPlaylist = ::openPlaylist,
+                pullState = pullState,
+                spaceProgress = spaceProgress,
+                customBgPath = customBgPath,
+                onAvatarPositioned = ::captureAvatar,
+                onMorePlaylist = { morePlaylist = it },
+                onCreatePlaylist = {
+                    createDraft = ""
+                    createOpen = true
+                },
+            )
+        }
+        UserSpaceOverlay(
+            progress = spaceProgress,
+            profile = ui.profile,
+            playlists = ui.playlists,
+            likedTrackCount = ui.likedTrackCount,
+            subcount = ui.subcount,
+            customBgPath = customBgPath,
+            avatarStart = avatarStart,
+            avatarStartSize = avatarStartSize,
+            reveal = pullState,
+            onClose = { pullState.close() },
+            onPickBackground = {
+                pickBg.launch(
+                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+                )
+            },
+            onClearBackground = {
+                if (uid <= 0L) return@UserSpaceOverlay
+                app.userSpaceBackgroundStore.clear(uid)
+                customBgPath = null
+                context.showIslandNotice("已恢复默认背景")
+            },
+            modifier = Modifier.fillMaxSize(),
+        )
+        morePlaylist?.let { pl ->
+            GlassActionSheet(
+                title = pl.name,
+                message = "${pl.trackCount} 首",
+                coverUrl = pl.resolvedCoverUrl(),
+                onDismiss = { morePlaylist = null },
+                actions = buildList {
+                    if (pl.isOwned && !pl.isHeartPlaylist) {
+                        add(
+                            GlassSheetAction("重命名") {
+                                renameDraft = pl.name
+                                renameTarget = pl
+                                morePlaylist = null
+                            },
                         )
-                    } else {
-                        LazyColumn(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(horizontal = padH, vertical = padV),
-                            verticalArrangement = Arrangement.spacedBy(16.dp),
-                        ) {
-                            item {
-                                LibraryHomeHeader(
-                                    isLandscape = false,
-                                    onRefresh = { vm.refresh() },
-                                )
-                            }
-
-                            if (ui.loading && ui.playlists.isEmpty()) {
-                                item {
-                                    LibraryLoadingBlock()
-                                }
-                            }
-
-                            ui.error?.let { err ->
-                                item {
-                                    LibraryErrorText(err)
-                                }
-                            }
-
-                            if (ui.isGuest) {
-                                item {
-                                    LibraryGuestBanner()
-                                }
-                            }
-
-                            ui.profile?.let { p ->
-                                item {
-                                    ProfileCard(
-                                        profile = p,
-                                        likedCount = ui.likedTrackCount,
-                                        subcount = ui.subcount,
-                                        sideColumn = false,
-                                    )
-                                }
-                            }
-
-                            item {
-                                LibrarySectionTitle("歌单 · ${ui.playlists.size}")
-                            }
-
-                            items(ui.playlists, key = { it.id }) { pl ->
-                                PlaylistRow(pl = pl, onClick = { vm.openPlaylist(pl) })
-                            }
-
-                            item {
-                                Spacer(Modifier.height(20.dp))
-                                LibraryFooterHint()
-                            }
+                        add(
+                            GlassSheetAction("删除", destructive = true) {
+                                confirmDelete = pl
+                                morePlaylist = null
+                            },
+                        )
+                    } else if (!pl.isOwned) {
+                        if (pl.isSubscribed) {
+                            add(
+                                GlassSheetAction("取消收藏", destructive = true) {
+                                    confirmUnsub = pl
+                                    morePlaylist = null
+                                },
+                            )
+                        } else {
+                            add(
+                                GlassSheetAction("收藏") {
+                                    val target = pl
+                                    morePlaylist = null
+                                    scope.launch {
+                                        context.showIslandNotice(
+                                            app.playlistEditor.subscribe(target),
+                                            target.coverUrl,
+                                        )
+                                    }
+                                },
+                            )
                         }
                     }
+                },
+            )
+        }
+        if (createOpen) {
+            GlassAlertDialog(
+                title = "新建歌单",
+                confirmLabel = "创建",
+                onConfirm = {
+                    val name = createDraft
+                    if (name.trim().isEmpty()) {
+                        context.showIslandNotice("请输入歌单名称")
+                        return@GlassAlertDialog
+                    }
+                    if (app.playlistEditor.hasCreatedName(name)) {
+                        context.showIslandNotice("已有同名歌单")
+                        return@GlassAlertDialog
+                    }
+                    createOpen = false
+                    scope.launch {
+                        context.showIslandNotice(app.playlistEditor.create(name))
+                    }
+                },
+                onDismiss = { createOpen = false },
+                extraContent = {
+                    GlassPromptField(
+                        value = createDraft,
+                        onValueChange = { createDraft = it },
+                        placeholder = "歌单名称",
+                    )
+                },
+            )
+        }
+        renameTarget?.let { pl ->
+            GlassAlertDialog(
+                title = "重命名歌单",
+                confirmLabel = "保存",
+                onConfirm = {
+                    val name = renameDraft
+                    if (name.trim().isEmpty()) {
+                        context.showIslandNotice("请输入歌单名称")
+                        return@GlassAlertDialog
+                    }
+                    if (app.playlistEditor.hasCreatedName(name, exceptId = pl.id)) {
+                        context.showIslandNotice("已有同名歌单")
+                        return@GlassAlertDialog
+                    }
+                    renameTarget = null
+                    scope.launch {
+                        context.showIslandNotice(
+                            app.playlistEditor.rename(pl, name),
+                            pl.coverUrl,
+                        )
+                    }
+                },
+                onDismiss = { renameTarget = null },
+                extraContent = {
+                    GlassPromptField(
+                        value = renameDraft,
+                        onValueChange = { renameDraft = it },
+                        placeholder = "歌单名称",
+                    )
+                },
+            )
+        }
+        confirmDelete?.let { pl ->
+            GlassAlertDialog(
+                title = "删除歌单？",
+                message = "「${pl.name}」会被删除，歌曲文件不会动。",
+                confirmLabel = "删除",
+                confirmDestructive = true,
+                onConfirm = {
+                    confirmDelete = null
+                    scope.launch {
+                        context.showIslandNotice(
+                            app.playlistEditor.deleteOwned(pl),
+                            pl.coverUrl,
+                        )
+                    }
+                },
+                onDismiss = { confirmDelete = null },
+            )
+        }
+        confirmUnsub?.let { pl ->
+            GlassAlertDialog(
+                title = "取消收藏？",
+                message = "不再收藏「${pl.name}」。",
+                confirmLabel = "取消收藏",
+                confirmDestructive = true,
+                onConfirm = {
+                    confirmUnsub = null
+                    scope.launch {
+                        context.showIslandNotice(
+                            app.playlistEditor.unsubscribe(pl),
+                            pl.coverUrl,
+                        )
+                    }
+                },
+                onDismiss = { confirmUnsub = null },
+            )
+        }
+    }
+}
 
-                    if (ui.refreshing) {
-                        CircularProgressIndicator(
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .padding(padH + 8.dp, padV)
-                                .size(22.dp),
-                            color = Cyan.copy(alpha = 0.6f),
-                            strokeWidth = 2.dp,
+@Composable
+private fun LibraryHomePortrait(
+    ui: LibraryUiState,
+    padH: Dp,
+    contentBottomInset: Dp,
+    onOpenPlaylist: (PlaylistSummary) -> Unit,
+    pullState: UserSpaceRevealState,
+    spaceProgress: Float,
+    customBgPath: String?,
+    onAvatarPositioned: (Offset, Float) -> Unit,
+    onMorePlaylist: (PlaylistSummary) -> Unit,
+    onCreatePlaylist: () -> Unit,
+) {
+    val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val screenH = LocalConfiguration.current.screenHeightDp.dp
+    val heroHeight = statusTop + maxOf(252.dp, screenH * 0.30f)
+    val overlap = 18.dp
+    val listState = rememberLazyListState()
+    val density = LocalDensity.current
+    val heroPx = with(density) { heroHeight.toPx() }
+    val scrollPx by remember(heroPx) {
+        derivedStateOf {
+            if (listState.firstVisibleItemIndex == 0) {
+                listState.firstVisibleItemScrollOffset.toFloat()
+            } else {
+                heroPx
+            }
+        }
+    }
+    val identityAlpha = (1f - scrollPx / (heroPx * 0.48f)).coerceIn(0f, 1f) *
+        (1f - spaceProgress).coerceIn(0f, 1f)
+    val hasPhoto = !customBgPath.isNullOrBlank() || !ui.profile?.backgroundUrl.isNullOrBlank()
+    val atTop by remember {
+        derivedStateOf {
+            listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset <= 2
+        }
+    }
+    SideEffect { pullState.atTop = atTop }
+
+    val p = spaceProgress.coerceIn(0f, 1f)
+    BoxWithConstraints(
+        Modifier
+            .fillMaxSize()
+            .background(MainPalette.Page),
+    ) {
+        val viewportH = maxHeight
+        val sheetMinH = (viewportH - contentBottomInset).coerceAtLeast(0.dp)
+        val photoH = lerp(heroHeight, viewportH, p)
+        val sheetA = (1f - p / 0.28f).coerceIn(0f, 1f)
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(photoH)
+                .align(Alignment.TopCenter)
+                .clipToBounds(),
+        ) {
+            ProfileFixedBackground(
+                backgroundUrl = ui.profile?.backgroundUrl,
+                localPath = customBgPath,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .requiredHeight(viewportH)
+                    .align(Alignment.TopCenter),
+            )
+        }
+        LazyColumn(
+            state = listState,
+            modifier = Modifier
+                .fillMaxSize()
+                .userSpaceRevealGesture(pullState),
+            userScrollEnabled = !pullState.isOpen && !pullState.dragging && spaceProgress < 0.98f,
+            contentPadding = PaddingValues(bottom = contentBottomInset),
+        ) {
+            item(key = "profile-identity") {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(heroHeight - overlap)
+                        .zIndex(2f),
+                ) {
+                    if (sheetA > 0.01f) {
+                        Box(
+                            Modifier
+                                .align(Alignment.BottomCenter)
+                                .fillMaxWidth()
+                                .height(64.dp)
+                                .graphicsLayer { alpha = sheetA }
+                                .background(
+                                    Brush.verticalGradient(
+                                        colorStops = arrayOf(
+                                            0f to Color.Transparent,
+                                            0.4f to MainPalette.Page.copy(alpha = 0.28f),
+                                            0.72f to MainPalette.Page.copy(alpha = 0.78f),
+                                            1f to MainPalette.Page,
+                                        ),
+                                    ),
+                                ),
+                        )
+                    }
+                    ProfileIdentity(
+                        profile = ui.profile,
+                        loading = ui.loading && ui.profile == null,
+                        onPhoto = hasPhoto,
+                        fade = identityAlpha,
+                        hideAvatar = spaceProgress > SpaceAvatarHandoffProgress,
+                        showSpaceHint = atTop && p < 0.12f,
+                        avatarModifier = Modifier.onGloballyPositioned { coords ->
+                            if (spaceProgress <= SpaceAvatarHandoffProgress) {
+                                onAvatarPositioned(
+                                    coords.positionInWindow(),
+                                    coords.size.width.toFloat(),
+                                )
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .statusBarsPadding()
+                            .padding(horizontal = padH)
+                            .padding(bottom = 28.dp),
+                    )
+                }
+            }
+            item(key = "profile-sheet") {
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = sheetMinH)
+                        .graphicsLayer { alpha = sheetA }
+                        .background(MainPalette.Page),
+                ) {
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .statusBarsPadding()
+                            .padding(horizontal = padH)
+                            .padding(top = 8.dp, bottom = 8.dp),
+                    ) {
+                        if (ui.loading && ui.playlists.isEmpty() && ui.profile != null) {
+                            LibraryLoadingBlock()
+                        }
+                        ui.error?.let { err ->
+                            LibraryErrorText(err)
+                            Spacer(Modifier.height(8.dp))
+                        }
+                        if (ui.isGuest) {
+                            LibraryGuestBanner()
+                            Spacer(Modifier.height(8.dp))
+                        }
+                        LibraryPlaylistBody(
+                            playlists = ui.playlists,
+                            onOpenPlaylist = onOpenPlaylist,
+                            onMorePlaylist = onMorePlaylist,
+                            onCreatePlaylist = onCreatePlaylist,
                         )
                     }
                 }
-            }
-            else -> {
-                // contentKey 在 Loading→Ready 间不变时，入场快照会冻住；详情读最新 ui.sheet
-                val live = ui.sheet
-                val detailSheet = if (live is LibrarySheet.Hidden) sheet else live
-                LibraryPlaylistDetailPage(
-                    sheet = detailSheet,
-                    onBack = vm::dismissSheet,
-                    isLandscape = isLandscape,
-                    horizontalPadding = padH,
-                    verticalPadding = padV,
-                    playbackState = playbackState,
-                    showRefresh = true,
-                    refreshing = ui.sheetRefreshing,
-                    onRefresh = vm::refreshOpenPlaylist,
-                    onPlayTrack = { index ->
-                        when (val s = detailSheet) {
-                            is LibrarySheet.Ready -> onPlayTracks(
-                                s.tracks,
-                                index,
-                                s.id,
-                                s.title,
-                            )
-                            else -> Unit
-                        }
-                    },
-                )
             }
         }
     }
 }
 
 @Composable
-private fun LibrarySectionTitle(text: String) {
-    Column(Modifier.fillMaxWidth()) {
-        Text(
-            text = text.uppercase(),
-            style = TextStyle(
-                color = Dim.copy(alpha = 0.72f),
-                fontFamily = FontFamily.Monospace,
-                fontSize = 10.sp,
-                letterSpacing = 2.sp,
-            ),
-        )
-        Spacer(Modifier.height(8.dp))
+private fun ProfileFixedBackground(
+    backgroundUrl: String?,
+    localPath: String? = null,
+    modifier: Modifier = Modifier,
+) {
+    val custom = !localPath.isNullOrBlank()
+    val remote = !backgroundUrl.isNullOrBlank()
+    Box(modifier) {
         Box(
             Modifier
-                .fillMaxWidth()
-                .height(1.dp)
-                .background(
-                    Brush.horizontalGradient(
-                        colors = listOf(Cyan.copy(alpha = 0.45f), Cyan.copy(alpha = 0.08f), Color.Transparent),
-                    ),
+                .matchParentSize()
+                .background(ProfileBlankBrush),
+        )
+        if (custom) {
+            ProfileLocalImage(
+                path = localPath,
+                modifier = Modifier.matchParentSize(),
+            )
+        } else if (remote) {
+            UrlImage(
+                url = backgroundUrl,
+                contentDescription = null,
+                modifier = Modifier.matchParentSize(),
+                contentScale = ContentScale.Crop,
+                showPlaceholder = false,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ProfileHeroBlock(
+    profile: UserProfileBrief?,
+    loading: Boolean,
+    padH: Dp,
+    bottomInset: Dp,
+    fillHeight: Boolean,
+    spaceProgress: Float = 0f,
+    customBgPath: String? = null,
+    onAvatarPositioned: (Offset, Float) -> Unit = { _, _ -> },
+    modifier: Modifier = Modifier,
+) {
+    val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val screenH = LocalConfiguration.current.screenHeightDp.dp
+    val heroHeight = if (fillHeight) {
+        0.dp
+    } else {
+        statusTop + maxOf(400.dp, screenH * 0.46f)
+    }
+    val hasPhoto = !customBgPath.isNullOrBlank() || !profile?.backgroundUrl.isNullOrBlank()
+
+    Box(
+        modifier
+            .then(
+                if (fillHeight) Modifier.fillMaxHeight() else Modifier.height(heroHeight),
+            )
+            .clipToBounds(),
+    ) {
+        ProfileFixedBackground(
+            backgroundUrl = profile?.backgroundUrl,
+            localPath = customBgPath,
+            modifier = Modifier.fillMaxSize(),
+        )
+        ProfileIdentity(
+            profile = profile,
+            loading = loading,
+            onPhoto = hasPhoto,
+            fade = (1f - spaceProgress).coerceIn(0f, 1f),
+            hideAvatar = spaceProgress > SpaceAvatarHandoffProgress,
+            showSpaceHint = true,
+            avatarModifier = Modifier.onGloballyPositioned { coords ->
+                if (spaceProgress <= SpaceAvatarHandoffProgress) {
+                    onAvatarPositioned(
+                        coords.positionInWindow(),
+                        coords.size.width.toFloat(),
+                    )
+                }
+            },
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .padding(
+                    start = padH,
+                    end = padH,
+                    bottom = if (fillHeight) bottomInset.coerceAtLeast(20.dp) else 16.dp,
                 ),
         )
     }
 }
 
 @Composable
-private fun ProfileCard(
-    profile: UserProfileBrief,
-    likedCount: Int,
-    subcount: SubcountBrief?,
-    sideColumn: Boolean = false,
+private fun ProfileIdentity(
+    profile: UserProfileBrief?,
+    loading: Boolean,
+    onPhoto: Boolean,
+    fade: Float,
+    modifier: Modifier = Modifier,
+    hideAvatar: Boolean = false,
+    showSpaceHint: Boolean = false,
+    avatarModifier: Modifier = Modifier,
 ) {
-    val ring = Brush.linearGradient(
-        colors = listOf(Cyan.copy(alpha = 0.55f), Color(0xFF2A6BFF).copy(alpha = 0.35f), Green.copy(alpha = 0.4f)),
-    )
-    val avatarSize = if (sideColumn) 64.dp else 76.dp
-    val placeholderSp = if (sideColumn) 24.sp else 28.sp
-
-    @Composable
-    fun AvatarBox() {
+    Box(
+        modifier.fillMaxWidth(),
+        contentAlignment = Alignment.Center,
+    ) {
         Box(
             Modifier
-                .size(avatarSize)
+                .fillMaxSize()
+                .graphicsLayer { alpha = fade },
+            contentAlignment = Alignment.Center,
+        ) {
+            if (onPhoto && profile != null) {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(200.dp)
+                        .background(
+                            Brush.radialGradient(
+                                colors = listOf(
+                                    Color.Black.copy(alpha = 0.22f),
+                                    Color.Transparent,
+                                ),
+                            ),
+                        ),
+                )
+            }
+            Column(
+                Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                if (loading && profile == null) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(28.dp),
+                        color = if (onPhoto) Color.White else MainPalette.Accent,
+                        strokeWidth = 2.dp,
+                    )
+                    return@Column
+                }
+                val p = profile ?: return@Column
+                ProfileAvatar(
+                    profile = p,
+                    size = 80.dp,
+                    placeholderSp = 28.sp,
+                    modifier = avatarModifier.then(
+                        if (hideAvatar) {
+                            Modifier.graphicsLayer {
+                                alpha = 0f
+                                clip = false
+                            }
+                        } else {
+                            Modifier
+                        }
+                    ),
+                )
+                Spacer(Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.widthIn(max = 280.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                ) {
+                    Text(
+                        text = p.nickname,
+                        style = identityTitleStyle(onPhoto),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    p.level?.let { lv ->
+                        ProfileLevelMark(level = lv, onPhoto = onPhoto)
+                    }
+                }
+                p.signature?.let { sig ->
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = sig,
+                        style = identityCaptionStyle(onPhoto),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.widthIn(max = 280.dp),
+                    )
+                }
+                ProfileListenProgress(profile = p, onPhoto = onPhoto)
+            }
+        }
+        if (showSpaceHint) {
+            Text(
+                text = "下拉进入用户空间",
+                style = identityCaptionStyle(onPhoto).copy(
+                    fontSize = 11.sp,
+                    color = if (onPhoto) Color.White.copy(alpha = 0.55f) else MainPalette.Hint,
+                ),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 4.dp),
+            )
+        }
+    }
+}
+
+private fun identityTitleStyle(onPhoto: Boolean) = TextStyle(
+    color = if (onPhoto) Color.White else MainPalette.Ink,
+    fontWeight = FontWeight.Bold,
+    fontSize = 22.sp,
+    shadow = if (onPhoto) {
+        Shadow(color = Color.Black.copy(alpha = 0.45f), offset = Offset(0f, 1f), blurRadius = 10f)
+    } else {
+        null
+    },
+)
+
+private fun identityCaptionStyle(onPhoto: Boolean) = TextStyle(
+    color = if (onPhoto) Color.White.copy(alpha = 0.88f) else MainPalette.Secondary,
+    fontSize = 13.sp,
+    lineHeight = 18.sp,
+    shadow = if (onPhoto) {
+        Shadow(color = Color.Black.copy(alpha = 0.4f), offset = Offset(0f, 1f), blurRadius = 8f)
+    } else {
+        null
+    },
+)
+
+@Composable
+internal fun ProfileAvatar(
+    profile: UserProfileBrief,
+    size: Dp,
+    placeholderSp: TextUnit,
+    modifier: Modifier = Modifier,
+) {
+    val ring = Brush.linearGradient(
+        colors = listOf(MainPalette.Accent.copy(alpha = 0.85f), Color(0xFFFF8A80)),
+    )
+    val hang = ProfileAvatarBadgeHang
+    Box(
+        modifier
+            .size(size + hang)
+            .graphicsLayer { clip = false },
+    ) {
+        Box(
+            Modifier
+                .size(size)
+                .align(Alignment.TopStart)
                 .border(2.dp, ring, CircleShape)
                 .padding(3.dp)
                 .clip(CircleShape)
-                .background(Color(0xFF152535)),
+                .background(Color(0xFFF0F0F2)),
             contentAlignment = Alignment.Center,
         ) {
             val url = profile.avatarUrl
@@ -486,619 +1067,435 @@ private fun ProfileCard(
                 Text(
                     text = profile.nickname.take(1).uppercase(),
                     style = TextStyle(
-                        color = Cyan.copy(alpha = 0.75f),
-                        fontFamily = FontFamily.Monospace,
+                        color = MainPalette.Accent,
                         fontWeight = FontWeight.Bold,
                         fontSize = placeholderSp,
                     ),
                 )
             }
         }
-    }
-
-    @Composable
-    fun StatBlock() {
-        if (sideColumn) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                profile.level?.let { lv -> StatChip("LV $lv") }
-                profile.listenSongs?.let { n -> StatChip("累计听歌 $n") }
-                StatChip("红心曲 $likedCount")
-            }
-        } else {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                profile.level?.let { lv -> StatChip("LV $lv") }
-                profile.listenSongs?.let { n -> StatChip("累计听歌 $n") }
-                StatChip("红心曲 $likedCount")
-            }
-        }
-    }
-
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(CardInner.copy(alpha = 0.98f), PanelBg.copy(alpha = 0.88f)),
-                ),
-            )
-            .border(1.dp, MutedLine, RoundedCornerShape(18.dp))
-            .padding(if (sideColumn) 14.dp else 18.dp),
-    ) {
-        if (sideColumn) {
-            Column(
-                Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                AvatarBox()
-                Spacer(Modifier.height(12.dp))
-                Text(
-                    text = profile.nickname,
-                    style = TextStyle(
-                        color = Cyan,
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp,
-                        letterSpacing = 0.8.sp,
-                        textAlign = TextAlign.Center,
-                    ),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                profile.signature?.let { sig ->
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        text = sig,
-                        style = TextStyle(
-                            color = Dim.copy(alpha = 0.88f),
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 9.sp,
-                            lineHeight = 13.sp,
-                            textAlign = TextAlign.Center,
-                        ),
-                        maxLines = 3,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-                Spacer(Modifier.height(12.dp))
-                StatBlock()
-            }
-        } else {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                AvatarBox()
-                Spacer(Modifier.width(14.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        text = profile.nickname,
-                        style = TextStyle(
-                            color = Cyan,
-                            fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp,
-                            letterSpacing = 1.sp,
-                        ),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    profile.signature?.let { sig ->
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            text = sig,
-                            style = TextStyle(
-                                color = Dim.copy(alpha = 0.88f),
-                                fontFamily = FontFamily.Monospace,
-                                fontSize = 10.sp,
-                                lineHeight = 14.sp,
-                            ),
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                    Spacer(Modifier.height(8.dp))
-                    StatBlock()
-                }
-            }
-        }
-        subcount?.let { s ->
-            Spacer(Modifier.height(14.dp))
-            HorizontalDivider(color = MutedLine)
-            Spacer(Modifier.height(12.dp))
-            Text(
-                text = buildString {
-                    append("收藏歌单 ${s.subPlaylistCount}")
-                    append(" · 创建 ${s.createdPlaylistCount}")
-                    append(" · 关注歌手 ${s.subArtistCount}")
-                    append(" · 收藏专辑 ${s.subAlbumCount}")
-                },
-                style = TextStyle(
-                    color = Dim.copy(alpha = 0.72f),
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 9.sp,
-                    lineHeight = 13.sp,
-                    letterSpacing = 0.4.sp,
-                    textAlign = if (sideColumn) TextAlign.Center else TextAlign.Start,
-                ),
-                modifier = Modifier.fillMaxWidth(),
+        if (profile.vipKind != VipKind.None) {
+            ProfileVipBadge(
+                kind = profile.vipKind,
+                iconUrl = profile.vipIconUrl,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(1.dp),
             )
         }
     }
 }
 
 @Composable
-private fun StatChip(text: String) {
+private fun ProfileVipBadge(
+    kind: VipKind,
+    iconUrl: String?,
+    modifier: Modifier = Modifier,
+) {
+    val plate = if (kind == VipKind.Svip) SvipPlate else VipPlate
+    val tint = if (kind == VipKind.Svip) VipGold else Color.White
+    Box(
+        modifier
+            .size(22.dp)
+            .border(1.5.dp, Color.White, CircleShape)
+            .clip(CircleShape)
+            .background(plate),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (!iconUrl.isNullOrBlank()) {
+            UrlImage(
+                url = iconUrl,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+                showPlaceholder = false,
+            )
+        } else {
+            Icon(
+                imageVector = ZIcons.Vip,
+                contentDescription = if (kind == VipKind.Svip) "SVIP" else "VIP",
+                tint = tint,
+                modifier = Modifier.size(12.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun ProfileLevelMark(level: Int, onPhoto: Boolean) {
+    val fg = if (onPhoto) Color.White else MainPalette.Accent
     Text(
-        text = text,
-        modifier = Modifier
-            .clip(RoundedCornerShape(6.dp))
-            .background(Cyan.copy(alpha = 0.08f))
-            .border(1.dp, Cyan.copy(alpha = 0.18f), RoundedCornerShape(6.dp))
-            .padding(horizontal = 8.dp, vertical = 4.dp),
+        text = "Lv.$level",
         style = TextStyle(
-            color = Green.copy(alpha = 0.88f),
-            fontFamily = FontFamily.Monospace,
-            fontSize = 9.sp,
-            letterSpacing = 0.4.sp,
+            color = fg,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = 0.2.sp,
+            shadow = if (onPhoto) {
+                Shadow(color = Color.Black.copy(alpha = 0.35f), offset = Offset(0f, 1f), blurRadius = 6f)
+            } else {
+                null
+            },
         ),
+        modifier = Modifier
+            .clip(RoundedCornerShape(4.dp))
+            .background(fg.copy(alpha = 0.16f))
+            .padding(horizontal = 6.dp, vertical = 2.dp),
     )
 }
 
 @Composable
-private fun PlaylistRow(pl: PlaylistSummary, onClick: () -> Unit) {
-    val tag = when {
-        pl.isHeartPlaylist -> "HEART"
-        pl.isOwned -> "创建"
-        pl.isSubscribed -> "收藏"
-        else -> "歌单"
+private fun ProfileListenProgress(profile: UserProfileBrief, onPhoto: Boolean) {
+    val meta = listenMetaLine(profile)
+    val progress = profile.levelProgress?.takeIf { (profile.level ?: 0) < 10 }
+    if (meta == null && progress == null) return
+    Spacer(Modifier.height(12.dp))
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        if (progress != null) {
+            val track = if (onPhoto) Color.White.copy(alpha = 0.22f) else MainPalette.Hairline
+            val fill = if (onPhoto) Color.White.copy(alpha = 0.92f) else MainPalette.Accent
+            Box(
+                Modifier
+                    .width(128.dp)
+                    .height(3.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(track),
+            ) {
+                Box(
+                    Modifier
+                        .fillMaxHeight()
+                        .fillMaxWidth(progress.coerceIn(0f, 1f))
+                        .background(fill, RoundedCornerShape(50)),
+                )
+            }
+            if (meta != null) {
+                Spacer(Modifier.height(6.dp))
+            }
+        }
+        if (meta != null) {
+            Text(
+                text = meta,
+                style = identityCaptionStyle(onPhoto).copy(
+                    fontSize = 12.sp,
+                    color = if (onPhoto) {
+                        Color.White.copy(alpha = 0.78f)
+                    } else {
+                        MainPalette.Secondary
+                    },
+                ),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+            )
+        }
     }
+}
+
+private fun listenMetaLine(profile: UserProfileBrief): String? {
+    val parts = mutableListOf<String>()
+    val level = profile.level
+    if (level != null && level >= 10) {
+        parts += "听歌满级"
+        profile.listenSongs?.let { parts += "累计 ${formatPlayCount(it)}" }
+        return parts.joinToString(" · ")
+    }
+    profile.listenSongs?.let { parts += "听歌 ${formatPlayCount(it)}" }
+    val now = profile.nowPlayCount
+    val next = profile.nextPlayCount
+    if (now != null && next != null && next > now) {
+        parts += "差 ${formatPlayCount(next - now)} 首"
+    } else if (parts.isEmpty()) {
+        profile.levelProgress?.let { progress ->
+            parts += "听歌 ${(progress * 100f).toInt().coerceIn(0, 100)}%"
+        }
+    }
+    return parts.takeIf { it.isNotEmpty() }?.joinToString(" · ")
+}
+
+@Composable
+private fun LibrarySectionTitle(
+    text: String,
+    trailing: @Composable (() -> Unit)? = null,
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(top = 12.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = text,
+            style = TextStyle(
+                color = MainPalette.Ink,
+                fontSize = 17.sp,
+                fontWeight = FontWeight.Bold,
+            ),
+            modifier = Modifier.weight(1f),
+        )
+        trailing?.invoke()
+    }
+}
+
+@Composable
+private fun LibraryPlaylistBody(
+    playlists: List<PlaylistSummary>,
+    onOpenPlaylist: (PlaylistSummary) -> Unit,
+    onMorePlaylist: (PlaylistSummary) -> Unit,
+    onCreatePlaylist: () -> Unit,
+) {
+    val liked = playlists.filter { it.isHeartPlaylist }
+    val created = playlists.filter { it.isOwned && !it.isHeartPlaylist }
+    val collected = playlists.filter { !it.isOwned && !it.isHeartPlaylist }
+
+    PlaylistSectionColumn(
+        title = "我喜欢的音乐",
+        playlists = liked,
+        emptyText = "还没有喜欢的音乐",
+        onOpenPlaylist = onOpenPlaylist,
+        onMorePlaylist = onMorePlaylist,
+    )
+    PlaylistSectionColumn(
+        title = "创建的歌单",
+        playlists = created,
+        emptyText = "还没有创建的歌单",
+        onOpenPlaylist = onOpenPlaylist,
+        onMorePlaylist = onMorePlaylist,
+        onCreate = onCreatePlaylist,
+        showCount = true,
+    )
+    PlaylistSectionColumn(
+        title = "收藏的歌单",
+        playlists = collected,
+        emptyText = "还没有收藏的歌单",
+        onOpenPlaylist = onOpenPlaylist,
+        onMorePlaylist = onMorePlaylist,
+        showCount = true,
+    )
+}
+
+@Composable
+private fun PlaylistSectionColumn(
+    title: String,
+    playlists: List<PlaylistSummary>,
+    emptyText: String,
+    onOpenPlaylist: (PlaylistSummary) -> Unit,
+    onMorePlaylist: (PlaylistSummary) -> Unit,
+    onCreate: (() -> Unit)? = null,
+    showCount: Boolean = false,
+) {
+    LibrarySectionTitle(
+        text = if (showCount) "$title · ${playlists.size}" else title,
+        trailing = onCreate?.let { create ->
+            {
+                Box(
+                    Modifier
+                        .size(32.dp)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = create,
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = ZIcons.Add,
+                        contentDescription = "新建歌单",
+                        tint = MainPalette.Accent,
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
+            }
+        },
+    )
+    if (playlists.isEmpty()) {
+        LibrarySectionEmpty(emptyText)
+    } else {
+        playlists.forEach { pl ->
+            Box(Modifier.padding(vertical = 6.dp)) {
+                PlaylistRow(
+                    pl = pl,
+                    onClick = { onOpenPlaylist(pl) },
+                    onMore = if (pl.isHeartPlaylist) null else ({ onMorePlaylist(pl) }),
+                )
+            }
+        }
+    }
+}
+
+private fun LazyListScope.libraryPlaylistSections(
+    playlists: List<PlaylistSummary>,
+    onOpenPlaylist: (PlaylistSummary) -> Unit,
+    onMorePlaylist: (PlaylistSummary) -> Unit,
+    onCreatePlaylist: () -> Unit,
+    padH: Dp = 0.dp,
+) {
+    val liked = playlists.filter { it.isHeartPlaylist }
+    val created = playlists.filter { it.isOwned && !it.isHeartPlaylist }
+    val collected = playlists.filter { !it.isOwned && !it.isHeartPlaylist }
+
+    playlistSection(
+        title = "我喜欢的音乐",
+        playlists = liked,
+        emptyText = "还没有喜欢的音乐",
+        onOpenPlaylist = onOpenPlaylist,
+        onMorePlaylist = onMorePlaylist,
+        padH = padH,
+    )
+    playlistSection(
+        title = "创建的歌单",
+        playlists = created,
+        emptyText = "还没有创建的歌单",
+        onOpenPlaylist = onOpenPlaylist,
+        onMorePlaylist = onMorePlaylist,
+        onCreate = onCreatePlaylist,
+        showCount = true,
+        padH = padH,
+    )
+    playlistSection(
+        title = "收藏的歌单",
+        playlists = collected,
+        emptyText = "还没有收藏的歌单",
+        onOpenPlaylist = onOpenPlaylist,
+        onMorePlaylist = onMorePlaylist,
+        showCount = true,
+        padH = padH,
+    )
+}
+
+private fun LazyListScope.playlistSection(
+    title: String,
+    playlists: List<PlaylistSummary>,
+    emptyText: String,
+    onOpenPlaylist: (PlaylistSummary) -> Unit,
+    onMorePlaylist: (PlaylistSummary) -> Unit,
+    onCreate: (() -> Unit)? = null,
+    showCount: Boolean = false,
+    padH: Dp = 0.dp,
+) {
+    item(key = "h-$title") {
+        Box(Modifier.padding(horizontal = padH)) {
+            LibrarySectionTitle(
+                text = if (showCount) "$title · ${playlists.size}" else title,
+                trailing = onCreate?.let { create ->
+                    {
+                        Box(
+                            Modifier
+                                .size(32.dp)
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null,
+                                    onClick = create,
+                                ),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                imageVector = ZIcons.Add,
+                                contentDescription = "新建歌单",
+                                tint = MainPalette.Accent,
+                                modifier = Modifier.size(22.dp),
+                            )
+                        }
+                    }
+                },
+            )
+        }
+    }
+    if (playlists.isEmpty()) {
+        item(key = "e-$title") {
+            Box(Modifier.padding(horizontal = padH)) {
+                LibrarySectionEmpty(emptyText)
+            }
+        }
+    } else {
+        items(playlists, key = { "${title}-${it.id}-${it.coverUrl}" }) { pl ->
+            Box(Modifier.padding(horizontal = padH, vertical = 6.dp)) {
+                PlaylistRow(
+                    pl = pl,
+                    onClick = { onOpenPlaylist(pl) },
+                    onMore = if (pl.isHeartPlaylist) null else ({ onMorePlaylist(pl) }),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PlaylistRow(
+    pl: PlaylistSummary,
+    onClick: () -> Unit,
+    onMore: (() -> Unit)? = null,
+) {
     Row(
         Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
-            .background(CardInner.copy(alpha = 0.72f))
-            .border(1.dp, MutedLine, RoundedCornerShape(14.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+            .background(Color.White)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(
+        Row(
             Modifier
-                .size(54.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(Color(0xFF0E1624))
-                .border(1.dp, Cyan.copy(alpha = 0.12f), RoundedCornerShape(10.dp)),
+                .weight(1f)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onClick,
+                ),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            val cover = pl.coverUrl
-            if (!cover.isNullOrBlank()) {
+            Box(
+                Modifier
+                    .size(54.dp)
+                    .clip(RoundedCornerShape(8.dp)),
+            ) {
                 UrlImage(
-                    url = cover,
+                    url = pl.resolvedCoverUrl(),
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop,
                 )
             }
-        }
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
-            Text(
-                text = pl.name,
-                style = TextStyle(
-                    color = Cyan.copy(alpha = 0.92f),
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 12.sp,
-                    letterSpacing = 0.6.sp,
-                ),
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Spacer(Modifier.height(4.dp))
-            Text(
-                text = "$tag · ${pl.trackCount} 首 · 播放 ${formatPlayCount(pl.playCount)}",
-                style = TextStyle(
-                    color = Dim.copy(alpha = 0.65f),
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 9.sp,
-                    letterSpacing = 0.3.sp,
-                ),
-            )
-        }
-        Text(
-            text = "›",
-            style = TextStyle(
-                color = Cyan.copy(alpha = 0.35f),
-                fontFamily = FontFamily.Monospace,
-                fontSize = 16.sp,
-            ),
-        )
-    }
-}
-
-@Composable
-private fun LibraryPlaylistTracksPanel(
-    sheet: LibrarySheet,
-    onDismiss: () -> Unit,
-    onPlayTrack: (Int) -> Unit,
-    playbackState: PlaybackUiState,
-    modifier: Modifier = Modifier,
-) {
-    val dismissFn by rememberUpdatedState(onDismiss)
-    Box(modifier.padding(top = 4.dp)) {
-        Box(
-            Modifier
-                .fillMaxSize()
-                .clip(RoundedCornerShape(14.dp))
-                .background(Color(0xFF050A12).copy(alpha = 0.42f))
-                .border(1.dp, Cyan.copy(alpha = 0.14f), RoundedCornerShape(14.dp))
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-        ) {
-            Box(Modifier.fillMaxSize()) {
-                AnimatedContent(
-                    targetState = sheet,
-                    modifier = Modifier.fillMaxSize(),
-                    transitionSpec = {
-                        (
-                            fadeIn(tween(260, easing = FastOutSlowInEasing)) +
-                                slideInVertically { h -> h / 10 }
-                            ).togetherWith(fadeOut(tween(160)))
-                    },
-                    contentKey = { s ->
-                        when (s) {
-                            is LibrarySheet.Loading -> "l"
-                            is LibrarySheet.Failed -> "f"
-                            is LibrarySheet.Ready -> "r"
-                            else -> "x"
-                        }
-                    },
-                    label = "playlistBody",
-                ) { s ->
-                    when (s) {
-                        is LibrarySheet.Loading -> {
-                            Box(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .fillMaxHeight(),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Column(
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.spacedBy(14.dp),
-                                ) {
-                                    CircularProgressIndicator(
-                                        color = Cyan.copy(alpha = 0.85f),
-                                        strokeWidth = 2.dp,
-                                        modifier = Modifier.size(40.dp),
-                                    )
-                                    Text(
-                                        text = "FETCHING // TRACKS",
-                                        style = TextStyle(
-                                            color = Dim.copy(alpha = 0.55f),
-                                            fontFamily = FontFamily.Monospace,
-                                            fontSize = 10.sp,
-                                            letterSpacing = 1.6.sp,
-                                        ),
-                                    )
-                                }
-                            }
-                        }
-                        is LibrarySheet.Failed -> {
-                            Column(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 8.dp),
-                                verticalArrangement = Arrangement.spacedBy(16.dp),
-                            ) {
-                                Text(
-                                    text = "ERR // ${s.message}",
-                                    style = TextStyle(
-                                        color = Color(0xFFFFB86C),
-                                        fontFamily = FontFamily.Monospace,
-                                        fontSize = 11.sp,
-                                        lineHeight = 16.sp,
-                                        letterSpacing = 0.4.sp,
-                                    ),
-                                )
-                                Text(
-                                    text = "使用系统返回或手势返回",
-                                    style = TextStyle(
-                                        color = Dim.copy(alpha = 0.5f),
-                                        fontFamily = FontFamily.Monospace,
-                                        fontSize = 9.sp,
-                                        letterSpacing = 0.5.sp,
-                                    ),
-                                )
-                            }
-                        }
-                        is LibrarySheet.Ready -> {
-                            LazyColumn(
-                                Modifier.fillMaxSize(),
-                                verticalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
-                                item {
-                                    Text(
-                                        text = "TRACKS // ${s.tracks.size} · 点击播放",
-                                        style = TextStyle(
-                                            color = Dim.copy(alpha = 0.48f),
-                                            fontFamily = FontFamily.Monospace,
-                                            fontSize = 9.sp,
-                                            letterSpacing = 1.2.sp,
-                                        ),
-                                        modifier = Modifier.padding(bottom = 4.dp),
-                                    )
-                                }
-                                val plId = s.id
-                                val sameSource = playbackState.sourcePlaylistId == plId
-                                val playingId = playbackState.currentTrack?.id
-                                itemsIndexed(
-                                    s.tracks,
-                                    key = { _, t -> t.id },
-                                ) { idx, t ->
-                                    val isPlayingRow = sameSource && playingId == t.id
-                                    TrackRowItem(
-                                        t,
-                                        trackIndex = idx + 1,
-                                        isPlaying = isPlayingRow,
-                                        onClick = { onPlayTrack(idx) },
-                                    )
-                                }
-                            }
-                        }
-                        is LibrarySheet.Hidden -> Spacer(Modifier.height(0.dp))
-                    }
-                }
-            }
-        }
-    }
-}
-
-/** 歌单曲目全屏页（非弹层）；横屏为左标题栏 + 右曲目区，内容宽度居中 */
-@Composable
-private fun LibraryPlaylistDetailPage(
-    sheet: LibrarySheet,
-    onBack: () -> Unit,
-    isLandscape: Boolean,
-    horizontalPadding: Dp,
-    verticalPadding: Dp,
-    playbackState: PlaybackUiState,
-    onPlayTrack: (Int) -> Unit,
-    showRefresh: Boolean = false,
-    refreshing: Boolean = false,
-    onRefresh: () -> Unit = {},
-) {
-    val dismissFn by rememberUpdatedState(onBack)
-    val title = when (sheet) {
-        is LibrarySheet.Loading -> sheet.title
-        is LibrarySheet.Ready -> sheet.title
-        is LibrarySheet.Failed -> sheet.title
-        is LibrarySheet.Hidden -> ""
-    }
-
-    val scrim = Color(0xFF030810).copy(alpha = 0.78f)
-
-    @Composable
-    fun PlaylistDetailHeader(modifier: Modifier = Modifier) {
-        Row(
-            modifier
-                .fillMaxWidth()
-                .pointerInput(dismissFn) {
-                    var acc = 0f
-                    detectVerticalDragGestures(
-                        onVerticalDrag = { _, dy ->
-                            if (dy > 0) acc += dy
-                        },
-                        onDragEnd = {
-                            if (acc > 110f) dismissFn()
-                            acc = 0f
-                        },
-                        onDragCancel = { acc = 0f },
-                    )
-                },
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.Top,
-        ) {
+            Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(
-                    text = "PLAYLIST // DETAIL",
+                    text = pl.name,
                     style = TextStyle(
-                        color = Dim.copy(alpha = 0.5f),
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 9.sp,
-                        letterSpacing = 2.sp,
-                    ),
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = title.uppercase(),
-                    style = TextStyle(
-                        color = Cyan,
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = if (isLandscape) 13.sp else 14.sp,
-                        letterSpacing = 1.2.sp,
+                        color = MainPalette.Ink,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 14.sp,
                     ),
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
-            }
-            if (showRefresh) {
-                SciFiHudTextAction(
-                    text = if (refreshing) "刷新中" else "刷新",
-                    onClick = { if (!refreshing) onRefresh() },
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = "${pl.trackCount} 首 · 播放 ${formatPlayCount(pl.playCount)}",
+                    style = TextStyle(
+                        color = MainPalette.Secondary,
+                        fontSize = 12.sp,
+                    ),
                 )
             }
         }
-    }
-
-    if (isLandscape) {
-        Box(Modifier.fillMaxSize()) {
-            SciFiBackdrop(Modifier.fillMaxSize())
-            Box(Modifier.fillMaxSize().background(scrim))
-            Row(
-                Modifier
-                    .align(Alignment.Center)
-                    .widthIn(min = 560.dp, max = 960.dp)
-                    .fillMaxWidth()
-                    .fillMaxHeight()
-                    .padding(horizontal = horizontalPadding, vertical = verticalPadding),
-                horizontalArrangement = Arrangement.spacedBy(18.dp),
-            ) {
-                Column(
-                    Modifier
-                        .weight(0.34f)
-                        .fillMaxHeight(),
-                ) {
-                    PlaylistDetailHeader()
-                    HorizontalDivider(Modifier.padding(vertical = 10.dp), color = MutedLine)
-                }
-                Box(
-                    Modifier
-                        .weight(0.66f)
-                        .fillMaxHeight(),
-                ) {
-                    LibraryPlaylistTracksPanel(
-                        sheet = sheet,
-                        onDismiss = dismissFn,
-                        onPlayTrack = onPlayTrack,
-                        playbackState = playbackState,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
-            }
-        }
-    } else {
-        Box(Modifier.fillMaxSize()) {
-            SciFiBackdrop(Modifier.fillMaxSize())
-            Box(Modifier.fillMaxSize().background(scrim))
-            Column(
-                Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = horizontalPadding)
-                    .padding(top = 6.dp, bottom = verticalPadding),
-            ) {
-            PlaylistDetailHeader()
-            HorizontalDivider(Modifier.padding(vertical = 12.dp), color = MutedLine)
+        if (onMore != null) {
             Box(
                 Modifier
-                    .weight(1f)
-                    .fillMaxWidth(),
+                    .size(36.dp)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onMore,
+                    ),
+                contentAlignment = Alignment.Center,
             ) {
-                LibraryPlaylistTracksPanel(
-                    sheet = sheet,
-                    onDismiss = dismissFn,
-                    onPlayTrack = onPlayTrack,
-                    playbackState = playbackState,
-                    modifier = Modifier.fillMaxSize(),
+                Icon(
+                    imageVector = ZIcons.More,
+                    contentDescription = "更多",
+                    tint = MainPalette.Hint,
+                    modifier = Modifier.size(20.dp),
                 )
             }
-            }
         }
     }
 }
 
-@Composable
-private fun TrackRowItem(
-    t: TrackRow,
-    trackIndex: Int? = null,
-    isPlaying: Boolean = false,
-    onClick: (() -> Unit)? = null,
-) {
-    val borderColor by animateColorAsState(
-        targetValue = if (isPlaying) Cyan.copy(alpha = 0.75f) else Cyan.copy(alpha = 0.12f),
-        animationSpec = tween(420, easing = FastOutSlowInEasing),
-        label = "trackBorder",
-    )
-    val bgColor by animateColorAsState(
-        targetValue = if (isPlaying) Color(0xFF0A1828).copy(alpha = 0.94f) else Color(0xFF060D18).copy(alpha = 0.88f),
-        animationSpec = tween(420, easing = FastOutSlowInEasing),
-        label = "trackBg",
-    )
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .background(bgColor)
-            .border(1.dp, borderColor, RoundedCornerShape(10.dp))
-            .then(
-                if (onClick != null) {
-                    Modifier.clickable(onClick = onClick)
-                } else {
-                    Modifier
-                },
-            )
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (trackIndex != null) {
-            Text(
-                text = "%02d".format(trackIndex),
-                style = TextStyle(
-                    color = Dim.copy(alpha = 0.42f),
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 10.sp,
-                    letterSpacing = 0.6.sp,
-                ),
-                modifier = Modifier.width(28.dp),
-            )
-        }
-        Column(Modifier.weight(1f)) {
-            Text(
-                text = t.name,
-                style = TextStyle(
-                    color = Cyan.copy(alpha = 0.92f),
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 11.sp,
-                    letterSpacing = 0.5.sp,
-                ),
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Spacer(Modifier.height(3.dp))
-            Text(
-                text = "${t.artists}${t.album?.let { " · $it" } ?: ""} · ${formatDuration(t.durationMs)}",
-                style = TextStyle(
-                    color = Dim.copy(alpha = 0.62f),
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 8.5.sp,
-                    lineHeight = 11.sp,
-                    letterSpacing = 0.25.sp,
-                ),
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        if (isPlaying) {
-            Text(
-                text = "▶",
-                style = TextStyle(
-                    color = Green.copy(alpha = 0.9f),
-                    fontSize = 12.sp,
-                ),
-            )
-        } else {
-            Text(
-                text = "›",
-                style = TextStyle(
-                    color = Cyan.copy(alpha = 0.35f),
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 16.sp,
-                ),
-            )
-        }
-    }
-}
-
-private fun formatDuration(ms: Long): String {
-    if (ms <= 0L) return "--:--"
-    val totalSec = ms / 1000
-    val m = totalSec / 60
-    val s = totalSec % 60
-    return "%d:%02d".format(m, s)
-}
-
-private fun formatPlayCount(n: Long): String = when {
-    n >= 100_000_000 -> "%.1f亿".format(n / 100_000_000.0)
-    n >= 10_000 -> "%.1f万".format(n / 10_000.0)
-    else -> n.toString()
-}

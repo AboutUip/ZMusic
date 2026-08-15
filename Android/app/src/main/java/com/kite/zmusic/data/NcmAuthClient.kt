@@ -75,8 +75,44 @@ class NcmAuthClient(
             postForm("/login", form)
         }
 
-    suspend fun registerAnonymous(): JSONObject = withContext(Dispatchers.IO) {
-        get("/register/anonimous", mapOf("timestamp" to ts()))
+    suspend fun cellphoneExistenceCheck(phone: String, countrycode: String = "86"): JSONObject =
+        withContext(Dispatchers.IO) {
+            get(
+                "/cellphone/existence/check",
+                mapOf("phone" to phone, "countrycode" to countrycode, "timestamp" to ts()),
+            )
+        }
+
+    suspend fun captchaVerify(phone: String, captcha: String, ctcode: String = "86"): JSONObject =
+        withContext(Dispatchers.IO) {
+            get(
+                "/captcha/verify",
+                mapOf(
+                    "phone" to phone,
+                    "captcha" to captcha,
+                    "ctcode" to ctcode,
+                    "timestamp" to ts(),
+                ),
+            )
+        }
+
+    suspend fun registerCellphone(
+        phone: String,
+        captcha: String,
+        password: String,
+        nickname: String,
+        countrycode: String = "86",
+    ): JSONObject = withContext(Dispatchers.IO) {
+        postForm(
+            "/register/cellphone",
+            mapOf(
+                "phone" to phone,
+                "captcha" to captcha,
+                "password" to password,
+                "nickname" to nickname,
+                "countrycode" to countrycode,
+            ),
+        )
     }
 
     private fun get(path: String, query: Map<String, String>): JSONObject {
@@ -105,19 +141,17 @@ class NcmAuthClient(
     private fun executeJson(req: Request): JSONObject {
         client.newCall(req).execute().use { resp ->
             val text = resp.body?.string().orEmpty()
-            if (!resp.isSuccessful) {
-                throw IOException(
-                    "HTTP ${resp.code} ${resp.message} @ ${req.url} · ${text.take(200)}",
-                )
+            val json = try {
+                if (text.isBlank()) null else JSONObject(text)
+            } catch (_: JSONException) {
+                null
             }
-            if (text.isBlank()) {
-                throw IOException("空响应 @ ${req.url}")
+            // 业务失败（如 HTTP 400 + code/message）仍返回 JSON，由调用方展示短句。
+            if (json != null) return json
+            if (resp.code == 404 || resp.code == 502) {
+                throw NcmEndpointMissingException()
             }
-            return try {
-                JSONObject(text)
-            } catch (e: JSONException) {
-                throw IOException("非 JSON 响应 @ ${req.url}: ${text.take(300)}", e)
-            }
+            throw IOException("请求失败，请稍后重试")
         }
     }
 
@@ -130,3 +164,6 @@ class NcmAuthClient(
             .build()
     }
 }
+
+/** 公益服未部署该路由（如部分环境没有 `/captcha/verify`）。 */
+internal class NcmEndpointMissingException : IOException("接口不可用")

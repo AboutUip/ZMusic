@@ -21,9 +21,10 @@
 
 ## UI 层（`ui/*`）
 
-- `ui/main`：主壳、Dock、迷你条；点播前请求 `POST_NOTIFICATIONS`（拒绝仍可播，并提示后台可能受限）
+- `ui/main`：主壳、Dock、迷你条；点播前请求 `POST_NOTIFICATIONS`（拒绝仍可播，并走灵动岛提示后台可能受限）
+- `ui/notice`：应用内灵动岛通知（液体玻璃胶囊）。**所有软件内提示走这里**，详见 [`ANDROID-ISLAND-NOTICE.md`](./ANDROID-ISLAND-NOTICE.md)
 - `ui/library` / `ui/player`：歌单与全屏播放器
-- `ui/common`：`UrlImage` 等
+- `ui/common`：`UrlImage`；`GlassAlertDialog` 二次确认（与岛同窗液体玻璃，覆盖状态栏，不用系统 Dialog）
 
 ## 播放层（`playback/*`）
 
@@ -64,6 +65,7 @@
 
 - 竖屏 / 横屏播放器布局不变
 - 播放模式按钮仅在展开播放器
+- 软件内反馈为顶部灵动岛胶囊（`ui/notice`），不是 Toast / Snackbar；系统媒体通知仍由 Media3 负责
 
 ---
 

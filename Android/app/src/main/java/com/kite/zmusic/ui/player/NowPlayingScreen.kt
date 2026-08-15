@@ -153,6 +153,7 @@ import com.kite.zmusic.data.NcmLibraryParse
 import com.kite.zmusic.data.NcmUserClient
 import com.kite.zmusic.data.PlayerDisplayPrefs
 import com.kite.zmusic.data.PlayerDisplayPrefsStore
+import com.kite.zmusic.data.PlaylistTrackLoader
 import com.kite.zmusic.data.TitleAlignMode
 import com.kite.zmusic.data.TitleLineStyle
 import com.kite.zmusic.data.TrackRow
@@ -162,6 +163,8 @@ import com.kite.zmusic.playback.AudioSpectrumBands
 import com.kite.zmusic.playback.PlaybackNotice
 import com.kite.zmusic.playback.PlaybackUiState
 import com.kite.zmusic.playback.PlaybackMode
+import com.kite.zmusic.playback.PlaylistQueueHydrator
+import com.kite.zmusic.playback.mergePlaylistQueue
 import com.kite.zmusic.ui.common.UrlImage
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeStyle
@@ -188,9 +191,9 @@ import androidx.compose.ui.unit.lerp as lerpDp
  * - 单次按住并明确下拖超过阈值 → [onSwipeDown]；为 null 时不认领下滑（留给歌词列表滚动）
  * - 回调经 [rememberUpdatedState] 更新，避免动画重组重启 pointerInput
  * - 位移相对「按下坐标」计算
- * - 按下即可跟踪（不要求 unconsumed）：子级 clickable 常在 down 时 consume，
- *   否则空白区永远进不了下滑退出；已成形的下滑在 Initial 认领并 consume。
- * - Main 上子控件已 consume 且位移明显不是下滑时，才让出给歌词列表 / 黑胶横滑等。
+ * - 按下即可跟踪（不要求 unconsumed）：子级 clickable 常在 down 时 consume
+ * - **不在 Initial 消费**：歌词 / 设置列表必须先认领垂直滚动，否则下滑浏览会被当成退出
+ * - 仅当子级全程未消费、且下拖过阈值时，才在 Main 触发 [onSwipeDown]
  */
 private fun Modifier.nowPlayingBlankGestures(
     dismissThresholdPx: Float,
@@ -204,87 +207,74 @@ private fun Modifier.nowPlayingBlankGestures(
         val touchSlop = viewConfiguration.touchSlop
         val longPressMs = viewConfiguration.longPressTimeoutMillis
         awaitEachGesture {
-            // false：空白 clickable / 控件会先 consume down，仍需能跟踪下滑退出
             val down = awaitFirstDown(requireUnconsumed = false)
             val pointerId = down.id
             val start = down.position
             val downUptime = System.currentTimeMillis()
-            var decidedSwipeDown = false
             var dismissed = false
             var yieldedToChild = false
             var childConsumed = false
+            val dismissSlop = touchSlop * 3.5f
 
             while (true) {
-                // Initial：在子控件消费前读取位移（下滑退出 / 防误触点击）
-                val raw = awaitPointerEvent(PointerEventPass.Initial)
-                val rawChange = raw.changes.find { it.id == pointerId } ?: break
-                val dx = rawChange.position.x - start.x
-                val dy = rawChange.position.y - start.y
+                val event = awaitPointerEvent(PointerEventPass.Main)
+                val change = event.changes.find { it.id == pointerId } ?: break
+                if (change.isConsumed) childConsumed = true
+                val dx = change.position.x - start.x
+                val dy = change.position.y - start.y
+                val movedEnough = abs(dx) > touchSlop || abs(dy) > touchSlop
+                val verticalIntent = abs(dy) > touchSlop && abs(dy) >= abs(dx) * 0.65f
 
-                // 退出判定用更大 slop，把常规 touchSlop 留给歌词 LazyColumn 优先认领垂直滚动。
-                val dismissSlop = touchSlop * 3.5f
-                val downDominant =
-                    swipeEnabled &&
+                if (!dismissed && !yieldedToChild) {
+                    if (!swipeEnabled && verticalIntent) {
+                        yieldedToChild = true
+                    } else if (childConsumed && verticalIntent) {
+                        // 歌词 LazyColumn / 设置 verticalScroll 已认领
+                        yieldedToChild = true
+                    } else if (childConsumed && movedEnough) {
+                        val maybeDismiss =
+                            swipeEnabled && dy > touchSlop && dy >= abs(dx) * 0.85f
+                        if (!maybeDismiss) yieldedToChild = true
+                    }
+
+                    if (
+                        !yieldedToChild &&
+                        swipeEnabled &&
+                        !childConsumed &&
                         dy > dismissSlop &&
-                        dy > abs(dx) * 1.6f
-                if (downDominant && !dismissed && dy >= dismissThresholdPx) {
-                    // 仅达退出阈值才在 Initial consume。
-                    // 过早 consume 会抢走右上角设置等子级 clickable（手指微抖即失效）。
-                    rawChange.consume()
-                    decidedSwipeDown = true
-                    dismissed = true
-                    swipeRef.value?.invoke()
+                        dy > abs(dx) * 1.6f &&
+                        dy >= dismissThresholdPx
+                    ) {
+                        change.consume()
+                        dismissed = true
+                        swipeRef.value?.invoke()
+                        while (true) {
+                            val rest = awaitPointerEvent(PointerEventPass.Main)
+                            val c = rest.changes.find { it.id == pointerId }
+                                ?: return@awaitEachGesture
+                            c.consume()
+                            if (!c.pressed) return@awaitEachGesture
+                        }
+                    }
+                }
+
+                if (yieldedToChild) {
+                    if (!change.pressed) return@awaitEachGesture
                     while (true) {
                         val rest = awaitPointerEvent(PointerEventPass.Main)
-                        val c = rest.changes.find { it.id == pointerId } ?: return@awaitEachGesture
-                        c.consume()
+                        val c = rest.changes.find { it.id == pointerId }
+                            ?: return@awaitEachGesture
                         if (!c.pressed) return@awaitEachGesture
                     }
                 }
 
-                val event = awaitPointerEvent(PointerEventPass.Main)
-                val change = event.changes.find { it.id == pointerId } ?: break
-                if (change.isConsumed) childConsumed = true
-
-                if (!decidedSwipeDown) {
-                    val movedEnough = abs(dx) > touchSlop || abs(dy) > touchSlop
-                    val verticalIntent = abs(dy) > touchSlop && abs(dy) >= abs(dx) * 0.65f
-                    // 禁用下滑退出时：竖直意图直接让给歌词列表，绝不 consume
-                    if (!swipeEnabled && verticalIntent) {
-                        yieldedToChild = true
-                        while (true) {
-                            val rest = awaitPointerEvent(PointerEventPass.Main)
-                            val c = rest.changes.find { it.id == pointerId } ?: return@awaitEachGesture
-                            if (!c.pressed) return@awaitEachGesture
-                        }
-                    } else if (change.isConsumed) {
-                        // 按下瞬间被 clickable consume 仍继续跟踪；
-                        // 仅在已有明显「非下滑」位移后让给子手势（横滑切歌 / 列表滚动）
-                        val maybeDismiss = swipeEnabled && dy > touchSlop && dy >= abs(dx) * 0.85f
-                        if (movedEnough && !maybeDismiss) {
-                            yieldedToChild = true
-                            while (true) {
-                                val rest = awaitPointerEvent(PointerEventPass.Main)
-                                val c = rest.changes.find { it.id == pointerId }
-                                    ?: return@awaitEachGesture
-                                if (!c.pressed) return@awaitEachGesture
-                            }
-                        }
-                    }
-                }
-
-                if (yieldedToChild) break
-
                 if (!change.pressed) {
                     val heldLong =
                         System.currentTimeMillis() - downUptime >= longPressMs
-                    // 横屏空白单击放宽 slop：旋转后手指微抖不应判成无效点击
                     val tapSlop = touchSlop * 3.25f
-                    // 子级按钮（设置/旋转锁等）已消费本次手势时，绝不能再触发空白单击，
-                    // 否则会 openSettings 后又被 toggleControls → closeSettings 瞬间关掉。
                     if (
                         !childConsumed &&
-                        !decidedSwipeDown &&
+                        !dismissed &&
                         !yieldedToChild &&
                         !heldLong &&
                         abs(dx) < tapSlop &&
@@ -1078,6 +1068,7 @@ fun NowPlayingScreen(
     onSkipPrev: () -> Unit,
     onCyclePlaybackMode: () -> Unit,
     onOpenSourcePlaylist: (() -> Unit)? = null,
+    onOpenArtist: (() -> Unit)? = null,
     onPlayQueueIndex: (Int) -> Unit = {},
     /** 竖屏评论打开时挂起曲末自动下一首 */
     onHoldAutoAdvanceChange: (Boolean) -> Unit = {},
@@ -1143,6 +1134,18 @@ fun NowPlayingScreen(
     }
 
     val app = context.applicationContext as ZMusicApplication
+    var queueDemand by remember { mutableIntStateOf(0) }
+    LaunchedEffect(state.sourcePlaylistId) { queueDemand = 0 }
+    fun needQueueThrough(index: Int) {
+        val want = index + PlaylistTrackLoader.PAGE + 8
+        if (want > queueDemand) queueDemand = want
+    }
+    PlaylistQueueHydrator(
+        playlistId = state.sourcePlaylistId,
+        currentIndex = state.index,
+        loadedCount = state.queue.size,
+        demandMinCount = queueDemand,
+    )
     val userClient = remember { NcmUserClient() }
     val likedRepo = app.likedPlaylistRepository
     val likeScope = rememberCoroutineScope()
@@ -1155,27 +1158,20 @@ fun NowPlayingScreen(
     LaunchedEffect(track.id) {
         likedRepo.isLiked(track.id)?.let { trackLiked = it }
 
-        // 红心歌单缓存到达 / 本地点赞后同步 UI
         launch {
-            likedRepo.snapshot.collect { snap ->
-                if (snap != null) {
-                    trackLiked = snap.likedIds.contains(track.id)
-                }
+            likedRepo.snapshot.collect {
+                likedRepo.isLiked(track.id)?.let { trackLiked = it }
             }
         }
 
-        // 仍未知时再网络检查，并写入缓存供邻曲/回切复用
-        if (likedRepo.isLiked(track.id) == null) {
-            val cookie = app.sessionRepository.session.value?.cookie.orEmpty()
-            if (cookie.isNotEmpty()) {
-                try {
-                    val json = userClient.songLikeCheck(listOf(track.id), cookie)
-                    val liked = NcmLibraryParse.isTrackLiked(json, track.id)
-                    trackLiked = liked
-                    likedRepo.recordLikeStatus(track, liked)
-                } catch (_: Exception) {
-                    // 检查失败保持未喜欢态，不打断播放页
-                }
+        val cookie = app.sessionRepository.session.value?.cookie.orEmpty()
+        if (cookie.isNotEmpty()) {
+            try {
+                val json = userClient.songLikeCheck(listOf(track.id), cookie)
+                val liked = NcmLibraryParse.isTrackLiked(json, track.id)
+                trackLiked = liked
+                likedRepo.recordLikeStatus(track, liked)
+            } catch (_: Exception) {
             }
         }
     }
@@ -1184,20 +1180,21 @@ fun NowPlayingScreen(
         if (likeBusy || state.loadPending) return
         val cookie = app.sessionRepository.session.value?.cookie.orEmpty()
         if (cookie.isEmpty()) return
+        val likedTrack = track
         val next = !trackLiked
         trackLiked = next
-        likedRepo.applyLocalLike(track, liked = next)
+        likedRepo.applyLocalLike(likedTrack, liked = next)
         likeBusy = true
         likeScope.launch {
             try {
-                val json = userClient.likeSong(track.id, like = next, cookie = cookie)
+                val json = userClient.likeSong(likedTrack.id, like = next, cookie = cookie)
                 if (NcmJson.apiCode(json) != 200) {
                     trackLiked = !next
-                    likedRepo.applyLocalLike(track, liked = !next, scheduleSync = false)
+                    likedRepo.applyLocalLike(likedTrack, liked = !next, scheduleSync = false)
                 }
             } catch (_: Exception) {
                 trackLiked = !next
-                likedRepo.applyLocalLike(track, liked = !next, scheduleSync = false)
+                likedRepo.applyLocalLike(likedTrack, liked = !next, scheduleSync = false)
             } finally {
                 likeBusy = false
             }
@@ -1864,6 +1861,7 @@ fun NowPlayingScreen(
                     sourceTitle = srcTitle,
                     // 横屏：歌单名点击曾直接关全屏（像左上角隐形退出区）；改由右上角退出钮
                     onSourceClick = null,
+                    onArtistClick = onOpenArtist,
                     sliderDragging = sliderDragging,
                     sliderValue = sliderValue,
                     onSliderDragStart = {
@@ -1891,6 +1889,7 @@ fun NowPlayingScreen(
                     queue = state.queue,
                     queueIndex = state.index,
                     onPlayQueueIndex = onPlayQueueIndex,
+                    onNeedQueueThrough = ::needQueueThrough,
                     modifier = Modifier.weight(1f),
                 )
             } else {
@@ -2012,9 +2011,9 @@ fun NowPlayingScreen(
                     titleOnlyHeader = true,
                     headerTitle = "竖屏显示",
                     portraitContent = true,
-                    enableRealtimeHaze = false,
-                    panelShape = RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp),
-                    glassBlurRadius = 84.dp,
+                    enableRealtimeHaze = true,
+                    panelShape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp),
+                    glassBlurRadius = 56.dp,
                     showDragHandle = true,
                     onOpenCustomBackgroundEditor = {
                         portraitBackgroundEditorOpen = true
@@ -2072,6 +2071,7 @@ fun NowPlayingScreen(
                     currentIndex = state.index,
                     revealToken = portraitScoreRevealToken,
                     onPlayIndex = onPlayQueueIndex,
+                    hazeState = settingsHazeState,
                     onDragHandleVertical = { dragAmount ->
                         val deltaFrac = -dragAmount / maxSheetH
                         portraitScoreSheetDragVel =
@@ -2081,6 +2081,7 @@ fun NowPlayingScreen(
                         portraitSheetScope.launch { portraitScoreSheetFrac.snapTo(next) }
                     },
                     onDragHandleEnd = { snapPortraitScoreSheet() },
+                    onApproachEnd = ::needQueueThrough,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
@@ -2133,6 +2134,8 @@ fun NowPlayingScreen(
                             portraitCommentsSheetFrac.animateCommentSheetFrac(2f / 3f)
                         }
                     },
+                    coverUrl = track.coverUrl,
+                    hazeState = settingsHazeState,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
@@ -4204,6 +4207,7 @@ private fun LandscapeAlignedSongMeta(
     track: TrackRow,
     sourceTitle: String?,
     onSourceClick: (() -> Unit)?,
+    onArtistClick: (() -> Unit)? = null,
     onRevealControls: () -> Unit,
     titleAlign: TitleAlignMode,
     songMetaTopPad: Dp,
@@ -4225,6 +4229,7 @@ private fun LandscapeAlignedSongMeta(
 ) {
     val density = LocalDensity.current
     val srcIx = remember { MutableInteractionSource() }
+    val artistIx = remember { MutableInteractionSource() }
     val onMetaBoundsUpdated by rememberUpdatedState(onMetaVisualBoundsInRoot)
     val lineBounds = remember { mutableStateMapOf<Int, Rect>() }
     val centerModes = titleAlign == TitleAlignMode.VINYL ||
@@ -4311,6 +4316,20 @@ private fun LandscapeAlignedSongMeta(
                 ),
                 maxLines = 1,
                 onVisualBoundsInRoot = { reportLineBounds(1, it) },
+                modifier = Modifier.then(
+                    if (onArtistClick != null) {
+                        Modifier.clickable(
+                            interactionSource = artistIx,
+                            indication = null,
+                            onClick = {
+                                onRevealControls()
+                                onArtistClick()
+                            },
+                        )
+                    } else {
+                        Modifier
+                    },
+                ),
             )
             if (!sourceTitle.isNullOrBlank()) {
                 Spacer(Modifier.height(6.dp))
@@ -4560,6 +4579,7 @@ private fun LandscapePlayerBody(
     durationMs: Long,
     sourceTitle: String?,
     onSourceClick: (() -> Unit)?,
+    onArtistClick: (() -> Unit)? = null,
     sliderDragging: Boolean,
     sliderValue: Float,
     onSliderDragStart: () -> Unit,
@@ -4581,6 +4601,7 @@ private fun LandscapePlayerBody(
     queue: List<TrackRow>,
     queueIndex: Int,
     onPlayQueueIndex: (Int) -> Unit,
+    onNeedQueueThrough: (Int) -> Unit = {},
     modifier: Modifier = Modifier,
     notice: PlaybackNotice? = null,
     transportWakeToken: Int = 0,
@@ -4623,6 +4644,11 @@ private fun LandscapePlayerBody(
     /** 打开瞬间冻结的歌单/锚点（勿跟随后续切歌/手势） */
     var pickSessionQueue by remember { mutableStateOf<List<TrackRow>>(emptyList()) }
     var pickSessionAnchor by remember { mutableIntStateOf(0) }
+    LaunchedEffect(queue.size, vinylSongPickOpen) {
+        if (vinylSongPickOpen && queue.size > pickSessionQueue.size) {
+            pickSessionQueue = mergePlaylistQueue(pickSessionQueue, queue)
+        }
+    }
     var pendingPickPlayIndex by remember { mutableStateOf<Int?>(null) }
     /** 确认切歌后：主黑胶已换新曲但仍被选歌交接盘盖住，用于预热封面避免闪旧曲 */
     var pickRevealMainUnderHandoff by remember { mutableStateOf(false) }
@@ -5601,7 +5627,8 @@ private fun LandscapePlayerBody(
                             vinylColorEditorOpen || editorVinylCentered || editorT > 0.001f ->
                                 closeVinylColorEditor()
                             scoreOpen || scoreT > 0.001f -> closeScore()
-                            settingsOpen -> closeSettings()
+                            // 设置列表要垂直滚动；点外侧 / 返回 / 齿轮关闭
+                            settingsOpen -> Unit
                             else -> onDismiss()
                         }
                     },
@@ -5918,6 +5945,7 @@ private fun LandscapePlayerBody(
             track = track,
             sourceTitle = sourceTitle,
             onSourceClick = onSourceClick,
+            onArtistClick = onArtistClick,
             onRevealControls = { revealControls() },
             titleAlign = displayPrefs.titleAlign,
             songMetaTopPad = songMetaTopPad,
@@ -6054,6 +6082,7 @@ private fun LandscapePlayerBody(
                             startScoreFlight(idx, center, sizePx)
                         },
                         openGeneration = scoreOpenGeneration,
+                        onApproachEnd = onNeedQueueThrough,
                         modifier = Modifier
                             .fillMaxSize()
                             .graphicsLayer {
@@ -6276,6 +6305,7 @@ private fun LandscapePlayerBody(
                         vinylSongPickPhase = VinylSongPickPhase.Browsing
                     }
                 },
+                onApproachEnd = onNeedQueueThrough,
                 modifier = Modifier.fillMaxSize(),
             )
         }

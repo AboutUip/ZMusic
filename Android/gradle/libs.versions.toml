@@ -1,6 +1,6 @@
 [versions]
 agp = "8.13.0-rc02"
-kotlin = "2.1.21"
+kotlin = "2.2.21"
 compose-bom = "2025.01.00"
 activityCompose = "1.10.0"
 navigationCompose = "2.8.5"
@@ -15,6 +15,7 @@ androidxCore = "1.15.0"
 okhttp = "4.12.0"
 securityCrypto = "1.1.0-alpha06"
 haze = "1.6.10"
+kyant-backdrop = "1.0.6"
 zxing = "3.5.3"
 camerax = "1.4.1"
 
@@ -44,6 +45,8 @@ compose-foundation = { group = "androidx.compose.foundation", name = "foundation
 activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
 navigation-compose = { group = "androidx.navigation", name = "navigation-compose", version.ref = "navigationCompose" }
 haze = { group = "dev.chrisbanes.haze", name = "haze", version.ref = "haze" }
+backdrop = { group = "io.github.kyant0", name = "backdrop", version.ref = "kyant-backdrop" }
+compose-material-icons-extended = { group = "androidx.compose.material", name = "material-icons-extended" }
 zxing-core = { group = "com.google.zxing", name = "core", version.ref = "zxing" }
 androidx-camera-camera2 = { group = "androidx.camera", name = "camera-camera2", version.ref = "camerax" }
 androidx-camera-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", version.ref = "camerax" }

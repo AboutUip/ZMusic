@@ -23,6 +23,22 @@ class NcmUserClient(
         )
     }
 
+    suspend fun userLevel(cookie: String): JSONObject = withContext(Dispatchers.IO) {
+        get("/user/level", mapOf("cookie" to cookie, "timestamp" to ts()))
+    }
+
+    suspend fun vipInfo(cookie: String, uid: Long? = null): JSONObject = withContext(Dispatchers.IO) {
+        val q = mutableMapOf("cookie" to cookie, "timestamp" to ts())
+        if (uid != null && uid > 0L) q["uid"] = uid.toString()
+        get("/vip/info/v2", q)
+    }
+
+    suspend fun vipInfoLegacy(cookie: String, uid: Long? = null): JSONObject = withContext(Dispatchers.IO) {
+        val q = mutableMapOf("cookie" to cookie, "timestamp" to ts())
+        if (uid != null && uid > 0L) q["uid"] = uid.toString()
+        get("/vip/info", q)
+    }
+
     suspend fun userPlaylist(uid: Long, cookie: String, limit: Int = 60, offset: Int = 0): JSONObject =
         withContext(Dispatchers.IO) {
             get(
@@ -89,6 +105,108 @@ class NcmUserClient(
             )
         }
 
+    /** 歌单曲目分页；`offset` 为已加载首数。 */
+    suspend fun playlistTrackAll(
+        playlistId: Long,
+        cookie: String,
+        limit: Int,
+        offset: Int,
+    ): JSONObject = withContext(Dispatchers.IO) {
+        get(
+            "/playlist/track/all",
+            mapOf(
+                "id" to playlistId.toString(),
+                "limit" to limit.coerceAtLeast(1).toString(),
+                "offset" to offset.coerceAtLeast(0).toString(),
+                "cookie" to cookie,
+                "timestamp" to ts(),
+            ),
+        )
+    }
+
+    suspend fun playlistCreate(name: String, cookie: String): JSONObject =
+        withContext(Dispatchers.IO) {
+            get(
+                "/playlist/create",
+                mapOf(
+                    "name" to name,
+                    "cookie" to cookie,
+                    "timestamp" to ts(),
+                ),
+            )
+        }
+
+    suspend fun playlistDelete(id: Long, cookie: String): JSONObject =
+        withContext(Dispatchers.IO) {
+            get(
+                "/playlist/delete",
+                mapOf(
+                    "id" to id.toString(),
+                    "cookie" to cookie,
+                    "timestamp" to ts(),
+                ),
+            )
+        }
+
+    suspend fun playlistNameUpdate(id: Long, name: String, cookie: String): JSONObject =
+        withContext(Dispatchers.IO) {
+            get(
+                "/playlist/name/update",
+                mapOf(
+                    "id" to id.toString(),
+                    "name" to name,
+                    "cookie" to cookie,
+                    "timestamp" to ts(),
+                ),
+            )
+        }
+
+    /** [op] 为 `add` 或 `del`。 */
+    suspend fun playlistTracks(
+        op: String,
+        playlistId: Long,
+        trackIds: List<Long>,
+        cookie: String,
+    ): JSONObject = withContext(Dispatchers.IO) {
+        get(
+            "/playlist/tracks",
+            mapOf(
+                "op" to op,
+                "pid" to playlistId.toString(),
+                "tracks" to trackIds.joinToString(","),
+                "cookie" to cookie,
+                "timestamp" to ts(),
+            ),
+        )
+    }
+
+    /** 评论数 / 是否收藏 / 播放数，比完整详情轻。 */
+    suspend fun playlistDetailDynamic(playlistId: Long, cookie: String): JSONObject =
+        withContext(Dispatchers.IO) {
+            get(
+                "/playlist/detail/dynamic",
+                mapOf(
+                    "id" to playlistId.toString(),
+                    "cookie" to cookie,
+                    "timestamp" to ts(),
+                ),
+            )
+        }
+
+    /** [subscribe]=true 收藏，false 取消收藏。 */
+    suspend fun playlistSubscribe(id: Long, subscribe: Boolean, cookie: String): JSONObject =
+        withContext(Dispatchers.IO) {
+            get(
+                "/playlist/subscribe",
+                mapOf(
+                    "t" to if (subscribe) "1" else "2",
+                    "id" to id.toString(),
+                    "cookie" to cookie,
+                    "timestamp" to ts(),
+                ),
+            )
+        }
+
     suspend fun songDetail(ids: List<Long>, cookie: String): JSONObject = withContext(Dispatchers.IO) {
         val idStr = ids.joinToString(",")
         get(
@@ -129,6 +247,248 @@ class NcmUserClient(
         )
     }
 
+    suspend fun banner(cookie: String, type: Int = 1): JSONObject = withContext(Dispatchers.IO) {
+        get(
+            "/banner",
+            mapOf("type" to type.toString(), "cookie" to cookie, "timestamp" to ts()),
+        )
+    }
+
+    suspend fun personalizedPlaylists(cookie: String, limit: Int = 12): JSONObject =
+        withContext(Dispatchers.IO) {
+            get(
+                "/personalized",
+                mapOf(
+                    "limit" to limit.toString(),
+                    "cookie" to cookie,
+                    "timestamp" to ts(),
+                ),
+            )
+        }
+
+    suspend fun personalizedNewSongs(cookie: String, limit: Int = 10): JSONObject =
+        withContext(Dispatchers.IO) {
+            get(
+                "/personalized/newsong",
+                mapOf(
+                    "limit" to limit.toString(),
+                    "cookie" to cookie,
+                    "timestamp" to ts(),
+                ),
+            )
+        }
+
+    suspend fun personalizedMv(cookie: String): JSONObject = withContext(Dispatchers.IO) {
+        get("/personalized/mv", mapOf("cookie" to cookie, "timestamp" to ts()))
+    }
+
+    suspend fun mvFirst(cookie: String, limit: Int = 12): JSONObject = withContext(Dispatchers.IO) {
+        get(
+            "/mv/first",
+            mapOf(
+                "limit" to limit.toString(),
+                "cookie" to cookie,
+                "timestamp" to ts(),
+            ),
+        )
+    }
+
+    /** 网友精选碟，支持 offset，刷新推荐时用来换一批。 */
+    suspend fun topPlaylists(
+        cookie: String,
+        limit: Int = 15,
+        offset: Int = 0,
+        order: String = "hot",
+    ): JSONObject = withContext(Dispatchers.IO) {
+        get(
+            "/top/playlist",
+            mapOf(
+                "limit" to limit.toString(),
+                "offset" to offset.toString(),
+                "order" to order,
+                "cookie" to cookie,
+                "timestamp" to ts(),
+            ),
+        )
+    }
+
+    /** 登录后每日推荐歌单。 */
+    suspend fun recommendResource(cookie: String): JSONObject = withContext(Dispatchers.IO) {
+        get("/recommend/resource", mapOf("cookie" to cookie, "timestamp" to ts()))
+    }
+
+    suspend fun artistHotSongs(id: Long, cookie: String): JSONObject = withContext(Dispatchers.IO) {
+        get(
+            "/artists",
+            mapOf("id" to id.toString(), "cookie" to cookie, "timestamp" to ts()),
+        )
+    }
+
+    suspend fun artistDetail(id: Long, cookie: String): JSONObject = withContext(Dispatchers.IO) {
+        get(
+            "/artist/detail",
+            mapOf("id" to id.toString(), "cookie" to cookie, "timestamp" to ts()),
+        )
+    }
+
+    suspend fun artistDetailDynamic(id: Long, cookie: String): JSONObject = withContext(Dispatchers.IO) {
+        get(
+            "/artist/detail/dynamic",
+            mapOf("id" to id.toString(), "cookie" to cookie, "timestamp" to ts()),
+        )
+    }
+
+    suspend fun artistDesc(id: Long, cookie: String): JSONObject = withContext(Dispatchers.IO) {
+        get(
+            "/artist/desc",
+            mapOf("id" to id.toString(), "cookie" to cookie, "timestamp" to ts()),
+        )
+    }
+
+    suspend fun artistTopSongs(id: Long, cookie: String): JSONObject = withContext(Dispatchers.IO) {
+        get(
+            "/artist/top/song",
+            mapOf("id" to id.toString(), "cookie" to cookie, "timestamp" to ts()),
+        )
+    }
+
+    suspend fun artistSongs(
+        id: Long,
+        cookie: String,
+        order: String = "hot",
+        limit: Int = 50,
+        offset: Int = 0,
+    ): JSONObject = withContext(Dispatchers.IO) {
+        get(
+            "/artist/songs",
+            mapOf(
+                "id" to id.toString(),
+                "order" to order,
+                "limit" to limit.toString(),
+                "offset" to offset.toString(),
+                "cookie" to cookie,
+                "timestamp" to ts(),
+            ),
+        )
+    }
+
+    suspend fun artistAlbums(
+        id: Long,
+        cookie: String,
+        limit: Int = 20,
+        offset: Int = 0,
+    ): JSONObject = withContext(Dispatchers.IO) {
+        get(
+            "/artist/album",
+            mapOf(
+                "id" to id.toString(),
+                "limit" to limit.toString(),
+                "offset" to offset.toString(),
+                "cookie" to cookie,
+                "timestamp" to ts(),
+            ),
+        )
+    }
+
+    suspend fun simiArtist(id: Long, cookie: String): JSONObject = withContext(Dispatchers.IO) {
+        get(
+            "/simi/artist",
+            mapOf("id" to id.toString(), "cookie" to cookie, "timestamp" to ts()),
+        )
+    }
+
+    /** `t=1` 收藏，其它值取消收藏。 */
+    suspend fun artistSub(id: Long, follow: Boolean, cookie: String): JSONObject =
+        withContext(Dispatchers.IO) {
+            get(
+                "/artist/sub",
+                mapOf(
+                    "id" to id.toString(),
+                    "t" to if (follow) "1" else "0",
+                    "cookie" to cookie,
+                    "timestamp" to ts(),
+                ),
+            )
+        }
+
+    suspend fun recommendSongs(cookie: String): JSONObject = withContext(Dispatchers.IO) {
+        get("/recommend/songs", mapOf("cookie" to cookie, "timestamp" to ts()))
+    }
+
+    suspend fun personalFm(cookie: String): JSONObject = withContext(Dispatchers.IO) {
+        get("/personal_fm", mapOf("cookie" to cookie, "timestamp" to ts()))
+    }
+
+    suspend fun searchHotDetail(cookie: String): JSONObject = withContext(Dispatchers.IO) {
+        get("/search/hot/detail", mapOf("cookie" to cookie, "timestamp" to ts()))
+    }
+
+    /** 搜索联想。`type=mobile` 为移动端关键词建议。 */
+    suspend fun searchSuggest(
+        keywords: String,
+        cookie: String,
+        mobile: Boolean = true,
+    ): JSONObject = withContext(Dispatchers.IO) {
+        val q = mutableMapOf(
+            "keywords" to keywords,
+            "cookie" to cookie,
+            "timestamp" to ts(),
+        )
+        if (mobile) q["type"] = "mobile"
+        get("/search/suggest", q)
+    }
+
+    suspend fun cloudSearch(
+        keywords: String,
+        cookie: String,
+        type: Int = 1,
+        limit: Int = 30,
+        offset: Int = 0,
+    ): JSONObject = withContext(Dispatchers.IO) {
+        get(
+            "/cloudsearch",
+            mapOf(
+                "keywords" to keywords,
+                "type" to type.toString(),
+                "limit" to limit.toString(),
+                "offset" to offset.toString(),
+                "cookie" to cookie,
+                "timestamp" to ts(),
+            ),
+        )
+    }
+
+    suspend fun search(
+        keywords: String,
+        cookie: String,
+        type: Int = 1,
+        limit: Int = 30,
+        offset: Int = 0,
+    ): JSONObject = withContext(Dispatchers.IO) {
+        get(
+            "/search",
+            mapOf(
+                "keywords" to keywords,
+                "type" to type.toString(),
+                "limit" to limit.toString(),
+                "offset" to offset.toString(),
+                "cookie" to cookie,
+                "timestamp" to ts(),
+            ),
+        )
+    }
+
+    suspend fun album(id: Long, cookie: String): JSONObject = withContext(Dispatchers.IO) {
+        get(
+            "/album",
+            mapOf("id" to id.toString(), "cookie" to cookie, "timestamp" to ts()),
+        )
+    }
+
+    suspend fun toplistDetail(cookie: String): JSONObject = withContext(Dispatchers.IO) {
+        get("/toplist/detail", mapOf("cookie" to cookie, "timestamp" to ts()))
+    }
+
     suspend fun lyric(songId: Long, cookie: String): JSONObject = withContext(Dispatchers.IO) {
         get(
             "/lyric",
@@ -141,8 +501,9 @@ class NcmUserClient(
     }
 
     /**
-     * 新版评论：`type=0` 歌曲；[sortType] 1 推荐 / 2 热度 / 3 时间。
-     * 时间序翻页需传上一页 [cursor]。
+     * 新版评论：`type=0` 歌曲。
+     * sortType：1/99 推荐，2 热度，3 时间（对齐 NeteaseCloudMusicApi `comment_new`）。
+     * sortType=3 翻页须传上一页 [cursor]（上一条 time）；热度只靠 pageNo。
      */
     suspend fun commentNew(
         songId: Long,
@@ -301,6 +662,88 @@ class NcmUserClient(
         if (!cursor.isNullOrBlank()) q["cursor"] = cursor
         if (!idCursor.isNullOrBlank()) q["idCursor"] = idCursor
         get("/comment/hug/list", q)
+    }
+
+    suspend fun mvDetail(mvid: Long, cookie: String): JSONObject = withContext(Dispatchers.IO) {
+        get(
+            "/mv/detail",
+            mapOf("mvid" to mvid.toString(), "cookie" to cookie, "timestamp" to ts()),
+        )
+    }
+
+    /** [r] 为分辨率，常见 240 / 480 / 720 / 1080。 */
+    suspend fun mvUrl(id: Long, cookie: String, r: Int = 720): JSONObject =
+        withContext(Dispatchers.IO) {
+            get(
+                "/mv/url",
+                mapOf(
+                    "id" to id.toString(),
+                    "r" to r.toString(),
+                    "cookie" to cookie,
+                    "timestamp" to ts(),
+                ),
+            )
+        }
+
+    suspend fun simiMv(mvid: Long, cookie: String): JSONObject = withContext(Dispatchers.IO) {
+        get(
+            "/simi/mv",
+            mapOf("mvid" to mvid.toString(), "cookie" to cookie, "timestamp" to ts()),
+        )
+    }
+
+    suspend fun artistMv(
+        artistId: Long,
+        cookie: String,
+        limit: Int = 30,
+        offset: Int = 0,
+    ): JSONObject = withContext(Dispatchers.IO) {
+        get(
+            "/artist/mv",
+            mapOf(
+                "id" to artistId.toString(),
+                "limit" to limit.toString(),
+                "offset" to offset.toString(),
+                "cookie" to cookie,
+                "timestamp" to ts(),
+            ),
+        )
+    }
+
+    suspend fun mvAll(
+        cookie: String,
+        limit: Int = 30,
+        offset: Int = 0,
+        order: String = "最热",
+    ): JSONObject = withContext(Dispatchers.IO) {
+        get(
+            "/mv/all",
+            mapOf(
+                "area" to "全部",
+                "type" to "全部",
+                "order" to order,
+                "limit" to limit.toString(),
+                "offset" to offset.toString(),
+                "cookie" to cookie,
+                "timestamp" to ts(),
+            ),
+        )
+    }
+
+    suspend fun mvExclusive(
+        cookie: String,
+        limit: Int = 30,
+        offset: Int = 0,
+    ): JSONObject = withContext(Dispatchers.IO) {
+        get(
+            "/mv/exclusive/rcmd",
+            mapOf(
+                "limit" to limit.toString(),
+                "offset" to offset.toString(),
+                "cookie" to cookie,
+                "timestamp" to ts(),
+            ),
+        )
     }
 
     private fun get(path: String, query: Map<String, String>): JSONObject {

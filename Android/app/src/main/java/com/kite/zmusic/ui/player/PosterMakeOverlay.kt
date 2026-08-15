@@ -1,7 +1,6 @@
 package com.kite.zmusic.ui.player
 
 import android.graphics.Bitmap
-import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Animatable
@@ -82,6 +81,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.kite.zmusic.data.LrcLine
 import com.kite.zmusic.data.TrackRow
+import com.kite.zmusic.ui.notice.showIslandNotice
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -141,8 +141,11 @@ fun PosterMakeOverlay(
     var busy by remember { mutableStateOf(false) }
     var renderedBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var showRenderedPreview by remember { mutableStateOf(false) }
-    var hint by remember { mutableStateOf<String?>(null) }
     val timeText = rememberPosterTimeText()
+
+    fun flash(msg: String) {
+        context.showIslandNotice(msg, track.coverUrl)
+    }
 
     LaunchedEffect(open) {
         if (open) {
@@ -156,14 +159,7 @@ fun PosterMakeOverlay(
             renderedBitmap?.recycle()
             renderedBitmap = null
             showRenderedPreview = false
-            hint = null
         }
-    }
-
-    LaunchedEffect(hint) {
-        val msg = hint ?: return@LaunchedEffect
-        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-        hint = null
     }
 
     fun closeAll() {
@@ -259,7 +255,7 @@ fun PosterMakeOverlay(
                             if (index in next) {
                                 next.remove(index)
                             } else if (next.size >= PosterMaxLyricLines) {
-                                hint = "最多选择 ${PosterMaxLyricLines} 行"
+                                flash("最多选择 ${PosterMaxLyricLines} 行")
                                 return@PosterLyricPickStep
                             } else {
                                 next.add(index)
@@ -319,14 +315,14 @@ fun PosterMakeOverlay(
                 },
                 onNextLyrics = {
                     if (selectedIndices.isEmpty()) {
-                        hint = "请先选择歌词"
+                        flash("请先选择歌词")
                         return@PosterWizardBottomBar
                     }
                     step = PosterWizardStep.PresetPick
                 },
                 onContinuePreset = {
                     if (presetId == null) {
-                        hint = "请先选择预设"
+                        flash("请先选择预设")
                         return@PosterWizardBottomBar
                     }
                     step = PosterWizardStep.Edit
@@ -351,10 +347,10 @@ fun PosterMakeOverlay(
                             renderedBitmap = bmp
                             prev?.recycle()
                             busy = false
-                            hint = "已渲染，可点查看"
+                            flash("已渲染，可点查看")
                         } else {
                             busy = false
-                            hint = "渲染失败，请重试"
+                            flash("渲染失败，请重试")
                         }
                     }
                 },
@@ -375,7 +371,7 @@ fun PosterMakeOverlay(
                         }.getOrNull()
                         if (bmp == null) {
                             busy = false
-                            hint = "保存失败，请重试"
+                            flash("保存失败，请重试")
                             return@launch
                         }
                         val result = withContext(Dispatchers.IO) {
@@ -387,14 +383,14 @@ fun PosterMakeOverlay(
                         }
                         busy = false
                         result.onSuccess {
-                            hint = "已保存到相册"
+                            flash("已保存到相册")
                             closeAll()
                         }.onFailure {
-                            hint = "保存失败，请重试"
+                            flash("保存失败，请重试")
                         }
                     }
                 },
-                onDisabledHint = { msg -> hint = msg },
+                onDisabledHint = { msg -> flash(msg) },
             )
         }
 

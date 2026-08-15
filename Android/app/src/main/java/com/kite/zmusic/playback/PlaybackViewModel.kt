@@ -44,9 +44,12 @@ class PlaybackViewModel(
         startIndex: Int,
         sourcePlaylistId: Long? = null,
         sourcePlaylistTitle: String? = null,
+        fmSession: Boolean = false,
     ) {
-        bridge.playQueue(tracks, startIndex, sourcePlaylistId, sourcePlaylistTitle)
+        bridge.playQueue(tracks, startIndex, sourcePlaylistId, sourcePlaylistTitle, fmSession)
     }
+
+    fun startPersonalFm(onStarted: () -> Unit = {}) = bridge.startPersonalFm(onStarted)
 
     fun playIndex(index: Int) = bridge.playIndex(index)
 

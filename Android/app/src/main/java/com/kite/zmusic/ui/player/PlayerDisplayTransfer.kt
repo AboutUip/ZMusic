@@ -4,7 +4,6 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.view.ViewGroup
-import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -81,6 +80,7 @@ import com.google.zxing.common.HybridBinarizer
 import com.kite.zmusic.data.PlayerDisplayPrefs
 import com.kite.zmusic.data.PlayerDisplayPrefsCodec
 import com.kite.zmusic.data.lerpPlayerDisplayPrefs
+import com.kite.zmusic.ui.notice.showIslandNotice
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeStyle
 import dev.chrisbanes.haze.HazeTint
@@ -159,7 +159,7 @@ fun rememberPlayerDisplayTransferHost(
     val onPrefsChangeState = rememberUpdatedState(onPrefsChange)
 
     fun toast(msg: String) {
-        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+        context.showIslandNotice(msg)
     }
 
     fun openPhase(next: TransferPhase) {

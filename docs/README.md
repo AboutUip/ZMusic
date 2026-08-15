@@ -16,9 +16,10 @@
 
 1. 根入门与核心约定：[`../README.md`](../README.md)
 2. Android 架构与主链路：[`ARCHITECTURE.md`](./ARCHITECTURE.md)
-3. Windows 架构与已实现能力：[`WINDOWS.md`](./WINDOWS.md)
-4. Windows 安装包分发：[`WINDOWS-DISTRIBUTION.md`](./WINDOWS-DISTRIBUTION.md)
-5. 接口契约离线全文：[`raw/home.md`](./raw/home.md)
+3. Android 应用内灵动岛通知：[`ANDROID-ISLAND-NOTICE.md`](./ANDROID-ISLAND-NOTICE.md)
+4. Windows 架构与已实现能力：[`WINDOWS.md`](./WINDOWS.md)
+5. Windows 安装包分发：[`WINDOWS-DISTRIBUTION.md`](./WINDOWS-DISTRIBUTION.md)
+6. 接口契约离线全文：[`raw/home.md`](./raw/home.md)
 
 ---
 
@@ -32,6 +33,7 @@
 | [`../Distribution/Windows/`](../Distribution/Windows) | Windows 安装包（Setup / MSI / Uninstall） |
 | [`../Distribution/Android/`](../Distribution/Android) | Android 发行产物脚本（输出到 `artifacts/android/`） |
 | [`ARCHITECTURE.md`](./ARCHITECTURE.md) | Android 端架构、核心模块与数据流 |
+| [`ANDROID-ISLAND-NOTICE.md`](./ANDROID-ISLAND-NOTICE.md) | Android 应用内灵动岛通知（队列、动画、接入） |
 | [`WINDOWS.md`](./WINDOWS.md) | Windows 端架构、启动流、播放与目录 |
 | [`WINDOWS-DISTRIBUTION.md`](./WINDOWS-DISTRIBUTION.md) | Windows 分发：Setup.exe + 静默 MSI / 卸载 / 签名 |
 | [`raw/home.md`](./raw/home.md) | 网易云兼容 API 文档离线全文 |
