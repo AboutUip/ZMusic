@@ -21,6 +21,7 @@ class TrackExportException(message: String) : Exception(message)
  */
 class TrackExportRepository(
     context: Context,
+    private val audioQualityStore: AudioQualityStore,
     private val userClient: NcmUserClient = NcmUserClient(),
 ) {
     private val appContext = context.applicationContext
@@ -96,10 +97,12 @@ class TrackExportRepository(
     }
 
     private suspend fun resolveAudioUrl(trackId: Long, cookie: String): String? {
-        val primary = userClient.songUrl(listOf(trackId), cookie)
-        NcmPlaybackParse.songUrlForId(primary, trackId)?.let { return it }
-        val v1 = userClient.songUrlV1(listOf(trackId), cookie, level = "exhigh")
-        return NcmPlaybackParse.songUrlForId(v1, trackId)
+        return PlayUrlResolver.resolve(
+            userClient = userClient,
+            trackId = trackId,
+            cookie = cookie,
+            quality = audioQualityStore.current(),
+        )
     }
 
     private fun downloadBytes(url: String): ByteArray? {

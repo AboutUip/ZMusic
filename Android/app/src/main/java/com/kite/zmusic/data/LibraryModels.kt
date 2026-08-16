@@ -74,6 +74,30 @@ private val DEFAULT_PLAYLIST_COVER_MARKERS = listOf(
     "uetuwe7pvjbpypwoshnkga",
 )
 
+/**
+ * 是否为「当前账号」的红心歌单。
+ * 他人「喜欢的音乐」也是 specialType=5，收藏后绝不能算进「我喜欢的音乐」。
+ */
+fun isSelfHeartPlaylist(
+    selfUid: Long,
+    creatorId: Long,
+    subscribed: Boolean,
+    specialType: Int,
+    name: String,
+): Boolean {
+    val owned = selfUid > 0L && creatorId == selfUid
+    if (subscribed && !owned) return false
+    if (owned) {
+        return specialType == 5 || isLikedMusicPlaylistName(name)
+    }
+    return specialType == 5 && creatorId <= 0L
+}
+
+fun isLikedMusicPlaylistName(name: String): Boolean {
+    val n = name.trim()
+    return n == "我喜欢的音乐" || n.endsWith("喜欢的音乐")
+}
+
 /** 歌单详情里用于收藏按钮的元数据（不含曲目）。 */
 data class PlaylistSubscribeMeta(
     val id: Long,
@@ -90,12 +114,13 @@ data class PlaylistSubscribeMeta(
 ) {
     fun isOwned(selfUid: Long): Boolean = selfUid > 0L && creatorId == selfUid
 
-    fun isHeart(selfUid: Long): Boolean =
-        isOwned(selfUid) && (
-            specialType == 5 ||
-                name == "我喜欢的音乐" ||
-                name.endsWith("喜欢的音乐")
-            )
+    fun isHeart(selfUid: Long): Boolean = isSelfHeartPlaylist(
+        selfUid = selfUid,
+        creatorId = creatorId,
+        subscribed = subscribed,
+        specialType = specialType,
+        name = name,
+    )
 
     /** 自己的歌单（含我喜欢的音乐）不能收藏 / 取消收藏。 */
     fun canSubscribe(selfUid: Long): Boolean = !isOwned(selfUid)

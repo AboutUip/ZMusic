@@ -85,6 +85,8 @@ import com.kite.zmusic.ui.catalog.CatalogOverlayHost
 import com.kite.zmusic.ui.catalog.MainOverlay
 import com.kite.zmusic.ui.catalog.PlaylistManageBar
 import com.kite.zmusic.ui.catalog.PlaylistManageBridge
+import com.kite.zmusic.ui.library.SpaceDarkBarsProgress
+import com.kite.zmusic.ui.library.spaceChromeLeave
 import com.kite.zmusic.ui.mv.MvPlayerScreen
 import com.kite.zmusic.ui.player.MiniPlayerBar
 import com.kite.zmusic.ui.player.NowPlayingScreen
@@ -93,6 +95,7 @@ import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import kotlin.math.abs
+import kotlin.math.floor
 import kotlin.math.roundToInt
 import kotlin.math.sign
 import kotlinx.coroutines.Dispatchers
@@ -111,9 +114,9 @@ private val DockSpring = spring<Float>(
 private const val CompactRangePx = 280f
 private const val CompactMaxStep = 0.045f
 private const val CompactActivatePx = 56f
-/** Dock 松手切页：不到半格也能切；轻甩按速度切。 */
-private const val DockCommitFraction = 0.18f
-private const val DockFlingTabsPerSec = 1.6f
+/** Dock 松手切页：轻滑过约 1/4 格即切；滑得够远可一次到个人，不限一页。 */
+private const val DockCommitFraction = 0.22f
+private const val DockFlingTabsPerSec = 3.2f
 
 /**
  * 浅色主壳：内容全幅滚动，底部悬浮 Dock + 迷你播放条叠在内容之上。
@@ -393,33 +396,45 @@ fun MainShell(
         val info = pagerState.layoutInfo
         val stride = (info.pageSize + info.pageSpacing).toFloat()
         if (stride <= 0f) return
-        pagerState.dispatchRawDelta(deltaTabs * stride * 1.2f)
+        pagerState.dispatchRawDelta(deltaTabs * stride)
     }
 
-    fun settleDockPager(velocityTabsPerSec: Float) {
+    fun settleDockPager(velocityTabsPerSec: Float, startPage: Int) {
         expandDock()
         val last = MainPagerDestinations.lastIndex
-        val settled = pagerState.settledPage
+        val origin = startPage.coerceIn(0, last)
         val pos = (pagerState.currentPage + pagerState.currentPageOffsetFraction)
             .coerceIn(0f, last.toFloat())
-        val delta = pos - settled
-        val target = when {
-            velocityTabsPerSec > DockFlingTabsPerSec && settled < last -> settled + 1
-            velocityTabsPerSec < -DockFlingTabsPerSec && settled > 0 -> settled - 1
-            abs(delta) >= DockCommitFraction -> {
-                (settled + sign(delta).toInt()).coerceIn(0, last)
-            }
-            else -> settled
+        val travel = pos - origin
+        val direction = when {
+            abs(travel) > 0.001f -> sign(travel).toInt()
+            abs(velocityTabsPerSec) > 0.001f -> sign(velocityTabsPerSec).toInt()
+            else -> 0
         }
-        if (target == settled && abs(pagerState.currentPageOffsetFraction) < 0.002f) {
+        val distanceSteps = if (abs(travel) < DockCommitFraction) {
+            0
+        } else {
+            floor(abs(travel) + (1f - DockCommitFraction)).toInt()
+        }
+        val flingStep =
+            if (distanceSteps == 0 && abs(velocityTabsPerSec) >= DockFlingTabsPerSec) 1 else 0
+        val steps = (distanceSteps + flingStep).coerceAtLeast(0)
+        val target = if (direction == 0 || steps == 0) {
+            origin
+        } else {
+            (origin + direction * steps).coerceIn(0, last)
+        }
+        if (target == pagerState.currentPage &&
+            abs(pagerState.currentPageOffsetFraction) < 0.002f
+        ) {
             return
         }
         scope.launch {
             pagerState.animateScrollToPage(
                 target,
                 animationSpec = spring(
-                    dampingRatio = 0.86f,
-                    stiffness = 900f,
+                    dampingRatio = 0.92f,
+                    stiffness = 520f,
                 ),
             )
         }
@@ -525,7 +540,7 @@ fun MainShell(
     when {
         overlay is MainOverlay.Mv && landscape -> MainDarkSystemBars()
         overlay is MainOverlay.Mv -> MainMvPortraitSystemBars()
-        showFullPlayer || userSpaceProgress > 0.42f -> MainDarkSystemBars()
+        showFullPlayer || userSpaceProgress > SpaceDarkBarsProgress -> MainDarkSystemBars()
         else -> MainLightSystemBars()
     }
 
@@ -540,7 +555,7 @@ fun MainShell(
     ) {
         Row(Modifier.fillMaxSize()) {
             if (landscape) {
-                val spaceT = userSpaceProgress.coerceIn(0f, 1f)
+                val spaceT = spaceChromeLeave(userSpaceProgress)
                 val railLayoutW = LandscapeRailWidth * (1f - spaceT)
                 if (railLayoutW > 0.5.dp) {
                     val slidePx = with(density) { (LandscapeRailWidth - railLayoutW).toPx() }
@@ -565,7 +580,7 @@ fun MainShell(
                             },
                             modifier = Modifier.graphicsLayer {
                                 translationX = -slidePx
-                                alpha = (1f - spaceT * 1.15f).coerceIn(0f, 1f)
+                                alpha = (1f - spaceT).coerceIn(0f, 1f)
                             },
                         )
                     }
@@ -654,9 +669,9 @@ fun MainShell(
                     },
                 )
                 .graphicsLayer {
-                    val t = userSpaceProgress.coerceIn(0f, 1f)
-                    translationY = t * 220f
-                    alpha = (1f - t * 1.15f).coerceIn(0f, 1f)
+                    val leave = spaceChromeLeave(userSpaceProgress)
+                    translationY = leave * 220f
+                    alpha = (1f - leave).coerceIn(0f, 1f)
                 },
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {

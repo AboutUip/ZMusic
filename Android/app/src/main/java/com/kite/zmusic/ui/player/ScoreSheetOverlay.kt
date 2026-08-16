@@ -1,15 +1,9 @@
 package com.kite.zmusic.ui.player
 
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -21,6 +15,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -28,7 +23,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -48,17 +42,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -66,32 +58,32 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.kite.zmusic.R
 import com.kite.zmusic.data.TrackRow
 import com.kite.zmusic.data.VinylPlateColors
 import com.kite.zmusic.ui.common.UrlImage
 import com.kite.zmusic.ui.common.UrlImageCache
+import com.kite.zmusic.ui.main.MainPalette
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.min
 import kotlin.math.roundToInt
 import kotlin.math.sin
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.yield
 
-private val LabelColor = Color(0xFFFFFFFF)
-private val Accent = Color(0xFF9AF0F0)
-private val IconTint = Color(0xFFD5DEE8)
-private val HintColor = Color(0xFFE8F0F8)
+private val LabelColor = MainPalette.Ink
+private val Accent = MainPalette.Accent
+private val IconTint = MainPalette.Ink
+private val HintColor = MainPalette.Secondary
 private val PanelShape = RoundedCornerShape(18.dp)
 private val CoverShape = RoundedCornerShape(8.dp)
 private val CardShape = RoundedCornerShape(10.dp)
-private val TextShadow = Shadow(color = Color.Black.copy(alpha = 0.7f), blurRadius = 10f)
 /** 1:1 音乐卡片底 */
-private val CardBg = Color(0xFF0C121C)
-/** 曲谱弹窗底：深色实底（展开/收起一致，不再使用磨砂） */
-private val PanelBg = Color(0xF2080C14)
-/** 切列遮挡专用：完全不透明，避免透出网格重组卡顿帧 */
-private val BlockerBg = Color(0xFF080C14)
+private val CardBg = Color.White
+/** 曲谱弹窗底：浅色实底（展开/收起一致） */
+private val PanelBg = MainPalette.Page
+/** 切列遮挡专用：与面板同色，避免透出网格重组卡顿帧 */
+private val BlockerBg = MainPalette.Page
 
 /** 打开/滚动时预热当前附近封面，避免大歌单整队解码 */
 private const val ScorePrefetchBehind = 12
@@ -124,14 +116,6 @@ fun ScoreSheetOverlay(
     var showTurntable by remember { mutableStateOf(false) }
     /** 为 true 时不组合 ScoreMorphGrid，避免宽度动画帧拖着全表重排 */
     var gridSuspended by remember { mutableStateOf(false) }
-    val chevronT = remember { Animatable(if (coverExpanded) 1f else 0f) }
-
-    LaunchedEffect(coverExpanded) {
-        chevronT.animateTo(
-            targetValue = if (coverExpanded) 1f else 0f,
-            animationSpec = tween(280, easing = FastOutSlowInEasing),
-        )
-    }
 
     LaunchedEffect(coverExpanded, openGeneration) {
         if (coverExpanded == gridExpanded) {
@@ -160,7 +144,6 @@ fun ScoreSheetOverlay(
 
     val layoutT = if (gridExpanded) 1f else 0f
     val gridGap = androidx.compose.ui.unit.lerp(10.dp, 8.dp, layoutT)
-    val headerT = chevronT.value
     val initialIndex = remember(openGeneration, tracks.size) {
         if (tracks.isEmpty()) 0
         else currentIndex.coerceIn(0, tracks.lastIndex)
@@ -192,30 +175,12 @@ fun ScoreSheetOverlay(
         Box(
             Modifier
                 .matchParentSize()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            Color.White.copy(alpha = 0.04f),
-                            Color.Transparent,
-                            Color.Black.copy(alpha = 0.28f),
-                        ),
-                    ),
-                ),
+                .background(Color.White.copy(alpha = 0.22f)),
         )
         Box(
             Modifier
                 .matchParentSize()
-                .border(
-                    width = 1.dp,
-                    brush = Brush.verticalGradient(
-                        colors = listOf(
-                            Color.White.copy(alpha = 0.12f),
-                            Color.White.copy(alpha = 0.04f),
-                            Color.White.copy(alpha = 0.06f),
-                        ),
-                    ),
-                    shape = PanelShape,
-                ),
+                .border(1.dp, MainPalette.Hairline, PanelShape),
         )
 
         Column(
@@ -230,49 +195,31 @@ fun ScoreSheetOverlay(
                     fontFamily = FontFamily.Monospace,
                     fontSize = 9.sp,
                     letterSpacing = 2.sp,
-                    shadow = TextShadow,
                 ),
             )
             Spacer(Modifier.height(4.dp))
-            BoxWithConstraints(
+            Row(
                 Modifier
                     .fillMaxWidth()
                     .height(28.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                val chevronSize = 28.dp
-                val titleGap = 8.dp
-                val chevronX = androidx.compose.ui.unit.lerp(
-                    maxWidth - chevronSize,
-                    0.dp,
-                    headerT,
-                )
-                val titleStartPad = androidx.compose.ui.unit.lerp(
-                    0.dp,
-                    chevronSize + titleGap,
-                    headerT,
-                )
                 Text(
                     text = "曲谱",
                     style = TextStyle(
                         color = LabelColor,
                         fontFamily = FontFamily.SansSerif,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 17.sp,
-                        letterSpacing = 0.3.sp,
-                        shadow = TextShadow,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 20.sp,
+                        letterSpacing = (-0.2).sp,
                     ),
-                    modifier = Modifier
-                        .align(Alignment.CenterStart)
-                        .padding(start = titleStartPad),
+                    modifier = Modifier.weight(1f),
                 )
                 ScoreExpandChevronButton(
                     expanded = coverExpanded,
                     onClick = {
                         if (!transitionBusy) onToggleCoverExpand()
                     },
-                    modifier = Modifier
-                        .align(Alignment.CenterStart)
-                        .offset(x = chevronX),
                 )
             }
             Spacer(Modifier.height(14.dp))
@@ -306,7 +253,6 @@ fun ScoreSheetOverlay(
         if (showTurntable) {
             ScoreExpandLoadingBlocker(
                 expanding = coverExpanded,
-                plateColors = plateColors,
                 modifier = Modifier
                     .matchParentSize()
                     .clip(PanelShape),
@@ -524,65 +470,14 @@ private fun ScoreMorphGrid(
 }
 
 /**
- * 曲谱展开/收起 loading：舞台式黑胶 + 谱线氛围（非玩具唱机壳）。
- * 盘在实底之上保持清晰；遮挡仅用于切列重组。
- * 唱臂绘在更大的 Canvas 上，避免针尖出界被裁成「短/长」跳变。
+ * 曲谱展开/收起 loading：启动页同款静态黑胶标，不做唱机动画。
  */
 @Composable
 private fun ScoreExpandLoadingBlocker(
     expanding: Boolean,
-    plateColors: VinylPlateColors,
     modifier: Modifier = Modifier,
 ) {
-    val spin = rememberInfiniteTransition(label = "scoreExpandLoad")
-    val vinylRot by spin.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 2800, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart,
-        ),
-        label = "scoreLoadVinylRot",
-    )
-    val sweep by spin.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1600, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart,
-        ),
-        label = "scoreLoadSweep",
-    )
-    val staveBreath by spin.animateFloat(
-        initialValue = 0.28f,
-        targetValue = 0.55f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1400, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "scoreLoadStave",
-    )
-    val glowPulse by spin.animateFloat(
-        initialValue = 0.35f,
-        targetValue = 0.72f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1100, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "scoreLoadGlow",
-    )
-    val enterT = remember { Animatable(0f) }
-    val armT = remember { Animatable(0f) }
-    LaunchedEffect(Unit) {
-        enterT.snapTo(0f)
-        armT.snapTo(0f)
-        enterT.animateTo(1f, tween(420, easing = FastOutSlowInEasing))
-        armT.animateTo(1f, tween(640, easing = FastOutSlowInEasing))
-    }
-    val enter = enterT.value
-    val arm = armT.value
     val caption = if (expanding) "展开曲谱" else "收起曲谱"
-
     Box(
         modifier
             .background(BlockerBg)
@@ -593,261 +488,22 @@ private fun ScoreExpandLoadingBlocker(
             ),
         contentAlignment = Alignment.Center,
     ) {
-        // 舞台光晕
-        Box(
-            Modifier
-                .matchParentSize()
-                .graphicsLayer { alpha = 0.55f + 0.45f * enter }
-                .background(
-                    Brush.radialGradient(
-                        colors = listOf(
-                            Accent.copy(alpha = 0.07f * glowPulse),
-                            Color(0xFF122030).copy(alpha = 0.35f),
-                            BlockerBg,
-                        ),
-                    ),
-                ),
-        )
-
-        // 谱线氛围（曲谱语义）
-        Canvas(
-            Modifier
-                .matchParentSize()
-                .graphicsLayer { alpha = enter * staveBreath },
-        ) {
-            val midY = size.height * 0.42f
-            val lineGap = size.minDimension * 0.028f
-            val inset = size.width * 0.12f
-            for (i in -2..2) {
-                val y = midY + i * lineGap
-                drawLine(
-                    color = HintColor.copy(alpha = 0.07f + abs(i) * 0.012f),
-                    start = Offset(inset, y),
-                    end = Offset(size.width - inset, y),
-                    strokeWidth = 1.1f,
-                )
-            }
-        }
-
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier
-                .graphicsLayer {
-                    alpha = 0.35f + 0.65f * enter
-                    scaleX = 0.92f + 0.08f * enter
-                    scaleY = 0.92f + 0.08f * enter
-                    translationY = (1f - enter) * 14f
-                },
-        ) {
-            Text(
-                text = "SCORE",
-                style = TextStyle(
-                    color = Accent.copy(alpha = 0.72f),
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 10.sp,
-                    letterSpacing = 3.2.sp,
-                    fontWeight = FontWeight.Medium,
-                ),
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Image(
+                painter = painterResource(R.drawable.ic_logo_vinyl_z),
+                contentDescription = null,
+                modifier = Modifier
+                    .size(72.dp)
+                    .clip(CircleShape),
+                contentScale = ContentScale.Crop,
             )
-            Spacer(Modifier.height(18.dp))
-
-            Box(
-                Modifier.size(168.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Canvas(Modifier.matchParentSize()) {
-                    val c = Offset(size.width / 2f, size.height / 2f)
-                    val r = size.minDimension * 0.48f
-                    drawCircle(
-                        color = Color.White.copy(alpha = 0.06f),
-                        radius = r,
-                        center = c,
-                        style = Stroke(width = 1.6f),
-                    )
-                    drawArc(
-                        color = Accent.copy(alpha = 0.55f + 0.25f * glowPulse),
-                        startAngle = sweep - 90f,
-                        sweepAngle = 72f,
-                        useCenter = false,
-                        topLeft = Offset(c.x - r, c.y - r),
-                        size = androidx.compose.ui.geometry.Size(r * 2f, r * 2f),
-                        style = Stroke(width = 2.4f, cap = StrokeCap.Round),
-                    )
-                    drawCircle(
-                        color = Color.White.copy(alpha = 0.10f),
-                        radius = r * 0.88f,
-                        center = c,
-                        style = Stroke(width = 1.1f),
-                    )
-                }
-
-                Box(
-                    Modifier
-                        .size(142.dp)
-                        .clip(CircleShape)
-                        .background(
-                            Brush.radialGradient(
-                                colors = listOf(
-                                    Color(0xFF2A3448),
-                                    Color(0xFF121820),
-                                    Color(0xFF070A10),
-                                ),
-                            ),
-                        )
-                        .border(
-                            width = 1.dp,
-                            brush = Brush.verticalGradient(
-                                listOf(
-                                    Color.White.copy(alpha = 0.22f),
-                                    Color.White.copy(alpha = 0.04f),
-                                ),
-                            ),
-                            shape = CircleShape,
-                        ),
-                )
-
-                VinylDiscPlate(
-                    modifier = Modifier
-                        .size(122.dp)
-                        .graphicsLayer {
-                            rotationZ = vinylRot
-                            transformOrigin = TransformOrigin.Center
-                        },
-                    colors = plateColors,
-                )
-
-                Canvas(
-                    Modifier
-                        .size(122.dp)
-                        .graphicsLayer {
-                            rotationZ = vinylRot
-                            transformOrigin = TransformOrigin.Center
-                        },
-                ) {
-                    val c = Offset(size.width / 2f, size.height / 2f)
-                    val r = size.minDimension / 2f
-                    drawCircle(
-                        brush = Brush.linearGradient(
-                            colors = listOf(
-                                Color.Transparent,
-                                Color.White.copy(alpha = 0.12f),
-                                Color.Transparent,
-                            ),
-                            start = Offset(c.x - r * 0.2f, c.y - r),
-                            end = Offset(c.x + r, c.y + r * 0.3f),
-                        ),
-                        radius = r * 0.98f,
-                        center = c,
-                    )
-                }
-
-                Box(
-                    Modifier
-                        .size(11.dp)
-                        .clip(CircleShape)
-                        .background(
-                            Brush.radialGradient(
-                                listOf(Color(0xFFF4F7FA), Color(0xFF8A96A6)),
-                            ),
-                        )
-                        .border(1.dp, Color(0xFF4A5666).copy(alpha = 0.55f), CircleShape),
-                )
-
-                Canvas(
-                    Modifier
-                        .align(Alignment.Center)
-                        // 大于舞台：支点在右上、臂长探出时仍落在可绘区内，避免短/长跳变
-                        .requiredSize(220.dp),
-                ) {
-                    val c = Offset(size.width / 2f, size.height / 2f)
-                    // 与舞台内 122.dp 黑胶同心
-                    val vinylR = size.minDimension * (122f / 220f) / 2f
-                    val pivot = Offset(
-                        c.x + vinylR * 0.82f,
-                        c.y - vinylR * 0.88f,
-                    )
-                    // 原 -48°→28° 背对黑胶；整体 +180° 后按落针语义取 208°→132°（抬起→落盘）
-                    val rest = 208f
-                    val play = 132f
-                    val deg = rest + (play - rest) * arm
-                    val rad = Math.toRadians(deg.toDouble()).toFloat()
-                    // 略短于原比例，保证 rest/play 两态针尖都在 Canvas 内
-                    val len = vinylR * 1.05f
-                    val tip = Offset(pivot.x + cos(rad) * len, pivot.y + sin(rad) * len)
-                    val back = Math.toRadians((deg + 180f).toDouble()).toFloat()
-                    val counter = Offset(
-                        pivot.x + cos(back) * len * 0.22f,
-                        pivot.y + sin(back) * len * 0.22f,
-                    )
-                    drawLine(
-                        color = Color.Black.copy(alpha = 0.35f),
-                        start = Offset(counter.x + 1.5f, counter.y + 2f),
-                        end = Offset(tip.x + 1.5f, tip.y + 2f),
-                        strokeWidth = size.minDimension * 0.014f,
-                        cap = StrokeCap.Round,
-                    )
-                    drawCircle(
-                        color = Color(0xFF1A222E),
-                        radius = size.minDimension * 0.032f,
-                        center = pivot,
-                    )
-                    drawCircle(
-                        brush = Brush.radialGradient(
-                            listOf(Color(0xFFE8EEF4), Color(0xFF7A8694)),
-                            center = pivot,
-                            radius = size.minDimension * 0.02f,
-                        ),
-                        radius = size.minDimension * 0.02f,
-                        center = pivot,
-                    )
-                    drawCircle(
-                        color = Color(0xFFC5CED8),
-                        radius = size.minDimension * 0.017f,
-                        center = counter,
-                    )
-                    drawLine(
-                        brush = Brush.linearGradient(
-                            listOf(Color(0xFFEEF3F8), Color(0xFF9AA6B4)),
-                            start = counter,
-                            end = tip,
-                        ),
-                        start = counter,
-                        end = tip,
-                        strokeWidth = size.minDimension * 0.012f,
-                        cap = StrokeCap.Round,
-                    )
-                    drawCircle(
-                        color = Color(0xFF151C26),
-                        radius = size.minDimension * 0.017f,
-                        center = tip,
-                    )
-                    drawCircle(
-                        color = Accent.copy(alpha = 0.35f + 0.55f * arm),
-                        radius = size.minDimension * 0.007f,
-                        center = tip,
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(22.dp))
             Text(
                 text = caption,
+                modifier = Modifier.padding(top = 18.dp),
                 style = TextStyle(
-                    color = HintColor.copy(alpha = 0.78f),
-                    fontFamily = FontFamily.SansSerif,
-                    fontWeight = FontWeight.Medium,
+                    color = HintColor,
                     fontSize = 13.sp,
-                    letterSpacing = 1.2.sp,
-                ),
-            )
-            Spacer(Modifier.height(6.dp))
-            Text(
-                text = if (expanding) "加宽编排中" else "收束编排中",
-                style = TextStyle(
-                    color = HintColor.copy(alpha = 0.38f),
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 10.sp,
-                    letterSpacing = 1.6.sp,
+                    fontWeight = FontWeight.Medium,
                 ),
             )
         }
@@ -1067,7 +723,7 @@ private fun ScoreTrackCard(
                         .offset(x = vinylPeek)
                         .align(Alignment.CenterStart)
                         .clip(CoverShape)
-                        .background(Color(0xFF121A28)),
+                        .background(Color(0xFFE8E8ED)),
                 ) {
                     val url = track.coverUrl
                     if (showCover && !url.isNullOrBlank()) {
@@ -1092,7 +748,6 @@ private fun ScoreTrackCard(
                 fontFamily = FontFamily.SansSerif,
                 fontWeight = FontWeight.Medium,
                 fontSize = 11.sp,
-                shadow = TextShadow,
             ),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -1101,7 +756,7 @@ private fun ScoreTrackCard(
         Text(
             text = track.artists.ifBlank { "未知艺人" },
             style = TextStyle(
-                color = HintColor.copy(alpha = 0.62f),
+                color = HintColor.copy(alpha = 0.85f),
                 fontFamily = FontFamily.SansSerif,
                 fontSize = 9.sp,
             ),
@@ -1127,6 +782,8 @@ private fun ScoreExpandChevronButton(
         modifier = modifier
             .size(28.dp)
             .clip(CircleShape)
+            .background(Color.White.copy(alpha = 0.88f))
+            .border(1.dp, MainPalette.Hairline, CircleShape)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,

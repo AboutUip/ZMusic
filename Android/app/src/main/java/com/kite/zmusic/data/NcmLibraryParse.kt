@@ -255,9 +255,14 @@ internal object NcmLibraryParse {
         val creator = o.optJSONObject("creator")
         val creatorId = creator?.optLong("userId", -1L) ?: -1L
         val subscribed = o.optBoolean("subscribed", false)
-        val isOwned = creatorId == selfUserId
-        val isHeart = (specialType == 5 && (isOwned || creatorId <= 0L || selfUserId <= 0L)) ||
-            (isOwned && (name == "我喜欢的音乐" || name.endsWith("喜欢的音乐")))
+        val isOwned = selfUserId > 0L && creatorId == selfUserId
+        val isHeart = isSelfHeartPlaylist(
+            selfUid = selfUserId,
+            creatorId = creatorId,
+            subscribed = subscribed,
+            specialType = specialType,
+            name = name,
+        )
         val playCount = o.optLong("playCount", 0L)
         return PlaylistSummary(
             id = id,

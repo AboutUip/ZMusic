@@ -36,10 +36,12 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -73,7 +75,11 @@ import com.kite.zmusic.data.VipKind
 import com.kite.zmusic.ui.common.GlassAlertDialog
 import com.kite.zmusic.ui.common.UrlImage
 import com.kite.zmusic.ui.icons.ZIcons
+import kotlin.math.PI
+import kotlin.math.floor
 import kotlin.math.roundToInt
+import kotlin.math.sin
+import kotlin.random.Random
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -91,6 +97,18 @@ private enum class UserConstellation(
     Voice("声纹", "听歌轨迹"),
     Vault("藏馆", "歌单与收藏"),
 }
+
+private data class SkyDot(
+    val x: Float,
+    val y: Float,
+    val radius: Float,
+    val glow: Float,
+    val phase: Float,
+    val pulse: Float,
+    val vx: Float,
+    val vy: Float,
+    val depth: Float,
+)
 
 private data class StarNode(
     val title: String,
@@ -131,6 +149,7 @@ internal fun UserSpaceOverlay(
     val pager = rememberConstellationPagerState(scope, UserConstellation.entries.size)
     val opened = reveal.isOpen
     val chromeT = spaceChromeProgress(t)
+    val sceneT = spaceSceneProgress(t)
     var confirmClearBg by remember { mutableStateOf(false) }
     BackHandler(enabled = t > 0.04f, onBack = onClose)
 
@@ -173,19 +192,19 @@ internal fun UserSpaceOverlay(
         val toNodes = remember(toKind, profile, playlists, likedTrackCount, subcount) {
             constellationNodes(toKind, profile, playlists, likedTrackCount, subcount)
         }
-        val stars = remember(fromNodes, toNodes, pager.morphT, center, orbit, t) {
-            morphStars(fromNodes, toNodes, pager.morphT, center, orbit, t)
+        val stars = remember(fromNodes, toNodes, pager.morphT, center, orbit, sceneT) {
+            morphStars(fromNodes, toNodes, pager.morphT, center, orbit, sceneT)
         }
 
         UserSpaceBackdrop(
-            progress = t,
+            progress = sceneT,
             pageOffset = pager.offset,
         )
 
         ConstellationStage(
             stars = stars,
             center = center,
-            appear = t,
+            appear = sceneT,
             titleAppear = chromeT,
             fromKind = fromKind,
             toKind = toKind,
@@ -276,7 +295,7 @@ internal fun UserSpaceOverlay(
             )
         }
 
-        if (!opened && !landscape && t in 0.02f..0.92f) {
+        if (!opened && !landscape && t in 0.10f..0.88f) {
             val hint = "下拉进入用户空间"
             Text(
                 text = hint,
@@ -289,7 +308,7 @@ internal fun UserSpaceOverlay(
                     .align(Alignment.BottomCenter)
                     .padding(bottom = 28.dp)
                     .graphicsLayer {
-                        alpha = (t / 0.28f).coerceIn(0f, 1f) *
+                        alpha = ((t - 0.10f) / 0.22f).coerceIn(0f, 1f) *
                             (1f - chromeT)
                     },
             )
@@ -304,11 +323,12 @@ private fun UserSpaceBackdrop(
     pageOffset: Float,
 ) {
     val t = progress.coerceIn(0f, 1f)
+    if (t <= 0.01f) return
     Box(Modifier.fillMaxSize()) {
         Box(
             Modifier
                 .fillMaxSize()
-                .background(SpaceScrim.copy(alpha = 0.10f + 0.58f * t)),
+                .background(SpaceScrim.copy(alpha = 0.58f * t)),
         )
         SpaceStarField(progress = t, pageOffset = pageOffset)
     }
@@ -316,33 +336,72 @@ private fun UserSpaceBackdrop(
 
 @Composable
 private fun SpaceStarField(progress: Float, pageOffset: Float) {
-    val stars = remember {
-        List(56) { i ->
-            val n = (i * 127.1f) % 1f
-            Triple(
-                ((i * 73) % 1000) / 1000f,
-                ((i * 191) % 1000) / 1000f,
-                0.35f + n * 0.65f,
-            )
+    val dots = remember { skyDots() }
+    var seconds by remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(Unit) {
+        val origin = withFrameNanos { it }
+        while (true) {
+            withFrameNanos { now ->
+                seconds = (now - origin) / 1_000_000_000f
+            }
         }
     }
+    val appear = progress.coerceIn(0f, 1f)
     Canvas(
         Modifier
             .fillMaxSize()
-            .graphicsLayer {
-                translationX = -pageOffset * 18f
-                translationY = (1f - progress) * 28f
-                alpha = progress
-            },
+            .graphicsLayer { alpha = appear },
     ) {
-        stars.forEach { (x, y, a) ->
+        val w = size.width
+        val h = size.height
+        val time = seconds
+        dots.forEach { d ->
+            val twinkle = 0.38f + 0.62f * (0.5f + 0.5f * sin(d.phase + time * d.pulse))
+            val x = fract(d.x + time * d.vx - pageOffset * 0.04f * d.depth) * w
+            val y = fract(d.y + time * d.vy) * h
             drawCircle(
-                color = Color.White.copy(alpha = 0.18f + 0.45f * a),
-                radius = 1.2f + a * 1.6f,
-                center = Offset(x * size.width, y * size.height),
+                color = Color.White.copy(
+                    alpha = (d.glow * twinkle).coerceIn(0.06f, 0.9f),
+                ),
+                radius = d.radius,
+                center = Offset(x, y),
             )
         }
     }
+}
+
+private fun skyDots(): List<SkyDot> {
+    val rng = Random(0x5A17E)
+    val cols = 7
+    val rows = 6
+    return buildList {
+        for (row in 0 until rows) {
+            for (col in 0 until cols) {
+                if (rng.nextFloat() < 0.12f) continue
+                val depth = rng.nextFloat()
+                val still = rng.nextFloat() < 0.28f
+                add(
+                    SkyDot(
+                        x = (col + 0.12f + rng.nextFloat() * 0.76f) / cols,
+                        y = (row + 0.12f + rng.nextFloat() * 0.76f) / rows,
+                        radius = 0.65f + depth * 1.55f,
+                        glow = 0.18f + rng.nextFloat() * 0.58f,
+                        phase = rng.nextFloat() * (PI.toFloat() * 2f),
+                        pulse = if (still) 0.18f + rng.nextFloat() * 0.22f
+                        else 0.45f + rng.nextFloat() * 1.15f,
+                        vx = (rng.nextFloat() - 0.5f) * (0.003f + 0.01f * depth),
+                        vy = (rng.nextFloat() - 0.5f) * (0.0025f + 0.007f * depth),
+                        depth = depth,
+                    ),
+                )
+            }
+        }
+    }
+}
+
+private fun fract(v: Float): Float {
+    val r = v - floor(v)
+    return if (r < 0f) r + 1f else r
 }
 
 @Composable
@@ -795,7 +854,7 @@ private fun constellationNodes(
         }
         UserConstellation.Vault -> buildList {
             val liked = likedTrackCount.takeIf { it > 0 }
-                ?: playlists.firstOrNull { it.isHeartPlaylist }?.trackCount
+                ?: playlists.firstOrNull { it.isHeartPlaylist && it.isOwned }?.trackCount
             liked?.let { add(StarNode("我喜欢", "${it} 首", -0.78f, -0.38f)) }
             val created = subcount?.createdPlaylistCount
                 ?: playlists.count { it.isOwned && !it.isHeartPlaylist }

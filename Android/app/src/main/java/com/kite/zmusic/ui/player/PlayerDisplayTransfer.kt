@@ -394,14 +394,15 @@ fun rememberPlayerDisplayTransferHost(
 fun PlayerDisplayTransferHeaderIcons(
     host: PlayerDisplayTransferHost,
     modifier: Modifier = Modifier,
+    iconTint: Color = TransferIconTint,
 ) {
     Row(
         modifier = modifier,
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        TransferIconButton(onClick = host.onImportClick) { TransferImportIcon() }
-        TransferIconButton(onClick = host.onExportClick) { TransferExportIcon() }
+        TransferIconButton(onClick = host.onImportClick) { TransferImportIcon(iconTint) }
+        TransferIconButton(onClick = host.onExportClick) { TransferExportIcon(iconTint) }
     }
 }
 
@@ -984,21 +985,21 @@ private fun TransferIconButton(onClick: () -> Unit, content: @Composable () -> U
 }
 
 @Composable
-private fun TransferExportIcon() {
+private fun TransferExportIcon(tint: Color) {
     Canvas(Modifier.fillMaxSize()) {
         val sw = size.minDimension * 0.11f
         val pad = size.minDimension * 0.12f
         val boxTop = size.height * 0.42f
-        drawLine(TransferIconTint, Offset(pad, boxTop), Offset(pad, size.height - pad), sw, StrokeCap.Round)
+        drawLine(tint, Offset(pad, boxTop), Offset(pad, size.height - pad), sw, StrokeCap.Round)
         drawLine(
-            TransferIconTint,
+            tint,
             Offset(pad, size.height - pad),
             Offset(size.width - pad, size.height - pad),
             sw,
             StrokeCap.Round,
         )
         drawLine(
-            TransferIconTint,
+            tint,
             Offset(size.width - pad, boxTop),
             Offset(size.width - pad, size.height - pad),
             sw,
@@ -1007,16 +1008,16 @@ private fun TransferExportIcon() {
         val cx = size.width / 2f
         val arrowTop = pad * 0.6f
         val arrowBottom = size.height * 0.58f
-        drawLine(TransferIconTint, Offset(cx, arrowBottom), Offset(cx, arrowTop), sw, StrokeCap.Round)
+        drawLine(tint, Offset(cx, arrowBottom), Offset(cx, arrowTop), sw, StrokeCap.Round)
         drawLine(
-            TransferIconTint,
+            tint,
             Offset(cx, arrowTop),
             Offset(cx - size.width * 0.18f, arrowTop + size.height * 0.18f),
             sw,
             StrokeCap.Round,
         )
         drawLine(
-            TransferIconTint,
+            tint,
             Offset(cx, arrowTop),
             Offset(cx + size.width * 0.18f, arrowTop + size.height * 0.18f),
             sw,
@@ -1026,21 +1027,21 @@ private fun TransferExportIcon() {
 }
 
 @Composable
-private fun TransferImportIcon() {
+private fun TransferImportIcon(tint: Color) {
     Canvas(Modifier.fillMaxSize()) {
         val sw = size.minDimension * 0.11f
         val pad = size.minDimension * 0.12f
         val boxTop = size.height * 0.42f
-        drawLine(TransferIconTint, Offset(pad, boxTop), Offset(pad, size.height - pad), sw, StrokeCap.Round)
+        drawLine(tint, Offset(pad, boxTop), Offset(pad, size.height - pad), sw, StrokeCap.Round)
         drawLine(
-            TransferIconTint,
+            tint,
             Offset(pad, size.height - pad),
             Offset(size.width - pad, size.height - pad),
             sw,
             StrokeCap.Round,
         )
         drawLine(
-            TransferIconTint,
+            tint,
             Offset(size.width - pad, boxTop),
             Offset(size.width - pad, size.height - pad),
             sw,
@@ -1049,16 +1050,16 @@ private fun TransferImportIcon() {
         val cx = size.width / 2f
         val arrowTop = pad * 0.6f
         val arrowBottom = size.height * 0.58f
-        drawLine(TransferIconTint, Offset(cx, arrowTop), Offset(cx, arrowBottom), sw, StrokeCap.Round)
+        drawLine(tint, Offset(cx, arrowTop), Offset(cx, arrowBottom), sw, StrokeCap.Round)
         drawLine(
-            TransferIconTint,
+            tint,
             Offset(cx, arrowBottom),
             Offset(cx - size.width * 0.18f, arrowBottom - size.height * 0.18f),
             sw,
             StrokeCap.Round,
         )
         drawLine(
-            TransferIconTint,
+            tint,
             Offset(cx, arrowBottom),
             Offset(cx + size.width * 0.18f, arrowBottom - size.height * 0.18f),
             sw,

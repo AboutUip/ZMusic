@@ -1,6 +1,7 @@
 package com.kite.zmusic.ui.home
 
 import android.content.res.Configuration
+import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -66,6 +67,10 @@ import com.kite.zmusic.ui.main.MainContentPadTop
 import com.kite.zmusic.ui.main.MainPageHeader
 import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.main.mainContentPadH
+import com.kite.zmusic.ui.orientation.LocalSessionRotationLock
+import com.kite.zmusic.ui.orientation.SessionRotationLockStore
+import com.kite.zmusic.ui.orientation.rememberSystemAutoRotateEnabled
+import com.kite.zmusic.ui.player.NowPlayingRotationLockButton
 import kotlinx.coroutines.delay
 import java.util.Calendar
 
@@ -143,23 +148,26 @@ fun HomeScreen(
                 .padding(horizontal = padH)
                 .padding(top = MainContentPadTop),
             trailing = {
-                Box(
-                    Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = { onOpenOverlay(MainOverlay.Settings) },
-                        ),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = ZIcons.Settings,
-                        contentDescription = "设置",
-                        tint = MainPalette.Ink,
-                        modifier = Modifier.size(22.dp),
-                    )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    HomeRotationControl(landscape = false)
+                    Box(
+                        Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = { onOpenOverlay(MainOverlay.Settings) },
+                            ),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = ZIcons.Settings,
+                            contentDescription = "设置",
+                            tint = MainPalette.Ink,
+                            modifier = Modifier.size(22.dp),
+                        )
+                    }
                 }
             },
         )
@@ -313,6 +321,38 @@ fun HomeScreen(
         }
         }
     }
+    }
+}
+
+@Composable
+private fun HomeRotationControl(
+    landscape: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val activity = LocalActivity.current
+    val rotationLock = LocalSessionRotationLock.current
+    val rotationLocked = SessionRotationLockStore.locked
+    val systemAutoRotate = rememberSystemAutoRotateEnabled()
+    Box(
+        modifier.size(40.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        NowPlayingRotationLockButton(
+            locked = rotationLocked,
+            forceToLandscape = when {
+                systemAutoRotate -> null
+                else -> !landscape
+            },
+            chromeBackground = false,
+            tint = MainPalette.Ink,
+            onClick = {
+                if (systemAutoRotate) {
+                    rotationLock.toggle(activity)
+                } else {
+                    rotationLock.forceOrientation(activity, landscape = !landscape)
+                }
+            },
+        )
     }
 }
 
@@ -828,10 +868,24 @@ private fun HomeLandscapeBody(
                 .padding(horizontal = 24.dp)
                 .padding(top = 16.dp, bottom = contentBottomInset + 16.dp),
         ) {
-            HomeSearchEntry(
-                onClick = { onOpenOverlay(MainOverlay.Search) },
-                modifier = Modifier.widthIn(max = 420.dp).fillMaxWidth(),
-            )
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(40.dp),
+            ) {
+                HomeSearchEntry(
+                    onClick = { onOpenOverlay(MainOverlay.Search) },
+                    modifier = Modifier
+                        .align(Alignment.CenterStart)
+                        .padding(end = 48.dp)
+                        .widthIn(max = 420.dp)
+                        .fillMaxWidth(),
+                )
+                HomeRotationControl(
+                    landscape = true,
+                    modifier = Modifier.align(Alignment.CenterEnd),
+                )
+            }
             Spacer(Modifier.height(20.dp))
 
             if (ui.loading &&

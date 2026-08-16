@@ -58,6 +58,7 @@ class PlaybackService : MediaSessionService() {
             stateStore = bridge.stateStore(),
             lyricRepository = bridge.lyricRepository(),
             likedPlaylistRepository = app.likedPlaylistRepository,
+            audioQualityStore = app.audioQualityStore,
             onClearAndStopService = {
                 pauseAllPlayersAndStopSelf()
             },

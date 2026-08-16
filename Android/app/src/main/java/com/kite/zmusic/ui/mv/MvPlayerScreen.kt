@@ -158,12 +158,6 @@ fun MvPlayerScreen(
 ) {
     val landscape =
         LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
-    var immersiveFullscreen by rememberSaveable { mutableStateOf(false) }
-    val openedInPortrait = remember { !landscape }
-    LaunchedEffect(landscape) {
-        if (landscape) immersiveFullscreen = false
-    }
-    val useLandscapeScene = landscape || immersiveFullscreen
     val activity = LocalActivity.current
     val rotationLock = LocalSessionRotationLock.current
     val rotationLocked = SessionRotationLockStore.locked
@@ -174,6 +168,8 @@ fun MvPlayerScreen(
     var speedSheet by remember { mutableStateOf(false) }
     var seeking by remember { mutableStateOf(false) }
     var seekValue by remember { mutableFloatStateOf(0f) }
+    /** 仅「竖屏点全屏」产生的临时横屏；不根据进页时的方向记忆，避免中途改旋转后逻辑滞后。 */
+    var tempLandscape by rememberSaveable { mutableStateOf(false) }
     val ratio = remember(ui.videoWidth, ui.videoHeight) {
         val w = ui.videoWidth
         val h = ui.videoHeight
@@ -190,16 +186,16 @@ fun MvPlayerScreen(
         playback.play(overlay.id, overlay.title, overlay.coverUrl, overlay.artist)
     }
     LaunchedEffect(landscape) {
-        if (!landscape) sidePanel = false
+        if (!landscape) {
+            sidePanel = false
+            tempLandscape = false
+        }
     }
-    LaunchedEffect(immersiveFullscreen) {
-        if (!immersiveFullscreen) sidePanel = false
-    }
-    LaunchedEffect(chrome, ui.playWhenReady, seeking, ui.boosting, speedSheet, useLandscapeScene, sidePanel) {
+    LaunchedEffect(chrome, ui.playWhenReady, seeking, ui.boosting, speedSheet, landscape, sidePanel) {
         if (!chrome || !ui.playWhenReady || seeking || ui.boosting || speedSheet) {
             return@LaunchedEffect
         }
-        if (useLandscapeScene && sidePanel) return@LaunchedEffect
+        if (landscape && sidePanel) return@LaunchedEffect
         delay(3_200)
         chrome = false
     }
@@ -214,21 +210,26 @@ fun MvPlayerScreen(
         overlay.artist?.takeIf { it.isNotBlank() }?.let { listOf(MvArtist(0L, it)) }.orEmpty()
     }
     val title = ui.title.ifBlank { overlay.title }
-    val backToPortrait = {
-        rotationLock.forceOrientation(activity, landscape = false)
+    val enterTempLandscape = {
+        if (!landscape) {
+            tempLandscape = true
+            rotationLock.forceOrientation(activity, landscape = true)
+        }
+    }
+    val leaveTempLandscape = {
+        if (tempLandscape) {
+            tempLandscape = false
+            rotationLock.forceOrientation(activity, landscape = false)
+        }
     }
     val handleBack = {
-        when {
-            immersiveFullscreen -> immersiveFullscreen = false
-            landscape && openedInPortrait -> backToPortrait()
-            else -> onBack()
-        }
+        if (tempLandscape) leaveTempLandscape() else onBack()
     }
 
     BackHandler(onBack = handleBack)
 
     val rotation: @Composable () -> Unit = {
-        if (landscape) {
+        if (landscape && !tempLandscape) {
             NowPlayingRotationLockButton(
                 locked = rotationLocked,
                 forceToLandscape = when {
@@ -246,8 +247,10 @@ fun MvPlayerScreen(
             )
         } else {
             MvFullscreenButton(
-                exit = immersiveFullscreen,
-                onClick = { immersiveFullscreen = !immersiveFullscreen },
+                exit = tempLandscape,
+                onClick = {
+                    if (tempLandscape) leaveTempLandscape() else enterTempLandscape()
+                },
             )
         }
     }
@@ -262,7 +265,7 @@ fun MvPlayerScreen(
         playback.seekTo(seekValue.toLong())
     }
 
-    if (useLandscapeScene) {
+    if (landscape) {
         LandscapeMvScene(
             playback = playback,
             ui = ui,

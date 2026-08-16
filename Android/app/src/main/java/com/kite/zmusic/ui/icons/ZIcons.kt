@@ -5,6 +5,7 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.Logout
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.BatteryChargingFull
 import androidx.compose.material.icons.rounded.LibraryAdd
 import androidx.compose.material.icons.rounded.LibraryAddCheck
 import androidx.compose.material.icons.rounded.CalendarMonth
@@ -15,6 +16,7 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Checklist
 import androidx.compose.material.icons.rounded.Dns
 import androidx.compose.material.icons.rounded.EmojiEvents
+import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.HideImage
 import androidx.compose.material.icons.rounded.History
@@ -22,8 +24,10 @@ import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.PhotoCamera
 import androidx.compose.material.icons.rounded.Forward5
 import androidx.compose.material.icons.rounded.Fullscreen
 import androidx.compose.material.icons.rounded.FullscreenExit
@@ -31,6 +35,7 @@ import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Radio
 import androidx.compose.material.icons.rounded.Replay5
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.VideoLibrary
@@ -49,6 +54,11 @@ object ZIcons {
     val Profile: ImageVector get() = Icons.Rounded.Person
     val Search: ImageVector get() = Icons.Rounded.Search
     val Settings: ImageVector get() = Icons.Rounded.Settings
+    val GraphicEq: ImageVector get() = Icons.Rounded.GraphicEq
+    val Security: ImageVector get() = Icons.Rounded.Security
+    val Notifications: ImageVector get() = Icons.Rounded.Notifications
+    val Camera: ImageVector get() = Icons.Rounded.PhotoCamera
+    val Battery: ImageVector get() = Icons.Rounded.BatteryChargingFull
     val Info: ImageVector get() = Icons.Rounded.Info
     val Favorite: ImageVector get() = Icons.Rounded.Favorite
     val More: ImageVector get() = Icons.Rounded.MoreVert

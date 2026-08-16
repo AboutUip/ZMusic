@@ -234,6 +234,7 @@ class NcmUserClient(
         ids: List<Long>,
         cookie: String,
         level: String = "exhigh",
+        encodeType: String = "mp3",
     ): JSONObject = withContext(Dispatchers.IO) {
         val idStr = ids.joinToString(",")
         get(
@@ -241,6 +242,7 @@ class NcmUserClient(
             mapOf(
                 "id" to idStr,
                 "level" to level,
+                "encodeType" to encodeType,
                 "cookie" to cookie,
                 "timestamp" to ts(),
             ),

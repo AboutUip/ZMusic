@@ -47,18 +47,22 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateSetOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.snapshots.SnapshotStateSet
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.Alignment
@@ -102,6 +106,8 @@ import com.kite.zmusic.data.NcmCommentParse
 import com.kite.zmusic.data.NcmJson
 import com.kite.zmusic.data.NcmUserClient
 import com.kite.zmusic.data.SongComment
+import com.kite.zmusic.data.SongCommentsCache
+import com.kite.zmusic.data.SongCommentsSnapshot
 import com.kite.zmusic.ui.common.UrlImage
 import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.notice.showIslandNotice
@@ -135,9 +141,14 @@ private val CommentGlassStyle = HazeStyle(
     fallbackTint = HazeTint(MainPalette.Page.copy(alpha = 0.94f)),
 )
 private val CommentAvatarBg = Color(0xFFE8E8ED)
-private val CommentComposerFill = Color.White.copy(alpha = 0.82f)
+private val CommentComposerFill = Color.White
 
 private const val CommentPageSize = 20
+
+private data class CachedFloor(
+    val replies: List<SongComment>,
+    val hasMore: Boolean,
+)
 
 /**
  * `/comment/new`：与 NeteaseCloudMusicApi 一致。
@@ -243,6 +254,9 @@ fun PortraitCommentsSheet(
     val keyboard = LocalSoftwareKeyboardController.current
     val authClient = remember { NcmAuthClient() }
     val comments = remember { mutableStateListOf<SongComment>() }
+    val expandedTextIds: SnapshotStateSet<Long> = remember { mutableStateSetOf() }
+    val openFloorIds: SnapshotStateSet<Long> = remember { mutableStateSetOf() }
+    val floorCache = remember { mutableStateMapOf<Long, CachedFloor>() }
     var pageNo by remember { mutableIntStateOf(0) }
     var cursor by remember { mutableStateOf<String?>(null) }
     var hasMore by remember { mutableStateOf(true) }
@@ -278,9 +292,49 @@ fun PortraitCommentsSheet(
         context.showIslandNotice(msg, coverUrlUpdated)
     }
 
+    fun persistCommentsCache(
+        forSongId: Long = songIdUpdated,
+        forSort: Int = sortMode.sortType,
+    ) {
+        if (forSongId <= 0L || comments.isEmpty()) return
+        SongCommentsCache.put(
+            SongCommentsSnapshot(
+                songId = forSongId,
+                sortType = forSort,
+                comments = comments.toList(),
+                pageNo = pageNo,
+                cursor = cursor,
+                hasMore = hasMore,
+                total = total,
+                useLegacy = useLegacy,
+                expandedTextIds = expandedTextIds.toSet(),
+                openFloorIds = openFloorIds.toSet(),
+            ),
+        )
+    }
+
+    fun applyCommentsCache(snap: SongCommentsSnapshot) {
+        comments.clear()
+        comments.addAll(snap.comments)
+        pageNo = snap.pageNo
+        cursor = snap.cursor
+        hasMore = snap.hasMore
+        total = snap.total
+        useLegacy = snap.useLegacy
+        bootstrapped = true
+        error = null
+        loading = false
+        expandedTextIds.clear()
+        expandedTextIds.addAll(snap.expandedTextIds)
+        openFloorIds.clear()
+        openFloorIds.addAll(snap.openFloorIds)
+        floorCache.clear()
+    }
+
     fun patchComment(id: Long, transform: (SongComment) -> SongComment) {
         val i = comments.indexOfFirst { it.commentId == id }
         if (i >= 0) comments[i] = transform(comments[i])
+        persistCommentsCache()
     }
 
     fun dismissReplyComposer(restoreSheet: Boolean = true) {
@@ -412,6 +466,7 @@ fun PortraitCommentsSheet(
             if (page.total > 0L) total = page.total
             bootstrapped = true
             error = null
+            persistCommentsCache()
             if (reset) {
                 runCatching { listState.scrollToItem(0) }
             }
@@ -429,10 +484,17 @@ fun PortraitCommentsSheet(
 
     suspend fun switchSort(mode: CommentSortMode) {
         if (mode == sortMode && !bootstrapped) return
+        persistCommentsCache()
         if (mode != sortMode) {
             sortMode = mode
             dismissReplyComposer()
             total = 0L
+        }
+        val cached = SongCommentsCache.get(songIdUpdated, mode.sortType)
+        if (cached != null) {
+            applyCommentsCache(cached)
+            listGeneration += 1
+            return
         }
         pageNo = 0
         cursor = null
@@ -442,6 +504,9 @@ fun PortraitCommentsSheet(
         useLegacy = false
         pendingFloorTop = emptyMap()
         comments.clear()
+        expandedTextIds.clear()
+        openFloorIds.clear()
+        floorCache.clear()
         listGeneration += 1
         loadMore(reset = true, requested = mode)
     }
@@ -515,6 +580,7 @@ fun PortraitCommentsSheet(
                 if (total > 0L) total += 1L else total = comments.size.toLong()
                 hint("评论成功")
                 dismissReplyComposer(restoreSheet = true)
+                persistCommentsCache()
                 runCatching { listState.animateScrollToItem(0) }
             }
         } catch (e: Exception) {
@@ -526,19 +592,33 @@ fun PortraitCommentsSheet(
     }
 
     LaunchedEffect(songId) {
-        comments.clear()
-        pageNo = 0
-        cursor = null
-        hasMore = true
-        bootstrapped = false
-        error = null
-        total = 0L
-        useLegacy = false
         dismissReplyComposer()
         floorRefreshTick = emptyMap()
         pendingFloorTop = emptyMap()
         listGeneration += 1
-        loadMore(reset = true, requested = sortMode)
+        val cached = SongCommentsCache.get(songId, sortMode.sortType)
+        if (cached != null) {
+            applyCommentsCache(cached)
+        } else {
+            comments.clear()
+            pageNo = 0
+            cursor = null
+            hasMore = true
+            bootstrapped = false
+            error = null
+            total = 0L
+            useLegacy = false
+            expandedTextIds.clear()
+            openFloorIds.clear()
+            floorCache.clear()
+            loadMore(reset = true, requested = sortMode)
+        }
+    }
+
+    DisposableEffect(songId, sortMode) {
+        onDispose {
+            persistCommentsCache(forSongId = songId, forSort = sortMode.sortType)
+        }
     }
 
     LaunchedEffect(listGeneration, bootstrapped) {
@@ -762,6 +842,29 @@ fun PortraitCommentsSheet(
                                 floorRefreshTick = floorRefreshTick[item.commentId] ?: 0,
                                 pendingTopReply = pendingFloorTop[item.commentId],
                                 replyActive = replyTarget?.commentId == item.commentId,
+                                textExpanded = item.commentId in expandedTextIds,
+                                onTextExpandedChange = { expanded ->
+                                    if (expanded) {
+                                        expandedTextIds.add(item.commentId)
+                                    } else {
+                                        expandedTextIds.remove(item.commentId)
+                                    }
+                                    persistCommentsCache()
+                                },
+                                repliesOpen = item.commentId in openFloorIds,
+                                onRepliesOpenChange = { open ->
+                                    if (open) {
+                                        openFloorIds.add(item.commentId)
+                                    } else {
+                                        openFloorIds.remove(item.commentId)
+                                    }
+                                    persistCommentsCache()
+                                },
+                                initialReplies = floorCache[item.commentId]?.replies.orEmpty(),
+                                initialRepliesHasMore = floorCache[item.commentId]?.hasMore == true,
+                                onFloorCache = { replies, hasMore ->
+                                    floorCache[item.commentId] = CachedFloor(replies, hasMore)
+                                },
                                 onPatchComment = ::patchComment,
                                 onHint = { hint(it) },
                                 onConsumePendingTopReply = {
@@ -891,7 +994,6 @@ private fun CommentComposerBar(
     Column(
         modifier
             .fillMaxWidth()
-            .background(Color.White.copy(alpha = 0.88f))
             .windowInsetsPadding(WindowInsets.ime.union(WindowInsets.navigationBars))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -1085,17 +1187,22 @@ private fun CommentRow(
     floorRefreshTick: Int,
     pendingTopReply: SongComment?,
     replyActive: Boolean,
+    textExpanded: Boolean,
+    onTextExpandedChange: (Boolean) -> Unit,
+    repliesOpen: Boolean,
+    onRepliesOpenChange: (Boolean) -> Unit,
+    initialReplies: List<SongComment>,
+    initialRepliesHasMore: Boolean,
+    onFloorCache: (List<SongComment>, Boolean) -> Unit,
     onPatchComment: (Long, (SongComment) -> SongComment) -> Unit,
     onHint: (String) -> Unit,
     onConsumePendingTopReply: () -> Unit,
     onReplyClick: () -> Unit,
 ) {
-    var textExpanded by remember(comment.commentId) { mutableStateOf(false) }
-    var repliesOpen by remember(comment.commentId) { mutableStateOf(false) }
-    var replies by remember(comment.commentId) { mutableStateOf<List<SongComment>>(emptyList()) }
+    var replies by remember(comment.commentId) { mutableStateOf(initialReplies) }
     var repliesLoading by remember(comment.commentId) { mutableStateOf(false) }
     var repliesError by remember(comment.commentId) { mutableStateOf<String?>(null) }
-    var repliesHasMore by remember(comment.commentId) { mutableStateOf(false) }
+    var repliesHasMore by remember(comment.commentId) { mutableStateOf(initialRepliesHasMore) }
     var likeBusy by remember(comment.commentId) { mutableStateOf(false) }
     var hugBusy by remember(comment.commentId) { mutableStateOf(false) }
     var hugged by remember(comment.commentId) { mutableStateOf(false) }
@@ -1150,6 +1257,7 @@ private fun CommentRow(
                 replies + page.comments.filter { seen.add(it.commentId) }
             }
             repliesHasMore = page.hasMore && page.comments.isNotEmpty()
+            onFloorCache(replies, repliesHasMore)
         } catch (e: Exception) {
             repliesError = NcmJson.userFacingThrowable(e, "回复加载失败")
         } finally {
@@ -1159,15 +1267,21 @@ private fun CommentRow(
 
     LaunchedEffect(floorRefreshTick) {
         if (floorRefreshTick <= 0) return@LaunchedEffect
-        repliesOpen = true
+        onRepliesOpenChange(true)
         // 发送后的对齐刷新：保留置顶乐观回复
         loadReplies(reset = true, consumePending = false)
     }
 
     LaunchedEffect(pendingTopReply?.commentId) {
         if (pendingTopReply != null) {
-            repliesOpen = true
+            onRepliesOpenChange(true)
         }
+    }
+
+    LaunchedEffect(repliesOpen, comment.commentId) {
+        if (!repliesOpen) return@LaunchedEffect
+        if (replies.isNotEmpty() || repliesLoading) return@LaunchedEffect
+        loadReplies(reset = true, consumePending = false)
     }
 
     val displayReplies = remember(replies, pendingTopReply) {
@@ -1410,7 +1524,7 @@ private fun CommentRow(
                                     Modifier.clickable(
                                         interactionSource = remember { MutableInteractionSource() },
                                         indication = null,
-                                        onClick = { textExpanded = !textExpanded },
+                                        onClick = { onTextExpandedChange(!textExpanded) },
                                     )
                                 } else {
                                     Modifier
@@ -1430,7 +1544,7 @@ private fun CommentRow(
                                 .clickable(
                                     interactionSource = remember { MutableInteractionSource() },
                                     indication = null,
-                                    onClick = { textExpanded = !textExpanded },
+                                    onClick = { onTextExpandedChange(!textExpanded) },
                                 ),
                         )
                     }
@@ -1533,7 +1647,7 @@ private fun CommentRow(
                                     indication = null,
                                     onClick = {
                                         val next = !repliesOpen
-                                        repliesOpen = next
+                                        onRepliesOpenChange(next)
                                         if (next) {
                                             // 用户再次展开：取消置顶，拉真实顺序
                                             scope.launch {

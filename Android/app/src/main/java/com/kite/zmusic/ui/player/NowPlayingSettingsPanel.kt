@@ -54,7 +54,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.StrokeCap
@@ -99,21 +98,8 @@ private val ChromeShape = RoundedCornerShape(8.dp)
 private val PanelShape = RoundedCornerShape(18.dp)
 private val RowShape = RoundedCornerShape(12.dp)
 private val TextShadow = Shadow(color = Color.Black.copy(alpha = 0.7f), blurRadius = 10f)
-private val GlassBg = Color(0xFF03060A)
 /** 与底部播放条一致：半透明黑底，无描边。 */
 private val ChromeBarBg = Color.Black.copy(alpha = 0.22f)
-/** 磨砂壳 / 背景色 */
-private val SettingsGlassStyle = HazeStyle(
-    backgroundColor = GlassBg,
-    tints = listOf(
-        HazeTint(Color(0xFF020408).copy(alpha = 0.78f)),
-        HazeTint(Color(0xFF060A12).copy(alpha = 0.60f)),
-        HazeTint(Color.Black.copy(alpha = 0.42f)),
-    ),
-    blurRadius = 84.dp,
-    noiseFactor = 0.20f,
-    fallbackTint = HazeTint(Color(0x9905080E)),
-)
 /** 功能行：近不透明实底，与磨砂壳分层。 */
 private val SettingsRowBg = Color(0xF0141A24)
 /** 竖屏「竖屏显示」：与评论面板同一套浅色磨砂。 */
@@ -356,6 +342,7 @@ fun NowPlayingDismissIconButton(
  * - [forceToLandscape] == null：会话锁（自动双弧 / 锁定+锁标）
  * - true / false：确定旋转到横/竖（目标机身 + 对称双弧）
  * [chromeBackground] 为 false 时仅保留图标，不绘制圆角矩形底。
+ * [tint] 默认播放器浅色；浅底首页传入深色。
  */
 @Composable
 fun NowPlayingRotationLockButton(
@@ -364,6 +351,7 @@ fun NowPlayingRotationLockButton(
     modifier: Modifier = Modifier,
     forceToLandscape: Boolean? = null,
     chromeBackground: Boolean = true,
+    tint: Color = IconTint,
 ) {
     val icon: @Composable () -> Unit = {
         Canvas(Modifier.size(22.dp)) {
@@ -373,12 +361,12 @@ fun NowPlayingRotationLockButton(
                 join = StrokeJoin.Round,
             )
             when (forceToLandscape) {
-                true -> drawMdForceRotateIcon(toLandscape = true, color = IconTint, stroke = stroke)
-                false -> drawMdForceRotateIcon(toLandscape = false, color = IconTint, stroke = stroke)
+                true -> drawMdForceRotateIcon(toLandscape = true, color = tint, stroke = stroke)
+                false -> drawMdForceRotateIcon(toLandscape = false, color = tint, stroke = stroke)
                 null -> if (locked) {
-                    drawMdSessionLockIcon(locked = true, color = IconTint, stroke = stroke)
+                    drawMdSessionLockIcon(locked = true, color = tint, stroke = stroke)
                 } else {
-                    drawMdSessionLockIcon(locked = false, color = IconTint, stroke = stroke)
+                    drawMdSessionLockIcon(locked = false, color = tint, stroke = stroke)
                 }
             }
         }
@@ -662,53 +650,27 @@ fun NowPlayingSettingsSheet(
         hazeState = hazeState,
         dismissGate = resolvedTransferGate,
     )
-    val chrome = if (portraitContent) LightSettingsChrome else DarkSettingsChrome
-    val sliderColors = if (portraitContent) {
-        SliderDefaults.colors(
-            thumbColor = MainPalette.Accent,
-            activeTrackColor = MainPalette.Accent,
-            inactiveTrackColor = Color(0xFFE5E5EA),
-            activeTickColor = Color.Transparent,
-            inactiveTickColor = Color.Transparent,
-            disabledThumbColor = MainPalette.Hint,
-            disabledActiveTrackColor = MainPalette.Accent.copy(alpha = 0.28f),
-            disabledInactiveTrackColor = Color(0xFFE5E5EA).copy(alpha = 0.7f),
-            disabledActiveTickColor = Color.Transparent,
-            disabledInactiveTickColor = Color.Transparent,
-        )
-    } else {
-        SliderDefaults.colors(
-            thumbColor = Color(0xFFF8FAFC),
-            activeTrackColor = Accent.copy(alpha = 0.62f),
-            inactiveTrackColor = Color.White.copy(alpha = 0.16f),
-            activeTickColor = Color.Transparent,
-            inactiveTickColor = Color.Transparent,
-            disabledThumbColor = Color(0xFFD0D8E2).copy(alpha = 0.45f),
-            disabledActiveTrackColor = Accent.copy(alpha = 0.28f),
-            disabledInactiveTrackColor = Color.White.copy(alpha = 0.08f),
-            disabledActiveTickColor = Color.Transparent,
-            disabledInactiveTickColor = Color.Transparent,
-        )
-    }
-    val switchColors = if (portraitContent) {
-        SwitchDefaults.colors(
-            checkedThumbColor = Color.White,
-            checkedTrackColor = MainPalette.Accent,
-            uncheckedThumbColor = Color.White,
-            uncheckedTrackColor = Color(0xFFE5E5EA),
-            uncheckedBorderColor = Color.Transparent,
-            checkedBorderColor = Color.Transparent,
-        )
-    } else {
-        SwitchDefaults.colors(
-            checkedThumbColor = Color(0xFFF8FAFC),
-            checkedTrackColor = Accent.copy(alpha = 0.62f),
-            uncheckedThumbColor = Color(0xFFD0D8E2),
-            uncheckedTrackColor = Color.White.copy(alpha = 0.16f),
-            uncheckedBorderColor = Color.White.copy(alpha = 0.14f),
-            checkedBorderColor = Color.Transparent,
-        )
-    }
+    val chrome = LightSettingsChrome
+    val sliderColors = SliderDefaults.colors(
+        thumbColor = MainPalette.Accent,
+        activeTrackColor = MainPalette.Accent,
+        inactiveTrackColor = Color(0xFFE5E5EA),
+        activeTickColor = Color.Transparent,
+        inactiveTickColor = Color.Transparent,
+        disabledThumbColor = MainPalette.Hint,
+        disabledActiveTrackColor = MainPalette.Accent.copy(alpha = 0.28f),
+        disabledInactiveTrackColor = Color(0xFFE5E5EA).copy(alpha = 0.7f),
+        disabledActiveTickColor = Color.Transparent,
+        disabledInactiveTickColor = Color.Transparent,
+    )
+    val switchColors = SwitchDefaults.colors(
+        checkedThumbColor = Color.White,
+        checkedTrackColor = MainPalette.Accent,
+        uncheckedThumbColor = Color.White,
+        uncheckedTrackColor = Color(0xFFE5E5EA),
+        uncheckedBorderColor = Color.Transparent,
+        checkedBorderColor = Color.Transparent,
+    )
 
     var previewKey by remember { mutableStateOf<SettingsPreviewKey?>(null) }
     var focusKey by remember { mutableStateOf<SettingsPreviewKey?>(null) }
@@ -784,116 +746,31 @@ fun NowPlayingSettingsSheet(
                 onClick = {},
             ),
     ) {
-        if (portraitContent) {
-            key(hazeNonce) {
-                if (enableRealtimeHaze) {
-                    Box(
-                        Modifier
-                            .matchParentSize()
-                            .graphicsLayer { alpha = dim }
-                            .hazeEffect(state = hazeState, style = PortraitSettingsGlassStyle),
-                    )
-                } else {
-                    Box(
-                        Modifier
-                            .matchParentSize()
-                            .graphicsLayer { alpha = dim }
-                            .background(MainPalette.Page.copy(alpha = 0.96f)),
-                    )
-                }
-            }
-            Box(
-                Modifier
-                    .matchParentSize()
-                    .graphicsLayer { alpha = dim }
-                    .background(Color.White.copy(alpha = 0.22f)),
-            )
-        } else {
         key(hazeNonce) {
             if (enableRealtimeHaze) {
-                // 实时磨砂：勿再垫不透明静态底，否则模糊被盖死只剩实色
-                Box(
-                    Modifier
-                        .matchParentSize()
-                        .graphicsLayer { alpha = dim },
-                ) {
-                    // 底色在下：与 fallback 同浓度，haze 失效时不跳亮度
-                    Box(
-                        Modifier
-                            .matchParentSize()
-                            .background(Color(0x9905080E)),
-                    )
-                    Box(
-                        Modifier
-                            .matchParentSize()
-                            .hazeEffect(state = hazeState, style = SettingsGlassStyle) {
-                                blurRadius = glassBlurRadius
-                                noiseFactor = 0.16f
-                                fallbackTint = HazeTint(Color.Transparent)
-                            },
-                    )
-                }
-            } else {
-                // 静态玻璃：无实时 blur（竖屏 / 横屏入场过渡）
                 Box(
                     Modifier
                         .matchParentSize()
                         .graphicsLayer { alpha = dim }
-                        .background(
-                            Brush.verticalGradient(
-                                colors = listOf(
-                                    Color(0xE6080C14),
-                                    Color(0xF005080E),
-                                    Color(0xF0020408),
-                                ),
-                            ),
-                        ),
+                        .hazeEffect(state = hazeState, style = PortraitSettingsGlassStyle) {
+                            blurRadius = glassBlurRadius
+                        },
+                )
+            } else {
+                Box(
+                    Modifier
+                        .matchParentSize()
+                        .graphicsLayer { alpha = dim }
+                        .background(MainPalette.Page.copy(alpha = 0.96f)),
                 )
             }
         }
-        // 半透罩层：实时磨砂略减实色以透出玻璃
         Box(
             Modifier
                 .matchParentSize()
                 .graphicsLayer { alpha = dim }
-                .background(
-                    when {
-                        !enableRealtimeHaze -> Color(0x3305080E)
-                        else -> Color(0x4405080E)
-                    },
-                ),
+                .background(Color.White.copy(alpha = 0.22f)),
         )
-        Box(
-            Modifier
-                .matchParentSize()
-                .graphicsLayer { alpha = dim }
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            Color.White.copy(alpha = 0.03f),
-                            Color.Transparent,
-                            Color.Black.copy(alpha = 0.42f),
-                        ),
-                    ),
-                ),
-        )
-        Box(
-            Modifier
-                .matchParentSize()
-                .graphicsLayer { alpha = dim }
-                .border(
-                    width = 1.dp,
-                    brush = Brush.verticalGradient(
-                        colors = listOf(
-                            Color.White.copy(alpha = 0.16f),
-                            Color.White.copy(alpha = 0.05f),
-                            Color.White.copy(alpha = 0.08f),
-                        ),
-                    ),
-                    shape = panelShape,
-                ),
-        )
-        }
 
         Column(
             Modifier
@@ -921,13 +798,7 @@ fun NowPlayingSettingsSheet(
                             .width(36.dp)
                             .height(4.dp)
                             .clip(RoundedCornerShape(2.dp))
-                            .background(
-                                if (portraitContent) {
-                                    MainPalette.Hint
-                                } else {
-                                    Color.White.copy(alpha = 0.38f)
-                                },
-                            ),
+                            .background(MainPalette.Hint),
                     )
                 }
             }
@@ -936,11 +807,10 @@ fun NowPlayingSettingsSheet(
                     text = "SETTINGS",
                     modifier = Modifier.graphicsLayer { alpha = dim },
                     style = TextStyle(
-                        color = Accent.copy(alpha = 0.75f),
+                        color = chrome.accent.copy(alpha = 0.75f),
                         fontFamily = FontFamily.Monospace,
                         fontSize = 9.sp,
                         letterSpacing = 2.sp,
-                        shadow = TextShadow,
                     ),
                 )
                 Spacer(Modifier.height(4.dp))
@@ -956,15 +826,17 @@ fun NowPlayingSettingsSheet(
                     style = TextStyle(
                         color = chrome.label,
                         fontFamily = FontFamily.SansSerif,
-                        fontWeight = if (portraitContent) FontWeight.Bold else FontWeight.SemiBold,
-                        fontSize = if (portraitContent) 20.sp else 17.sp,
-                        letterSpacing = if (portraitContent) (-0.2).sp else 0.3.sp,
-                        shadow = chrome.titleShadow,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 20.sp,
+                        letterSpacing = (-0.2).sp,
                     ),
                     modifier = Modifier.weight(1f),
                 )
                 if (showTransferActions) {
-                    PlayerDisplayTransferHeaderIcons(host = transferHost)
+                    PlayerDisplayTransferHeaderIcons(
+                        host = transferHost,
+                        iconTint = chrome.label,
+                    )
                 }
             }
             Spacer(Modifier.height(if (portraitContent) 12.dp else 14.dp))
@@ -1057,9 +929,14 @@ fun NowPlayingSettingsSheet(
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 SettingsSwitchRow(
                                     title = "活跃光晕",
-                                    subtitle = "低/中/高互斥高亮，同时仅一球发光，运动略加快",
+                                    subtitle = if (prefs.customBackgroundEnabled) {
+                                        "自定义背景开启时不可用"
+                                    } else {
+                                        "低/中/高互斥高亮，同时仅一球发光，运动略加快"
+                                    },
                                     checked = prefs.activeHalo,
                                     colors = switchColors,
+                                    enabled = !prefs.customBackgroundEnabled,
                                     onCheckedChange = {
                                         onPrefsChange(prefs.copy(activeHalo = it))
                                     },
@@ -1468,6 +1345,7 @@ private fun SettingsVinylColorRow(
     onPrefsChange: (PlayerDisplayPrefs) -> Unit,
     onOpenCustomEditor: () -> Unit,
 ) {
+    val chrome = LocalSettingsChrome.current
     val styles = VinylColorStyle.entries
     val labels = listOf("黑色", "金色", "白色", "自选")
     val scope = rememberCoroutineScope()
@@ -1493,7 +1371,7 @@ private fun SettingsVinylColorRow(
         Modifier
             .fillMaxWidth()
             .clip(RowShape)
-            .background(SettingsRowBg)
+            .background(chrome.rowBg)
             .padding(horizontal = 12.dp, vertical = 10.dp),
     ) {
         Row(
@@ -1504,22 +1382,20 @@ private fun SettingsVinylColorRow(
                 Text(
                     text = "黑胶颜色",
                     style = TextStyle(
-                        color = LabelColor,
+                        color = chrome.label,
                         fontFamily = FontFamily.SansSerif,
                         fontWeight = FontWeight.SemiBold,
-                        fontSize = 14.sp,
-                        shadow = TextShadow,
+                        fontSize = 15.sp,
                     ),
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
                     text = "滑动切换预设 · 自选时点色环编辑",
                     style = TextStyle(
-                        color = HintColor,
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 9.sp,
-                        letterSpacing = 0.3.sp,
-                        shadow = TextShadow,
+                        color = chrome.hint,
+                        fontFamily = FontFamily.SansSerif,
+                        fontSize = 12.sp,
+                        lineHeight = 16.sp,
                     ),
                 )
             }
@@ -1570,7 +1446,7 @@ private fun SettingsVinylColorRow(
                 .fillMaxWidth()
                 .height(36.dp)
                 .clip(RoundedCornerShape(10.dp))
-                .background(Color.Black.copy(alpha = 0.35f))
+                .background(Color(0xFFE5E5EA))
                 .pointerInput(styles.size) {
                     val segW = size.width / styles.size.toFloat()
                     detectHorizontalDragGestures(
@@ -1634,10 +1510,10 @@ private fun SettingsVinylColorRow(
                     .width(segW - thumbPad * 2)
                     .fillMaxHeight()
                     .clip(RoundedCornerShape(8.dp))
-                    .background(Accent.copy(alpha = 0.28f))
+                    .background(chrome.accent.copy(alpha = 0.16f))
                     .border(
                         width = 1.dp,
-                        color = Accent.copy(alpha = 0.45f),
+                        color = chrome.accent.copy(alpha = 0.35f),
                         shape = RoundedCornerShape(8.dp),
                     ),
             )
@@ -1659,16 +1535,15 @@ private fun SettingsVinylColorRow(
                             text = labels[index],
                             style = TextStyle(
                                 color = if (active) {
-                                    Accent.copy(alpha = 0.98f)
+                                    chrome.accent
                                 } else {
-                                    HintColor.copy(alpha = 0.72f)
+                                    chrome.hint
                                 },
                                 fontFamily = FontFamily.SansSerif,
                                 fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
-                                fontSize = 11.sp,
+                                fontSize = 12.sp,
                                 letterSpacing = 0.2.sp,
                                 textAlign = TextAlign.Center,
-                                shadow = TextShadow,
                             ),
                         )
                     }
@@ -1684,6 +1559,7 @@ private fun SettingsTitleAlignRow(
     selected: TitleAlignMode,
     onSelect: (TitleAlignMode) -> Unit,
 ) {
+    val chrome = LocalSettingsChrome.current
     val modes = TitleAlignMode.entries
     val labels = listOf("左对齐", "黑胶", "居中", "歌词")
     val scope = rememberCoroutineScope()
@@ -1702,28 +1578,26 @@ private fun SettingsTitleAlignRow(
         Modifier
             .fillMaxWidth()
             .clip(RowShape)
-            .background(SettingsRowBg)
+            .background(chrome.rowBg)
             .padding(horizontal = 12.dp, vertical = 10.dp),
     ) {
         Text(
             text = "标题对齐位置",
             style = TextStyle(
-                color = LabelColor,
+                color = chrome.label,
                 fontFamily = FontFamily.SansSerif,
                 fontWeight = FontWeight.SemiBold,
-                fontSize = 14.sp,
-                shadow = TextShadow,
+                fontSize = 15.sp,
             ),
         )
         Spacer(Modifier.height(2.dp))
         Text(
             text = "歌名 / 制作人 / 歌单 · 滑动或点选切换",
             style = TextStyle(
-                color = HintColor,
-                fontFamily = FontFamily.Monospace,
-                fontSize = 9.sp,
-                letterSpacing = 0.3.sp,
-                shadow = TextShadow,
+                color = chrome.hint,
+                fontFamily = FontFamily.SansSerif,
+                fontSize = 12.sp,
+                lineHeight = 16.sp,
             ),
         )
         Spacer(Modifier.height(10.dp))
@@ -1732,7 +1606,7 @@ private fun SettingsTitleAlignRow(
                 .fillMaxWidth()
                 .height(36.dp)
                 .clip(RoundedCornerShape(10.dp))
-                .background(Color.Black.copy(alpha = 0.35f))
+                .background(Color(0xFFE5E5EA))
                 .pointerInput(modes.size) {
                     val segW = size.width / modes.size.toFloat()
                     detectHorizontalDragGestures(
@@ -1796,10 +1670,10 @@ private fun SettingsTitleAlignRow(
                     .width(segW - thumbPad * 2)
                     .fillMaxHeight()
                     .clip(RoundedCornerShape(8.dp))
-                    .background(Accent.copy(alpha = 0.28f))
+                    .background(chrome.accent.copy(alpha = 0.16f))
                     .border(
                         width = 1.dp,
-                        color = Accent.copy(alpha = 0.45f),
+                        color = chrome.accent.copy(alpha = 0.35f),
                         shape = RoundedCornerShape(8.dp),
                     ),
             )
@@ -1820,17 +1694,12 @@ private fun SettingsTitleAlignRow(
                         Text(
                             text = labels[index],
                             style = TextStyle(
-                                color = if (active) {
-                                    Accent.copy(alpha = 0.98f)
-                                } else {
-                                    HintColor.copy(alpha = 0.72f)
-                                },
+                                color = if (active) chrome.accent else chrome.hint,
                                 fontFamily = FontFamily.SansSerif,
                                 fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
-                                fontSize = 11.sp,
+                                fontSize = 12.sp,
                                 letterSpacing = 0.2.sp,
                                 textAlign = TextAlign.Center,
-                                shadow = TextShadow,
                             ),
                         )
                     }
@@ -1946,11 +1815,18 @@ private fun SettingsSwitchRow(
     checked: Boolean,
     colors: androidx.compose.material3.SwitchColors,
     onCheckedChange: (Boolean) -> Unit,
+    enabled: Boolean = true,
 ) {
     val chrome = LocalSettingsChrome.current
+    val enT by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (enabled) 1f else 0.40f,
+        animationSpec = tween(280, easing = FastOutSlowInEasing),
+        label = "settingsSwitchEn",
+    )
     Row(
         Modifier
             .fillMaxWidth()
+            .graphicsLayer { alpha = enT }
             .clip(RowShape)
             .background(chrome.rowBg)
             .padding(horizontal = 12.dp, vertical = 10.dp),
@@ -1983,6 +1859,7 @@ private fun SettingsSwitchRow(
         Switch(
             checked = checked,
             onCheckedChange = onCheckedChange,
+            enabled = enabled,
             colors = colors,
         )
     }

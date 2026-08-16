@@ -55,14 +55,14 @@ import kotlin.math.roundToInt
 
 /**
  * Apple 式悬浮 Dock。
- * 按住横滑用 [PagerState.dispatchRawDelta] 跟手切页；当前项为下沉玻璃而非红色胶囊。
+ * 按住横滑 1:1 跟手切页；滑过约四分之一格即切换，划得够远可一次到个人。
  */
 @Composable
 fun FloatingTabDock(
     pagerState: PagerState,
     onDestination: (MainDestination) -> Unit,
     onDragByTabs: (Float) -> Unit,
-    onDragSettled: (velocityTabsPerSec: Float) -> Unit,
+    onDragSettled: (velocityTabsPerSec: Float, startPage: Int) -> Unit,
     compactProgress: Float,
     backdrop: Backdrop,
     modifier: Modifier = Modifier,
@@ -122,6 +122,7 @@ fun FloatingTabDock(
                     .pointerInput(tabCount) {
                         awaitEachGesture {
                             val down = awaitFirstDown(requireUnconsumed = false)
+                            val startPage = pagerState.currentPage
                             val tracker = VelocityTracker()
                             tracker.addPosition(down.uptimeMillis, down.position)
                             val slop = awaitHorizontalTouchSlopOrCancellation(down.id) { change, _ ->
@@ -153,7 +154,7 @@ fun FloatingTabDock(
                                 tracker.addPosition(change.uptimeMillis, change.position)
                                 if (dx != 0f) onDragByTabs(dx / tabW)
                             }
-                            onDragSettled(tracker.calculateVelocity().x / tabW)
+                            onDragSettled(tracker.calculateVelocity().x / tabW, startPage)
                         }
                     },
             )

@@ -144,6 +144,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kite.zmusic.ZMusicApplication
 import com.kite.zmusic.data.LrcLine
 import com.kite.zmusic.data.LrcParser
@@ -166,6 +167,7 @@ import com.kite.zmusic.playback.PlaybackMode
 import com.kite.zmusic.playback.PlaylistQueueHydrator
 import com.kite.zmusic.playback.mergePlaylistQueue
 import com.kite.zmusic.ui.common.UrlImage
+import com.kite.zmusic.ui.notice.showIslandNotice
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeStyle
 import dev.chrisbanes.haze.HazeTint
@@ -1134,6 +1136,7 @@ fun NowPlayingScreen(
     }
 
     val app = context.applicationContext as ZMusicApplication
+    val audioQuality by app.audioQualityStore.quality.collectAsStateWithLifecycle()
     var queueDemand by remember { mutableIntStateOf(0) }
     LaunchedEffect(state.sourcePlaylistId) { queueDemand = 0 }
     fun needQueueThrough(index: Int) {
@@ -1250,6 +1253,7 @@ fun NowPlayingScreen(
     val settingsHazeState = rememberHazeState()
     var portraitSettingsOpen by remember { mutableStateOf(false) }
     var portraitScoreOpen by remember { mutableStateOf(false) }
+    var portraitQualityOpen by remember { mutableStateOf(false) }
     var portraitLyricSelectOpen by remember { mutableStateOf(false) }
     val portraitLyricSelectSelected: SnapshotStateSet<Int> = remember { mutableStateSetOf() }
     val portraitLyricSelectPanel = remember { Animatable(0f) }
@@ -1265,9 +1269,15 @@ fun NowPlayingScreen(
     var draftPortraitLyricPlaying by remember { mutableStateOf(LyricRoleStyle.PlayingDefault) }
     var draftPortraitLyricPlayed by remember { mutableStateOf(LyricRoleStyle.PlayedDefault) }
     var draftPortraitLyricUnplayed by remember { mutableStateOf(LyricRoleStyle.UnplayedDefault) }
-    var draftPortraitPlayedCount by remember { mutableIntStateOf(2) }
-    var draftPortraitUpcomingCount by remember { mutableIntStateOf(2) }
-    var draftPortraitLineSpacing by remember { mutableFloatStateOf(10f) }
+    var draftPortraitPlayedCount by remember {
+        mutableIntStateOf(portraitDisplayPrefs.lyricPlayedCount)
+    }
+    var draftPortraitUpcomingCount by remember {
+        mutableIntStateOf(portraitDisplayPrefs.lyricUpcomingCount)
+    }
+    var draftPortraitLineSpacing by remember {
+        mutableFloatStateOf(portraitDisplayPrefs.lyricLineSpacingDp)
+    }
     var portraitPlayerRootCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
     var portraitLyricsBandCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
     val portraitLyricStylePanel = remember { Animatable(0f) }
@@ -1278,6 +1288,7 @@ fun NowPlayingScreen(
     val portraitSnapPoints = remember { floatArrayOf(1f / 3f, 2f / 3f, 1f) }
     var portraitSheetDragVel by remember { mutableFloatStateOf(0f) }
     val portraitScorePanel = remember { Animatable(0f) }
+    val portraitQualityPanel = remember { Animatable(0f) }
     val portraitScoreSheetFrac = remember { Animatable(2f / 3f) }
     var portraitScoreSheetDragVel by remember { mutableFloatStateOf(0f) }
     var portraitScoreRevealToken by remember { mutableIntStateOf(0) }
@@ -1317,6 +1328,25 @@ fun NowPlayingScreen(
             )
         } else {
             portraitScorePanel.animateTo(
+                targetValue = 0f,
+                animationSpec = tween(
+                    durationMillis = 360,
+                    easing = CubicBezierEasing(0.4f, 0f, 0.2f, 1f),
+                ),
+            )
+        }
+    }
+    LaunchedEffect(portraitQualityOpen) {
+        if (portraitQualityOpen) {
+            portraitQualityPanel.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(
+                    durationMillis = 420,
+                    easing = CubicBezierEasing(0.16f, 1.02f, 0.3f, 1f),
+                ),
+            )
+        } else {
+            portraitQualityPanel.animateTo(
                 targetValue = 0f,
                 animationSpec = tween(
                     durationMillis = 360,
@@ -1385,6 +1415,7 @@ fun NowPlayingScreen(
     }
     val portraitSettingsT = portraitSettingsPanel.value
     val portraitScoreT = portraitScorePanel.value
+    val portraitQualityT = portraitQualityPanel.value
     val portraitCommentsT = portraitCommentsPanel.value
     val portraitLyricSelectT = portraitLyricSelectPanel.value
     fun closePortraitSettings() {
@@ -1393,6 +1424,9 @@ fun NowPlayingScreen(
     }
     fun closePortraitScore() {
         portraitScoreOpen = false
+    }
+    fun closePortraitQuality() {
+        portraitQualityOpen = false
     }
     fun closePortraitComments() {
         portraitCommentsOpen = false
@@ -1408,6 +1442,7 @@ fun NowPlayingScreen(
         portraitPosterOpen = false
         portraitSettingsOpen = false
         portraitScoreOpen = false
+        portraitQualityOpen = false
         portraitCommentsOpen = false
         portraitLyricSelectOpen = false
         portraitLyricSelectSelected.clear()
@@ -1417,6 +1452,7 @@ fun NowPlayingScreen(
         portraitLyricStyleSnapshot = null
         portraitSettingsPanel.snapTo(0f)
         portraitScorePanel.snapTo(0f)
+        portraitQualityPanel.snapTo(0f)
         portraitCommentsPanel.snapTo(0f)
         portraitCommentsSheetFrac.snapTo(2f / 3f)
         portraitLyricSelectPanel.snapTo(0f)
@@ -1431,6 +1467,7 @@ fun NowPlayingScreen(
         }
         closePortraitSettings()
         closePortraitScore()
+        closePortraitQuality()
         closePortraitComments()
         portraitLyricSelectSelected.clear()
         portraitLyricsOpen = true
@@ -1438,12 +1475,21 @@ fun NowPlayingScreen(
     }
     fun openPortraitScore() {
         closePortraitSettings()
+        closePortraitQuality()
         closePortraitLyricSelect()
         closePortraitComments()
         portraitScoreOpen = true
     }
+    fun openPortraitQuality() {
+        closePortraitSettings()
+        closePortraitScore()
+        closePortraitLyricSelect()
+        closePortraitComments()
+        portraitQualityOpen = true
+    }
     fun openPortraitSettings() {
         closePortraitScore()
+        closePortraitQuality()
         closePortraitLyricSelect()
         closePortraitComments()
         portraitSettingsOpen = true
@@ -1451,6 +1497,7 @@ fun NowPlayingScreen(
     fun openPortraitComments() {
         closePortraitSettings()
         closePortraitScore()
+        closePortraitQuality()
         closePortraitLyricSelect()
         portraitCommentsOpen = true
     }
@@ -1458,6 +1505,7 @@ fun NowPlayingScreen(
     fun openPortraitPoster() {
         closePortraitSettings()
         closePortraitScore()
+        closePortraitQuality()
         closePortraitComments()
         closePortraitLyricSelect()
         portraitPosterFrozenPositionMs = lyricPos
@@ -1592,6 +1640,9 @@ fun NowPlayingScreen(
     }
     BackHandler(enabled = !isLandscape && portraitScoreOpen) {
         closePortraitScore()
+    }
+    BackHandler(enabled = !isLandscape && portraitQualityOpen) {
+        closePortraitQuality()
     }
     BackHandler(enabled = !isLandscape && portraitCommentsOpen) {
         if (portraitCommentsSheetFrac.value >= 0.97f) {
@@ -1780,7 +1831,8 @@ fun NowPlayingScreen(
                         .graphicsLayer {
                             alpha = (1f - portraitCustomBgT.value).coerceIn(0f, 1f)
                         },
-                    activeHalo = portraitDisplayPrefs.activeHalo,
+                    activeHalo = portraitDisplayPrefs.activeHalo &&
+                        !portraitDisplayPrefs.customBackgroundEnabled,
                     spectrum = spectrum,
                     playWhenReady = state.playWhenReady,
                     positionMs = state.positionMs,
@@ -1932,13 +1984,16 @@ fun NowPlayingScreen(
                     dismissSwipeThresholdPx = dismissSwipeThresholdPx,
                     onOpenSettings = { openPortraitSettings() },
                     onOpenScore = { openPortraitScore() },
+                    onOpenQuality = { openPortraitQuality() },
                     onOpenPoster = { openPortraitPoster() },
                     onOpenComments = { openPortraitComments() },
                     settingsOpen = portraitSettingsOpen,
                     scoreOpen = portraitScoreOpen,
+                    qualityOpen = portraitQualityOpen,
                     commentsOpen = portraitCommentsOpen,
                     onCloseSettings = { closePortraitSettings() },
                     onCloseScore = { closePortraitScore() },
+                    onCloseQuality = { closePortraitQuality() },
                     onCloseComments = { closePortraitComments() },
                     displayPrefs = portraitDisplayPrefs,
                     peekNextTrack = state.peekNextTrack,
@@ -2069,6 +2124,7 @@ fun NowPlayingScreen(
                 PortraitQueueSheet(
                     tracks = state.queue,
                     currentIndex = state.index,
+                    isPlaying = state.playWhenReady,
                     revealToken = portraitScoreRevealToken,
                     onPlayIndex = onPlayQueueIndex,
                     hazeState = settingsHazeState,
@@ -2090,6 +2146,52 @@ fun NowPlayingScreen(
                             transformOrigin = TransformOrigin(0.5f, 1f)
                             translationY = (1f - portraitScoreT) * sheetHPx
                             alpha = portraitScoreT
+                        },
+                )
+            }
+        }
+
+        // 竖屏音源：与曲谱同壳层进出场；固定打开 1/3
+        if (!isLandscape && (portraitQualityT > 0.001f || portraitQualityOpen)) {
+            val density = LocalDensity.current
+            NowPlayingSettingsOutsideDismiss(
+                onDismiss = { closePortraitQuality() },
+                enabled = portraitQualityOpen || portraitQualityT > 0.05f,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { alpha = portraitQualityT },
+            )
+            BoxWithConstraints(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .fillMaxHeight(),
+            ) {
+                val screenH = constraints.maxHeight.toFloat().coerceAtLeast(1f)
+                val statusTopPx = with(density) {
+                    WindowInsets.statusBars.asPaddingValues().calculateTopPadding().toPx()
+                }
+                val maxSheetH = (screenH - statusTopPx).coerceAtLeast(screenH * 0.5f)
+                val sheetHPx = maxSheetH / 3f
+                val sheetHDp = with(density) { sheetHPx.toDp() }
+                PortraitQualitySheet(
+                    selected = audioQuality,
+                    onSelect = { next ->
+                        if (next != audioQuality) {
+                            app.audioQualityStore.set(next)
+                            context.showIslandNotice("已切换到${next.title}")
+                        }
+                        closePortraitQuality()
+                    },
+                    hazeState = settingsHazeState,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .height(sheetHDp)
+                        .graphicsLayer {
+                            transformOrigin = TransformOrigin(0.5f, 1f)
+                            translationY = (1f - portraitQualityT) * sheetHPx
+                            alpha = portraitQualityT
                         },
                 )
             }
@@ -2582,13 +2684,16 @@ private fun PortraitPlayerBody(
     dismissSwipeThresholdPx: Float,
     onOpenSettings: (() -> Unit)? = null,
     onOpenScore: (() -> Unit)? = null,
+    onOpenQuality: (() -> Unit)? = null,
     onOpenPoster: (() -> Unit)? = null,
     onOpenComments: (() -> Unit)? = null,
     settingsOpen: Boolean = false,
     scoreOpen: Boolean = false,
+    qualityOpen: Boolean = false,
     commentsOpen: Boolean = false,
     onCloseSettings: (() -> Unit)? = null,
     onCloseScore: (() -> Unit)? = null,
+    onCloseQuality: (() -> Unit)? = null,
     onCloseComments: (() -> Unit)? = null,
     displayPrefs: PlayerDisplayPrefs = PlayerDisplayPrefs(),
     peekNextTrack: TrackRow? = null,
@@ -2655,6 +2760,7 @@ private fun PortraitPlayerBody(
                     commentsOpen -> onCloseComments
                     settingsOpen -> onCloseSettings
                     scoreOpen -> onCloseScore
+                    qualityOpen -> onCloseQuality
                     else -> onDismiss
                 },
             )
@@ -2746,7 +2852,7 @@ private fun PortraitPlayerBody(
                                     peekPrev = peekPrevTrack,
                                     spinning = playWhenReady && !buffering && !vinylBusy,
                                     direction = vinylSkipDir,
-                                    gesturesEnabled = !settingsOpen && !commentsOpen,
+                                    gesturesEnabled = !settingsOpen && !commentsOpen && !qualityOpen,
                                     onTransitionRunningChange = { vinylBusy = it },
                                     onCommitSkip = { dir ->
                                         vinylSkipDir = dir
@@ -2858,6 +2964,7 @@ private fun PortraitPlayerBody(
                         landscapeDense = false,
                         onOpenSettings = onOpenSettings,
                         onOpenScore = onOpenScore,
+                        onOpenQuality = onOpenQuality,
                         onOpenPoster = onOpenPoster,
                         onOpenComments = onOpenComments,
                         controlsOffsetYDp = displayPrefs.portraitTransportOffsetYDp,
@@ -2960,6 +3067,7 @@ private fun PortraitPlayerBody(
                     landscapeDense = false,
                     onOpenSettings = onOpenSettings,
                     onOpenScore = onOpenScore,
+                    onOpenQuality = onOpenQuality,
                     onOpenPoster = onOpenPoster,
                     onOpenComments = onOpenComments,
                     controlsOffsetYDp = displayPrefs.portraitTransportOffsetYDp,
@@ -6005,6 +6113,7 @@ private fun LandscapePlayerBody(
                     hazeNonce = hazeNonce,
                     // 入场跟 chrome 动画时用静态壳；停稳后再实时磨砂
                     enableRealtimeHaze = settingsHazeLive,
+                    glassBlurRadius = 56.dp,
                     // 右侧贴边：只圆左侧，避免右上/右下圆弧透出黑边
                     panelShape = RoundedCornerShape(
                         topStart = 18.dp,
@@ -6496,6 +6605,7 @@ private fun PlayerTransport(
     landscapeDense: Boolean = false,
     controlsLocked: Boolean = false,
     onOpenScore: (() -> Unit)? = null,
+    onOpenQuality: (() -> Unit)? = null,
     onOpenSettings: (() -> Unit)? = null,
     onOpenPoster: (() -> Unit)? = null,
     /** 竖屏：总时长上方评论入口；仅非「容器包含」时展示 */
@@ -6906,12 +7016,15 @@ private fun PlayerTransport(
                                     modifier = Modifier.align(Alignment.CenterStart),
                                 )
                             }
-                            if (onOpenScore != null || onOpenSettings != null) {
+                            if (onOpenQuality != null || onOpenScore != null || onOpenSettings != null) {
                                 Row(
                                     Modifier.align(Alignment.CenterEnd),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(2.dp),
                                 ) {
+                                    if (onOpenQuality != null) {
+                                        NowPlayingQualityIconButton(onClick = onOpenQuality)
+                                    }
                                     if (onOpenScore != null) {
                                         NowPlayingScoreIconButton(onClick = onOpenScore)
                                     }
@@ -6987,12 +7100,15 @@ private fun PlayerTransport(
                                 modifier = Modifier.align(Alignment.CenterStart),
                             )
                         }
-                        if (onOpenScore != null || onOpenSettings != null) {
+                        if (onOpenQuality != null || onOpenScore != null || onOpenSettings != null) {
                             Row(
                                 Modifier.align(Alignment.CenterEnd),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(2.dp),
                             ) {
+                                if (onOpenQuality != null) {
+                                    NowPlayingQualityIconButton(onClick = onOpenQuality)
+                                }
                                 if (onOpenScore != null) {
                                     NowPlayingScoreIconButton(onClick = onOpenScore)
                                 }

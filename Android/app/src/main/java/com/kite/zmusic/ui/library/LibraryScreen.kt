@@ -29,8 +29,6 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListScope
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -166,47 +164,86 @@ private fun LibraryHomeLandscape(
 ) {
     val listState = rememberLazyListState()
     val hasPhoto = !customBgPath.isNullOrBlank() || !ui.profile?.backgroundUrl.isNullOrBlank()
-    val fade = (1f - spaceProgress / 0.28f).coerceIn(0f, 1f)
-    LazyColumn(
-        state = listState,
-        modifier = Modifier
+    val p = spaceProgress.coerceIn(0f, 1f)
+    val pulling = p > 0.001f
+    val sheetA = spaceSheetAlpha(p)
+    val bannerH = 168.dp
+    BoxWithConstraints(
+        Modifier
             .fillMaxSize()
             .background(MainPalette.Page)
-            .graphicsLayer { alpha = fade },
-        userScrollEnabled = !pullState.isOpen && !pullState.dragging && spaceProgress < 0.98f,
-        contentPadding = PaddingValues(bottom = contentBottomInset),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+            .clipToBounds(),
     ) {
-        item(key = "profile-banner") {
-            ProfileLandscapeBanner(
-                profile = ui.profile,
-                loading = ui.loading && ui.profile == null,
-                hasPhoto = hasPhoto,
-                customBgPath = customBgPath,
-                spaceProgress = spaceProgress,
-                onEnterSpace = { pullState.open() },
-                onAvatarPositioned = onAvatarPositioned,
+        val viewportH = maxHeight
+        val photoH = lerp(bannerH, viewportH, p)
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(photoH)
+                .align(Alignment.TopCenter)
+                .clipToBounds(),
+        ) {
+            ProfileFixedBackground(
+                backgroundUrl = ui.profile?.backgroundUrl,
+                localPath = customBgPath,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(168.dp),
+                    .requiredHeight(viewportH)
+                    .align(Alignment.TopCenter),
             )
         }
-        if (ui.loading && ui.playlists.isEmpty()) {
-            item { Box(Modifier.padding(horizontal = padH)) { LibraryLoadingBlock() } }
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxSize(),
+            userScrollEnabled = !pullState.isOpen && !pullState.dragging && spaceProgress < 0.98f,
+            contentPadding = PaddingValues(bottom = contentBottomInset),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            item(key = "profile-banner") {
+                ProfileLandscapeBanner(
+                    profile = ui.profile,
+                    loading = ui.loading && ui.profile == null,
+                    hasPhoto = hasPhoto,
+                    spaceProgress = spaceProgress,
+                    onEnterSpace = { pullState.open() },
+                    onAvatarPositioned = onAvatarPositioned,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(bannerH),
+                )
+            }
+            item(key = "profile-sheet") {
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = padH)
+                        .then(
+                            if (pulling) {
+                                Modifier.graphicsLayer { alpha = sheetA }
+                            } else {
+                                Modifier
+                            },
+                        ),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    if (ui.loading && ui.playlists.isEmpty()) {
+                        LibraryLoadingBlock()
+                    }
+                    ui.error?.let { err ->
+                        LibraryErrorText(err)
+                    }
+                    if (ui.isGuest) {
+                        LibraryGuestBanner()
+                    }
+                    LibraryPlaylistBody(
+                        playlists = ui.playlists,
+                        onOpenPlaylist = onOpenPlaylist,
+                        onMorePlaylist = onMorePlaylist,
+                        onCreatePlaylist = onCreatePlaylist,
+                    )
+                }
+            }
         }
-        ui.error?.let { err ->
-            item { Box(Modifier.padding(horizontal = padH)) { LibraryErrorText(err) } }
-        }
-        if (ui.isGuest) {
-            item { Box(Modifier.padding(horizontal = padH)) { LibraryGuestBanner() } }
-        }
-        libraryPlaylistSections(
-            playlists = ui.playlists,
-            onOpenPlaylist = onOpenPlaylist,
-            onMorePlaylist = onMorePlaylist,
-            onCreatePlaylist = onCreatePlaylist,
-            padH = padH,
-        )
     }
 }
 
@@ -215,23 +252,18 @@ private fun ProfileLandscapeBanner(
     profile: UserProfileBrief?,
     loading: Boolean,
     hasPhoto: Boolean,
-    customBgPath: String?,
     spaceProgress: Float,
     onEnterSpace: () -> Unit,
     onAvatarPositioned: (Offset, Float) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Box(modifier.clipToBounds()) {
-        ProfileFixedBackground(
-            backgroundUrl = profile?.backgroundUrl,
-            localPath = customBgPath,
-            modifier = Modifier.fillMaxSize(),
-        )
         Box(
             Modifier
                 .align(Alignment.BottomStart)
                 .fillMaxWidth()
                 .height(120.dp)
+                .graphicsLayer { alpha = (1f - spaceProgress).coerceIn(0f, 1f) }
                 .background(
                     Brush.verticalGradient(
                         colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.55f)),
@@ -279,6 +311,7 @@ private fun ProfileLandscapeBanner(
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
                     Row(
+                        modifier = Modifier.spaceIdentityLeave(spaceProgress, 0),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
@@ -294,27 +327,32 @@ private fun ProfileLandscapeBanner(
                         }
                     }
                     p.signature?.let { sig ->
-                        Spacer(Modifier.height(4.dp))
                         Text(
                             text = sig,
                             style = identityCaptionStyle(hasPhoto),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .padding(top = 4.dp)
+                                .spaceIdentityLeave(spaceProgress, 1),
                         )
                     }
                     listenMetaLine(p)?.let { meta ->
-                        Spacer(Modifier.height(4.dp))
                         Text(
                             text = meta,
                             style = identityCaptionStyle(hasPhoto).copy(fontSize = 12.sp),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .padding(top = 4.dp)
+                                .spaceIdentityLeave(spaceProgress, 2),
                         )
                     }
                 }
                 Spacer(Modifier.width(12.dp))
                 Box(
                     Modifier
+                        .spaceIdentityLeave(spaceProgress, 1)
                         .clip(RoundedCornerShape(20.dp))
                         .background(
                             if (hasPhoto) Color.White.copy(alpha = 0.94f)
@@ -673,8 +711,7 @@ private fun LibraryHomePortrait(
             }
         }
     }
-    val identityAlpha = (1f - scrollPx / (heroPx * 0.48f)).coerceIn(0f, 1f) *
-        (1f - spaceProgress).coerceIn(0f, 1f)
+    val identityAlpha = (1f - scrollPx / (heroPx * 0.48f)).coerceIn(0f, 1f)
     val hasPhoto = !customBgPath.isNullOrBlank() || !ui.profile?.backgroundUrl.isNullOrBlank()
     val atTop by remember {
         derivedStateOf {
@@ -684,15 +721,17 @@ private fun LibraryHomePortrait(
     SideEffect { pullState.atTop = atTop }
 
     val p = spaceProgress.coerceIn(0f, 1f)
+    val pulling = p > 0.001f
     BoxWithConstraints(
         Modifier
             .fillMaxSize()
-            .background(MainPalette.Page),
+            .background(MainPalette.Page)
+            .clipToBounds(),
     ) {
         val viewportH = maxHeight
         val sheetMinH = (viewportH - contentBottomInset).coerceAtLeast(0.dp)
         val photoH = lerp(heroHeight, viewportH, p)
-        val sheetA = (1f - p / 0.28f).coerceIn(0f, 1f)
+        val sheetA = spaceSheetAlpha(p)
         Box(
             Modifier
                 .fillMaxWidth()
@@ -721,33 +760,26 @@ private fun LibraryHomePortrait(
                 Box(
                     Modifier
                         .fillMaxWidth()
-                        .height(heroHeight - overlap)
+                        .height(photoH - overlap)
                         .zIndex(2f),
                 ) {
-                    if (sheetA > 0.01f) {
-                        Box(
-                            Modifier
-                                .align(Alignment.BottomCenter)
-                                .fillMaxWidth()
-                                .height(64.dp)
-                                .graphicsLayer { alpha = sheetA }
-                                .background(
-                                    Brush.verticalGradient(
-                                        colorStops = arrayOf(
-                                            0f to Color.Transparent,
-                                            0.4f to MainPalette.Page.copy(alpha = 0.28f),
-                                            0.72f to MainPalette.Page.copy(alpha = 0.78f),
-                                            1f to MainPalette.Page,
-                                        ),
-                                    ),
-                                ),
-                        )
-                    }
+                    ProfileSheetBlend(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .then(
+                                if (pulling) {
+                                    Modifier.graphicsLayer { alpha = sheetA }
+                                } else {
+                                    Modifier
+                                },
+                            ),
+                    )
                     ProfileIdentity(
                         profile = ui.profile,
                         loading = ui.loading && ui.profile == null,
                         onPhoto = hasPhoto,
                         fade = identityAlpha,
+                        spaceProgress = p,
                         hideAvatar = spaceProgress > SpaceAvatarHandoffProgress,
                         showSpaceHint = atTop && p < 0.12f,
                         avatarModifier = Modifier.onGloballyPositioned { coords ->
@@ -759,7 +791,9 @@ private fun LibraryHomePortrait(
                             }
                         },
                         modifier = Modifier
-                            .fillMaxSize()
+                            .align(Alignment.TopCenter)
+                            .fillMaxWidth()
+                            .height(heroHeight - overlap)
                             .statusBarsPadding()
                             .padding(horizontal = padH)
                             .padding(bottom = 28.dp),
@@ -771,7 +805,13 @@ private fun LibraryHomePortrait(
                     Modifier
                         .fillMaxWidth()
                         .heightIn(min = sheetMinH)
-                        .graphicsLayer { alpha = sheetA }
+                        .then(
+                            if (pulling) {
+                                Modifier.graphicsLayer { alpha = sheetA }
+                            } else {
+                                Modifier
+                            },
+                        )
                         .background(MainPalette.Page),
                 ) {
                     Column(
@@ -803,6 +843,25 @@ private fun LibraryHomePortrait(
             }
         }
     }
+}
+
+@Composable
+private fun ProfileSheetBlend(modifier: Modifier = Modifier) {
+    Box(
+        modifier
+            .fillMaxWidth()
+            .height(64.dp)
+            .background(
+                Brush.verticalGradient(
+                    colorStops = arrayOf(
+                        0f to Color.Transparent,
+                        0.4f to MainPalette.Page.copy(alpha = 0.28f),
+                        0.72f to MainPalette.Page.copy(alpha = 0.78f),
+                        1f to MainPalette.Page,
+                    ),
+                ),
+            ),
+    )
 }
 
 @Composable
@@ -903,6 +962,7 @@ private fun ProfileIdentity(
     onPhoto: Boolean,
     fade: Float,
     modifier: Modifier = Modifier,
+    spaceProgress: Float = 0f,
     hideAvatar: Boolean = false,
     showSpaceHint: Boolean = false,
     avatarModifier: Modifier = Modifier,
@@ -963,7 +1023,9 @@ private fun ProfileIdentity(
                 )
                 Spacer(Modifier.height(12.dp))
                 Row(
-                    modifier = Modifier.widthIn(max = 280.dp),
+                    modifier = Modifier
+                        .widthIn(max = 280.dp)
+                        .spaceIdentityLeave(spaceProgress, 0),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
                 ) {
@@ -979,17 +1041,21 @@ private fun ProfileIdentity(
                     }
                 }
                 p.signature?.let { sig ->
-                    Spacer(Modifier.height(6.dp))
                     Text(
                         text = sig,
                         style = identityCaptionStyle(onPhoto),
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                         textAlign = TextAlign.Center,
-                        modifier = Modifier.widthIn(max = 280.dp),
+                        modifier = Modifier
+                            .padding(top = 6.dp)
+                            .widthIn(max = 280.dp)
+                            .spaceIdentityLeave(spaceProgress, 1),
                     )
                 }
-                ProfileListenProgress(profile = p, onPhoto = onPhoto)
+                Box(Modifier.spaceIdentityLeave(spaceProgress, 2)) {
+                    ProfileListenProgress(profile = p, onPhoto = onPhoto)
+                }
             }
         }
         if (showSpaceHint) {
@@ -1001,7 +1067,10 @@ private fun ProfileIdentity(
                 ),
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(bottom = 4.dp),
+                    .padding(bottom = 4.dp)
+                    .graphicsLayer {
+                        alpha = (1f - spaceProgress / 0.10f).coerceIn(0f, 1f)
+                    },
             )
         }
     }
@@ -1243,9 +1312,9 @@ private fun LibraryPlaylistBody(
     onMorePlaylist: (PlaylistSummary) -> Unit,
     onCreatePlaylist: () -> Unit,
 ) {
-    val liked = playlists.filter { it.isHeartPlaylist }
+    val liked = playlists.filter { it.isHeartPlaylist && it.isOwned }
     val created = playlists.filter { it.isOwned && !it.isHeartPlaylist }
-    val collected = playlists.filter { !it.isOwned && !it.isHeartPlaylist }
+    val collected = playlists.filter { !it.isOwned }
 
     PlaylistSectionColumn(
         title = "我喜欢的音乐",
@@ -1312,103 +1381,6 @@ private fun PlaylistSectionColumn(
     } else {
         playlists.forEach { pl ->
             Box(Modifier.padding(vertical = 6.dp)) {
-                PlaylistRow(
-                    pl = pl,
-                    onClick = { onOpenPlaylist(pl) },
-                    onMore = if (pl.isHeartPlaylist) null else ({ onMorePlaylist(pl) }),
-                )
-            }
-        }
-    }
-}
-
-private fun LazyListScope.libraryPlaylistSections(
-    playlists: List<PlaylistSummary>,
-    onOpenPlaylist: (PlaylistSummary) -> Unit,
-    onMorePlaylist: (PlaylistSummary) -> Unit,
-    onCreatePlaylist: () -> Unit,
-    padH: Dp = 0.dp,
-) {
-    val liked = playlists.filter { it.isHeartPlaylist }
-    val created = playlists.filter { it.isOwned && !it.isHeartPlaylist }
-    val collected = playlists.filter { !it.isOwned && !it.isHeartPlaylist }
-
-    playlistSection(
-        title = "我喜欢的音乐",
-        playlists = liked,
-        emptyText = "还没有喜欢的音乐",
-        onOpenPlaylist = onOpenPlaylist,
-        onMorePlaylist = onMorePlaylist,
-        padH = padH,
-    )
-    playlistSection(
-        title = "创建的歌单",
-        playlists = created,
-        emptyText = "还没有创建的歌单",
-        onOpenPlaylist = onOpenPlaylist,
-        onMorePlaylist = onMorePlaylist,
-        onCreate = onCreatePlaylist,
-        showCount = true,
-        padH = padH,
-    )
-    playlistSection(
-        title = "收藏的歌单",
-        playlists = collected,
-        emptyText = "还没有收藏的歌单",
-        onOpenPlaylist = onOpenPlaylist,
-        onMorePlaylist = onMorePlaylist,
-        showCount = true,
-        padH = padH,
-    )
-}
-
-private fun LazyListScope.playlistSection(
-    title: String,
-    playlists: List<PlaylistSummary>,
-    emptyText: String,
-    onOpenPlaylist: (PlaylistSummary) -> Unit,
-    onMorePlaylist: (PlaylistSummary) -> Unit,
-    onCreate: (() -> Unit)? = null,
-    showCount: Boolean = false,
-    padH: Dp = 0.dp,
-) {
-    item(key = "h-$title") {
-        Box(Modifier.padding(horizontal = padH)) {
-            LibrarySectionTitle(
-                text = if (showCount) "$title · ${playlists.size}" else title,
-                trailing = onCreate?.let { create ->
-                    {
-                        Box(
-                            Modifier
-                                .size(32.dp)
-                                .clickable(
-                                    interactionSource = remember { MutableInteractionSource() },
-                                    indication = null,
-                                    onClick = create,
-                                ),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Icon(
-                                imageVector = ZIcons.Add,
-                                contentDescription = "新建歌单",
-                                tint = MainPalette.Accent,
-                                modifier = Modifier.size(22.dp),
-                            )
-                        }
-                    }
-                },
-            )
-        }
-    }
-    if (playlists.isEmpty()) {
-        item(key = "e-$title") {
-            Box(Modifier.padding(horizontal = padH)) {
-                LibrarySectionEmpty(emptyText)
-            }
-        }
-    } else {
-        items(playlists, key = { "${title}-${it.id}-${it.coverUrl}" }) { pl ->
-            Box(Modifier.padding(horizontal = padH, vertical = 6.dp)) {
                 PlaylistRow(
                     pl = pl,
                     onClick = { onOpenPlaylist(pl) },

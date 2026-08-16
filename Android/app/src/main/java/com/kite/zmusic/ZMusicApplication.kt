@@ -1,6 +1,7 @@
 package com.kite.zmusic
 
 import android.app.Application
+import com.kite.zmusic.data.AudioQualityStore
 import com.kite.zmusic.data.LibraryHomeRepository
 import com.kite.zmusic.data.LikedPlaylistRepository
 import com.kite.zmusic.data.HomeFeedRepository
@@ -26,6 +27,8 @@ import kotlinx.coroutines.launch
 
 class ZMusicApplication : Application() {
     lateinit var sessionRepository: SessionRepository
+        private set
+    lateinit var audioQualityStore: AudioQualityStore
         private set
     lateinit var playbackBridge: PlaybackBridge
         private set
@@ -59,6 +62,7 @@ class ZMusicApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         sessionRepository = SessionRepository(this)
+        audioQualityStore = AudioQualityStore(this)
         playbackBridge = PlaybackBridge(this, sessionRepository)
         likedPlaylistRepository = LikedPlaylistRepository(this, sessionRepository)
         homeFeedRepository = HomeFeedRepository(sessionRepository)
@@ -76,7 +80,7 @@ class ZMusicApplication : Application() {
             onUserId = { uid -> playlistCollectionRepository.setSelfUserId(uid) },
         )
         islandNoticeCenter = IslandNoticeCenter()
-        trackExportRepository = TrackExportRepository(this)
+        trackExportRepository = TrackExportRepository(this, audioQualityStore)
         playlistEditor = PlaylistEditor(
             sessionRepository,
             NcmUserClient(),

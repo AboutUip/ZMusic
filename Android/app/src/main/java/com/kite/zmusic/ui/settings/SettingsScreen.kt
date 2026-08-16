@@ -60,9 +60,13 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kite.zmusic.BuildConfig
 import com.kite.zmusic.R
+import com.kite.zmusic.ZMusicApplication
 import com.kite.zmusic.data.ServerConfigRepository
 import com.kite.zmusic.ui.common.GlassAlertDialog
 import com.kite.zmusic.ui.common.GlassPromptField
@@ -77,8 +81,8 @@ import com.kite.zmusic.ui.notice.showIslandNotice
 import com.kite.zmusic.ui.server.ServerConfigViewModel
 import com.kite.zmusic.ui.server.ServerConfigViewModelFactory
 
-private val AboutSlideSpec = tween<IntOffset>(durationMillis = 320, easing = FastOutSlowInEasing)
-private val AboutFadeSpec = tween<Float>(durationMillis = 220)
+private val DrillSlideSpec = tween<IntOffset>(durationMillis = 320, easing = FastOutSlowInEasing)
+private val DrillFadeSpec = tween<Float>(durationMillis = 220)
 
 @Composable
 fun SettingsScreen(
@@ -101,14 +105,34 @@ fun SettingsScreen(
     var editServer by remember { mutableStateOf(false) }
     var confirmLogout by remember { mutableStateOf(false) }
     val aboutVisible = remember { MutableTransitionState(false) }
+    val permissionsVisible = remember { MutableTransitionState(false) }
+    val qualityVisible = remember { MutableTransitionState(false) }
+    var permissionSnapshot by remember { mutableStateOf(AppPermissionSnapshot.read(context)) }
+    val audioQualityStore = remember {
+        (context.applicationContext as ZMusicApplication).audioQualityStore
+    }
+    val audioQuality by audioQualityStore.quality.collectAsStateWithLifecycle()
     var showAppreciate by remember { mutableStateOf(false) }
     var legalKind by remember { mutableStateOf<LoginLegalKind?>(null) }
     val reveal = remember { Animatable(0f) }
     LaunchedEffect(Unit) {
         reveal.animateTo(1f, tween(420, easing = FastOutSlowInEasing))
     }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        permissionSnapshot = AppPermissionSnapshot.read(context)
+    }
     BackHandler(enabled = aboutVisible.targetState && legalKind == null && !showAppreciate) {
         aboutVisible.targetState = false
+    }
+    fun closePermissions() {
+        permissionsVisible.targetState = false
+        permissionSnapshot = AppPermissionSnapshot.read(context)
+    }
+    BackHandler(enabled = permissionsVisible.targetState) {
+        closePermissions()
+    }
+    BackHandler(enabled = qualityVisible.targetState) {
+        qualityVisible.targetState = false
     }
 
     Box(
@@ -152,9 +176,37 @@ fun SettingsScreen(
                 }
                 Spacer(Modifier.height(22.dp))
                 SettingsGroup(
+                    title = "播放",
+                    reveal = reveal.value,
+                    delay = 0.08f,
+                ) {
+                    SettingsRow(
+                        title = "音源默认质量",
+                        subtitle = "${audioQuality.title} · ${audioQuality.caption}",
+                        icon = ZIcons.GraphicEq,
+                        tint = Color(0xFFB08D57),
+                        onClick = { qualityVisible.targetState = true },
+                    )
+                }
+                Spacer(Modifier.height(22.dp))
+                SettingsGroup(
+                    title = "应用",
+                    reveal = reveal.value,
+                    delay = 0.14f,
+                ) {
+                    SettingsRow(
+                        title = "权限",
+                        subtitle = permissionSnapshot.subtitle,
+                        icon = ZIcons.Security,
+                        tint = Color(0xFF5E5CE6),
+                        onClick = { permissionsVisible.targetState = true },
+                    )
+                }
+                Spacer(Modifier.height(22.dp))
+                SettingsGroup(
                     title = "ZMusic",
                     reveal = reveal.value,
-                    delay = 0.10f,
+                    delay = 0.20f,
                 ) {
                     SettingsRow(
                         title = "关于",
@@ -182,7 +234,7 @@ fun SettingsScreen(
                 SettingsGroup(
                     title = "账号",
                     reveal = reveal.value,
-                    delay = 0.18f,
+                    delay = 0.28f,
                 ) {
                     SettingsRow(
                         title = "退出登录",
@@ -195,33 +247,47 @@ fun SettingsScreen(
                 }
             }
         }
-        AnimatedVisibility(
-            visibleState = aboutVisible,
-            modifier = Modifier
-                .fillMaxSize()
-                .zIndex(1f),
-            enter = if (landscape) LandscapeCoverEnter else slideInHorizontally(AboutSlideSpec) { it } + fadeIn(AboutFadeSpec),
-            exit = if (landscape) LandscapeCoverExit else slideOutHorizontally(AboutSlideSpec) { it } + fadeOut(AboutFadeSpec),
+        SettingsDrillHost(
+            visibleState = qualityVisible,
+            landscape = landscape,
+            title = "音源默认质量",
+            onBack = { qualityVisible.targetState = false },
         ) {
-            Column(
-                Modifier
-                    .fillMaxSize()
-                    .background(MainPalette.Page)
-                    .statusBarsPadding(),
-            ) {
-                SettingsTopBar(
-                    title = "关于",
-                    onBack = { aboutVisible.targetState = false },
-                )
-                AboutPage(
-                    contentBottomInset = contentBottomInset,
-                    onOpenTerms = { legalKind = LoginLegalKind.Terms },
-                    onOpenPrivacy = { legalKind = LoginLegalKind.Privacy },
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth(),
-                )
-            }
+            AudioQualitySettingsPage(
+                selected = audioQuality,
+                onSelect = { next ->
+                    if (next != audioQuality) {
+                        audioQualityStore.set(next)
+                        context.showIslandNotice("已切换到${next.title}")
+                    }
+                },
+                contentBottomInset = contentBottomInset,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        SettingsDrillHost(
+            visibleState = aboutVisible,
+            landscape = landscape,
+            title = "关于",
+            onBack = { aboutVisible.targetState = false },
+        ) {
+            AboutPage(
+                contentBottomInset = contentBottomInset,
+                onOpenTerms = { legalKind = LoginLegalKind.Terms },
+                onOpenPrivacy = { legalKind = LoginLegalKind.Privacy },
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        SettingsDrillHost(
+            visibleState = permissionsVisible,
+            landscape = landscape,
+            title = "权限",
+            onBack = { closePermissions() },
+        ) {
+            PermissionSettingsPage(
+                contentBottomInset = contentBottomInset,
+                modifier = Modifier.fillMaxSize(),
+            )
         }
     }
 
@@ -335,6 +401,51 @@ fun SettingsScreen(
                 )
             },
         )
+    }
+}
+
+@Composable
+private fun SettingsDrillHost(
+    visibleState: MutableTransitionState<Boolean>,
+    landscape: Boolean,
+    title: String,
+    onBack: () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    AnimatedVisibility(
+        visibleState = visibleState,
+        modifier = Modifier
+            .fillMaxSize()
+            .zIndex(1f),
+        enter = if (landscape) {
+            LandscapeCoverEnter
+        } else {
+            slideInHorizontally(DrillSlideSpec) { it } + fadeIn(DrillFadeSpec)
+        },
+        exit = if (landscape) {
+            LandscapeCoverExit
+        } else {
+            slideOutHorizontally(DrillSlideSpec) { it } + fadeOut(DrillFadeSpec)
+        },
+    ) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .background(MainPalette.Page)
+                .statusBarsPadding(),
+        ) {
+            SettingsTopBar(
+                title = title,
+                onBack = onBack,
+            )
+            Box(
+                Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+            ) {
+                content()
+            }
+        }
     }
 }
 

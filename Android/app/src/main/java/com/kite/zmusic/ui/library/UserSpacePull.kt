@@ -2,6 +2,7 @@ package com.kite.zmusic.ui.library
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -14,6 +15,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.changedToUp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.util.VelocityTracker
@@ -28,6 +30,55 @@ internal val SpaceMorphEasing = CubicBezierEasing(0.45f, 0.02f, 0.15f, 1f)
 
 /** 飞入头像与源头像交接：叠加层出现的同时藏起源头像，避免红圈晚一拍再跟上。 */
 internal const val SpaceAvatarHandoffProgress = 0.001f
+
+/** 系统栏改浅色图标：等照片已经铺开、幕布开始压暗，避免中段闪一下。 */
+internal const val SpaceDarkBarsProgress = 0.24f
+
+/**
+ * 歌单层淡出。原先 0.28 处 alpha 归零，进场像列表被擦掉、出场像灰底突然砸回来。
+ * 跟照片增高同步下滑，大部分行程里列表仍是实底，只在后段收干净。
+ */
+internal fun spaceSheetAlpha(t: Float): Float {
+    val u = (t.coerceIn(0f, 1f) / 0.72f).coerceIn(0f, 1f)
+    return 1f - FastOutSlowInEasing.transform(u)
+}
+
+/**
+ * 星空 / 星座 / 压暗幕布。前段只做照片展开 + 列表退下，后段再从同一张图里长出星座。
+ */
+internal fun spaceSceneProgress(t: Float): Float {
+    return ((t - 0.18f) / 0.58f).coerceIn(0f, 1f)
+}
+
+/**
+ * 昵称 / 签名 / 听歌数据分槽离场，回退原路入场。
+ * [slot] 0 昵称+等级，1 签名，2 听歌进度。
+ */
+internal fun spaceIdentitySlot(t: Float, slot: Int): Float {
+    val start = 0.03f + slot * 0.08f
+    val span = 0.26f
+    return FastOutSlowInEasing.transform(
+        ((t.coerceIn(0f, 1f) - start) / span).coerceIn(0f, 1f),
+    )
+}
+
+internal fun Modifier.spaceIdentityLeave(progress: Float, slot: Int): Modifier {
+    return graphicsLayer {
+        val u = spaceIdentitySlot(progress, slot)
+        alpha = 1f - u
+        translationY = u * (14f + slot * 12f)
+        val s = 1f - u * 0.05f
+        scaleX = s
+        scaleY = s
+    }
+}
+
+/** Dock / 横屏栏：跟列表后段一起收，避免一拉就先掉一层壳。 */
+internal fun spaceChromeLeave(t: Float): Float {
+    return FastOutSlowInEasing.transform(
+        (t.coerceIn(0f, 1f) / 0.78f).coerceIn(0f, 1f),
+    )
+}
 
 private val SpaceEnterSpring = spring<Float>(
     dampingRatio = 0.9f,

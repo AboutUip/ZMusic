@@ -190,12 +190,11 @@ class LibraryHomeRepository(
             snap: LikedPlaylistRepository.Snapshot?,
         ): List<PlaylistSummary> {
             if (snap == null) return playlists
+            val heartId = snap.playlistId.takeIf { it > 0L }
+                ?: playlists.firstOrNull { it.isHeartPlaylist && it.isOwned }?.id
+                ?: return playlists
             return playlists.map { pl ->
-                if (pl.isHeartPlaylist || (snap.playlistId > 0L && pl.id == snap.playlistId)) {
-                    pl.copy(trackCount = snap.trackCount)
-                } else {
-                    pl
-                }
+                if (pl.id == heartId) pl.copy(trackCount = snap.trackCount) else pl
             }
         }
     }

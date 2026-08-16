@@ -16,12 +16,14 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
 import com.kite.zmusic.R
+import com.kite.zmusic.data.AudioQuality
+import com.kite.zmusic.data.AudioQualityStore
 import com.kite.zmusic.data.LikedPlaylistRepository
 import com.kite.zmusic.data.LyricRepository
 import com.kite.zmusic.data.NcmHomeParse
 import com.kite.zmusic.data.NcmLibraryParse
-import com.kite.zmusic.data.NcmPlaybackParse
 import com.kite.zmusic.data.NcmUserClient
+import com.kite.zmusic.data.PlayUrlResolver
 import com.kite.zmusic.data.SessionRepository
 import com.kite.zmusic.data.TrackRow
 import com.kite.zmusic.ui.common.UrlImageCache
@@ -38,6 +40,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -55,6 +59,7 @@ class PlaylistCoordinator(
     private val stateStore: PlaybackStateStore,
     private val lyricRepository: LyricRepository,
     private val likedPlaylistRepository: LikedPlaylistRepository,
+    private val audioQualityStore: AudioQualityStore,
     private val userClient: NcmUserClient = NcmUserClient(),
     private val onClearAndStopService: (() -> Unit)? = null,
 ) {
@@ -75,11 +80,14 @@ class PlaylistCoordinator(
             enableAudioOutputPlaybackParams: Boolean,
         ): AudioSink {
             return DefaultAudioSink.Builder(context)
-                .setEnableFloatOutput(enableFloatOutput)
+                .setEnableFloatOutput(true)
                 .setEnableAudioOutputPlaybackParameters(enableAudioOutputPlaybackParams)
                 .setAudioProcessors(arrayOf(spectrumProcessor))
                 .build()
         }
+    }.apply {
+        setEnableDecoderFallback(true)
+        setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
     }
 
     private val musicAudioAttrs = AudioAttributes.Builder()
@@ -129,6 +137,7 @@ class PlaylistCoordinator(
      */
     private var holdAutoAdvance = false
     private var pendingAdvanceAfterHold = false
+    private var appliedQuality: AudioQuality = audioQualityStore.current()
 
     private val playerListener = object : Player.Listener {
         override fun onPlaybackStateChanged(playbackState: Int) {
@@ -221,6 +230,13 @@ class PlaylistCoordinator(
         }
         applyRepeatMode()
         startTicker()
+        scope.launch {
+            audioQualityStore.quality.drop(1).collect { next ->
+                if (next == appliedQuality) return@collect
+                appliedQuality = next
+                reloadCurrentForQuality()
+            }
+        }
     }
 
     fun playQueue(
@@ -809,6 +825,7 @@ class PlaylistCoordinator(
         isRetry: Boolean = false,
         resumeAtMs: Long = 0L,
         recordShuffleHistory: Boolean = false,
+        resumePlayWhenReady: Boolean = true,
     ) {
         val track = _ui.value.queue.getOrNull(idx) ?: return
         if (!isRetry) {
@@ -898,7 +915,7 @@ class PlaylistCoordinator(
                     exoPlayer.setMediaItem(buildMediaItem(track, url), startPos)
                     applyRepeatMode()
                     exoPlayer.prepare()
-                    exoPlayer.playWhenReady = true
+                    exoPlayer.playWhenReady = resumePlayWhenReady
                 }
                 if (_ui.value.currentTrack?.id != loadGen) return@launch
                 persistSnapshot()
@@ -1070,13 +1087,30 @@ class PlaylistCoordinator(
         if (s.hasQueue && s.queue.isNotEmpty()) stateStore.save(s)
     }
 
-    private suspend fun resolvePlayUrl(trackId: Long, cookie: String): String? {
-        val primary = withContext(Dispatchers.IO) { userClient.songUrl(listOf(trackId), cookie) }
-        NcmPlaybackParse.songUrlForId(primary, trackId)?.let { return it }
-        val v1 = withContext(Dispatchers.IO) {
-            userClient.songUrlV1(listOf(trackId), cookie, level = "exhigh")
+    private fun reloadCurrentForQuality() {
+        urlCache.clear()
+        retryCount = 0
+        val idx = _ui.value.index
+        if (!_ui.value.hasQueue || idx !in _ui.value.queue.indices) return
+        val pos = exoPlayer.currentPosition.coerceAtLeast(0L).let { cur ->
+            if (cur > 0L) cur else _ui.value.positionMs
         }
-        return NcmPlaybackParse.songUrlForId(v1, trackId)
+        val play = exoPlayer.playWhenReady || _ui.value.playWhenReady
+        loadAndPlayIndex(
+            idx = idx,
+            isRetry = false,
+            resumeAtMs = pos,
+            resumePlayWhenReady = play,
+        )
+    }
+
+    private suspend fun resolvePlayUrl(trackId: Long, cookie: String): String? {
+        return PlayUrlResolver.resolve(
+            userClient = userClient,
+            trackId = trackId,
+            cookie = cookie,
+            quality = audioQualityStore.current(),
+        )
     }
 
     private fun pickShuffle(current: Int, size: Int): Int {

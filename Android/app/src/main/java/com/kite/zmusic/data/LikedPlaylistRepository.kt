@@ -285,8 +285,8 @@ class LikedPlaylistRepository(
                     }
                     val likeDef = async { fetchLikeIds(uid, cookie) }
                     val playlists = NcmLibraryParse.playlistsFromUserPlaylist(plDef.await(), uid)
-                    val heart = playlists.firstOrNull { it.isHeartPlaylist }
-                        ?: playlists.firstOrNull { it.name == "我喜欢的音乐" }
+                    val heart = playlists.firstOrNull { it.isHeartPlaylist && it.isOwned }
+                        ?: playlists.firstOrNull { it.isHeartPlaylist }
                     Pair(heart, likeDef.await())
                 }
             }

@@ -33,6 +33,7 @@ val hasReleaseSigning =
         !releaseKeystoreProperties.getProperty("keyPassword").isNullOrBlank()
 if (hasReleaseSigning) {
     logger.lifecycle("Release signing: ${releaseStoreFile!!.name} (Android/keystore)")
+    logger.lifecycle("Debug uses the same keystore so Studio Run can overlay the daily install")
 }
 
 /**
@@ -71,6 +72,14 @@ android {
     }
 
     buildTypes {
+        debug {
+            // 本机有正式密钥时，debug 也用同一把钥匙。
+            // 开发者即日常用户：Studio Run 可覆盖安装，登录/队列/显示偏好不会因换签名被清掉。
+            // 开源克隆无 keystore 时仍走默认 debug 签名。
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            }
+        }
         release {
             signingConfig = if (hasReleaseSigning) {
                 signingConfigs.getByName("release")

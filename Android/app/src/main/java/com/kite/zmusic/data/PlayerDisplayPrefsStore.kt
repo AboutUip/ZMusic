@@ -639,7 +639,7 @@ data class PlayerDisplayPrefs(
             lyricLineSpacingDp = lyricLineSpacingDp.finiteCoerceIn(
                 LINE_SPACING_MIN,
                 LINE_SPACING_MAX,
-                10f,
+                LINE_SPACING_DEFAULT,
             ),
             lyricPlayedCount = lyricPlayedCount.coerceIn(
                 LYRIC_AROUND_MIN,
@@ -714,10 +714,15 @@ data class PlayerDisplayPrefs(
         const val FONT_MAX = 1.50f
         const val LINE_SPACING_MIN = 0f
         const val LINE_SPACING_MAX = 28f
+        const val LINE_SPACING_DEFAULT = 10f
+        /** 竖屏歌词样式：行间距默认与编辑器「0」一致 */
+        const val PORTRAIT_LINE_SPACING_DEFAULT = 0f
         const val LYRIC_AROUND_MIN = 0
         const val LYRIC_AROUND_MAX = 3
+        const val LYRIC_AROUND_DEFAULT = 2
         /** 竖屏展示区域更大，已播/未播可到 10 */
         const val PORTRAIT_LYRIC_AROUND_MAX = 10
+        const val PORTRAIT_LYRIC_AROUND_DEFAULT = 6
         const val UI_MIN = 0.80f
         const val UI_MAX = 1.25f
         const val VINYL_OFFSET_MIN = -56f
@@ -828,18 +833,29 @@ private fun sanitizeCustomPresets(
 class PlayerDisplayPrefsStore(
     context: Context,
     /** 横屏默认；竖屏传入 [PREFS_PORTRAIT] 以完全隔离。 */
-    prefsName: String = PREFS,
+    private val prefsName: String = PREFS,
 ) {
     private val prefs: SharedPreferences =
         context.applicationContext.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
+    private val portraitStore = prefsName == PREFS_PORTRAIT
 
     fun load(): PlayerDisplayPrefs {
         val loaded = runCatching { loadUnchecked().sanitized() }.getOrNull()
         if (loaded != null) return loaded
         // 损坏/类型错乱时回落默认并覆写，避免冷启动反复崩溃
-        val fallback = PlayerDisplayPrefs()
+        val fallback = defaultPrefs()
         runCatching { save(fallback) }
         return fallback
+    }
+
+    private fun defaultPrefs(): PlayerDisplayPrefs {
+        val base = PlayerDisplayPrefs()
+        if (!portraitStore) return base
+        return base.copy(
+            lyricLineSpacingDp = PlayerDisplayPrefs.PORTRAIT_LINE_SPACING_DEFAULT,
+            lyricPlayedCount = PlayerDisplayPrefs.PORTRAIT_LYRIC_AROUND_DEFAULT,
+            lyricUpcomingCount = PlayerDisplayPrefs.PORTRAIT_LYRIC_AROUND_DEFAULT,
+        )
     }
 
     private fun loadUnchecked(): PlayerDisplayPrefs {
@@ -869,9 +885,30 @@ class PlayerDisplayPrefsStore(
         return PlayerDisplayPrefs(
             rainNightEnabled = prefs.safeBoolean(KEY_RAIN, true),
             fontScale = legacyLyricFont,
-            lyricLineSpacingDp = prefs.safeFloat(KEY_LINE_SPACING, 10f),
-            lyricPlayedCount = prefs.safeInt(KEY_PLAYED_COUNT, 2),
-            lyricUpcomingCount = prefs.safeInt(KEY_UPCOMING_COUNT, 2),
+            lyricLineSpacingDp = prefs.safeFloat(
+                KEY_LINE_SPACING,
+                if (portraitStore) {
+                    PlayerDisplayPrefs.PORTRAIT_LINE_SPACING_DEFAULT
+                } else {
+                    PlayerDisplayPrefs.LINE_SPACING_DEFAULT
+                },
+            ),
+            lyricPlayedCount = prefs.safeInt(
+                KEY_PLAYED_COUNT,
+                if (portraitStore) {
+                    PlayerDisplayPrefs.PORTRAIT_LYRIC_AROUND_DEFAULT
+                } else {
+                    PlayerDisplayPrefs.LYRIC_AROUND_DEFAULT
+                },
+            ),
+            lyricUpcomingCount = prefs.safeInt(
+                KEY_UPCOMING_COUNT,
+                if (portraitStore) {
+                    PlayerDisplayPrefs.PORTRAIT_LYRIC_AROUND_DEFAULT
+                } else {
+                    PlayerDisplayPrefs.LYRIC_AROUND_DEFAULT
+                },
+            ),
             uiScale = prefs.safeFloat(KEY_UI, 1f),
             vinylOffsetXDp = prefs.safeFloat(KEY_VINYL_X, 0f),
             vinylOffsetYDp = prefs.safeFloat(KEY_VINYL_Y, 0f),

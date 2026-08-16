@@ -36,7 +36,7 @@ internal fun aboutLegalSections(kind: LoginLegalKind): List<AboutLegalSection> =
         AboutLegalSection(
             heading = "开源与作者",
             body = "ZMusic 以 GNU 通用公共许可证第 2 版（GPL-2.0）开源。你可以使用、复制、修改和再分发本软件，但必须完整保留许可证文本、版权声明与开源义务，不得将本软件闭源化，也不得剥离作者署名。\n\n" +
-                "ZMusic 的作者是小萱baibai。请尊重她的署名、劳动与本项目的原创性。引用、二次开发或再分发时，应清晰标明来源。",
+                "ZMusic 的作者是小萱baibai。请尊重他的署名、劳动与本项目的原创性。引用、二次开发或再分发时，应清晰标明来源。",
         ),
         AboutLegalSection(
             heading = "服务性质",
