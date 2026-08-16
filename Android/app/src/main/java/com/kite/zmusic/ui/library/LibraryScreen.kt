@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredHeight
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -50,11 +51,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.paint
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
@@ -84,6 +87,7 @@ import com.kite.zmusic.ui.common.GlassAlertDialog
 import com.kite.zmusic.ui.common.GlassPromptField
 import com.kite.zmusic.ui.common.GlassSheetAction
 import com.kite.zmusic.ui.common.UrlImage
+import com.kite.zmusic.ui.common.rememberUrlImageBitmap
 import com.kite.zmusic.ui.icons.ZIcons
 import com.kite.zmusic.ui.notice.showIslandNotice
 import com.kite.zmusic.ui.main.MainPalette
@@ -176,22 +180,6 @@ private fun LibraryHomeLandscape(
     ) {
         val viewportH = maxHeight
         val photoH = lerp(bannerH, viewportH, p)
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .height(photoH)
-                .align(Alignment.TopCenter)
-                .clipToBounds(),
-        ) {
-            ProfileFixedBackground(
-                backgroundUrl = ui.profile?.backgroundUrl,
-                localPath = customBgPath,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .requiredHeight(viewportH)
-                    .align(Alignment.TopCenter),
-            )
-        }
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
@@ -200,22 +188,39 @@ private fun LibraryHomeLandscape(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item(key = "profile-banner") {
-                ProfileLandscapeBanner(
-                    profile = ui.profile,
-                    loading = ui.loading && ui.profile == null,
-                    hasPhoto = hasPhoto,
-                    spaceProgress = spaceProgress,
-                    onEnterSpace = { pullState.open() },
-                    onAvatarPositioned = onAvatarPositioned,
-                    modifier = Modifier
+                Box(
+                    Modifier
                         .fillMaxWidth()
-                        .height(bannerH),
-                )
+                        .height(photoH)
+                        .clipToBounds(),
+                ) {
+                    ProfileFixedBackground(
+                        backgroundUrl = ui.profile?.backgroundUrl,
+                        localPath = customBgPath,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .requiredHeight(viewportH)
+                            .align(Alignment.TopCenter),
+                    )
+                    ProfileLandscapeBanner(
+                        profile = ui.profile,
+                        loading = ui.loading && ui.profile == null,
+                        hasPhoto = hasPhoto,
+                        spaceProgress = spaceProgress,
+                        onEnterSpace = { pullState.open() },
+                        onAvatarPositioned = onAvatarPositioned,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(bannerH)
+                            .align(Alignment.TopStart),
+                    )
+                }
             }
             item(key = "profile-sheet") {
                 Column(
                     Modifier
                         .fillMaxWidth()
+                        .background(MainPalette.Page)
                         .padding(horizontal = padH)
                         .then(
                             if (pulling) {
@@ -865,34 +870,33 @@ private fun ProfileSheetBlend(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun ProfileFixedBackground(
+internal fun ProfileFixedBackground(
     backgroundUrl: String?,
     localPath: String? = null,
     modifier: Modifier = Modifier,
 ) {
     val custom = !localPath.isNullOrBlank()
-    val remote = !backgroundUrl.isNullOrBlank()
-    Box(modifier) {
-        Box(
-            Modifier
-                .matchParentSize()
-                .background(ProfileBlankBrush),
-        )
-        if (custom) {
-            ProfileLocalImage(
-                path = localPath,
-                modifier = Modifier.matchParentSize(),
-            )
-        } else if (remote) {
-            UrlImage(
-                url = backgroundUrl,
-                contentDescription = null,
-                modifier = Modifier.matchParentSize(),
-                contentScale = ContentScale.Crop,
-                showPlaceholder = false,
-            )
-        }
-    }
+    val localBmp = rememberFileImageBitmap(if (custom) localPath else null)
+    val remoteBmp = rememberUrlImageBitmap(if (custom) null else backgroundUrl)
+    val bmp = localBmp ?: remoteBmp
+    val painter = remember(bmp) { bmp?.let { BitmapPainter(it) } }
+    Box(
+        modifier
+            .clipToBounds()
+            .background(ProfileBlankBrush)
+            .then(
+                if (painter != null) {
+                    Modifier.paint(
+                        painter = painter,
+                        sizeToIntrinsics = false,
+                        alignment = Alignment.Center,
+                        contentScale = ContentScale.Crop,
+                    )
+                } else {
+                    Modifier
+                },
+            ),
+    )
 }
 
 @Composable

@@ -27,18 +27,11 @@ private val UrlImageClient by lazy {
         .build()
 }
 
-/** 不依赖 Coil，用 OkHttp 拉取图片（与工程现有网络栈一致）。键为 URL，与 [UrlImageCache] 一致。 */
+/** 与 [UrlImage] 同一套缓存；只取位图，由调用方决定怎么铺进格子。 */
 @Composable
-fun UrlImage(
-    url: String?,
-    contentDescription: String?,
-    modifier: Modifier = Modifier,
-    contentScale: ContentScale = ContentScale.Fit,
-    showPlaceholder: Boolean = true,
-) {
+fun rememberUrlImageBitmap(url: String?): ImageBitmap? {
     val context = LocalContext.current
     val urlKey = UrlImageCache.normalizeKey(url).orEmpty()
-    // 同步吃内存缓存，避免重组首帧空白闪一下；remember 绑 urlKey，防 Lazy 复用串图
     var bitmap by remember(urlKey) {
         mutableStateOf(
             urlKey.takeIf { it.isNotEmpty() }?.let { UrlImageCache.memoryGet(it) },
@@ -49,14 +42,10 @@ fun UrlImage(
             bitmap = null
             return@LaunchedEffect
         }
-
-        // 1) 内存缓存：直接命中，切勿先清空
         UrlImageCache.memoryGet(urlKey)?.let {
             bitmap = it
             return@LaunchedEffect
         }
-
-        // 2) 磁盘缓存（无实时性要求，优先本地）
         val fromDisk: ImageBitmap? = withContext(Dispatchers.IO) {
             runCatching {
                 val file = UrlImageCache.diskFile(context, urlKey)
@@ -65,14 +54,11 @@ fun UrlImage(
                 decodeSampledBitmap(bytes)
             }.getOrNull()
         }
-        // 仍对应本 urlKey 才上屏，避免快速滑格时旧请求回写
         if (fromDisk != null) {
             UrlImageCache.memoryPut(urlKey, fromDisk)
             bitmap = fromDisk
             return@LaunchedEffect
         }
-
-        // 3) 网络：已有图就先留着，避免翻页重组把已加载封面清掉
         val fromNet = withContext(Dispatchers.IO) {
             runCatching {
                 val req = UrlImageCache.imageRequest(urlKey)
@@ -91,7 +77,19 @@ fun UrlImage(
             bitmap = fromNet
         }
     }
-    val b = bitmap
+    return bitmap
+}
+
+/** 不依赖 Coil，用 OkHttp 拉取图片（与工程现有网络栈一致）。键为 URL，与 [UrlImageCache] 一致。 */
+@Composable
+fun UrlImage(
+    url: String?,
+    contentDescription: String?,
+    modifier: Modifier = Modifier,
+    contentScale: ContentScale = ContentScale.Fit,
+    showPlaceholder: Boolean = true,
+) {
+    val b = rememberUrlImageBitmap(url)
     Box(modifier, contentAlignment = Alignment.Center) {
         if (b != null) {
             Image(

@@ -4,7 +4,6 @@ import android.graphics.BitmapFactory
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -55,7 +54,6 @@ import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalConfiguration
@@ -157,7 +155,10 @@ internal fun UserSpaceOverlay(
     BoxWithConstraints(
         modifier
             .zIndex(80f)
-            .onGloballyPositioned { overlayOrigin = it.positionInWindow() },
+            .onGloballyPositioned {
+                val pos = it.positionInWindow()
+                if (overlayOrigin != pos) overlayOrigin = pos
+            },
     ) {
         val w = constraints.maxWidth.toFloat().coerceAtLeast(1f)
         val h = constraints.maxHeight.toFloat().coerceAtLeast(1f)
@@ -704,7 +705,7 @@ private fun SpaceChromeButton(
 }
 
 @Composable
-internal fun ProfileLocalImage(path: String?, modifier: Modifier = Modifier) {
+internal fun rememberFileImageBitmap(path: String?): ImageBitmap? {
     var bitmap by remember(path) { mutableStateOf<ImageBitmap?>(null) }
     LaunchedEffect(path) {
         if (path.isNullOrBlank()) {
@@ -715,15 +716,7 @@ internal fun ProfileLocalImage(path: String?, modifier: Modifier = Modifier) {
             runCatching { BitmapFactory.decodeFile(path)?.asImageBitmap() }.getOrNull()
         }
     }
-    val bmp = bitmap
-    if (bmp != null) {
-        Image(
-            bitmap = bmp,
-            contentDescription = null,
-            modifier = modifier,
-            contentScale = ContentScale.Crop,
-        )
-    }
+    return bitmap
 }
 
 private fun morphStars(
