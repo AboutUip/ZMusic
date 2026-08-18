@@ -1,0 +1,13 @@
+# 电台 banner
+
+> **接口路径（摘自原文）:** `/dj/banner`
+
+**文档说明:** 接口与 [NeteaseCloudMusicApiEnhanced](https://github.com/neteasecloudmusicapienhanced/api-enhanced) 约定一致；正文来自仓库内 `docs/netease-new/API.md` 并按章节拆分。API 基地址由应用配置提供，文档不写死服务端点。
+
+---
+
+说明 : 调用此接口,可获取电台 banner
+
+**接口地址 :** `/dj/banner`
+
+**调用例子 :** `/dj/banner`

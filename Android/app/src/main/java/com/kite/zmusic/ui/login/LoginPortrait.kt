@@ -117,6 +117,8 @@ internal fun LoginPortraitHost(
     onLoggedIn: () -> Unit,
     onNavigateBack: () -> Unit,
     onOpenRegister: () -> Unit,
+    resumeSms: Boolean,
+    onResumeSmsConsumed: () -> Unit,
     err: String?,
 ) {
     var step by remember { mutableStateOf(PortraitStep.Landing) }
@@ -161,6 +163,12 @@ internal fun LoginPortraitHost(
 
     LaunchedEffect(vm.smsCaptchaHint, vm.captchaCooldownSec) {
         smsCodeStage = vm.smsCaptchaHint.isNotEmpty() || vm.captchaCooldownSec > 0
+    }
+
+    LaunchedEffect(resumeSms) {
+        if (!resumeSms) return@LaunchedEffect
+        go(PortraitStep.Sms, LoginMethod.Sms)
+        onResumeSmsConsumed()
     }
 
     Box(

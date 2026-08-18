@@ -89,6 +89,9 @@ internal fun LoginLandscapeHost(
     registerVm: RegisterViewModel,
     onCloseRegister: () -> Unit,
     onRegistered: () -> Unit,
+    onNeedSmsLogin: (String) -> Unit,
+    resumeSms: Boolean,
+    onResumeSmsConsumed: () -> Unit,
     err: String?,
 ) {
     var step by remember { mutableStateOf(LandscapeStep.Landing) }
@@ -136,6 +139,12 @@ internal fun LoginLandscapeHost(
         smsCodeStage = vm.smsCaptchaHint.isNotEmpty() || vm.captchaCooldownSec > 0
     }
 
+    LaunchedEffect(resumeSms) {
+        if (!resumeSms) return@LaunchedEffect
+        go(LandscapeStep.Sms, LoginMethod.Sms)
+        onResumeSmsConsumed()
+    }
+
     Box(
         Modifier
             .fillMaxSize()
@@ -165,7 +174,7 @@ internal fun LoginLandscapeHost(
                         .fillMaxHeight()
                         .background(Page),
                 ) {
-                    val right = LandscapeRight(registerOpen, step)
+                    val right = LandscapeRight(registerOpen, if (resumeSms) LandscapeStep.Sms else step)
                     AnimatedContent(
                         targetState = right,
                         transitionSpec = {
@@ -184,7 +193,8 @@ internal fun LoginLandscapeHost(
                             RegisterFlowContent(
                                 vm = registerVm,
                                 onClose = onCloseRegister,
-                                onRegistered = onRegistered,
+                                onLoggedIn = onRegistered,
+                                onNeedSmsLogin = onNeedSmsLogin,
                             )
                         } else when (current.step) {
                             LandscapeStep.Landing -> LandscapeLandingPane(

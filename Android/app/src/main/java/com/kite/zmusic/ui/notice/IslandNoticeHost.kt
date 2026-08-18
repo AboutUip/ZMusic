@@ -68,11 +68,16 @@ import com.kite.zmusic.ui.common.GlassAlertOverlay
 import com.kite.zmusic.ui.common.LocalGlassActionSheetHost
 import com.kite.zmusic.ui.common.LocalGlassAlertHost
 import com.kite.zmusic.ui.common.UrlImage
+import com.kite.zmusic.ui.main.LocalChromeGlassStyle
+import com.kite.zmusic.ui.main.LocalChromeHaze
 import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.main.islandLiquidGlass
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeSource
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -104,7 +109,9 @@ fun IslandNoticeRoot(
     content: @Composable () -> Unit,
 ) {
     val backdrop = rememberLayerBackdrop()
+    val islandHaze = remember { HazeState() }
     val app = LocalContext.current.applicationContext as ZMusicApplication
+    val glassStyle by app.chromeGlassStore.style.collectAsStateWithLifecycle()
     val landscape =
         LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     val alertHost = remember { GlassAlertHostState() }
@@ -112,6 +119,8 @@ fun IslandNoticeRoot(
     CompositionLocalProvider(
         LocalGlassAlertHost provides alertHost,
         LocalGlassActionSheetHost provides actionSheetHost,
+        LocalChromeGlassStyle provides glassStyle,
+        LocalChromeHaze provides islandHaze,
     ) {
         Box(modifier.fillMaxSize()) {
             Box(
@@ -119,7 +128,13 @@ fun IslandNoticeRoot(
                     .fillMaxSize()
                     .layerBackdrop(backdrop),
             ) {
-                content()
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .hazeSource(state = islandHaze, zIndex = 0f),
+                ) {
+                    content()
+                }
             }
             IslandNoticeHost(
                 center = app.islandNoticeCenter,

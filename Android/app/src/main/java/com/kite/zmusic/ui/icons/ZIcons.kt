@@ -6,6 +6,7 @@ import androidx.compose.material.icons.automirrored.rounded.Logout
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.BatteryChargingFull
+import androidx.compose.material.icons.rounded.BlurOn
 import androidx.compose.material.icons.rounded.LibraryAdd
 import androidx.compose.material.icons.rounded.LibraryAddCheck
 import androidx.compose.material.icons.rounded.CalendarMonth
@@ -24,6 +25,8 @@ import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.Person
@@ -59,6 +62,7 @@ object ZIcons {
     val Notifications: ImageVector get() = Icons.Rounded.Notifications
     val Camera: ImageVector get() = Icons.Rounded.PhotoCamera
     val Battery: ImageVector get() = Icons.Rounded.BatteryChargingFull
+    val BlurOn: ImageVector get() = Icons.Rounded.BlurOn
     val Info: ImageVector get() = Icons.Rounded.Info
     val Favorite: ImageVector get() = Icons.Rounded.Favorite
     val More: ImageVector get() = Icons.Rounded.MoreVert
@@ -82,6 +86,8 @@ object ZIcons {
     val CollectPlaylist: ImageVector get() = Icons.Rounded.LibraryAdd
     val CollectedPlaylist: ImageVector get() = Icons.Rounded.LibraryAddCheck
     val Vip: ImageVector get() = Icons.Rounded.WorkspacePremium
+    val MusicNote: ImageVector get() = Icons.Rounded.MusicNote
+    val Artist: ImageVector get() = Icons.Rounded.Mic
     val ChevronLeft: ImageVector get() = Icons.Rounded.ChevronLeft
     val ChevronRight: ImageVector get() = Icons.Rounded.ChevronRight
     val Wallpaper: ImageVector get() = Icons.Rounded.Wallpaper

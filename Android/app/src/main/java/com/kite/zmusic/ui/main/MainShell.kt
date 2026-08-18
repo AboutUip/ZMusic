@@ -38,6 +38,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
@@ -94,6 +95,8 @@ import com.kite.zmusic.ui.notice.showIslandNotice
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeSource
 import kotlin.math.abs
 import kotlin.math.floor
 import kotlin.math.roundToInt
@@ -441,6 +444,7 @@ fun MainShell(
     }
 
     val backdrop = rememberLayerBackdrop()
+    val dockHaze = remember { HazeState() }
     val overlayOpen = overlay != null
     val spaceOpen = userSpaceProgress > 0.18f
     val holdChrome = showFullPlayer || playerLayerVisible
@@ -596,6 +600,11 @@ fun MainShell(
                 .fillMaxSize()
                 .layerBackdrop(backdrop),
         ) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .hazeSource(state = dockHaze, zIndex = 0f),
+            ) {
             if (landscape) {
                 LandscapeCoverPages(
                     currentIndex = landscapePage,
@@ -642,8 +651,10 @@ fun MainShell(
                 includeMv = false,
                 modifier = Modifier.fillMaxSize(),
             )
+            }
         }
 
+        CompositionLocalProvider(LocalChromeHaze provides dockHaze) {
         Column(
             Modifier
                 .align(Alignment.BottomCenter)
@@ -789,6 +800,7 @@ fun MainShell(
                 }
             }
             }
+        }
         }
         }
 

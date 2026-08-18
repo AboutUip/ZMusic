@@ -2,6 +2,7 @@ package com.kite.zmusic.ui.search
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.kite.zmusic.data.CollectedAlbum
 import com.kite.zmusic.data.HotSearchWord
 import com.kite.zmusic.data.NcmHomeParse
 import com.kite.zmusic.data.NcmJson
@@ -33,6 +34,7 @@ enum class SearchPhase {
 enum class SearchKind(val apiType: Int, val label: String, val emptyHint: String, val countKey: String) {
     Song(1, "歌曲", "没有找到相关歌曲", "songCount"),
     Playlist(1000, "歌单", "没有找到相关歌单", "playlistCount"),
+    Album(10, "专辑", "没有找到相关专辑", "albumCount"),
     Mv(1004, "MV", "没有找到相关 MV", "mvCount"),
     Artist(100, "歌手", "没有找到相关歌手", "artistCount"),
     User(1002, "用户", "没有找到相关用户", "userprofileCount"),
@@ -43,6 +45,7 @@ private const val SearchPageSize = 30
 private data class SearchKindPage(
     val tracks: List<TrackRow> = emptyList(),
     val playlists: List<SearchPlaylistHit> = emptyList(),
+    val albums: List<CollectedAlbum> = emptyList(),
     val mvs: List<RecommendMvCard> = emptyList(),
     val artists: List<SearchArtistHit> = emptyList(),
     val users: List<SearchUserHit> = emptyList(),
@@ -53,6 +56,7 @@ private data class SearchKindPage(
     fun isEmpty(kind: SearchKind): Boolean = when (kind) {
         SearchKind.Song -> tracks.isEmpty()
         SearchKind.Playlist -> playlists.isEmpty()
+        SearchKind.Album -> albums.isEmpty()
         SearchKind.Mv -> mvs.isEmpty()
         SearchKind.Artist -> artists.isEmpty()
         SearchKind.User -> users.isEmpty()
@@ -61,6 +65,7 @@ private data class SearchKindPage(
     fun size(kind: SearchKind): Int = when (kind) {
         SearchKind.Song -> tracks.size
         SearchKind.Playlist -> playlists.size
+        SearchKind.Album -> albums.size
         SearchKind.Mv -> mvs.size
         SearchKind.Artist -> artists.size
         SearchKind.User -> users.size
@@ -69,6 +74,7 @@ private data class SearchKindPage(
     fun append(other: SearchKindPage, kind: SearchKind): SearchKindPage = when (kind) {
         SearchKind.Song -> copy(tracks = tracks.mergeById(other.tracks) { it.id })
         SearchKind.Playlist -> copy(playlists = playlists.mergeById(other.playlists) { it.id })
+        SearchKind.Album -> copy(albums = albums.mergeById(other.albums) { it.id })
         SearchKind.Mv -> copy(mvs = mvs.mergeById(other.mvs) { it.id })
         SearchKind.Artist -> copy(artists = artists.mergeById(other.artists) { it.id })
         SearchKind.User -> copy(users = users.mergeById(other.users) { it.id })
@@ -89,6 +95,7 @@ data class SearchUiState(
     val searchError: String? = null,
     val results: List<TrackRow> = emptyList(),
     val playlists: List<SearchPlaylistHit> = emptyList(),
+    val albums: List<CollectedAlbum> = emptyList(),
     val mvs: List<RecommendMvCard> = emptyList(),
     val artists: List<SearchArtistHit> = emptyList(),
     val users: List<SearchUserHit> = emptyList(),
@@ -99,6 +106,7 @@ data class SearchUiState(
     val loadingMoreKinds: Set<SearchKind> = emptySet(),
     val songHasMore: Boolean = false,
     val playlistHasMore: Boolean = false,
+    val albumHasMore: Boolean = false,
     val mvHasMore: Boolean = false,
     val artistHasMore: Boolean = false,
     val userHasMore: Boolean = false,
@@ -106,6 +114,7 @@ data class SearchUiState(
     fun empty(kind: SearchKind): Boolean = when (kind) {
         SearchKind.Song -> results.isEmpty()
         SearchKind.Playlist -> playlists.isEmpty()
+        SearchKind.Album -> albums.isEmpty()
         SearchKind.Mv -> mvs.isEmpty()
         SearchKind.Artist -> artists.isEmpty()
         SearchKind.User -> users.isEmpty()
@@ -114,6 +123,7 @@ data class SearchUiState(
     fun hasMore(kind: SearchKind): Boolean = when (kind) {
         SearchKind.Song -> songHasMore
         SearchKind.Playlist -> playlistHasMore
+        SearchKind.Album -> albumHasMore
         SearchKind.Mv -> mvHasMore
         SearchKind.Artist -> artistHasMore
         SearchKind.User -> userHasMore
@@ -518,6 +528,7 @@ class SearchViewModel(
     private fun parseKind(json: JSONObject, kind: SearchKind): SearchKindPage = when (kind) {
         SearchKind.Song -> SearchKindPage(tracks = NcmHomeParse.searchTracks(json))
         SearchKind.Playlist -> SearchKindPage(playlists = NcmHomeParse.searchPlaylists(json))
+        SearchKind.Album -> SearchKindPage(albums = NcmHomeParse.searchAlbums(json))
         SearchKind.Mv -> SearchKindPage(mvs = NcmHomeParse.searchMvs(json))
         SearchKind.Artist -> SearchKindPage(artists = NcmHomeParse.searchArtists(json))
         SearchKind.User -> SearchKindPage(users = NcmHomeParse.searchUsers(json))
@@ -526,6 +537,7 @@ class SearchViewModel(
     private fun SearchUiState.withPage(kind: SearchKind, page: SearchKindPage) = when (kind) {
         SearchKind.Song -> copy(results = page.tracks, songHasMore = page.hasMore)
         SearchKind.Playlist -> copy(playlists = page.playlists, playlistHasMore = page.hasMore)
+        SearchKind.Album -> copy(albums = page.albums, albumHasMore = page.hasMore)
         SearchKind.Mv -> copy(mvs = page.mvs, mvHasMore = page.hasMore)
         SearchKind.Artist -> copy(artists = page.artists, artistHasMore = page.hasMore)
         SearchKind.User -> copy(users = page.users, userHasMore = page.hasMore)
@@ -534,6 +546,7 @@ class SearchViewModel(
     private fun SearchUiState.cleared(kind: SearchKind) = when (kind) {
         SearchKind.Song -> copy(results = emptyList(), songHasMore = false)
         SearchKind.Playlist -> copy(playlists = emptyList(), playlistHasMore = false)
+        SearchKind.Album -> copy(albums = emptyList(), albumHasMore = false)
         SearchKind.Mv -> copy(mvs = emptyList(), mvHasMore = false)
         SearchKind.Artist -> copy(artists = emptyList(), artistHasMore = false)
         SearchKind.User -> copy(users = emptyList(), userHasMore = false)
@@ -542,11 +555,13 @@ class SearchViewModel(
     private fun SearchUiState.clearedAllKinds() = copy(
         results = emptyList(),
         playlists = emptyList(),
+        albums = emptyList(),
         mvs = emptyList(),
         artists = emptyList(),
         users = emptyList(),
         songHasMore = false,
         playlistHasMore = false,
+        albumHasMore = false,
         mvHasMore = false,
         artistHasMore = false,
         userHasMore = false,

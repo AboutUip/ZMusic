@@ -64,7 +64,8 @@ internal fun RegisterOverlay(
     visible: Boolean,
     vm: RegisterViewModel,
     onClose: () -> Unit,
-    onRegistered: () -> Unit,
+    onLoggedIn: () -> Unit,
+    onNeedSmsLogin: (String) -> Unit,
 ) {
     AnimatedVisibility(
         visible = visible,
@@ -91,7 +92,8 @@ internal fun RegisterOverlay(
             RegisterFlowContent(
                 vm = vm,
                 onClose = onClose,
-                onRegistered = onRegistered,
+                onLoggedIn = onLoggedIn,
+                onNeedSmsLogin = onNeedSmsLogin,
             )
         }
     }
@@ -101,7 +103,8 @@ internal fun RegisterOverlay(
 internal fun RegisterFlowContent(
     vm: RegisterViewModel,
     onClose: () -> Unit,
-    onRegistered: () -> Unit,
+    onLoggedIn: () -> Unit,
+    onNeedSmsLogin: (String) -> Unit,
 ) {
     var step by remember { mutableStateOf(RegisterStep.Phone) }
 
@@ -143,7 +146,7 @@ internal fun RegisterFlowContent(
                 RegisterStep.Profile -> RegisterProfilePane(
                     vm = vm,
                     onBack = { step = RegisterStep.Captcha },
-                    onSubmit = { vm.register(onRegistered) },
+                    onSubmit = { vm.register(onLoggedIn = onLoggedIn, onNeedSmsLogin = onNeedSmsLogin) },
                 )
             }
         }

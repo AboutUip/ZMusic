@@ -39,6 +39,14 @@ data class ArtistSimilar(
     val coverUrl: String?,
 )
 
+data class LikedArtist(
+    val id: Long,
+    val name: String,
+    val coverUrl: String?,
+    val musicSize: Int = 0,
+    val albumSize: Int = 0,
+)
+
 data class ArtistBioBlock(
     val title: String,
     val body: String,
@@ -189,6 +197,44 @@ internal object NcmArtistParse {
                 )
             }
         }
+    }
+
+    fun likedArtists(json: JSONObject, pageSize: Int = 30): Pair<List<LikedArtist>, Boolean> {
+        if (NcmJson.apiCode(json) != 200) return emptyList<LikedArtist>() to false
+        val arr = json.optJSONArray("data")
+            ?: json.optJSONArray("artists")
+            ?: json.optJSONObject("data")?.optJSONArray("list")
+            ?: json.optJSONObject("data")?.optJSONArray("artists")
+            ?: JSONArray()
+        val list = buildList {
+            for (i in 0 until arr.length()) {
+                val o = arr.optJSONObject(i) ?: continue
+                val id = o.optLong("id", 0L)
+                val name = o.optString("name", "").trim()
+                if (id <= 0L || name.isEmpty() || name == "null") continue
+                add(
+                    LikedArtist(
+                        id = id,
+                        name = name,
+                        coverUrl = NcmLibraryParse.ncmHttpsImage(
+                            firstNonBlank(
+                                o.optString("picUrl"),
+                                o.optString("img1v1Url"),
+                                o.optString("cover"),
+                                o.optString("avatar"),
+                            ),
+                        ),
+                        musicSize = o.optInt("musicSize", 0),
+                        albumSize = o.optInt("albumSize", 0),
+                    ),
+                )
+            }
+        }
+        val hasMore = when {
+            json.has("hasMore") -> json.optBoolean("hasMore")
+            else -> list.size >= pageSize
+        }
+        return list to hasMore
     }
 
     fun bio(json: JSONObject): ArtistBio {

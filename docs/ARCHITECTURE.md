@@ -71,12 +71,11 @@
 
 ## 6. 配置与环境
 
-- 默认 API 基址：`http://120.27.244.170:3000`（`app/build.gradle.kts` → `BuildConfig.NCM_API_BASE_URL`）
+- 默认 API 基址由 `app/build.gradle.kts` → `BuildConfig.NCM_API_BASE_URL` 提供
 - `local.properties` 可覆盖 `ncm.api.base.url`
 - 应用内「服务器配置」可运行期覆盖并持久化
 - Splash → 连通性探测 → 主流程
-
-> 历史文档或示例中的 `47.x` 地址已废弃，请勿再作为默认云端。
+- 接口约定见 [`netease-new/`](./netease-new)
 
 ---
 

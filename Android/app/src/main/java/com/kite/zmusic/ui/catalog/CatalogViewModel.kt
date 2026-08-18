@@ -2,7 +2,12 @@ package com.kite.zmusic.ui.catalog
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.kite.zmusic.data.AlbumBrief
+import com.kite.zmusic.data.AlbumCollectionRepository
+import com.kite.zmusic.data.AlbumDynamic
+import com.kite.zmusic.data.AlbumTracksCache
 import com.kite.zmusic.data.ChartSummary
+import com.kite.zmusic.data.CollectedAlbum
 import com.kite.zmusic.data.HomeFeedRepository
 import com.kite.zmusic.data.LikedPlaylistRepository
 import com.kite.zmusic.data.NcmArtistParse
@@ -22,6 +27,8 @@ import com.kite.zmusic.ui.notice.IslandNoticeCenter
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -50,7 +57,16 @@ data class CatalogListState(
     val creatorId: Long = 0L,
     val playCount: Long = 0L,
     val subscribedCount: Int = 0,
-)
+    val albumId: Long = 0L,
+    val albumCompany: String? = null,
+    val albumPublishTime: Long = 0L,
+    val albumDescription: String? = null,
+    val albumType: String? = null,
+    val albumAlias: String? = null,
+    val commentCount: Int = 0,
+) {
+    val isAlbum: Boolean get() = albumId > 0L
+}
 
 data class ChartsUiState(
     val loading: Boolean = false,
@@ -58,12 +74,16 @@ data class ChartsUiState(
     val charts: List<ChartSummary> = emptyList(),
 )
 
+private data class SubscribePin(val album: Boolean, val id: Long, val on: Boolean)
+
 class CatalogViewModel(
     private val sessionRepository: SessionRepository,
     private val playlistTracksCache: PlaylistTracksCache,
+    private val albumTracksCache: AlbumTracksCache,
     private val homeFeed: HomeFeedRepository,
     private val likedPlaylistRepository: LikedPlaylistRepository,
     private val playlistCollection: PlaylistCollectionRepository,
+    private val albumCollection: AlbumCollectionRepository,
     private val islandNotices: IslandNoticeCenter,
     private val userClient: NcmUserClient = NcmUserClient(),
 ) : ViewModel() {
@@ -80,7 +100,7 @@ class CatalogViewModel(
     private var openPlaylistId: Long = 0L
     private var artistSongsId: Long = 0L
     /** 用户刚点过收藏/取消，在远端对账前不要被旧的 detail / 列表覆盖。 */
-    private var pinnedSubscribe: Pair<Long, Boolean>? = null
+    private var pinnedSubscribe: SubscribePin? = null
 
     init {
         viewModelScope.launch {
@@ -493,6 +513,11 @@ class CatalogViewModel(
 
     fun toggleSubscribe() {
         val state = _list.value
+        if (state.isAlbum) {
+            if (!state.canSubscribe || state.albumId <= 0L || state.subscribeBusy) return
+            applyAlbumSubscribe(state, next = !state.subscribed)
+            return
+        }
         if (state.isHeartPlaylist) {
             islandNotices.show("我喜欢的音乐不能收藏", state.coverUrl)
             return
@@ -522,7 +547,7 @@ class CatalogViewModel(
         viewModelScope.launch {
             val cookie = cookieOrNull() ?: return@launch
             subscribeMetaJob?.cancel()
-            pinnedSubscribe = id to next
+            pinnedSubscribe = SubscribePin(album = false, id = id, on = next)
             val countDelta = if (next) 1 else -1
             _list.update {
                 it.copy(
@@ -568,7 +593,7 @@ class CatalogViewModel(
     }
 
     private fun revertSubscribe(id: Long, attempted: Boolean) {
-        if (pinnedSubscribe?.first == id) pinnedSubscribe = null
+        if (pinMatches(id)) pinnedSubscribe = null
         _list.update {
             if (it.playlistId != id) return@update it
             val delta = if (attempted) -1 else 1
@@ -580,60 +605,239 @@ class CatalogViewModel(
         }
     }
 
-    fun loadAlbum(id: Long, title: String) {
+    private fun applyAlbumSubscribe(state: CatalogListState, next: Boolean) {
+        val id = state.albumId
+        viewModelScope.launch {
+            val cookie = cookieOrNull() ?: return@launch
+            pinnedSubscribe = SubscribePin(album = true, id = id, on = next)
+            val countDelta = if (next) 1 else -1
+            _list.update {
+                if (it.albumId != id) return@update it
+                it.copy(
+                    subscribeBusy = true,
+                    subscribed = next,
+                    subscribedCount = (it.subscribedCount + countDelta).coerceAtLeast(0),
+                )
+            }
+            try {
+                val json = userClient.albumSub(id, next, cookie)
+                if (NcmJson.apiCode(json) != 200) {
+                    revertAlbumSubscribe(id, next)
+                    islandNotices.show(
+                        NcmJson.userFacingMessage(
+                            json,
+                            if (next) "收藏失败" else "取消收藏失败",
+                        ),
+                        state.coverUrl,
+                    )
+                    return@launch
+                }
+                _list.update {
+                    if (it.albumId == id) it.copy(subscribeBusy = false, subscribed = next) else it
+                }
+                albumCollection.setSubscribed(
+                    id,
+                    next,
+                    insert = if (next) collectedFromState(_list.value.takeIf { it.albumId == id } ?: state) else null,
+                )
+                albumTracksCache.patchSubscribed(id, next, countDelta)
+                islandNotices.show(if (next) "已收藏专辑" else "已取消收藏", state.coverUrl)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                revertAlbumSubscribe(id, next)
+                islandNotices.show(NcmJson.userFacingThrowable(e, "操作失败"), state.coverUrl)
+            }
+        }
+    }
+
+    private fun revertAlbumSubscribe(id: Long, attempted: Boolean) {
+        if (pinMatchesAlbum(id)) pinnedSubscribe = null
+        _list.update {
+            if (it.albumId != id) return@update it
+            val delta = if (attempted) -1 else 1
+            it.copy(
+                subscribeBusy = false,
+                subscribed = !attempted,
+                subscribedCount = (it.subscribedCount + delta).coerceAtLeast(0),
+            )
+        }
+    }
+
+    private fun collectedFromState(state: CatalogListState) = CollectedAlbum(
+        id = state.albumId,
+        name = state.title,
+        coverUrl = state.coverUrl,
+        artist = state.creatorName,
+        artistId = state.creatorId,
+        artistCoverUrl = state.creatorAvatarUrl,
+        size = state.tracks.size.coerceAtLeast(1),
+        publishTime = state.albumPublishTime,
+        company = state.albumCompany,
+        type = state.albumType,
+        alias = state.albumAlias,
+    )
+
+    fun loadAlbum(id: Long, title: String, force: Boolean = false) {
         closePlaylist()
         loadJob?.cancel()
         loadJob = viewModelScope.launch {
-            val keep = _list.value.takeIf { it.tracks.isNotEmpty() }
-            if (keep != null) {
-                _list.update { it.copy(refreshing = true, error = null) }
-            } else {
-                _list.update { CatalogListState(title = title, loading = true) }
+            if (!force) {
+                val live = _list.value.takeIf { it.albumId == id && it.tracks.isNotEmpty() }
+                if (live != null) {
+                    _list.update { it.copy(refreshing = false, loading = false, error = null) }
+                    refreshAlbumDynamic(id)
+                    return@launch
+                }
+                val cached = withContext(Dispatchers.IO) { albumTracksCache.peek(id) }
+                    ?.takeIf { it.albumId == id && it.tracks.isNotEmpty() }
+                if (cached != null) {
+                    applyAlbumEntry(cached, title)
+                    refreshAlbumDynamic(id)
+                    return@launch
+                }
+            } else if (_list.value.albumId == id && _list.value.tracks.isNotEmpty()) {
+                _list.update { it.copy(refreshing = true, error = null, loading = false) }
+            }
+            if (_list.value.albumId != id || _list.value.tracks.isEmpty()) {
+                _list.update {
+                    CatalogListState(
+                        title = title,
+                        albumId = id,
+                        loading = true,
+                        error = null,
+                    )
+                }
             }
             val cookie = cookieOrNull() ?: return@launch
             try {
-                val json = userClient.album(id, cookie)
+                val (json, dynamicJson) = coroutineScope {
+                    val albumDef = async { userClient.album(id, cookie) }
+                    val dynamicDef = async {
+                        runCatching { userClient.albumDetailDynamic(id, cookie) }.getOrNull()
+                    }
+                    albumDef.await() to dynamicDef.await()
+                }
                 val album = NcmHomeParse.albumBrief(json, id)
                 if (album == null || album.songs.isEmpty()) {
                     _list.update {
-                        if (it.tracks.isNotEmpty()) {
+                        if (it.tracks.isNotEmpty() && it.albumId == id) {
                             it.copy(refreshing = false, loading = false)
                         } else {
                             CatalogListState(
                                 title = title,
+                                albumId = id,
                                 error = NcmJson.userFacingMessage(json, "专辑加载失败"),
                             )
                         }
                     }
                     return@launch
                 }
-                _list.update {
-                    CatalogListState(
-                        title = album.name.ifBlank { title },
-                        subtitle = "${album.songs.size} 首",
-                        coverUrl = album.coverUrl,
-                        tracks = album.songs,
-                        // 专辑 id 与歌单 id 命名空间不同，不能写入 playlistId。
-                        playlistId = 0L,
-                        creatorName = album.artist,
-                        creatorId = album.artistId,
-                    )
-                }
+                val dynamic = dynamicJson?.let { NcmHomeParse.albumDynamic(it) }
+                val entry = albumCacheEntry(album, dynamic)
+                albumTracksCache.save(entry)
+                applyAlbumEntry(entry, title)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 _list.update {
-                    if (it.tracks.isNotEmpty()) {
+                    if (it.tracks.isNotEmpty() && it.albumId == id) {
                         it.copy(refreshing = false, loading = false)
                     } else {
                         CatalogListState(
                             title = title,
+                            albumId = id,
                             error = NcmJson.userFacingThrowable(e, "专辑加载失败"),
                         )
                     }
                 }
             }
         }
+    }
+
+    private fun albumCacheEntry(
+        album: AlbumBrief,
+        dynamic: AlbumDynamic?,
+    ) = AlbumTracksCache.Entry(
+        albumId = album.id,
+        title = album.name,
+        tracks = album.songs,
+        coverUrl = album.coverUrl,
+        artist = album.artist,
+        artistId = album.artistId,
+        artistCoverUrl = album.artistCoverUrl,
+        publishTime = album.publishTime,
+        company = album.company,
+        description = album.description,
+        type = album.type,
+        alias = album.alias,
+        size = album.size.takeIf { it > 0 } ?: album.songs.size,
+        updatedAtMs = System.currentTimeMillis(),
+        subscribed = dynamic?.isSub,
+        subscribedCount = dynamic?.subCount ?: 0,
+        commentCount = dynamic?.commentCount ?: 0,
+    )
+
+    private fun applyAlbumEntry(entry: AlbumTracksCache.Entry, fallbackTitle: String) {
+        val id = entry.albumId
+        val size = entry.size.takeIf { it > 0 } ?: entry.tracks.size
+        _list.value = CatalogListState(
+            title = entry.title.ifBlank { fallbackTitle },
+            subtitle = "${size}首",
+            coverUrl = entry.coverUrl,
+            tracks = entry.tracks,
+            playlistId = 0L,
+            complete = true,
+            canSubscribe = true,
+            subscribed = resolveAlbumSubscribed(id, entry.subscribed ?: false),
+            creatorName = entry.artist,
+            creatorId = entry.artistId,
+            creatorAvatarUrl = entry.artistCoverUrl,
+            subscribedCount = entry.subscribedCount,
+            albumId = id,
+            albumCompany = entry.company,
+            albumPublishTime = entry.publishTime,
+            albumDescription = entry.description,
+            albumType = entry.type,
+            albumAlias = entry.alias,
+            commentCount = entry.commentCount,
+        )
+    }
+
+    private fun refreshAlbumDynamic(id: Long) {
+        if (id <= 0L) return
+        subscribeMetaJob?.cancel()
+        subscribeMetaJob = viewModelScope.launch {
+            val cookie = sessionRepository.session.value?.cookie.orEmpty()
+            if (cookie.isBlank()) return@launch
+            val dynamic = runCatching {
+                NcmHomeParse.albumDynamic(userClient.albumDetailDynamic(id, cookie))
+            }.getOrNull() ?: return@launch
+            if (_list.value.albumId != id) return@launch
+            val subscribed = resolveAlbumSubscribed(id, dynamic.isSub)
+            _list.update {
+                if (it.albumId != id) {
+                    it
+                } else {
+                    it.copy(
+                        subscribed = subscribed,
+                        subscribedCount = dynamic.subCount,
+                        commentCount = dynamic.commentCount,
+                    )
+                }
+            }
+            albumTracksCache.attachDynamic(id, subscribed, dynamic.subCount, dynamic.commentCount)
+        }
+    }
+
+    private fun resolveAlbumSubscribed(albumId: Long, remote: Boolean): Boolean {
+        val pin = pinnedSubscribe
+        if (pin != null && pin.album && pin.id == albumId) {
+            if (remote == pin.on) pinnedSubscribe = null
+            return pin.on
+        }
+        albumCollection.isSubscribed(albumId)?.let { return it }
+        return remote
     }
 
     fun loadArtistSongs(artistId: Long, name: String, coverUrl: String?, force: Boolean = false) {
@@ -893,7 +1097,7 @@ class CatalogViewModel(
                 creatorAvatarUrl = meta?.creatorAvatarUrl ?: it.creatorAvatarUrl.takeIf { same },
                 playCount = meta?.playCount?.takeIf { c -> c > 0L }
                     ?: if (same) it.playCount else 0L,
-                subscribedCount = if (pinnedSubscribe?.first == entry.playlistId && same) {
+                subscribedCount = if (pinMatches(entry.playlistId) && same) {
                     it.subscribedCount
                 } else {
                     meta?.subscribedCount?.takeIf { c -> c > 0 }
@@ -1062,7 +1266,7 @@ class CatalogViewModel(
     private fun applyKnownPlaylistFlags(known: PlaylistSummary) {
         if (_list.value.playlistId != known.id) return
         if (known.isHeartPlaylist || known.isOwned) {
-            if (pinnedSubscribe?.first == known.id) pinnedSubscribe = null
+            if (pinMatches(known.id)) pinnedSubscribe = null
             _list.update {
                 it.copy(
                     canSubscribe = false,
@@ -1088,7 +1292,7 @@ class CatalogViewModel(
         applyPlaylistDisplayMeta(meta)
         val uid = selfUid()
         if (meta.isHeart(uid) || meta.isOwned(uid) || _list.value.isHeartPlaylist || _list.value.isOwnedPlaylist) {
-            if (pinnedSubscribe?.first == meta.id) pinnedSubscribe = null
+            if (pinMatches(meta.id)) pinnedSubscribe = null
             _list.update {
                 it.copy(
                     canSubscribe = false,
@@ -1121,7 +1325,7 @@ class CatalogViewModel(
                 creatorName = meta.creatorName ?: it.creatorName,
                 creatorAvatarUrl = meta.creatorAvatarUrl ?: it.creatorAvatarUrl,
                 playCount = meta.playCount.takeIf { c -> c > 0L } ?: it.playCount,
-                subscribedCount = if (pinnedSubscribe?.first == meta.id) {
+                subscribedCount = if (pinMatches(meta.id)) {
                     it.subscribedCount
                 } else {
                     meta.subscribedCount.takeIf { c -> c > 0 } ?: it.subscribedCount
@@ -1206,9 +1410,19 @@ class CatalogViewModel(
 
     private fun resolveSubscribed(playlistId: Long, remote: Boolean): Boolean {
         val pin = pinnedSubscribe
-        if (pin == null || pin.first != playlistId) return remote
-        if (remote == pin.second) pinnedSubscribe = null
-        return pin.second
+        if (pin == null || pin.album || pin.id != playlistId) return remote
+        if (remote == pin.on) pinnedSubscribe = null
+        return pin.on
+    }
+
+    private fun pinMatches(playlistId: Long): Boolean {
+        val pin = pinnedSubscribe ?: return false
+        return !pin.album && pin.id == playlistId
+    }
+
+    private fun pinMatchesAlbum(albumId: Long): Boolean {
+        val pin = pinnedSubscribe ?: return false
+        return pin.album && pin.id == albumId
     }
 
     private fun selfUid(): Long = playlistCollection.selfUserId.value

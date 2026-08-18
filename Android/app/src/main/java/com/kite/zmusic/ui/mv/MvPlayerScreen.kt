@@ -57,6 +57,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -104,6 +105,7 @@ import com.kite.zmusic.ui.common.GlassActionSheet
 import com.kite.zmusic.ui.common.GlassSheetAction
 import com.kite.zmusic.ui.common.UrlImage
 import com.kite.zmusic.ui.icons.ZIcons
+import com.kite.zmusic.ui.main.LocalChromeHaze
 import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.main.islandLiquidGlass
 import com.kite.zmusic.ui.main.mainLiquidGlass
@@ -115,6 +117,8 @@ import com.kite.zmusic.ui.player.PlaybackModeControl
 import com.kyant.backdrop.backdrops.LayerBackdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeSource
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
@@ -265,6 +269,8 @@ fun MvPlayerScreen(
         playback.seekTo(seekValue.toLong())
     }
 
+    val mvHaze = remember { HazeState() }
+    CompositionLocalProvider(LocalChromeHaze provides mvHaze) {
     if (landscape) {
         LandscapeMvScene(
             playback = playback,
@@ -353,6 +359,7 @@ fun MvPlayerScreen(
             )
         }
     }
+    }
     if (speedSheet) {
         GlassActionSheet(
             title = "播放速度",
@@ -404,6 +411,7 @@ private fun LandscapeMvScene(
     modifier: Modifier = Modifier,
 ) {
     val showChrome = chrome || seeking || sidePanel
+    val mvHaze = LocalChromeHaze.current
     Box(
         modifier
             .fillMaxSize()
@@ -427,6 +435,13 @@ private fun LandscapeMvScene(
                 Modifier
                     .fillMaxSize()
                     .layerBackdrop(backdrop)
+                    .then(
+                        if (mvHaze != null) {
+                            Modifier.hazeSource(state = mvHaze, zIndex = 0f)
+                        } else {
+                            Modifier
+                        },
+                    )
                     .background(Color(0xFF1C1C1E)),
             ) {
                 UrlImage(
@@ -445,7 +460,14 @@ private fun LandscapeMvScene(
             Box(
                 Modifier
                     .offset(videoX, videoY)
-                    .size(videoW, videoH),
+                    .size(videoW, videoH)
+                    .then(
+                        if (mvHaze != null) {
+                            Modifier.hazeSource(state = mvHaze, zIndex = 1f)
+                        } else {
+                            Modifier
+                        },
+                    ),
             ) {
                 MvSurface(playback = playback, modifier = Modifier.fillMaxSize())
             }
@@ -789,10 +811,18 @@ private fun MvVideoStage(
     modifier: Modifier = Modifier,
 ) {
     Box(modifier) {
+        val mvHaze = LocalChromeHaze.current
         Box(
             Modifier
                 .fillMaxSize()
-                .then(if (liquid) Modifier.layerBackdrop(backdrop) else Modifier),
+                .then(if (liquid) Modifier.layerBackdrop(backdrop) else Modifier)
+                .then(
+                    if (mvHaze != null) {
+                        Modifier.hazeSource(state = mvHaze, zIndex = 0f)
+                    } else {
+                        Modifier
+                    },
+                ),
         ) {
             MvSurface(playback = playback, modifier = Modifier.fillMaxSize())
         }

@@ -17,7 +17,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -31,31 +30,36 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kite.zmusic.R
 import com.kite.zmusic.data.TrackRow
-import com.kite.zmusic.ui.common.UrlImage
 import com.kite.zmusic.ui.common.UrlImageCache
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.math.ceil
+import kotlin.math.max
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 
 /** 默认预设 id / 显示名 */
@@ -289,8 +293,7 @@ private fun posterCoverPalette(tone: PosterCoverTone): PosterCoverPalette = when
 }
 
 /**
- * 默认预设「歌曲封面图」实时预览卡片。
- * 品牌（ZMusic + icon）+ 封面 + 歌名/制作人 + 所选歌词 + 可选时间/签名。
+ * 「歌曲封面图」实时预览：与导出共用 [renderPosterCoverPresetBitmap]，避免 Compose / Canvas 两套排版。
  */
 @Composable
 fun PosterCoverPresetCard(
@@ -302,7 +305,57 @@ fun PosterCoverPresetCard(
     timeText: String = rememberPosterTimeText(),
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
     val palette = remember(tone) { posterCoverPalette(tone) }
+    var preview by remember { mutableStateOf<Bitmap?>(null) }
+    LaunchedEffect(
+        track.id,
+        track.name,
+        track.artists,
+        track.coverUrl,
+        lyricLines,
+        showTime,
+        signature,
+        tone,
+        timeText,
+    ) {
+        delay(48)
+        var produced: Bitmap? = null
+        try {
+            produced = renderPosterCoverPresetBitmap(
+                context = context,
+                track = track,
+                lyricLines = lyricLines,
+                showTime = showTime,
+                signature = signature,
+                tone = tone,
+                timeText = timeText,
+                widthPx = PosterPreviewWidthPx,
+                heightPx = 0,
+            )
+            if (!isActive) return@LaunchedEffect
+            val prev = preview
+            preview = produced
+            produced = null
+            delay(80)
+            if (prev != null && prev !== preview && !prev.isRecycled) {
+                runCatching { prev.recycle() }
+            }
+        } finally {
+            if (produced != null && !produced.isRecycled) {
+                runCatching { produced.recycle() }
+            }
+        }
+    }
+    DisposableEffect(Unit) {
+        onDispose {
+            val held = preview
+            preview = null
+            if (held != null && !held.isRecycled) {
+                runCatching { held.recycle() }
+            }
+        }
+    }
     val shape = RoundedCornerShape(18.dp)
     Box(
         modifier
@@ -310,185 +363,16 @@ fun PosterCoverPresetCard(
             .clip(shape)
             .background(palette.ink)
             .border(1.dp, palette.rule, shape),
+        contentAlignment = Alignment.Center,
     ) {
-        // 氛围：封面虚化底 + 色调罩
-        Box(Modifier.fillMaxSize()) {
-            UrlImage(
-                url = track.coverUrl,
+        val bmp = preview
+        if (bmp != null && !bmp.isRecycled) {
+            Image(
+                bitmap = bmp.asImageBitmap(),
                 contentDescription = null,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer {
-                        alpha = if (tone == PosterCoverTone.Dark) 0.42f else 0.28f
-                        scaleX = 1.18f
-                        scaleY = 1.18f
-                    },
-                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Fit,
             )
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            0f to palette.veilTop,
-                            0.35f to palette.veilMid,
-                            1f to palette.ink,
-                        ),
-                    ),
-            )
-        }
-
-        Column(
-            Modifier
-                .fillMaxSize()
-                .padding(horizontal = 18.dp, vertical = 16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Row(
-                Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Image(
-                    painter = painterResource(R.drawable.ic_logo_vinyl_z),
-                    contentDescription = null,
-                    modifier = Modifier
-                        .size(22.dp)
-                        .clip(RoundedCornerShape(6.dp)),
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    text = stringResource(R.string.app_name),
-                    style = TextStyle(
-                        color = palette.champagne,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        letterSpacing = 1.4.sp,
-                        fontFamily = FontFamily.SansSerif,
-                    ),
-                )
-                Spacer(Modifier.weight(1f))
-                if (showTime) {
-                    Text(
-                        text = timeText,
-                        style = TextStyle(
-                            color = palette.muted.copy(alpha = 0.85f),
-                            fontSize = 10.sp,
-                            fontFamily = FontFamily.SansSerif,
-                            letterSpacing = 0.2.sp,
-                        ),
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(14.dp))
-
-            // 封面：按宽度定边长，避免嵌套 aspectRatio 在矮卡片内再次撑破约束
-            BoxWithConstraints(Modifier.fillMaxWidth(0.78f)) {
-                val side = maxWidth
-                Box(
-                    Modifier
-                        .size(side)
-                        .clip(RoundedCornerShape(14.dp))
-                        .border(1.dp, palette.rule, RoundedCornerShape(14.dp)),
-                ) {
-                    UrlImage(
-                        url = track.coverUrl,
-                        contentDescription = track.name,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop,
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(14.dp))
-
-            Text(
-                text = track.name.ifBlank { "未知歌曲" },
-                style = TextStyle(
-                    color = palette.paper,
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 0.2.sp,
-                ),
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.Center,
-            )
-            Spacer(Modifier.height(4.dp))
-            Text(
-                text = track.artists.ifBlank { "未知制作人" },
-                style = TextStyle(
-                    color = palette.muted,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium,
-                ),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.Center,
-            )
-
-            Spacer(Modifier.height(12.dp))
-            Box(
-                Modifier
-                    .fillMaxWidth(0.28f)
-                    .height(1.dp)
-                    .background(palette.champagne.copy(alpha = 0.35f)),
-            )
-            Spacer(Modifier.height(12.dp))
-
-            Column(
-                Modifier
-                    .weight(1f)
-                    .fillMaxWidth(),
-                verticalArrangement = Arrangement.Center,
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                if (lyricLines.isEmpty()) {
-                    Text(
-                        text = "未选择歌词",
-                        style = TextStyle(
-                            color = palette.muted.copy(alpha = 0.45f),
-                            fontSize = 13.sp,
-                        ),
-                    )
-                } else {
-                    lyricLines.forEachIndexed { i, line ->
-                        Text(
-                            text = line,
-                            style = TextStyle(
-                                color = palette.paper.copy(alpha = 0.92f),
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Medium,
-                                lineHeight = 22.sp,
-                                textAlign = TextAlign.Center,
-                            ),
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(vertical = 2.dp),
-                        )
-                        if (i != lyricLines.lastIndex) {
-                            Spacer(Modifier.height(2.dp))
-                        }
-                    }
-                }
-            }
-
-            val sig = signature.trim()
-            if (sig.isNotEmpty()) {
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    text = "「$sig」",
-                    style = TextStyle(
-                        color = palette.champagne.copy(alpha = 0.78f),
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Medium,
-                        fontFamily = FontFamily.Serif,
-                    ),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    textAlign = TextAlign.Center,
-                )
-            }
         }
     }
 }
@@ -501,11 +385,12 @@ fun rememberPosterTimeText(nowMs: Long = System.currentTimeMillis()): String {
 }
 
 /**
- * 将「歌曲封面图」预设渲染为 PNG 用 Bitmap（与预览版式对齐）。
- * 默认 [PosterExportWidthPx]×[PosterExportHeightPx]（3× 逻辑稿），保证导出足够锐利。
+ * 将「歌曲封面图」预设渲染为 PNG。
+ * [heightPx] ≤ 0 时高度至少为 3/2 宽，歌词放不下再加高，**不丢行**。
  */
 const val PosterExportWidthPx = 3240
 const val PosterExportHeightPx = 4860
+const val PosterPreviewWidthPx = 900
 
 suspend fun renderPosterCoverPresetBitmap(
     context: Context,
@@ -519,26 +404,274 @@ suspend fun renderPosterCoverPresetBitmap(
     heightPx: Int = PosterExportHeightPx,
 ): Bitmap = withContext(Dispatchers.IO) {
     val palette = posterCoverPalette(tone)
-    val wPx = widthPx.coerceAtLeast(1080)
-    val hPx = heightPx.coerceAtLeast(1620)
-    val bmp = Bitmap.createBitmap(wPx, hPx, Bitmap.Config.ARGB_8888)
+    val wPx = widthPx.coerceAtLeast(720)
+    val minH = if (heightPx <= 0) {
+        (wPx * 3 / 2)
+    } else {
+        heightPx.coerceAtLeast((wPx * 3 + 1) / 2)
+    }
+    val coverTarget = (wPx * 0.68f).toInt().coerceAtLeast(640)
+    val coverAndroid = loadCoverFullResolution(context, track.coverUrl, coverTarget)
+    val iconSizePx = (wPx * 0.052f).toInt().coerceAtLeast(28)
+    val appIcon = decodeResourceFull(context, R.drawable.ic_logo_vinyl_z, iconSizePx * 2)
+        ?: decodeResourceFull(context, R.mipmap.ic_launcher_foreground, iconSizePx * 2)
+    val brand = context.getString(R.string.app_name)
+    val plan = buildPosterCoverPlan(
+        wPx = wPx,
+        minH = minH,
+        palette = palette,
+        track = track,
+        lyricLines = lyricLines,
+        showTime = showTime,
+        signature = signature,
+        timeText = timeText,
+        brand = brand,
+        iconSize = iconSizePx.toFloat(),
+    )
+    val bmp = Bitmap.createBitmap(plan.w, plan.h, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bmp)
+    drawPosterCoverPlan(canvas, plan, coverAndroid, appIcon, tone)
+    if (appIcon != null && !appIcon.isRecycled) {
+        runCatching { appIcon.recycle() }
+    }
+    if (coverAndroid != null && !coverAndroid.isRecycled) {
+        runCatching { coverAndroid.recycle() }
+    }
+    bmp
+}
+
+private class PosterCoverPlan(
+    val w: Int,
+    val h: Int,
+    val pad: Float,
+    val iconSize: Float,
+    val coverRect: RectF,
+    val titleLayout: StaticLayout,
+    val titleTop: Float,
+    val artistLayout: StaticLayout,
+    val artistTop: Float,
+    val ruleY: Float,
+    val ruleW: Float,
+    val lyricLayouts: List<Pair<Float, StaticLayout>>,
+    val emptyLyric: String?,
+    val emptyLyricPaint: TextPaint?,
+    val emptyLyricY: Float,
+    val sigLayout: StaticLayout?,
+    val sigTop: Float,
+    val palette: PosterCoverPalette,
+    val showTime: Boolean,
+    val timeText: String,
+    val brand: String,
+    val brandPaint: TextPaint,
+    val timePaint: TextPaint,
+)
+
+private fun buildPosterCoverPlan(
+    wPx: Int,
+    minH: Int,
+    palette: PosterCoverPalette,
+    track: TrackRow,
+    lyricLines: List<String>,
+    showTime: Boolean,
+    signature: String,
+    timeText: String,
+    brand: String,
+    iconSize: Float,
+): PosterCoverPlan {
     val w = wPx.toFloat()
+    val pad = w * 0.055f
+    val textW = (wPx - (pad * 2f).toInt()).coerceAtLeast(1)
+    val brandPaint = sharpTextPaint(palette.brandArgb, w * 0.030f, bold = true).apply {
+        letterSpacing = 0.10f
+    }
+    val timePaint = sharpTextPaint(palette.timeArgb, w * 0.024f, bold = false)
+    val artistPaint = sharpTextPaint(palette.artistArgb, w * 0.029f, bold = false)
+    val sigPaint = sharpTextPaint(palette.sigArgb, w * 0.027f, bold = false).apply {
+        typeface = Typeface.create(Typeface.SERIF, Typeface.NORMAL)
+    }
+    val titleText = track.name.ifBlank { "未知歌曲" }
+    val artistText = track.artists.ifBlank { "未知制作人" }
+    val sigText = signature.trim().let { if (it.isEmpty()) "" else "「$it」" }
+    val lines = lyricLines.map { it.trim() }.filter { it.isNotEmpty() }
+
+    var titleSize = w * 0.042f
+    var lyricSize = w * 0.034f
+    var coverSide = w * 0.60f
+    val coverMin = w * 0.36f
+    val lyricMin = w * 0.022f
+    val titleMin = w * 0.032f
+
+    fun titleLayout(size: Float) = posterStaticLayout(
+        titleText,
+        sharpTextPaint(palette.titleArgb, size, bold = true),
+        textW,
+        maxLines = 2,
+        ellipsize = android.text.TextUtils.TruncateAt.END,
+        spacingMult = 1.08f,
+    )
+
+    fun lyricLayouts(size: Float): List<StaticLayout> {
+        val paint = sharpTextPaint(palette.lyricArgb, size, bold = false)
+        return lines.map { line ->
+            posterStaticLayout(
+                line,
+                paint,
+                textW,
+                maxLines = Int.MAX_VALUE,
+                ellipsize = null,
+                spacingMult = 1.14f,
+            )
+        }
+    }
+
+    val artistLayout = posterStaticLayout(
+        artistText,
+        artistPaint,
+        textW,
+        maxLines = 1,
+        ellipsize = android.text.TextUtils.TruncateAt.END,
+        spacingMult = 1f,
+    )
+    val sigLayout = if (sigText.isEmpty()) {
+        null
+    } else {
+        posterStaticLayout(
+            sigText,
+            sigPaint,
+            textW,
+            maxLines = 2,
+            ellipsize = android.text.TextUtils.TruncateAt.END,
+            spacingMult = 1.08f,
+        )
+    }
+
+    var titleL = titleLayout(titleSize)
+    var lyrics = lyricLayouts(lyricSize)
+
+    fun stackHeight(cover: Float, title: StaticLayout, lyric: List<StaticLayout>): Float {
+        var y = pad + iconSize + w * 0.036f
+        y += cover + w * 0.030f
+        y += title.height + w * 0.010f
+        y += artistLayout.height + w * 0.024f
+        y += w * 0.028f
+        if (lyric.isEmpty()) {
+            y += lyricSize * 1.4f
+        } else {
+            lyric.forEachIndexed { i, layout ->
+                y += layout.height
+                if (i != lyric.lastIndex) y += w * 0.010f
+            }
+        }
+        if (sigLayout != null) y += w * 0.022f + sigLayout.height
+        y += pad
+        return y
+    }
+
+    var contentH = stackHeight(coverSide, titleL, lyrics)
+    while (contentH > minH + 1f && coverSide > coverMin) {
+        coverSide = (coverSide - w * 0.018f).coerceAtLeast(coverMin)
+        contentH = stackHeight(coverSide, titleL, lyrics)
+    }
+    while (contentH > minH + 1f && lyricSize > lyricMin) {
+        lyricSize = (lyricSize - w * 0.0014f).coerceAtLeast(lyricMin)
+        lyrics = lyricLayouts(lyricSize)
+        contentH = stackHeight(coverSide, titleL, lyrics)
+    }
+    while (contentH > minH + 1f && titleSize > titleMin) {
+        titleSize = (titleSize - w * 0.0012f).coerceAtLeast(titleMin)
+        titleL = titleLayout(titleSize)
+        contentH = stackHeight(coverSide, titleL, lyrics)
+    }
+    val hPx = max(minH, ceil(contentH).toInt())
     val h = hPx.toFloat()
 
-    canvas.drawColor(palette.inkArgb)
+    var y = pad
+    val coverLeft = (w - coverSide) / 2f
+    val coverTop = y + iconSize + w * 0.036f
+    val coverRect = RectF(coverLeft, coverTop, coverLeft + coverSide, coverTop + coverSide)
+    y = coverRect.bottom + w * 0.030f
+    val titleTop = y
+    y += titleL.height + w * 0.010f
+    val artistTop = y
+    y += artistLayout.height + w * 0.024f
+    val ruleY = y
+    y += w * 0.028f
 
-    // 封面按海报主视觉边长拉取全分辨率，避免缓存缩略图被放大发糊
-    val coverTarget = (w * 0.72f).toInt().coerceAtLeast(1024)
-    val coverAndroid = loadCoverFullResolution(context, track.coverUrl, coverTarget)
+    val sigH = sigLayout?.height?.toFloat() ?: 0f
+    val sigTop = if (sigLayout != null) h - pad - sigH else h - pad
+    val lyricBottom = if (sigLayout != null) sigTop - w * 0.022f else h - pad
+
+    val lyricBlockH = if (lyrics.isEmpty()) {
+        lyricSize * 1.4f
+    } else {
+        lyrics.foldIndexed(0f) { i, acc, layout ->
+            acc + layout.height + if (i == lyrics.lastIndex) 0f else w * 0.010f
+        }
+    }
+    val lyricBand = (lyricBottom - y).coerceAtLeast(lyricBlockH)
+    var ly = y + ((lyricBand - lyricBlockH) / 2f).coerceAtLeast(0f)
+    val placedLyrics = ArrayList<Pair<Float, StaticLayout>>(lyrics.size)
+    for ((i, layout) in lyrics.withIndex()) {
+        placedLyrics.add(ly to layout)
+        ly += layout.height
+        if (i != lyrics.lastIndex) ly += w * 0.010f
+    }
+    val emptyPaint = if (lyrics.isEmpty()) {
+        sharpTextPaint(palette.emptyArgb, lyricSize, bold = false)
+    } else {
+        null
+    }
+    val emptyY = if (lyrics.isEmpty()) {
+        y + lyricBand * 0.42f
+    } else {
+        0f
+    }
+
+    return PosterCoverPlan(
+        w = wPx,
+        h = hPx,
+        pad = pad,
+        iconSize = iconSize,
+        coverRect = coverRect,
+        titleLayout = titleL,
+        titleTop = titleTop,
+        artistLayout = artistLayout,
+        artistTop = artistTop,
+        ruleY = ruleY,
+        ruleW = w * 0.14f,
+        lyricLayouts = placedLyrics,
+        emptyLyric = if (lyrics.isEmpty()) "未选择歌词" else null,
+        emptyLyricPaint = emptyPaint,
+        emptyLyricY = emptyY,
+        sigLayout = sigLayout,
+        sigTop = sigTop,
+        palette = palette,
+        showTime = showTime,
+        timeText = timeText,
+        brand = brand,
+        brandPaint = brandPaint,
+        timePaint = timePaint,
+    )
+}
+
+private fun drawPosterCoverPlan(
+    canvas: Canvas,
+    plan: PosterCoverPlan,
+    coverAndroid: Bitmap?,
+    appIcon: Bitmap?,
+    tone: PosterCoverTone,
+) {
+    val w = plan.w.toFloat()
+    val h = plan.h.toFloat()
+    val palette = plan.palette
+    canvas.drawColor(palette.inkArgb)
     if (coverAndroid != null) {
         val src = android.graphics.Rect(0, 0, coverAndroid.width, coverAndroid.height)
-        val dst = RectF(0f, 0f, w, h)
         val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
             alpha = palette.bgAlpha
             isFilterBitmap = true
         }
-        canvas.drawBitmap(coverAndroid, src, dst, paint)
+        canvas.drawBitmap(coverAndroid, src, RectF(0f, 0f, w, h), paint)
     }
     val veil = Paint().apply {
         shader = LinearGradient(
@@ -550,15 +683,11 @@ suspend fun renderPosterCoverPresetBitmap(
     }
     canvas.drawRect(0f, 0f, w, h, veil)
 
-    val pad = w * 0.055f
-    var y = pad
-
-    // brand row — 优先高密度解码 logo
-    val iconSize = w * 0.055f
-    val appIcon = decodeResourceFull(context, R.drawable.ic_logo_vinyl_z, (iconSize * 2).toInt())
-        ?: decodeResourceFull(context, R.mipmap.ic_launcher_foreground, (iconSize * 2).toInt())
+    val pad = plan.pad
+    val yBrand = pad
+    val iconSize = plan.iconSize
     if (appIcon != null) {
-        val iconDst = RectF(pad, y, pad + iconSize, y + iconSize)
+        val iconDst = RectF(pad, yBrand, pad + iconSize, yBrand + iconSize)
         val round = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
             isFilterBitmap = true
         }
@@ -574,43 +703,36 @@ suspend fun renderPosterCoverPresetBitmap(
             round,
         )
         canvas.restore()
-        if (!appIcon.isRecycled) {
-            runCatching { appIcon.recycle() }
-        }
     }
-    val brandPaint = sharpTextPaint(palette.brandArgb, w * 0.032f, bold = true).apply {
-        letterSpacing = 0.12f
+    canvas.drawText(
+        plan.brand,
+        pad + iconSize + w * 0.018f,
+        yBrand + iconSize * 0.72f,
+        plan.brandPaint,
+    )
+    if (plan.showTime) {
+        val tw = plan.timePaint.measureText(plan.timeText)
+        canvas.drawText(plan.timeText, w - pad - tw, yBrand + iconSize * 0.72f, plan.timePaint)
     }
-    val brand = context.getString(R.string.app_name)
-    canvas.drawText(brand, pad + iconSize + w * 0.02f, y + iconSize * 0.72f, brandPaint)
-    if (showTime) {
-        val timePaint = sharpTextPaint(palette.timeArgb, w * 0.026f, bold = false)
-        val tw = timePaint.measureText(timeText)
-        canvas.drawText(timeText, w - pad - tw, y + iconSize * 0.72f, timePaint)
-    }
-    y += iconSize + w * 0.045f
 
-    // cover
-    val coverSide = w * 0.72f
-    val coverLeft = (w - coverSide) / 2f
-    val coverRect = RectF(coverLeft, y, coverLeft + coverSide, y + coverSide)
     val coverPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
         isFilterBitmap = true
     }
     canvas.save()
     val coverPath = android.graphics.Path().apply {
-        addRoundRect(coverRect, w * 0.035f, w * 0.035f, android.graphics.Path.Direction.CW)
+        addRoundRect(plan.coverRect, w * 0.032f, w * 0.032f, android.graphics.Path.Direction.CW)
     }
     canvas.clipPath(coverPath)
     if (coverAndroid != null) {
         canvas.drawBitmap(
             coverAndroid,
             centeredCropSrc(coverAndroid.width, coverAndroid.height),
-            coverRect,
+            plan.coverRect,
             coverPaint,
         )
     } else {
-        canvas.drawColor(palette.coverFallback)
+        val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = palette.coverFallback }
+        canvas.drawRect(plan.coverRect, fill)
     }
     canvas.restore()
     val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -618,94 +740,76 @@ suspend fun renderPosterCoverPresetBitmap(
         strokeWidth = (w * 0.0025f).coerceAtLeast(2f)
         color = if (tone == PosterCoverTone.Dark) 0x33F4F0E8.toInt() else 0x331A1510.toInt()
     }
-    canvas.drawRoundRect(coverRect, w * 0.035f, w * 0.035f, stroke)
-    y += coverSide + w * 0.04f
+    canvas.drawRoundRect(plan.coverRect, w * 0.032f, w * 0.032f, stroke)
 
-    // title / artist
-    val titlePaint = sharpTextPaint(palette.titleArgb, w * 0.048f, bold = true)
-    val title = track.name.ifBlank { "未知歌曲" }
-    val titleLayout = StaticLayout.Builder.obtain(
-        title, 0, title.length, titlePaint, (w - pad * 2).toInt(),
-    )
-        .setAlignment(Layout.Alignment.ALIGN_CENTER)
-        .setMaxLines(2)
-        .setEllipsize(android.text.TextUtils.TruncateAt.END)
-        .build()
     canvas.save()
-    canvas.translate(pad, y)
-    titleLayout.draw(canvas)
+    canvas.translate(pad, plan.titleTop)
+    plan.titleLayout.draw(canvas)
     canvas.restore()
-    y += titleLayout.height + w * 0.012f
 
-    val artistPaint = sharpTextPaint(palette.artistArgb, w * 0.032f, bold = false)
-    val artist = track.artists.ifBlank { "未知制作人" }
-    val artistW = artistPaint.measureText(artist)
-    canvas.drawText(artist, (w - artistW) / 2f, y + artistPaint.textSize, artistPaint)
-    y += artistPaint.textSize + w * 0.03f
+    canvas.save()
+    canvas.translate(pad, plan.artistTop)
+    plan.artistLayout.draw(canvas)
+    canvas.restore()
 
-    // rule
     val rulePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = palette.ruleArgb
-        strokeWidth = 3f
+        strokeWidth = (w * 0.0016f).coerceAtLeast(2f)
     }
-    val ruleW = w * 0.14f
-    canvas.drawLine((w - ruleW) / 2f, y, (w + ruleW) / 2f, y, rulePaint)
-    y += w * 0.035f
+    canvas.drawLine(
+        (w - plan.ruleW) / 2f,
+        plan.ruleY,
+        (w + plan.ruleW) / 2f,
+        plan.ruleY,
+        rulePaint,
+    )
 
-    // lyrics
-    val lyricPaint = sharpTextPaint(palette.lyricArgb, w * 0.038f, bold = false)
-    val lyricBottomReserve = pad + w * 0.08f
-    val lyricMaxH = (h - lyricBottomReserve - y).coerceAtLeast(w * 0.2f)
-    if (lyricLines.isEmpty()) {
-        val empty = "未选择歌词"
-        val ew = lyricPaint.measureText(empty)
-        lyricPaint.color = palette.emptyArgb
-        canvas.drawText(empty, (w - ew) / 2f, y + lyricMaxH * 0.4f, lyricPaint)
+    if (plan.emptyLyric != null && plan.emptyLyricPaint != null) {
+        val ew = plan.emptyLyricPaint.measureText(plan.emptyLyric)
+        canvas.drawText(plan.emptyLyric, (w - ew) / 2f, plan.emptyLyricY, plan.emptyLyricPaint)
     } else {
-        var ly = y
-        val gap = w * 0.012f
-        for (line in lyricLines) {
-            val layout = StaticLayout.Builder.obtain(
-                line, 0, line.length, lyricPaint, (w - pad * 2).toInt(),
-            )
-                .setAlignment(Layout.Alignment.ALIGN_CENTER)
-                .setMaxLines(2)
-                .setEllipsize(android.text.TextUtils.TruncateAt.END)
-                .build()
-            if (ly + layout.height > y + lyricMaxH) break
+        for ((top, layout) in plan.lyricLayouts) {
             canvas.save()
-            canvas.translate(pad, ly)
+            canvas.translate(pad, top)
             layout.draw(canvas)
             canvas.restore()
-            ly += layout.height + gap
         }
     }
 
-    val sig = signature.trim()
-    if (sig.isNotEmpty()) {
-        val sigPaint = sharpTextPaint(palette.sigArgb, w * 0.03f, bold = false).apply {
-            typeface = Typeface.create(Typeface.SERIF, Typeface.NORMAL)
-        }
-        val shown = "「$sig」"
-        val sigLayout = StaticLayout.Builder.obtain(
-            shown, 0, shown.length, sigPaint, (w - pad * 2).toInt(),
-        )
-            .setAlignment(Layout.Alignment.ALIGN_CENTER)
-            .setMaxLines(2)
-            .setEllipsize(android.text.TextUtils.TruncateAt.END)
-            .build()
-        val sigY = h - pad - sigLayout.height
+    val sig = plan.sigLayout
+    if (sig != null) {
         canvas.save()
-        canvas.translate(pad, sigY)
-        sigLayout.draw(canvas)
+        canvas.translate(pad, plan.sigTop)
+        sig.draw(canvas)
         canvas.restore()
     }
+}
 
-    // 导出用独立位图，封面拷贝可回收
-    if (coverAndroid != null && !coverAndroid.isRecycled) {
-        runCatching { coverAndroid.recycle() }
+private fun posterStaticLayout(
+    text: String,
+    paint: TextPaint,
+    width: Int,
+    maxLines: Int,
+    ellipsize: android.text.TextUtils.TruncateAt?,
+    spacingMult: Float,
+): StaticLayout {
+    val builder = StaticLayout.Builder.obtain(
+        text,
+        0,
+        text.length,
+        paint,
+        width.coerceAtLeast(1),
+    )
+        .setAlignment(Layout.Alignment.ALIGN_CENTER)
+        .setIncludePad(false)
+        .setLineSpacing(0f, spacingMult)
+    if (maxLines < Int.MAX_VALUE) {
+        builder.setMaxLines(maxLines)
     }
-    bmp
+    if (ellipsize != null) {
+        builder.setEllipsize(ellipsize)
+    }
+    return builder.build()
 }
 
 private fun sharpTextPaint(colorArgb: Int, textSizePx: Float, bold: Boolean): TextPaint =

@@ -141,7 +141,8 @@ fun PosterMakeOverlay(
     var busy by remember { mutableStateOf(false) }
     var renderedBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var showRenderedPreview by remember { mutableStateOf(false) }
-    val timeText = rememberPosterTimeText()
+    var posterClockMs by remember { mutableStateOf(System.currentTimeMillis()) }
+    val timeText = rememberPosterTimeText(posterClockMs)
 
     fun flash(msg: String) {
         context.showIslandNotice(msg, track.coverUrl)
@@ -156,6 +157,7 @@ fun PosterMakeOverlay(
             coverTone = PosterCoverTone.Dark
             signature = ""
             busy = false
+            posterClockMs = System.currentTimeMillis()
             renderedBitmap?.recycle()
             renderedBitmap = null
             showRenderedPreview = false
@@ -340,6 +342,8 @@ fun PosterMakeOverlay(
                                 signature = signature,
                                 tone = coverTone,
                                 timeText = timeText,
+                                widthPx = PosterExportWidthPx,
+                                heightPx = PosterExportHeightPx,
                             )
                         }.getOrNull()
                         if (bmp != null) {
@@ -367,6 +371,8 @@ fun PosterMakeOverlay(
                                 signature = signature,
                                 tone = coverTone,
                                 timeText = timeText,
+                                widthPx = PosterExportWidthPx,
+                                heightPx = PosterExportHeightPx,
                             )
                         }.getOrNull()
                         if (bmp == null) {
@@ -380,6 +386,9 @@ fun PosterMakeOverlay(
                                 bmp,
                                 "ZMusic_poster_${System.currentTimeMillis()}.png",
                             )
+                        }
+                        if (renderedBitmap == null) {
+                            renderedBitmap = bmp
                         }
                         busy = false
                         result.onSuccess {

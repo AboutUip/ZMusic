@@ -3,24 +3,34 @@ package com.kite.zmusic.ui.library
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredHeight
 import androidx.compose.foundation.layout.requiredSize
@@ -39,6 +49,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -46,6 +57,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlin.math.abs
+import kotlin.math.roundToInt
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -57,18 +70,25 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.painter.BitmapPainter
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
@@ -77,6 +97,7 @@ import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kite.zmusic.ZMusicApplication
+import com.kite.zmusic.data.CollectedAlbum
 import com.kite.zmusic.data.PlaylistSummary
 import com.kite.zmusic.data.SessionRepository
 import com.kite.zmusic.data.UserProfileBrief
@@ -92,6 +113,8 @@ import com.kite.zmusic.ui.icons.ZIcons
 import com.kite.zmusic.ui.notice.showIslandNotice
 import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.main.mainContentPadH
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
@@ -101,7 +124,81 @@ private val ProfileBlankBrush = Brush.verticalGradient(
 private val VipGold = Color(0xFFFFD789)
 private val SvipPlate = Color(0xFF1A120C)
 private val VipPlate = Color(0xFFEC4141)
-internal val ProfileAvatarBadgeHang = 6.dp
+internal val ProfileAvatarBadgeHang = 0.dp
+
+private enum class LibraryCollectionKind { Playlist, Album }
+
+@Stable
+private class CollectionPagerState(
+    private val scope: CoroutineScope,
+    initial: Float = 0f,
+) {
+    var offset by mutableFloatStateOf(initial)
+        private set
+
+    private val anim = Animatable(initial)
+    private var job: Job? = null
+    private var gen: Int = 0
+    private var dragging: Boolean = false
+    private var target: Float = initial
+
+    fun dragDelta(deltaPx: Float, widthPx: Float) {
+        if (!dragging) {
+            cancelAnim()
+            dragging = true
+        }
+        val w = widthPx.coerceAtLeast(1f)
+        offset = (offset - deltaPx / w).coerceIn(0f, 1f)
+    }
+
+    fun settle(velocityPx: Float): Float {
+        dragging = false
+        val dest = when {
+            velocityPx < -680f -> 1f
+            velocityPx > 680f -> 0f
+            else -> if (offset >= 0.5f) 1f else 0f
+        }
+        animateTo(dest)
+        return dest
+    }
+
+    fun goTo(dest: Float) {
+        dragging = false
+        val d = dest.coerceIn(0f, 1f)
+        if (abs(offset - d) < 0.002f && job?.isActive != true) {
+            offset = d
+            target = d
+            return
+        }
+        if (abs(target - d) < 0.002f && job?.isActive == true) return
+        animateTo(d)
+    }
+
+    private fun animateTo(dest: Float) {
+        val my = ++gen
+        dragging = false
+        target = dest
+        job?.cancel()
+        job = scope.launch {
+            anim.snapTo(offset)
+            anim.animateTo(
+                dest,
+                spring(dampingRatio = 0.82f, stiffness = 420f),
+            ) {
+                if (my == gen) offset = value
+            }
+            if (my != gen) return@launch
+            offset = dest
+            anim.snapTo(dest)
+        }
+    }
+
+    private fun cancelAnim() {
+        gen += 1
+        job?.cancel()
+        job = null
+    }
+}
 
 @Composable
 private fun LibraryLoadingBlock() {
@@ -165,8 +262,36 @@ private fun LibraryHomeLandscape(
     onAvatarPositioned: (Offset, Float) -> Unit,
     onMorePlaylist: (PlaylistSummary) -> Unit,
     onCreatePlaylist: () -> Unit,
+    onOpenLikedArtists: () -> Unit,
+    collectionKind: LibraryCollectionKind,
+    onCollectionKind: (LibraryCollectionKind) -> Unit,
+    onOpenAlbum: (CollectedAlbum) -> Unit,
+    onLoadMoreAlbums: () -> Unit,
 ) {
     val listState = rememberLazyListState()
+    val nearEnd by remember {
+        derivedStateOf {
+            val last = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            val total = listState.layoutInfo.totalItemsCount
+            total > 1 && last >= total - 2
+        }
+    }
+    LaunchedEffect(
+        nearEnd,
+        collectionKind,
+        ui.albums.size,
+        ui.albumsHasMore,
+        ui.albumsLoadingMore,
+    ) {
+        if (collectionKind == LibraryCollectionKind.Album &&
+            nearEnd &&
+            ui.albumsHasMore &&
+            !ui.albumsLoadingMore &&
+            ui.albums.isNotEmpty()
+        ) {
+            onLoadMoreAlbums()
+        }
+    }
     val hasPhoto = !customBgPath.isNullOrBlank() || !ui.profile?.backgroundUrl.isNullOrBlank()
     val p = spaceProgress.coerceIn(0f, 1f)
     val pulling = p > 0.001f
@@ -208,6 +333,7 @@ private fun LibraryHomeLandscape(
                         hasPhoto = hasPhoto,
                         spaceProgress = spaceProgress,
                         onEnterSpace = { pullState.open() },
+                        onOpenFollows = onOpenLikedArtists,
                         onAvatarPositioned = onAvatarPositioned,
                         modifier = Modifier
                             .fillMaxWidth()
@@ -240,12 +366,22 @@ private fun LibraryHomeLandscape(
                     if (ui.isGuest) {
                         LibraryGuestBanner()
                     }
-                    LibraryPlaylistBody(
-                        playlists = ui.playlists,
-                        onOpenPlaylist = onOpenPlaylist,
-                        onMorePlaylist = onMorePlaylist,
-                        onCreatePlaylist = onCreatePlaylist,
-                    )
+                        LibraryPlaylistBody(
+                            playlists = ui.playlists,
+                            albums = ui.albums,
+                            albumsTotal = ui.albumsTotal,
+                            albumsHasMore = ui.albumsHasMore,
+                            albumsLoading = ui.albumsLoading,
+                            albumsLoadingMore = ui.albumsLoadingMore,
+                            albumsError = ui.albumsError,
+                            isGuest = ui.isGuest,
+                            collectionKind = collectionKind,
+                            onCollectionKind = onCollectionKind,
+                            onOpenPlaylist = onOpenPlaylist,
+                            onMorePlaylist = onMorePlaylist,
+                            onCreatePlaylist = onCreatePlaylist,
+                            onOpenAlbum = onOpenAlbum,
+                        )
                 }
             }
         }
@@ -259,6 +395,7 @@ private fun ProfileLandscapeBanner(
     hasPhoto: Boolean,
     spaceProgress: Float,
     onEnterSpace: () -> Unit,
+    onOpenFollows: () -> Unit,
     onAvatarPositioned: (Offset, Float) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -315,44 +452,20 @@ private fun ProfileLandscapeBanner(
                 )
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
-                    Row(
+                    ProfileNameRow(
+                        profile = p,
+                        onPhoto = hasPhoto,
+                        titleSize = 20.sp,
                         modifier = Modifier.spaceIdentityLeave(spaceProgress, 0),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Text(
-                            text = p.nickname,
-                            style = identityTitleStyle(hasPhoto).copy(fontSize = 20.sp),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f, fill = false),
-                        )
-                        p.level?.let { lv ->
-                            ProfileLevelMark(level = lv, onPhoto = hasPhoto)
-                        }
-                    }
-                    p.signature?.let { sig ->
-                        Text(
-                            text = sig,
-                            style = identityCaptionStyle(hasPhoto),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier
-                                .padding(top = 4.dp)
-                                .spaceIdentityLeave(spaceProgress, 1),
-                        )
-                    }
-                    listenMetaLine(p)?.let { meta ->
-                        Text(
-                            text = meta,
-                            style = identityCaptionStyle(hasPhoto).copy(fontSize = 12.sp),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier
-                                .padding(top = 4.dp)
-                                .spaceIdentityLeave(spaceProgress, 2),
-                        )
-                    }
+                    )
+                    ProfileIdentityMeta(
+                        profile = p,
+                        onPhoto = hasPhoto,
+                        spaceProgress = spaceProgress,
+                        center = false,
+                        compact = true,
+                        onOpenFollows = onOpenFollows,
+                    )
                 }
                 Spacer(Modifier.width(12.dp))
                 Box(
@@ -421,6 +534,7 @@ fun LibraryScreen(
     var createDraft by remember { mutableStateOf("") }
     var confirmDelete by remember { mutableStateOf<PlaylistSummary?>(null) }
     var confirmUnsub by remember { mutableStateOf<PlaylistSummary?>(null) }
+    var collectionKind by remember { mutableStateOf(LibraryCollectionKind.Playlist) }
     val uid = ui.profile?.userId ?: 0L
     var customBgPath by remember(uid) { mutableStateOf(app.userSpaceBackgroundStore.pathFor(uid)) }
 
@@ -435,6 +549,10 @@ fun LibraryScreen(
                 collected = pl.isSubscribed,
             ),
         )
+    }
+
+    fun openAlbum(album: CollectedAlbum) {
+        onOpenOverlay(MainOverlay.Album(album.id, album.name))
     }
 
     LaunchedEffect(pullState) {
@@ -498,6 +616,11 @@ fun LibraryScreen(
                     createDraft = ""
                     createOpen = true
                 },
+                onOpenLikedArtists = { onOpenOverlay(MainOverlay.LikedArtists) },
+                collectionKind = collectionKind,
+                onCollectionKind = { collectionKind = it },
+                onOpenAlbum = ::openAlbum,
+                onLoadMoreAlbums = vm::loadMoreAlbums,
             )
         } else {
             LibraryHomePortrait(
@@ -514,6 +637,11 @@ fun LibraryScreen(
                     createDraft = ""
                     createOpen = true
                 },
+                onOpenLikedArtists = { onOpenOverlay(MainOverlay.LikedArtists) },
+                collectionKind = collectionKind,
+                onCollectionKind = { collectionKind = it },
+                onOpenAlbum = ::openAlbum,
+                onLoadMoreAlbums = vm::loadMoreAlbums,
             )
         }
         UserSpaceOverlay(
@@ -699,10 +827,15 @@ private fun LibraryHomePortrait(
     onAvatarPositioned: (Offset, Float) -> Unit,
     onMorePlaylist: (PlaylistSummary) -> Unit,
     onCreatePlaylist: () -> Unit,
+    onOpenLikedArtists: () -> Unit,
+    collectionKind: LibraryCollectionKind,
+    onCollectionKind: (LibraryCollectionKind) -> Unit,
+    onOpenAlbum: (CollectedAlbum) -> Unit,
+    onLoadMoreAlbums: () -> Unit,
 ) {
     val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val screenH = LocalConfiguration.current.screenHeightDp.dp
-    val heroHeight = statusTop + maxOf(252.dp, screenH * 0.30f)
+    val heroHeight = statusTop + maxOf(312.dp, screenH * 0.36f)
     val overlap = 18.dp
     val listState = rememberLazyListState()
     val density = LocalDensity.current
@@ -717,6 +850,7 @@ private fun LibraryHomePortrait(
         }
     }
     val identityAlpha = (1f - scrollPx / (heroPx * 0.48f)).coerceIn(0f, 1f)
+    val sheetPadT = lerp(4.dp, statusTop + 6.dp, (scrollPx / (heroPx * 0.52f)).coerceIn(0f, 1f))
     val hasPhoto = !customBgPath.isNullOrBlank() || !ui.profile?.backgroundUrl.isNullOrBlank()
     val atTop by remember {
         derivedStateOf {
@@ -724,6 +858,29 @@ private fun LibraryHomePortrait(
         }
     }
     SideEffect { pullState.atTop = atTop }
+    val nearEnd by remember {
+        derivedStateOf {
+            val last = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            val total = listState.layoutInfo.totalItemsCount
+            total > 1 && last >= total - 2
+        }
+    }
+    LaunchedEffect(
+        nearEnd,
+        collectionKind,
+        ui.albums.size,
+        ui.albumsHasMore,
+        ui.albumsLoadingMore,
+    ) {
+        if (collectionKind == LibraryCollectionKind.Album &&
+            nearEnd &&
+            ui.albumsHasMore &&
+            !ui.albumsLoadingMore &&
+            ui.albums.isNotEmpty()
+        ) {
+            onLoadMoreAlbums()
+        }
+    }
 
     val p = spaceProgress.coerceIn(0f, 1f)
     val pulling = p > 0.001f
@@ -786,7 +943,8 @@ private fun LibraryHomePortrait(
                         fade = identityAlpha,
                         spaceProgress = p,
                         hideAvatar = spaceProgress > SpaceAvatarHandoffProgress,
-                        showSpaceHint = atTop && p < 0.12f,
+                        showSpaceHint = false,
+                        onOpenFollows = onOpenLikedArtists,
                         avatarModifier = Modifier.onGloballyPositioned { coords ->
                             if (spaceProgress <= SpaceAvatarHandoffProgress) {
                                 onAvatarPositioned(
@@ -800,9 +958,18 @@ private fun LibraryHomePortrait(
                             .fillMaxWidth()
                             .height(heroHeight - overlap)
                             .statusBarsPadding()
-                            .padding(horizontal = padH)
-                            .padding(bottom = 28.dp),
+                            .padding(horizontal = padH),
                     )
+                    if (atTop && p < 0.12f) {
+                        ProfileSpaceHint(
+                            onPhoto = hasPhoto,
+                            spaceProgress = p,
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .zIndex(4f)
+                                .padding(bottom = 48.dp),
+                        )
+                    }
                 }
             }
             item(key = "profile-sheet") {
@@ -822,9 +989,8 @@ private fun LibraryHomePortrait(
                     Column(
                         Modifier
                             .fillMaxWidth()
-                            .statusBarsPadding()
                             .padding(horizontal = padH)
-                            .padding(top = 8.dp, bottom = 8.dp),
+                            .padding(top = sheetPadT, bottom = 8.dp),
                     ) {
                         if (ui.loading && ui.playlists.isEmpty() && ui.profile != null) {
                             LibraryLoadingBlock()
@@ -839,9 +1005,19 @@ private fun LibraryHomePortrait(
                         }
                         LibraryPlaylistBody(
                             playlists = ui.playlists,
+                            albums = ui.albums,
+                            albumsTotal = ui.albumsTotal,
+                            albumsHasMore = ui.albumsHasMore,
+                            albumsLoading = ui.albumsLoading,
+                            albumsLoadingMore = ui.albumsLoadingMore,
+                            albumsError = ui.albumsError,
+                            isGuest = ui.isGuest,
+                            collectionKind = collectionKind,
+                            onCollectionKind = onCollectionKind,
                             onOpenPlaylist = onOpenPlaylist,
                             onMorePlaylist = onMorePlaylist,
                             onCreatePlaylist = onCreatePlaylist,
+                            onOpenAlbum = onOpenAlbum,
                         )
                     }
                 }
@@ -939,6 +1115,7 @@ private fun ProfileHeroBlock(
             fade = (1f - spaceProgress).coerceIn(0f, 1f),
             hideAvatar = spaceProgress > SpaceAvatarHandoffProgress,
             showSpaceHint = true,
+            onOpenFollows = {},
             avatarModifier = Modifier.onGloballyPositioned { coords ->
                 if (spaceProgress <= SpaceAvatarHandoffProgress) {
                     onAvatarPositioned(
@@ -969,6 +1146,7 @@ private fun ProfileIdentity(
     spaceProgress: Float = 0f,
     hideAvatar: Boolean = false,
     showSpaceHint: Boolean = false,
+    onOpenFollows: () -> Unit = {},
     avatarModifier: Modifier = Modifier,
 ) {
     Box(
@@ -997,7 +1175,10 @@ private fun ProfileIdentity(
                 )
             }
             Column(
-                Modifier.fillMaxWidth(),
+                Modifier
+                    .fillMaxWidth()
+                    .offset(y = (-6).dp)
+                    .padding(bottom = 48.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
             ) {
@@ -1026,58 +1207,58 @@ private fun ProfileIdentity(
                     ),
                 )
                 Spacer(Modifier.height(12.dp))
-                Row(
+                ProfileNameRow(
+                    profile = p,
+                    onPhoto = onPhoto,
                     modifier = Modifier
                         .widthIn(max = 280.dp)
                         .spaceIdentityLeave(spaceProgress, 0),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-                ) {
-                    Text(
-                        text = p.nickname,
-                        style = identityTitleStyle(onPhoto),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false),
-                    )
-                    p.level?.let { lv ->
-                        ProfileLevelMark(level = lv, onPhoto = onPhoto)
-                    }
-                }
-                p.signature?.let { sig ->
-                    Text(
-                        text = sig,
-                        style = identityCaptionStyle(onPhoto),
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier
-                            .padding(top = 6.dp)
-                            .widthIn(max = 280.dp)
-                            .spaceIdentityLeave(spaceProgress, 1),
-                    )
-                }
-                Box(Modifier.spaceIdentityLeave(spaceProgress, 2)) {
-                    ProfileListenProgress(profile = p, onPhoto = onPhoto)
-                }
+                )
+                ProfileIdentityMeta(
+                    profile = p,
+                    onPhoto = onPhoto,
+                    spaceProgress = spaceProgress,
+                    center = true,
+                    onOpenFollows = onOpenFollows,
+                )
             }
         }
         if (showSpaceHint) {
-            Text(
-                text = "下拉进入用户空间",
-                style = identityCaptionStyle(onPhoto).copy(
-                    fontSize = 11.sp,
-                    color = if (onPhoto) Color.White.copy(alpha = 0.55f) else MainPalette.Hint,
-                ),
+            ProfileSpaceHint(
+                onPhoto = onPhoto,
+                spaceProgress = spaceProgress,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(bottom = 4.dp)
-                    .graphicsLayer {
-                        alpha = (1f - spaceProgress / 0.10f).coerceIn(0f, 1f)
-                    },
+                    .zIndex(4f)
+                    .padding(bottom = 48.dp),
             )
         }
     }
+}
+
+@Composable
+private fun ProfileSpaceHint(
+    onPhoto: Boolean,
+    spaceProgress: Float,
+    modifier: Modifier = Modifier,
+) {
+    Text(
+        text = "下拉进入用户空间",
+        style = identityCaptionStyle(onPhoto).copy(
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Normal,
+            letterSpacing = 0.8.sp,
+            color = if (onPhoto) Color.White.copy(alpha = 0.52f) else MainPalette.Hint,
+            shadow = if (onPhoto) {
+                Shadow(color = Color.Black.copy(alpha = 0.55f), offset = Offset(0f, 1f), blurRadius = 8f)
+            } else {
+                null
+            },
+        ),
+        modifier = modifier.graphicsLayer {
+            alpha = (1f - spaceProgress / 0.10f).coerceIn(0f, 1f)
+        },
+    )
 }
 
 private fun identityTitleStyle(onPhoto: Boolean) = TextStyle(
@@ -1094,13 +1275,228 @@ private fun identityTitleStyle(onPhoto: Boolean) = TextStyle(
 private fun identityCaptionStyle(onPhoto: Boolean) = TextStyle(
     color = if (onPhoto) Color.White.copy(alpha = 0.88f) else MainPalette.Secondary,
     fontSize = 13.sp,
-    lineHeight = 18.sp,
+    lineHeight = 16.sp,
     shadow = if (onPhoto) {
         Shadow(color = Color.Black.copy(alpha = 0.4f), offset = Offset(0f, 1f), blurRadius = 8f)
     } else {
         null
     },
 )
+
+private fun identityTagStyle(onPhoto: Boolean) = TextStyle(
+    color = if (onPhoto) Color.White.copy(alpha = 0.62f) else MainPalette.Hint,
+    fontSize = 12.sp,
+    letterSpacing = 0.2.sp,
+    lineHeight = 16.sp,
+    shadow = if (onPhoto) {
+        Shadow(color = Color.Black.copy(alpha = 0.32f), offset = Offset(0f, 1f), blurRadius = 6f)
+    } else {
+        null
+    },
+)
+
+private fun identityStatStyle(onPhoto: Boolean) = TextStyle(
+    color = if (onPhoto) Color.White.copy(alpha = 0.92f) else MainPalette.Ink,
+    fontSize = 13.sp,
+    fontWeight = FontWeight.SemiBold,
+    letterSpacing = 0.2.sp,
+    shadow = if (onPhoto) {
+        Shadow(color = Color.Black.copy(alpha = 0.35f), offset = Offset(0f, 1f), blurRadius = 6f)
+    } else {
+        null
+    },
+)
+
+private data class IdentityTag(
+    val text: String,
+    val icon: ImageVector? = null,
+)
+
+private data class IdentityStat(
+    val value: String,
+    val label: String = "",
+    val opensFollows: Boolean = false,
+)
+
+private fun identityTagsOf(profile: UserProfileBrief): List<IdentityTag> {
+    return profile.expertTags.filter(::isReadableIdentityTag).map { IdentityTag(it) }
+}
+
+private fun genderMark(gender: Int): String? = when (gender) {
+    1 -> "♂"
+    2 -> "♀"
+    else -> null
+}
+
+private fun genderTint(onPhoto: Boolean, gender: Int): Color = when (gender) {
+    1 -> if (onPhoto) Color(0xFF8EC8FF) else Color(0xFF3D8BD9)
+    2 -> if (onPhoto) Color(0xFFFFB7C8) else Color(0xFFD45D7A)
+    else -> if (onPhoto) Color.White.copy(alpha = 0.88f) else MainPalette.Secondary
+}
+
+private fun isReadableIdentityTag(raw: String): Boolean {
+    val t = raw.trim()
+    if (t.length < 2) return false
+    if (t.all { it.isDigit() || it == '.' }) return false
+    return t.any { it.isLetter() || it in '\u4e00'..'\u9fff' }
+}
+
+private fun identityStatsOf(profile: UserProfileBrief): List<IdentityStat> {
+    val stats = mutableListOf<IdentityStat>()
+    val followTotal = (profile.follows ?: 0L) + profile.artistFollows.coerceAtLeast(0L)
+    if (profile.follows != null || profile.artistFollows > 0L) {
+        stats += IdentityStat(formatPlayCount(followTotal), "关注", opensFollows = true)
+    }
+    profile.followeds?.let { stats += IdentityStat(formatPlayCount(it), "粉丝") }
+    profile.level?.let { stats += IdentityStat("Lv.$it") }
+    profile.listenSongs?.let { stats += IdentityStat(formatPlayCount(it), "首") }
+    return stats
+}
+
+@Composable
+private fun ProfileNameRow(
+    profile: UserProfileBrief,
+    onPhoto: Boolean,
+    modifier: Modifier = Modifier,
+    titleSize: TextUnit? = null,
+) {
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
+    ) {
+        Text(
+            text = profile.nickname,
+            style = if (titleSize != null) {
+                identityTitleStyle(onPhoto).copy(fontSize = titleSize)
+            } else {
+                identityTitleStyle(onPhoto)
+            },
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f, fill = false),
+        )
+        if (profile.vipKind != VipKind.None) {
+            ProfileVipMark(
+                kind = profile.vipKind,
+                iconUrl = profile.vipIconUrl,
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ProfileIdentityMeta(
+    profile: UserProfileBrief,
+    onPhoto: Boolean,
+    spaceProgress: Float,
+    center: Boolean,
+    compact: Boolean = false,
+    onOpenFollows: () -> Unit = {},
+) {
+    val tags = remember(profile) { identityTagsOf(profile) }
+    val stats = remember(profile) { identityStatsOf(profile) }
+    val mark = genderMark(profile.gender)
+    val sig = profile.signature
+    if (mark != null || sig != null) {
+        Row(
+            modifier = Modifier
+                .padding(top = 8.dp)
+                .then(if (center) Modifier.widthIn(max = 300.dp) else Modifier)
+                .spaceIdentityLeave(spaceProgress, 1),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(
+                6.dp,
+                if (center) Alignment.CenterHorizontally else Alignment.Start,
+            ),
+        ) {
+            if (mark != null) {
+                Text(
+                    text = mark,
+                    style = identityCaptionStyle(onPhoto).copy(
+                        color = genderTint(onPhoto, profile.gender),
+                        fontSize = 14.sp,
+                    ),
+                )
+            }
+            if (sig != null) {
+                Text(
+                    text = sig,
+                    style = identityCaptionStyle(onPhoto),
+                    maxLines = if (compact) 1 else 2,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = if (center && mark == null) TextAlign.Center else TextAlign.Start,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+            }
+        }
+    }
+    if (tags.isNotEmpty()) {
+        FlowRow(
+            modifier = Modifier
+                .padding(top = 8.dp)
+                .then(if (center) Modifier.widthIn(max = 320.dp) else Modifier)
+                .spaceIdentityLeave(spaceProgress, 1),
+            horizontalArrangement = Arrangement.spacedBy(
+                6.dp,
+                if (center) Alignment.CenterHorizontally else Alignment.Start,
+            ),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            tags.forEachIndexed { index, tag ->
+                if (index > 0) {
+                    Text("·", style = identityTagStyle(onPhoto))
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    tag.icon?.let { icon ->
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = null,
+                            tint = identityTagStyle(onPhoto).color,
+                            modifier = Modifier
+                                .padding(end = 3.dp)
+                                .size(12.dp),
+                        )
+                    }
+                    Text(text = tag.text, style = identityTagStyle(onPhoto))
+                }
+            }
+        }
+    }
+    if (stats.isNotEmpty()) {
+        Row(
+            modifier = Modifier
+                .padding(top = 12.dp)
+                .spaceIdentityLeave(spaceProgress, 2),
+            horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            stats.forEach { stat ->
+                if (stat.opensFollows && stat.label.isNotEmpty()) {
+                    Text(
+                        text = "${stat.value} ${stat.label}",
+                        style = identityStatStyle(onPhoto),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = onOpenFollows,
+                        ),
+                    )
+                } else {
+                    Text(
+                        text = if (stat.label.isEmpty()) stat.value else "${stat.value} ${stat.label}",
+                        style = identityStatStyle(onPhoto),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+    }
+}
 
 @Composable
 internal fun ProfileAvatar(
@@ -1147,142 +1543,69 @@ internal fun ProfileAvatar(
                 )
             }
         }
-        if (profile.vipKind != VipKind.None) {
-            ProfileVipBadge(
-                kind = profile.vipKind,
-                iconUrl = profile.vipIconUrl,
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(1.dp),
-            )
-        }
     }
 }
 
 @Composable
-private fun ProfileVipBadge(
+private fun ProfileVipMark(
     kind: VipKind,
     iconUrl: String?,
-    modifier: Modifier = Modifier,
 ) {
-    val plate = if (kind == VipKind.Svip) SvipPlate else VipPlate
-    val tint = if (kind == VipKind.Svip) VipGold else Color.White
-    Box(
-        modifier
-            .size(22.dp)
-            .border(1.5.dp, Color.White, CircleShape)
-            .clip(CircleShape)
-            .background(plate),
-        contentAlignment = Alignment.Center,
-    ) {
-        if (!iconUrl.isNullOrBlank()) {
-            UrlImage(
-                url = iconUrl,
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop,
-                showPlaceholder = false,
-            )
-        } else {
-            Icon(
-                imageVector = ZIcons.Vip,
-                contentDescription = if (kind == VipKind.Svip) "SVIP" else "VIP",
-                tint = tint,
-                modifier = Modifier.size(12.dp),
-            )
-        }
+    val remote = rememberUrlImageBitmap(iconUrl)
+    if (remote != null) {
+        val aspect = remote.width.toFloat() / remote.height.coerceAtLeast(1).toFloat()
+        val h = 18.dp
+        val w = (h * aspect).coerceIn(18.dp, 72.dp)
+        Image(
+            bitmap = remote,
+            contentDescription = if (kind == VipKind.Svip) "SVIP" else "VIP",
+            modifier = Modifier
+                .height(h)
+                .width(w),
+            contentScale = ContentScale.Fit,
+        )
+        return
     }
-}
-
-@Composable
-private fun ProfileLevelMark(level: Int, onPhoto: Boolean) {
-    val fg = if (onPhoto) Color.White else MainPalette.Accent
-    Text(
-        text = "Lv.$level",
-        style = TextStyle(
-            color = fg,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.SemiBold,
-            letterSpacing = 0.2.sp,
-            shadow = if (onPhoto) {
-                Shadow(color = Color.Black.copy(alpha = 0.35f), offset = Offset(0f, 1f), blurRadius = 6f)
-            } else {
-                null
-            },
-        ),
-        modifier = Modifier
-            .clip(RoundedCornerShape(4.dp))
-            .background(fg.copy(alpha = 0.16f))
-            .padding(horizontal = 6.dp, vertical = 2.dp),
-    )
-}
-
-@Composable
-private fun ProfileListenProgress(profile: UserProfileBrief, onPhoto: Boolean) {
-    val meta = listenMetaLine(profile)
-    val progress = profile.levelProgress?.takeIf { (profile.level ?: 0) < 10 }
-    if (meta == null && progress == null) return
-    Spacer(Modifier.height(12.dp))
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        if (progress != null) {
-            val track = if (onPhoto) Color.White.copy(alpha = 0.22f) else MainPalette.Hairline
-            val fill = if (onPhoto) Color.White.copy(alpha = 0.92f) else MainPalette.Accent
+    if (kind == VipKind.Svip) {
+        Box(
+            modifier = Modifier.size(18.dp),
+            contentAlignment = Alignment.Center,
+        ) {
             Box(
                 Modifier
-                    .width(128.dp)
-                    .height(3.dp)
-                    .clip(RoundedCornerShape(50))
-                    .background(track),
-            ) {
-                Box(
-                    Modifier
-                        .fillMaxHeight()
-                        .fillMaxWidth(progress.coerceIn(0f, 1f))
-                        .background(fill, RoundedCornerShape(50)),
-                )
-            }
-            if (meta != null) {
-                Spacer(Modifier.height(6.dp))
-            }
+                    .fillMaxSize()
+                    .clip(CircleShape)
+                    .background(VipGold),
+            )
+            Box(
+                Modifier
+                    .size(11.dp)
+                    .clip(CircleShape)
+                    .background(SvipPlate),
+            )
+            Box(
+                Modifier
+                    .size(4.dp)
+                    .clip(CircleShape)
+                    .background(VipGold),
+            )
         }
-        if (meta != null) {
-            Text(
-                text = meta,
-                style = identityCaptionStyle(onPhoto).copy(
-                    fontSize = 12.sp,
-                    color = if (onPhoto) {
-                        Color.White.copy(alpha = 0.78f)
-                    } else {
-                        MainPalette.Secondary
-                    },
-                ),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.Center,
+    } else {
+        Box(
+            modifier = Modifier
+                .size(18.dp)
+                .clip(CircleShape)
+                .background(VipPlate),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = ZIcons.MusicNote,
+                contentDescription = "VIP",
+                tint = Color.White,
+                modifier = Modifier.size(11.dp),
             )
         }
     }
-}
-
-private fun listenMetaLine(profile: UserProfileBrief): String? {
-    val parts = mutableListOf<String>()
-    val level = profile.level
-    if (level != null && level >= 10) {
-        parts += "听歌满级"
-        profile.listenSongs?.let { parts += "累计 ${formatPlayCount(it)}" }
-        return parts.joinToString(" · ")
-    }
-    profile.listenSongs?.let { parts += "听歌 ${formatPlayCount(it)}" }
-    val now = profile.nowPlayCount
-    val next = profile.nextPlayCount
-    if (now != null && next != null && next > now) {
-        parts += "差 ${formatPlayCount(next - now)} 首"
-    } else if (parts.isEmpty()) {
-        profile.levelProgress?.let { progress ->
-            parts += "听歌 ${(progress * 100f).toInt().coerceIn(0, 100)}%"
-        }
-    }
-    return parts.takeIf { it.isNotEmpty() }?.joinToString(" · ")
 }
 
 @Composable
@@ -1312,13 +1635,25 @@ private fun LibrarySectionTitle(
 @Composable
 private fun LibraryPlaylistBody(
     playlists: List<PlaylistSummary>,
+    albums: List<CollectedAlbum>,
+    albumsTotal: Int,
+    albumsHasMore: Boolean,
+    albumsLoading: Boolean,
+    albumsLoadingMore: Boolean,
+    albumsError: String?,
+    isGuest: Boolean,
+    collectionKind: LibraryCollectionKind,
+    onCollectionKind: (LibraryCollectionKind) -> Unit,
     onOpenPlaylist: (PlaylistSummary) -> Unit,
     onMorePlaylist: (PlaylistSummary) -> Unit,
     onCreatePlaylist: () -> Unit,
+    onOpenAlbum: (CollectedAlbum) -> Unit,
 ) {
     val liked = playlists.filter { it.isHeartPlaylist && it.isOwned }
     val created = playlists.filter { it.isOwned && !it.isHeartPlaylist }
     val collected = playlists.filter { !it.isOwned }
+    val scope = rememberCoroutineScope()
+    val pager = remember(scope) { CollectionPagerState(scope, collectionKind.ordinal.toFloat()) }
 
     PlaylistSectionColumn(
         title = "我喜欢的音乐",
@@ -1336,14 +1671,341 @@ private fun LibraryPlaylistBody(
         onCreate = onCreatePlaylist,
         showCount = true,
     )
-    PlaylistSectionColumn(
-        title = "收藏的歌单",
-        playlists = collected,
-        emptyText = "还没有收藏的歌单",
-        onOpenPlaylist = onOpenPlaylist,
-        onMorePlaylist = onMorePlaylist,
-        showCount = true,
+    LibrarySectionTitle(
+        text = "收藏",
+        trailing = {
+            CollectionKindSwitch(
+                progress = pager.offset,
+                onSelect = { kind ->
+                    pager.goTo(kind.ordinal.toFloat())
+                    onCollectionKind(kind)
+                },
+            )
+        },
     )
+    CollectionSwipePages(
+        progress = pager.offset,
+        pager = pager,
+        onSettled = onCollectionKind,
+        playlist = {
+            if (collected.isEmpty()) {
+                LibrarySectionEmpty("还没有收藏的歌单")
+            } else {
+                Column {
+                    Text(
+                        text = "${collected.size} 个",
+                        style = TextStyle(
+                            color = MainPalette.Hint,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                        ),
+                        modifier = Modifier.padding(start = 4.dp, bottom = 8.dp),
+                    )
+                    collected.forEach { pl ->
+                        Box(Modifier.padding(vertical = 6.dp)) {
+                            PlaylistRow(
+                                pl = pl,
+                                onClick = { onOpenPlaylist(pl) },
+                                onMore = { onMorePlaylist(pl) },
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        album = {
+            CollectedAlbumPane(
+                albums = albums,
+                total = albumsTotal,
+                hasMore = albumsHasMore,
+                loading = albumsLoading,
+                loadingMore = albumsLoadingMore,
+                error = albumsError,
+                isGuest = isGuest,
+                onOpen = onOpenAlbum,
+            )
+        },
+    )
+}
+
+@Composable
+private fun CollectionSwipePages(
+    progress: Float,
+    pager: CollectionPagerState,
+    onSettled: (LibraryCollectionKind) -> Unit,
+    playlist: @Composable () -> Unit,
+    album: @Composable () -> Unit,
+) {
+    val haptic = LocalHapticFeedback.current
+    var widthPx by remember { mutableFloatStateOf(1f) }
+    var dragFrom by remember { mutableStateOf(0) }
+    val drag = rememberDraggableState { delta ->
+        pager.dragDelta(delta, widthPx)
+    }
+    Layout(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clipToBounds()
+            .onSizeChanged { widthPx = it.width.toFloat().coerceAtLeast(1f) }
+            .draggable(
+                state = drag,
+                orientation = Orientation.Horizontal,
+                onDragStarted = {
+                    dragFrom = if (pager.offset >= 0.5f) 1 else 0
+                },
+                onDragStopped = { velocity ->
+                    val dest = pager.settle(velocity)
+                    val destPage = if (dest >= 0.5f) 1 else 0
+                    val kind = if (destPage == 1) {
+                        LibraryCollectionKind.Album
+                    } else {
+                        LibraryCollectionKind.Playlist
+                    }
+                    if (destPage != dragFrom) {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    }
+                    onSettled(kind)
+                },
+            ),
+        content = {
+            Box(Modifier.fillMaxWidth()) { playlist() }
+            Box(Modifier.fillMaxWidth()) { album() }
+        },
+    ) { measurables, constraints ->
+        val pageW = constraints.maxWidth.coerceAtLeast(0)
+        val pageConstraints = constraints.copy(
+            minWidth = pageW,
+            maxWidth = pageW,
+            minHeight = 0,
+            maxHeight = Constraints.Infinity,
+        )
+        val playlistPlaceable = measurables[0].measure(pageConstraints)
+        val albumPlaceable = measurables[1].measure(pageConstraints)
+        val t = progress.coerceIn(0f, 1f)
+        val height = (
+            playlistPlaceable.height +
+                (albumPlaceable.height - playlistPlaceable.height) * t
+            ).roundToInt().coerceAtLeast(0)
+        val x = (-t * pageW).roundToInt()
+        layout(pageW, height) {
+            playlistPlaceable.placeRelative(x, 0)
+            albumPlaceable.placeRelative(x + pageW, 0)
+        }
+    }
+}
+
+@Composable
+private fun CollectionKindSwitch(
+    progress: Float,
+    onSelect: (LibraryCollectionKind) -> Unit,
+) {
+    val kinds = LibraryCollectionKind.entries
+    val density = LocalDensity.current
+    val haptic = LocalHapticFeedback.current
+    val t = progress.coerceIn(0f, 1f)
+    BoxWithConstraints(
+        Modifier
+            .width(148.dp)
+            .height(32.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(Color(0xFFE8E8EA)),
+    ) {
+        val segW = maxWidth / kinds.size
+        Box(
+            Modifier
+                .offset {
+                    IntOffset(
+                        with(density) { (segW * t + 3.dp).roundToPx() },
+                        0,
+                    )
+                }
+                .padding(vertical = 3.dp)
+                .width(segW - 6.dp)
+                .fillMaxHeight()
+                .clip(RoundedCornerShape(8.dp))
+                .background(Color.White),
+        )
+        Row(Modifier.fillMaxSize()) {
+            kinds.forEach { kind ->
+                val active = if (kind == LibraryCollectionKind.Playlist) 1f - t else t
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = {
+                                val current = if (t < 0.5f) {
+                                    LibraryCollectionKind.Playlist
+                                } else {
+                                    LibraryCollectionKind.Album
+                                }
+                                if (kind != current) {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    onSelect(kind)
+                                }
+                            },
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = if (kind == LibraryCollectionKind.Playlist) "歌单" else "专辑",
+                        style = TextStyle(
+                            color = androidx.compose.ui.graphics.lerp(
+                                MainPalette.Secondary,
+                                MainPalette.Accent,
+                                active,
+                            ),
+                            fontWeight = if (active >= 0.5f) {
+                                FontWeight.SemiBold
+                            } else {
+                                FontWeight.Medium
+                            },
+                            fontSize = 13.sp,
+                        ),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CollectedAlbumPane(
+    albums: List<CollectedAlbum>,
+    total: Int,
+    hasMore: Boolean,
+    loading: Boolean,
+    loadingMore: Boolean,
+    error: String?,
+    isGuest: Boolean,
+    onOpen: (CollectedAlbum) -> Unit,
+) {
+    when {
+        isGuest && albums.isEmpty() -> LibrarySectionEmpty("登录后查看收藏的专辑")
+        loading && albums.isEmpty() -> {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(120.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                CircularProgressIndicator(
+                    color = MainPalette.Accent,
+                    strokeWidth = 2.dp,
+                    modifier = Modifier.size(28.dp),
+                )
+            }
+        }
+        error != null && albums.isEmpty() -> LibrarySectionEmpty(error)
+        albums.isEmpty() -> LibrarySectionEmpty("还没有收藏的专辑")
+        else -> {
+            Column {
+                if (total > 0) {
+                    Text(
+                        text = "$total 张",
+                        style = TextStyle(
+                            color = MainPalette.Hint,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                        ),
+                        modifier = Modifier.padding(start = 4.dp, bottom = 8.dp),
+                    )
+                }
+                val cols = 3
+                val rows = (albums.size + cols - 1) / cols
+                Column(
+                    Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                ) {
+                    repeat(rows) { row ->
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            repeat(cols) { col ->
+                                val i = row * cols + col
+                                if (i < albums.size) {
+                                    CollectedAlbumTile(
+                                        album = albums[i],
+                                        onOpen = { onOpen(albums[i]) },
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                } else {
+                                    Spacer(Modifier.weight(1f))
+                                }
+                            }
+                        }
+                    }
+                }
+                if (loadingMore) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 12.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CircularProgressIndicator(
+                            color = MainPalette.Accent.copy(alpha = 0.7f),
+                            strokeWidth = 2.dp,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
+                } else if (hasMore) {
+                    Spacer(Modifier.height(8.dp))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CollectedAlbumTile(
+    album: CollectedAlbum,
+    onOpen: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val sub = buildList {
+        album.yearLabel?.let { add(it) }
+        if (album.size > 0) add("${album.size}首")
+    }.joinToString(" · ")
+    Column(
+        modifier.clickable(
+            interactionSource = remember { MutableInteractionSource() },
+            indication = null,
+            onClick = onOpen,
+        ),
+    ) {
+        UrlImage(
+            url = album.coverUrl,
+            contentDescription = album.name,
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(1f)
+                .clip(RoundedCornerShape(8.dp)),
+            contentScale = ContentScale.Crop,
+        )
+        Spacer(Modifier.height(6.dp))
+        Text(
+            text = album.name,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            style = TextStyle(
+                color = MainPalette.Ink,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+            ),
+        )
+        if (sub.isNotEmpty()) {
+            Text(
+                text = sub,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = TextStyle(color = MainPalette.Secondary, fontSize = 10.sp),
+            )
+        }
+    }
 }
 
 @Composable

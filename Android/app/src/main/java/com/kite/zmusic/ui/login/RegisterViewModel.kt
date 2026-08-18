@@ -132,7 +132,11 @@ class RegisterViewModel(
         }
     }
 
-    fun register(onDone: () -> Unit) {
+    /**
+     * `/register/cellphone` 文档只约定注册/改密，不保证返回 cookie。
+     * 有凭证则直接登录；否则走 [onNeedSmsLogin]。
+     */
+    fun register(onLoggedIn: () -> Unit, onNeedSmsLogin: (phone: String) -> Unit) {
         viewModelScope.launch {
             if (busy) return@launch
             val p = phone.trim()
@@ -170,12 +174,12 @@ class RegisterViewModel(
                     return@launch
                 }
                 val cookie = NcmJson.extractCookie(j)
-                if (cookie.isNullOrEmpty()) {
-                    bannerError = "注册成功但未返回登录凭证，请返回用该手机号登录"
+                if (!cookie.isNullOrEmpty()) {
+                    sessionRepository.persist(cookie, NcmJson.displayLabelFromLogin(j) ?: nick)
+                    onLoggedIn()
                     return@launch
                 }
-                sessionRepository.persist(cookie, NcmJson.displayLabelFromLogin(j) ?: nick)
-                onDone()
+                onNeedSmsLogin(p)
             } catch (e: Exception) {
                 bannerError = NcmJson.userFacingThrowable(e, "注册失败")
             } finally {

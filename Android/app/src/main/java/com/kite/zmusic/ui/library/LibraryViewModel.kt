@@ -2,6 +2,7 @@ package com.kite.zmusic.ui.library
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.kite.zmusic.data.CollectedAlbum
 import com.kite.zmusic.data.LibraryHomeRepository
 import com.kite.zmusic.data.LikedPlaylistRepository
 import com.kite.zmusic.data.NcmJson
@@ -32,6 +33,12 @@ data class LibraryUiState(
     val profile: UserProfileBrief? = null,
     val subcount: SubcountBrief? = null,
     val playlists: List<PlaylistSummary> = emptyList(),
+    val albums: List<CollectedAlbum> = emptyList(),
+    val albumsTotal: Int = 0,
+    val albumsHasMore: Boolean = false,
+    val albumsLoading: Boolean = false,
+    val albumsLoadingMore: Boolean = false,
+    val albumsError: String? = null,
     val likedTrackCount: Int = 0,
     val sheet: LibrarySheet = LibrarySheet.Hidden,
     /** 当前详情是否为「我喜欢的音乐」（用于展示刷新按钮） */
@@ -93,6 +100,20 @@ class LibraryViewModel(
             }
         }
         viewModelScope.launch {
+            libraryHome.albums.collect { snap ->
+                _ui.update { state ->
+                    state.copy(
+                        albums = snap.albums,
+                        albumsTotal = snap.total,
+                        albumsHasMore = snap.hasMore,
+                        albumsLoading = snap.loading,
+                        albumsLoadingMore = snap.loadingMore,
+                        albumsError = snap.error,
+                    )
+                }
+            }
+        }
+        viewModelScope.launch {
             playlistTracksCache.revision.collect {
                 _ui.update { state ->
                     var next = state
@@ -128,6 +149,15 @@ class LibraryViewModel(
             libraryHome.refresh(force = true)
         }
     }
+
+    fun loadMoreAlbums() {
+        viewModelScope.launch {
+            libraryHome.loadMoreAlbums()
+        }
+    }
+
+    suspend fun unsubscribeAlbum(album: CollectedAlbum): String =
+        libraryHome.unsubscribeAlbum(album)
 
     fun openPlaylist(p: PlaylistSummary) {
         if (p.isHeartPlaylist) {

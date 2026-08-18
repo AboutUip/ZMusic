@@ -78,6 +78,8 @@ import com.kite.zmusic.data.NcmHomeParse
 import com.kite.zmusic.data.SessionRepository
 import com.kite.zmusic.data.TrackRow
 import com.kite.zmusic.data.UserProfileBrief
+import com.kite.zmusic.data.formatAlbumType
+import com.kite.zmusic.data.formatAlbumYear
 import com.kite.zmusic.ui.artist.ArtistAlbumsScreen
 import com.kite.zmusic.ui.artist.ArtistMvsScreen
 import com.kite.zmusic.ui.artist.ArtistScreen
@@ -86,6 +88,8 @@ import com.kite.zmusic.ui.common.PlayingEqualizer
 import com.kite.zmusic.ui.common.UrlImage
 import com.kite.zmusic.ui.common.ZPullRefresh
 import com.kite.zmusic.ui.icons.ZIcons
+import com.kite.zmusic.ui.library.LikedArtistsScreen
+import com.kite.zmusic.ui.library.LikedArtistsSearchScreen
 import com.kite.zmusic.ui.main.LandscapeCoverEnter
 import com.kite.zmusic.ui.main.LandscapeCoverExit
 import com.kite.zmusic.ui.main.MainPalette
@@ -214,6 +218,9 @@ private fun CatalogOverlayPage(
                 onBack = onBack,
                 onPlayTracks = onPlayTracks,
                 onOpenPlaylist = onOpenPlaylist,
+                onOpenAlbum = { id, title ->
+                    onPushOverlay(MainOverlay.Album(id, title))
+                },
                 onOpenMv = { id, title, cover, artist ->
                     onPushOverlay(MainOverlay.Mv(id, title, cover, artist))
                 },
@@ -320,6 +327,31 @@ private fun CatalogOverlayPage(
                 },
             )
         }
+        MainOverlay.LikedArtists -> {
+            LikedArtistsScreen(
+                sessionRepository = sessionRepository,
+                contentBottomInset = contentBottomInset,
+                onBack = onBack,
+                onSearch = { users ->
+                    onPushOverlay(MainOverlay.LikedArtistsSearch(users = users))
+                },
+                onOpenArtist = { id, name, cover ->
+                    onPushOverlay(MainOverlay.Artist(id, name, cover))
+                },
+            )
+        }
+        is MainOverlay.LikedArtistsSearch -> {
+            LikedArtistsSearchScreen(
+                sessionRepository = sessionRepository,
+                contentBottomInset = contentBottomInset,
+                isTop = isTop,
+                searchUsers = overlay.users,
+                onBack = onBack,
+                onOpenArtist = { id, name, cover ->
+                    onPushOverlay(MainOverlay.Artist(id, name, cover))
+                },
+            )
+        }
         else -> CatalogCollectionPage(
             overlay = overlay,
             sessionRepository = sessionRepository,
@@ -356,15 +388,18 @@ private fun CatalogCollectionPage(
         factory = CatalogViewModelFactory(
             sessionRepository,
             app.playlistTracksCache,
+            app.albumTracksCache,
             app.homeFeedRepository,
             app.likedPlaylistRepository,
             app.playlistCollectionRepository,
+            app.albumCollectionRepository,
             app.islandNoticeCenter,
         ),
     )
     when (overlay) {
         MainOverlay.Search, MainOverlay.Settings, is MainOverlay.PlaylistSearch, is MainOverlay.Mv,
         is MainOverlay.Artist, is MainOverlay.ArtistAlbums, is MainOverlay.ArtistMvs,
+        MainOverlay.LikedArtists, is MainOverlay.LikedArtistsSearch,
         -> Unit
         MainOverlay.Daily -> {
             LaunchedEffect(Unit) { vm.loadDaily() }
@@ -522,14 +557,20 @@ private fun CatalogCollectionPage(
                         onPlayTracks(ui.tracks, i, null, ui.title)
                     }
                 },
-                onRetry = { vm.loadAlbum(overlay.id, overlay.title) },
+                onRetry = { vm.loadAlbum(overlay.id, overlay.title, force = true) },
                 playingTrackId = playingTrackId,
                 playingSourceId = playingSourceId,
                 isPlaying = isPlaying,
+                onSubscribe = if (ui.canSubscribe) vm::subscribe else null,
+                onUnsubscribe = vm::unsubscribe,
                 onOpenCreator = ui.creatorId.takeIf { it > 0L }?.let { aid ->
                     {
                         onPushOverlay(
-                            MainOverlay.Artist(aid, ui.creatorName ?: overlay.title, ui.coverUrl),
+                            MainOverlay.Artist(
+                                aid,
+                                ui.creatorName ?: overlay.title,
+                                ui.creatorAvatarUrl ?: ui.coverUrl,
+                            ),
                         )
                     }
                 },
@@ -782,8 +823,12 @@ private fun TrackCollectionScreen(
     }
     if (confirmUncollect) {
         GlassAlertDialog(
-            title = "取消收藏此歌单？",
-            message = "「${state.title}」将从你的收藏中移除",
+            title = if (state.isAlbum) "取消收藏这张专辑？" else "取消收藏此歌单？",
+            message = if (state.isAlbum) {
+                "「${state.title}」会从收藏的专辑里拿掉。"
+            } else {
+                "「${state.title}」将从你的收藏中移除"
+            },
             confirmLabel = "取消收藏",
             confirmDestructive = true,
             onConfirm = {
@@ -843,28 +888,49 @@ private fun CollectionHeader(
     onOpenCreator: (() -> Unit)? = null,
 ) {
     val stats = remember(
+        state.isAlbum,
         state.subtitle,
         state.playCount,
         state.subscribedCount,
+        state.albumPublishTime,
+        state.albumType,
+        state.albumCompany,
+        state.commentCount,
     ) {
-        buildList {
-            state.subtitle?.takeIf { it.isNotBlank() }?.let { add(it) }
-            if (state.playCount > 0L) {
-                add("${NcmHomeParse.formatPlayCount(state.playCount)}次播放")
-            }
-            if (state.subscribedCount > 0) {
-                add("${NcmHomeParse.formatPlayCount(state.subscribedCount.toLong())}收藏")
-            }
-        }.joinToString("  ·  ").takeIf { it.isNotBlank() }
+        if (state.isAlbum) {
+            buildList {
+                formatAlbumYear(state.albumPublishTime)?.let { add(it) }
+                formatAlbumType(state.albumType)?.let { add(it) }
+                state.subtitle?.takeIf { it.isNotBlank() }?.let { add(it) }
+                state.albumCompany?.let { add(it) }
+                if (state.subscribedCount > 0) {
+                    add("${NcmHomeParse.formatPlayCount(state.subscribedCount.toLong())}收藏")
+                }
+                if (state.commentCount > 0) {
+                    add("${NcmHomeParse.formatPlayCount(state.commentCount.toLong())}评论")
+                }
+            }.joinToString("  ·  ").takeIf { it.isNotBlank() }
+        } else {
+            buildList {
+                state.subtitle?.takeIf { it.isNotBlank() }?.let { add(it) }
+                if (state.playCount > 0L) {
+                    add("${NcmHomeParse.formatPlayCount(state.playCount)}次播放")
+                }
+                if (state.subscribedCount > 0) {
+                    add("${NcmHomeParse.formatPlayCount(state.subscribedCount.toLong())}收藏")
+                }
+            }.joinToString("  ·  ").takeIf { it.isNotBlank() }
+        }
     }
+    val coverSize = if (state.isAlbum) 120.dp else 104.dp
     Row(
         Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.Top,
     ) {
         Box(
             Modifier
-                .size(104.dp)
-                .clip(RoundedCornerShape(12.dp))
+                .size(coverSize)
+                .clip(RoundedCornerShape(if (state.isAlbum) 10.dp else 12.dp))
                 .background(Color(0xFFEDEDED)),
         ) {
             UrlImage(
@@ -883,7 +949,8 @@ private fun CollectionHeader(
             val creator = if (useSelf) {
                 selfProfile?.nickname?.takeIf { it.isNotBlank() && it != "null" } ?: "我"
             } else {
-                state.creatorName?.takeIf { it.isNotBlank() && it != "null" } ?: "歌单"
+                state.creatorName?.takeIf { it.isNotBlank() && it != "null" }
+                    ?: if (state.isAlbum) "歌手" else "歌单"
             }
             val avatarUrl = if (useSelf) {
                 selfProfile?.avatarUrl?.takeIf { it.isNotBlank() && it != "null" }
@@ -920,7 +987,7 @@ private fun CollectionHeader(
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Crop,
                         )
-                    } else if (useSelf) {
+                    } else if (useSelf || state.isAlbum) {
                         Text(
                             text = creator.take(1),
                             color = MainPalette.Accent,
@@ -946,6 +1013,16 @@ private fun CollectionHeader(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
+            state.albumAlias?.takeIf { state.isAlbum }?.let { alias ->
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = alias,
+                    color = MainPalette.Hint,
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
             Spacer(Modifier.height(6.dp))
             if (stats != null) {
                 Text(
@@ -956,9 +1033,20 @@ private fun CollectionHeader(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(8.dp))
             } else {
                 Spacer(Modifier.height(4.dp))
+            }
+            state.albumDescription?.takeIf { state.isAlbum && it.isNotBlank() }?.let { desc ->
+                Text(
+                    text = desc,
+                    color = MainPalette.Secondary,
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Spacer(Modifier.height(10.dp))
             }
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -1017,13 +1105,25 @@ private fun CollectionHeader(
                             } else {
                                 ZIcons.CollectPlaylist
                             },
-                            contentDescription = if (subscribed) "取消收藏" else "收藏歌单",
+                            contentDescription = if (subscribed) {
+                                "取消收藏"
+                            } else if (state.isAlbum) {
+                                "收藏专辑"
+                            } else {
+                                "收藏歌单"
+                            },
                             tint = MainPalette.Accent,
                             modifier = Modifier.size(18.dp),
                         )
                         Spacer(Modifier.width(4.dp))
                         Text(
-                            text = if (subscribed) "已收藏" else "收藏歌单",
+                            text = if (subscribed) {
+                                "已收藏"
+                            } else if (state.isAlbum) {
+                                "收藏专辑"
+                            } else {
+                                "收藏歌单"
+                            },
                             color = MainPalette.Accent,
                             fontSize = 13.sp,
                             fontWeight = FontWeight.SemiBold,

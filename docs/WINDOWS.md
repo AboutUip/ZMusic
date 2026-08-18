@@ -89,7 +89,7 @@ URL 解析顺序（与 Android 一致）：
 ### 配置
 
 - `Config/NcmApiConfig.cs`
-- 默认：`http://120.27.244.170:3000`
+- 默认基址由代码配置提供；文档不写死服务地址
 - 覆盖：环境变量 `ZMUSIC_NCM_API_BASE_URL`，或运行期 `SetRuntimeBaseUrl`
 
 ---

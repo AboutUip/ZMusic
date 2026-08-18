@@ -69,7 +69,14 @@ data class AlbumBrief(
     val coverUrl: String?,
     val artist: String?,
     val artistId: Long = 0L,
+    val artistCoverUrl: String? = null,
     val songs: List<TrackRow>,
+    val publishTime: Long = 0L,
+    val company: String? = null,
+    val description: String? = null,
+    val type: String? = null,
+    val alias: String? = null,
+    val size: Int = 0,
 )
 
 internal object NcmHomeParse {
@@ -330,22 +337,144 @@ internal object NcmHomeParse {
         val name = album?.optString("name", "")?.ifBlank { null }
             ?: json.optString("name", "").takeIf { it.isNotBlank() }
             ?: "专辑"
-        val cover = album?.optString("picUrl", "")?.takeIf { it.isNotBlank() }
+        val cover = NcmLibraryParse.ncmHttpsImage(
+            album?.optString("picUrl", "")?.takeIf { it.isNotBlank() }
+                ?: album?.optString("blurPicUrl", "")?.takeIf { it.isNotBlank() },
+        )
         val artistObj = album?.optJSONObject("artist")
+        val artistsArr = album?.optJSONArray("artists")
         val artist = artistObj?.optString("name", "")?.takeIf { it.isNotBlank() }
-            ?: artistNames(album?.optJSONArray("artists"))
+            ?: artistNames(artistsArr)
         val artistId = artistObj?.optLong("id", 0L)?.takeIf { it > 0L }
-            ?: album?.optJSONArray("artists")?.optJSONObject(0)?.optLong("id", 0L)
+            ?: artistsArr?.optJSONObject(0)?.optLong("id", 0L)
             ?: 0L
+        val artistCover = NcmLibraryParse.ncmHttpsImage(
+            firstNonBlank(
+                artistObj?.optString("picUrl"),
+                artistObj?.optString("img1v1Url"),
+                artistsArr?.optJSONObject(0)?.optString("picUrl"),
+            ),
+        )
         if (songs.isEmpty() && NcmJson.apiCode(json) != 200) return null
+        val size = album?.optInt("size", 0)?.takeIf { it > 0 } ?: songs.size
         return AlbumBrief(
             id = album?.optLong("id", albumId) ?: albumId,
             name = name,
             coverUrl = cover,
             artist = artist,
             artistId = artistId,
+            artistCoverUrl = artistCover,
             songs = songs,
+            publishTime = album?.optLong("publishTime", 0L) ?: 0L,
+            company = album?.optString("company", "")?.trim()
+                ?.takeIf { it.isNotEmpty() && it != "null" },
+            description = firstNonBlank(
+                album?.optString("description"),
+                album?.optString("briefDesc"),
+            ),
+            type = album?.optString("type", "")?.trim()?.takeIf { it.isNotEmpty() && it != "null" },
+            alias = firstAlias(album?.optJSONArray("alias"), album?.optJSONArray("transNames")),
+            size = size,
         )
+    }
+
+    fun albumDynamic(json: JSONObject): AlbumDynamic? {
+        if (NcmJson.apiCode(json) != 200) return null
+        return AlbumDynamic(
+            isSub = json.optBoolean("isSub", json.optBoolean("subed", false)),
+            subCount = json.optInt("subCount", json.optInt("subscribedCount", 0)).coerceAtLeast(0),
+            commentCount = json.optInt("commentCount", 0).coerceAtLeast(0),
+            shareCount = json.optInt("shareCount", 0).coerceAtLeast(0),
+        )
+    }
+
+    fun collectedAlbumPage(json: JSONObject, pageSize: Int): Triple<List<CollectedAlbum>, Int, Boolean> {
+        if (NcmJson.apiCode(json) != 200) {
+            return Triple(emptyList(), 0, false)
+        }
+        val arr = json.optJSONArray("data")
+            ?: json.optJSONArray("albums")
+            ?: json.optJSONObject("data")?.optJSONArray("albums")
+            ?: org.json.JSONArray()
+        val albums = buildList {
+            for (i in 0 until arr.length()) {
+                val o = arr.optJSONObject(i) ?: continue
+                collectedAlbum(o)?.let { add(it) }
+            }
+        }
+        val total = json.optInt("count", json.optInt("total", albums.size)).coerceAtLeast(albums.size)
+        val more = when {
+            json.has("hasMore") -> json.optBoolean("hasMore")
+            json.has("more") -> json.optBoolean("more")
+            else -> albums.size >= pageSize && albums.size < total
+        }
+        return Triple(albums, total, more)
+    }
+
+    fun searchAlbums(json: JSONObject): List<CollectedAlbum> {
+        val result = json.optJSONObject("result") ?: json.optJSONObject("data") ?: return emptyList()
+        val arr = result.optJSONArray("albums") ?: return emptyList()
+        return buildList {
+            for (i in 0 until arr.length()) {
+                val o = arr.optJSONObject(i) ?: continue
+                collectedAlbum(o)?.let { add(it) }
+            }
+        }
+    }
+
+    fun collectedAlbum(o: JSONObject): CollectedAlbum? {
+        val id = o.optLong("id", 0L)
+        if (id <= 0L) return null
+        val artistObj = o.optJSONObject("artist")
+        val artistsArr = o.optJSONArray("artists")
+        val artist = artistObj?.optString("name", "")?.takeIf { it.isNotBlank() && it != "null" }
+            ?: artistNames(artistsArr)
+        val artistId = artistObj?.optLong("id", 0L)?.takeIf { it > 0L }
+            ?: artistsArr?.optJSONObject(0)?.optLong("id", 0L)
+            ?: 0L
+        return CollectedAlbum(
+            id = id,
+            name = o.optString("name", "专辑").ifBlank { "专辑" },
+            coverUrl = NcmLibraryParse.ncmHttpsImage(
+                firstNonBlank(
+                    o.optString("picUrl"),
+                    o.optString("blurPicUrl"),
+                    o.optString("cover"),
+                    o.optString("coverImgUrl"),
+                ),
+            ),
+            artist = artist,
+            artistId = artistId,
+            artistCoverUrl = NcmLibraryParse.ncmHttpsImage(
+                firstNonBlank(
+                    artistObj?.optString("picUrl"),
+                    artistObj?.optString("img1v1Url"),
+                    artistsArr?.optJSONObject(0)?.optString("picUrl"),
+                ),
+            ),
+            size = o.optInt("size", o.optInt("size", 0)).coerceAtLeast(0),
+            publishTime = o.optLong("publishTime", 0L),
+            company = o.optString("company", "").trim().takeIf { it.isNotEmpty() && it != "null" },
+            type = o.optString("type", "").trim().takeIf { it.isNotEmpty() && it != "null" },
+            alias = firstAlias(o.optJSONArray("alias"), o.optJSONArray("transNames")),
+        )
+    }
+
+    private fun firstAlias(alias: JSONArray?, trans: JSONArray?): String? {
+        fun first(arr: JSONArray?): String? {
+            if (arr == null || arr.length() == 0) return null
+            val s = arr.optString(0, "").trim()
+            return s.takeIf { it.isNotEmpty() && it != "null" }
+        }
+        return first(alias) ?: first(trans)
+    }
+
+    private fun firstNonBlank(vararg values: String?): String? {
+        for (v in values) {
+            val s = v?.trim().orEmpty()
+            if (s.isNotEmpty() && s != "null") return s
+        }
+        return null
     }
 
     fun charts(json: JSONObject): List<ChartSummary> {

@@ -57,6 +57,31 @@ class NcmUserClient(
         get("/user/subcount", mapOf("cookie" to cookie, "timestamp" to ts()))
     }
 
+    suspend fun userFollows(
+        uid: Long,
+        cookie: String,
+        limit: Int = 30,
+        offset: Int = 0,
+    ): JSONObject = withContext(Dispatchers.IO) {
+        get(
+            "/user/follows",
+            mapOf(
+                "uid" to uid.toString(),
+                "limit" to limit.toString(),
+                "offset" to offset.toString(),
+                "cookie" to cookie,
+                "timestamp" to ts(),
+            ),
+        )
+    }
+
+    suspend fun userMedal(uid: Long, cookie: String): JSONObject = withContext(Dispatchers.IO) {
+        get(
+            "/user/medal",
+            mapOf("uid" to uid.toString(), "cookie" to cookie, "timestamp" to ts()),
+        )
+    }
+
     suspend fun likeList(uid: Long, cookie: String): JSONObject = withContext(Dispatchers.IO) {
         get("/likelist", mapOf("uid" to uid.toString(), "cookie" to cookie, "timestamp" to ts()))
     }
@@ -399,6 +424,22 @@ class NcmUserClient(
         )
     }
 
+    suspend fun artistSublist(
+        cookie: String,
+        limit: Int = 30,
+        offset: Int = 0,
+    ): JSONObject = withContext(Dispatchers.IO) {
+        get(
+            "/artist/sublist",
+            mapOf(
+                "limit" to limit.toString(),
+                "offset" to offset.toString(),
+                "cookie" to cookie,
+                "timestamp" to ts(),
+            ),
+        )
+    }
+
     /** `t=1` 收藏，其它值取消收藏。 */
     suspend fun artistSub(id: Long, follow: Boolean, cookie: String): JSONObject =
         withContext(Dispatchers.IO) {
@@ -484,6 +525,43 @@ class NcmUserClient(
         get(
             "/album",
             mapOf("id" to id.toString(), "cookie" to cookie, "timestamp" to ts()),
+        )
+    }
+
+    suspend fun albumDetailDynamic(id: Long, cookie: String): JSONObject = withContext(Dispatchers.IO) {
+        get(
+            "/album/detail/dynamic",
+            mapOf("id" to id.toString(), "cookie" to cookie, "timestamp" to ts()),
+        )
+    }
+
+    /** `t=1` 收藏，其它值取消收藏。 */
+    suspend fun albumSub(id: Long, subscribe: Boolean, cookie: String): JSONObject =
+        withContext(Dispatchers.IO) {
+            get(
+                "/album/sub",
+                mapOf(
+                    "id" to id.toString(),
+                    "t" to if (subscribe) "1" else "0",
+                    "cookie" to cookie,
+                    "timestamp" to ts(),
+                ),
+            )
+        }
+
+    suspend fun albumSublist(
+        cookie: String,
+        limit: Int = 20,
+        offset: Int = 0,
+    ): JSONObject = withContext(Dispatchers.IO) {
+        get(
+            "/album/sublist",
+            mapOf(
+                "limit" to limit.toString(),
+                "offset" to offset.toString(),
+                "cookie" to cookie,
+                "timestamp" to ts(),
+            ),
         )
     }
 

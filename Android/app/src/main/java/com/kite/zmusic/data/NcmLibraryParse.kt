@@ -31,6 +31,11 @@ internal object NcmLibraryParse {
             vipType <= 0 -> VipKind.None
             else -> VipKind.Vip
         }
+        val tags = (
+            stringList(profile.optJSONArray("expertTags")) +
+                stringList(profile.optJSONArray("artistIdentity")) +
+                objectValues(profile.optJSONObject("experts"))
+            ).distinct().take(4)
         return UserProfileBrief(
             userId = uid,
             nickname = profile.optString("nickname", "用户").ifBlank { "用户" },
@@ -40,7 +45,36 @@ internal object NcmLibraryParse {
             listenSongs = listen,
             backgroundUrl = bg,
             vipKind = vipKind,
+            gender = profile.optInt("gender", 0),
+            follows = nonNegLong(profile, "follows"),
+            followeds = nonNegLong(profile, "followeds"),
+            expertTags = tags,
         )
+    }
+
+    fun medalCountFromJson(json: JSONObject): Int? {
+        if (NcmJson.apiCode(json) != 200) return null
+        val data = json.optJSONObject("data") ?: json
+        listOf("totalCount", "total", "count", "medalCount", "medalNum").forEach { key ->
+            if (data.has(key) && !data.isNull(key)) {
+                val v = data.optInt(key, -1)
+                if (v >= 0) return v
+            }
+        }
+        listOf(
+            "medalList",
+            "medalInfos",
+            "medals",
+            "userMedalList",
+            "wearMedalList",
+            "list",
+            "records",
+            "items",
+        ).forEach { key ->
+            val arr = data.optJSONArray(key)
+            if (arr != null) return arr.length()
+        }
+        return null
     }
 
     fun mergeLevelIntoProfile(profile: UserProfileBrief, json: JSONObject): UserProfileBrief {
@@ -100,6 +134,8 @@ internal object NcmLibraryParse {
             firstHttpUrl(
                 obj?.optString("iconUrl", ""),
                 obj?.optString("dynamicIconUrl", ""),
+                obj?.optString("vipIconUrl", ""),
+                obj?.optString("imageUrl", ""),
             ),
         )
         val redplus = data.optJSONObject("redplus") ?: data.optJSONObject("redPlus")
@@ -151,6 +187,45 @@ internal object NcmLibraryParse {
             subArtistCount = json.optInt("artistCount", json.optInt("subArtistCount", 0)),
             subAlbumCount = json.optInt("albumCount", json.optInt("subAlbumCount", 0)),
         )
+    }
+
+    fun followedUsers(json: JSONObject, pageSize: Int = 30): Pair<List<FollowedUser>, Boolean> {
+        if (NcmJson.apiCode(json) != 200) return emptyList<FollowedUser>() to false
+        val arr = json.optJSONArray("follow")
+            ?: json.optJSONArray("userprofiles")
+            ?: json.optJSONObject("data")?.optJSONArray("follow")
+            ?: json.optJSONObject("data")?.optJSONArray("userprofiles")
+            ?: JSONArray()
+        val list = buildList {
+            for (i in 0 until arr.length()) {
+                val o = arr.optJSONObject(i) ?: continue
+                val id = o.optLong("userId", 0L).takeIf { it > 0L } ?: o.optLong("id", 0L)
+                val name = o.optString("nickname", "").trim()
+                    .ifBlank { o.optString("name", "").trim() }
+                if (id <= 0L || name.isEmpty() || name == "null") continue
+                add(
+                    FollowedUser(
+                        id = id,
+                        name = name,
+                        avatarUrl = ncmHttpsImage(
+                            firstHttpUrl(
+                                o.optString("avatarUrl"),
+                                o.optString("avatarImgUrl"),
+                                o.optString("picUrl"),
+                            ),
+                        ),
+                        signature = o.optString("signature", "")
+                            .takeIf { it.isNotBlank() && it != "null" },
+                    ),
+                )
+            }
+        }
+        val hasMore = when {
+            json.has("more") -> json.optBoolean("more")
+            json.has("hasMore") -> json.optBoolean("hasMore")
+            else -> list.size >= pageSize
+        }
+        return list to hasMore
     }
 
     fun likeIdsCount(json: JSONObject): Int = tryLikeIdsInOrder(json)?.size ?: 0
@@ -558,7 +633,38 @@ internal object NcmLibraryParse {
         for (s in raw) {
             val v = s?.trim()?.takeIf { it.isNotEmpty() && it != "null" } ?: continue
             if (v.startsWith("http://") || v.startsWith("https://")) return v
+            if (v.startsWith("//")) return "https:$v"
         }
         return null
+    }
+
+    private fun nonNegLong(obj: JSONObject, key: String): Long? {
+        if (!obj.has(key) || obj.isNull(key)) return null
+        return obj.optLong(key, -1L).takeIf { it >= 0L }
+    }
+
+    private fun stringList(arr: JSONArray?): List<String> {
+        if (arr == null || arr.length() == 0) return emptyList()
+        return buildList {
+            for (i in 0 until arr.length()) {
+                val raw = arr.opt(i) ?: continue
+                val s = when (raw) {
+                    is String -> raw.trim()
+                    is JSONObject -> raw.optString("name", "").trim()
+                    else -> raw.toString().trim()
+                }
+                if (s.isNotEmpty() && s != "null") add(s)
+            }
+        }
+    }
+
+    private fun objectValues(obj: JSONObject?): List<String> {
+        if (obj == null || obj.length() == 0) return emptyList()
+        return buildList {
+            obj.keys().forEach { key ->
+                val s = obj.optString(key, "").trim()
+                if (s.isNotEmpty() && s != "null") add(s)
+            }
+        }
     }
 }

@@ -47,6 +47,8 @@ sealed class MainOverlay {
         val name: String,
         val coverUrl: String? = null,
     ) : MainOverlay()
+    data object LikedArtists : MainOverlay()
+    data class LikedArtistsSearch(val users: Boolean = false) : MainOverlay()
 
     fun stackKey(): String = when (this) {
         Daily -> "daily"
@@ -62,5 +64,7 @@ sealed class MainOverlay {
         is ArtistSongs -> "artist-songs-$artistId"
         is ArtistAlbums -> "artist-albums-$artistId"
         is ArtistMvs -> "artist-mvs-$artistId"
+        LikedArtists -> "liked-artists"
+        is LikedArtistsSearch -> if (users) "liked-artists-search-users" else "liked-artists-search-artists"
     }
 }

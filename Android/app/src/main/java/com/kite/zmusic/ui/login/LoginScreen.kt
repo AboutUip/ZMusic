@@ -19,9 +19,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kite.zmusic.data.SessionRepository
+import com.kite.zmusic.ui.notice.showIslandNotice
 
 internal enum class LoginMethod {
     Qr,
@@ -42,16 +44,27 @@ fun LoginScreen(
 ) {
     val vm: LoginViewModel = viewModel(factory = LoginViewModelFactory(sessionRepository))
     val registerVm: RegisterViewModel = viewModel(factory = RegisterViewModelFactory(sessionRepository))
+    val context = LocalContext.current
     val isBusy = vm.busy
     val err = vm.bannerError
 
     var method by remember { mutableStateOf(LoginMethod.Qr) }
     var qrVisible by remember { mutableStateOf(false) }
     var registerOpen by remember { mutableStateOf(false) }
+    var resumeSms by remember { mutableStateOf(false) }
     val qrImg = vm.qrImageBase64
     val isLandscape =
         LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     val qrActive = method == LoginMethod.Qr && qrVisible
+
+    fun continueSmsAfterRegister(phone: String) {
+        vm.prepareSmsAfterRegister(phone)
+        registerOpen = false
+        registerVm.reset()
+        method = LoginMethod.Sms
+        resumeSms = true
+        context.showIslandNotice("注册成功，请用验证码登录")
+    }
 
     Box(modifier.fillMaxSize()) {
         if (isLandscape) {
@@ -69,6 +82,9 @@ fun LoginScreen(
                     registerVm.reset()
                 },
                 onRegistered = onLoggedIn,
+                onNeedSmsLogin = ::continueSmsAfterRegister,
+                resumeSms = resumeSms,
+                onResumeSmsConsumed = { resumeSms = false },
                 err = err,
             )
         } else {
@@ -79,6 +95,8 @@ fun LoginScreen(
                 onLoggedIn = onLoggedIn,
                 onNavigateBack = onNavigateBack,
                 onOpenRegister = { registerOpen = true; registerVm.reset() },
+                resumeSms = resumeSms,
+                onResumeSmsConsumed = { resumeSms = false },
                 err = err,
             )
             RegisterOverlay(
@@ -88,7 +106,8 @@ fun LoginScreen(
                     registerOpen = false
                     registerVm.reset()
                 },
-                onRegistered = onLoggedIn,
+                onLoggedIn = onLoggedIn,
+                onNeedSmsLogin = ::continueSmsAfterRegister,
             )
         }
 

@@ -64,6 +64,14 @@ class LoginViewModel(
         smsCaptchaHint = ""
     }
 
+    /** 注册成功且服务未返回 cookie 时，带着该号进入短信登录。 */
+    fun prepareSmsAfterRegister(phone: String) {
+        this.phone = phone.filter { it.isDigit() }.take(11)
+        captcha = ""
+        onSmsPhoneChanged()
+        bannerError = null
+    }
+
     fun loadQrSession() {
         viewModelScope.launch {
             if (busy) return@launch

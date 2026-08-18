@@ -67,6 +67,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kite.zmusic.BuildConfig
 import com.kite.zmusic.R
 import com.kite.zmusic.ZMusicApplication
+import com.kite.zmusic.data.ChromeGlassStyle
 import com.kite.zmusic.data.ServerConfigRepository
 import com.kite.zmusic.ui.common.GlassAlertDialog
 import com.kite.zmusic.ui.common.GlassPromptField
@@ -107,11 +108,18 @@ fun SettingsScreen(
     val aboutVisible = remember { MutableTransitionState(false) }
     val permissionsVisible = remember { MutableTransitionState(false) }
     val qualityVisible = remember { MutableTransitionState(false) }
+    val glassVisible = remember { MutableTransitionState(false) }
     var permissionSnapshot by remember { mutableStateOf(AppPermissionSnapshot.read(context)) }
     val audioQualityStore = remember {
         (context.applicationContext as ZMusicApplication).audioQualityStore
     }
     val audioQuality by audioQualityStore.quality.collectAsStateWithLifecycle()
+    val glassStore = remember {
+        (context.applicationContext as ZMusicApplication).chromeGlassStore
+    }
+    val glassStyle by glassStore.style.collectAsStateWithLifecycle()
+    var glassDraft by remember { mutableStateOf(glassStyle) }
+    var confirmGlassLeave by remember { mutableStateOf(false) }
     var showAppreciate by remember { mutableStateOf(false) }
     var legalKind by remember { mutableStateOf<LoginLegalKind?>(null) }
     val reveal = remember { Animatable(0f) }
@@ -133,6 +141,25 @@ fun SettingsScreen(
     }
     BackHandler(enabled = qualityVisible.targetState) {
         qualityVisible.targetState = false
+    }
+    fun applyGlass() {
+        if (glassDraft == glassStyle) return
+        glassStore.apply(glassDraft)
+        context.showIslandNotice("样式已应用")
+    }
+    fun closeGlassPage() {
+        confirmGlassLeave = false
+        glassVisible.targetState = false
+    }
+    fun requestCloseGlass() {
+        if (glassDraft != glassStyle) {
+            confirmGlassLeave = true
+        } else {
+            closeGlassPage()
+        }
+    }
+    BackHandler(enabled = glassVisible.targetState && !confirmGlassLeave) {
+        requestCloseGlass()
     }
 
     Box(
@@ -190,9 +217,26 @@ fun SettingsScreen(
                 }
                 Spacer(Modifier.height(22.dp))
                 SettingsGroup(
-                    title = "应用",
+                    title = "主题",
                     reveal = reveal.value,
                     delay = 0.14f,
+                ) {
+                    SettingsRow(
+                        title = "液态玻璃样式",
+                        subtitle = glassStyle.settingsSubtitle,
+                        icon = ZIcons.BlurOn,
+                        tint = Color(0xFF2BB3B0),
+                        onClick = {
+                            glassDraft = glassStore.current()
+                            glassVisible.targetState = true
+                        },
+                    )
+                }
+                Spacer(Modifier.height(22.dp))
+                SettingsGroup(
+                    title = "应用",
+                    reveal = reveal.value,
+                    delay = 0.20f,
                 ) {
                     SettingsRow(
                         title = "权限",
@@ -206,7 +250,7 @@ fun SettingsScreen(
                 SettingsGroup(
                     title = "ZMusic",
                     reveal = reveal.value,
-                    delay = 0.20f,
+                    delay = 0.26f,
                 ) {
                     SettingsRow(
                         title = "关于",
@@ -234,7 +278,7 @@ fun SettingsScreen(
                 SettingsGroup(
                     title = "账号",
                     reveal = reveal.value,
-                    delay = 0.28f,
+                    delay = 0.34f,
                 ) {
                     SettingsRow(
                         title = "退出登录",
@@ -261,6 +305,27 @@ fun SettingsScreen(
                         context.showIslandNotice("已切换到${next.title}")
                     }
                 },
+                contentBottomInset = contentBottomInset,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        SettingsDrillHost(
+            visibleState = glassVisible,
+            landscape = landscape,
+            title = "液态玻璃样式",
+            onBack = { requestCloseGlass() },
+            actionLabel = "应用",
+            actionEnabled = glassDraft != glassStyle,
+            onAction = { applyGlass() },
+        ) {
+            LiquidGlassStylePage(
+                style = glassDraft,
+                applied = glassStyle,
+                onMode = { glassDraft = glassDraft.copy(mode = it) },
+                onRefraction = { glassDraft = glassDraft.copy(refraction = it) },
+                onBlur = { glassDraft = glassDraft.copy(blur = it) },
+                onReset = { glassDraft = ChromeGlassStyle.Default },
+                onApply = { applyGlass() },
                 contentBottomInset = contentBottomInset,
                 modifier = Modifier.fillMaxSize(),
             )
@@ -402,6 +467,19 @@ fun SettingsScreen(
             },
         )
     }
+    if (confirmGlassLeave) {
+        GlassAlertDialog(
+            title = "保存这次调整？",
+            message = "还没应用到 Dock、迷你条、弹窗和灵动岛。",
+            confirmLabel = "保存",
+            cancelLabel = "忽略",
+            onConfirm = {
+                applyGlass()
+                closeGlassPage()
+            },
+            onDismiss = { closeGlassPage() },
+        )
+    }
 }
 
 @Composable
@@ -410,6 +488,9 @@ private fun SettingsDrillHost(
     landscape: Boolean,
     title: String,
     onBack: () -> Unit,
+    actionLabel: String? = null,
+    actionEnabled: Boolean = true,
+    onAction: (() -> Unit)? = null,
     content: @Composable () -> Unit,
 ) {
     AnimatedVisibility(
@@ -437,6 +518,9 @@ private fun SettingsDrillHost(
             SettingsTopBar(
                 title = title,
                 onBack = onBack,
+                actionLabel = actionLabel,
+                actionEnabled = actionEnabled,
+                onAction = onAction,
             )
             Box(
                 Modifier
@@ -592,6 +676,9 @@ private fun AboutLegalLink(
 private fun SettingsTopBar(
     title: String,
     onBack: () -> Unit,
+    actionLabel: String? = null,
+    actionEnabled: Boolean = true,
+    onAction: (() -> Unit)? = null,
 ) {
     Row(
         Modifier
@@ -626,6 +713,25 @@ private fun SettingsTopBar(
                 fontWeight = FontWeight.Bold,
             ),
         )
+        if (actionLabel != null && onAction != null) {
+            Text(
+                text = actionLabel,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable(
+                        enabled = actionEnabled,
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onAction,
+                    )
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                style = TextStyle(
+                    color = if (actionEnabled) MainPalette.Accent else MainPalette.Hint,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold,
+                ),
+            )
+        }
     }
 }
 

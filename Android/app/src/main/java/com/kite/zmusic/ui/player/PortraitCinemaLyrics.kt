@@ -36,6 +36,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameMillis
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -186,6 +187,8 @@ fun PortraitCinemaLyrics(
     var followGen by remember { mutableIntStateOf(0) }
     var selectFrozenFocus by remember { mutableIntStateOf(-1) }
     var selectToggleArmed by remember { mutableStateOf(false) }
+    var lastFollowedFocus by remember { mutableIntStateOf(-1) }
+    var skipPlayingEnter by remember { mutableStateOf(true) }
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
     val onSeekUpdated by rememberUpdatedState(onSeekToMs)
@@ -306,14 +309,27 @@ fun PortraitCinemaLyrics(
         LaunchedEffect(playFocus, browsing, lines.size, centerPadPx, dragSession, selectFrozen) {
             if (selectFrozen) return@LaunchedEffect
             if (!browsing && !dragSession) {
-                scrollToCenteredIndex(playFocus, animated = true)
+                // 进歌词页 / 仅 pad 变化：直接落在播放行。切句才跟滚动画。
+                val animate = lastFollowedFocus >= 0 && lastFollowedFocus != playFocus
+                scrollToCenteredIndex(playFocus, animated = animate)
+                lastFollowedFocus = playFocus
+                if (skipPlayingEnter) {
+                    withFrameMillis { }
+                    withFrameMillis { }
+                    skipPlayingEnter = false
+                }
             }
         }
 
         LaunchedEffect(lines) {
             browsing = false
             dragSession = false
+            lastFollowedFocus = -1
             scrollToCenteredIndex(playFocus, animated = false)
+            lastFollowedFocus = playFocus
+            withFrameMillis { }
+            withFrameMillis { }
+            skipPlayingEnter = false
         }
 
         LaunchedEffect(browsing, idleGen, selectFrozen) {
@@ -599,6 +615,7 @@ fun PortraitCinemaLyrics(
                                         ),
                                         maxLines = 4,
                                         overflow = TextOverflow.Ellipsis,
+                                        instantAppear = skipPlayingEnter,
                                         style = TextStyle(
                                             color = playingColor.copy(
                                                 alpha = 0.55f + 0.45f * emphasis,

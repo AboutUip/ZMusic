@@ -1,7 +1,10 @@
 package com.kite.zmusic
 
 import android.app.Application
+import com.kite.zmusic.data.AlbumCollectionRepository
+import com.kite.zmusic.data.AlbumTracksCache
 import com.kite.zmusic.data.AudioQualityStore
+import com.kite.zmusic.data.ChromeGlassStore
 import com.kite.zmusic.data.LibraryHomeRepository
 import com.kite.zmusic.data.LikedPlaylistRepository
 import com.kite.zmusic.data.HomeFeedRepository
@@ -30,6 +33,8 @@ class ZMusicApplication : Application() {
         private set
     lateinit var audioQualityStore: AudioQualityStore
         private set
+    lateinit var chromeGlassStore: ChromeGlassStore
+        private set
     lateinit var playbackBridge: PlaybackBridge
         private set
     lateinit var likedPlaylistRepository: LikedPlaylistRepository
@@ -38,9 +43,13 @@ class ZMusicApplication : Application() {
         private set
     lateinit var playlistTracksCache: PlaylistTracksCache
         private set
+    lateinit var albumTracksCache: AlbumTracksCache
+        private set
     lateinit var searchHistoryRepository: SearchHistoryRepository
         private set
     lateinit var playlistCollectionRepository: PlaylistCollectionRepository
+        private set
+    lateinit var albumCollectionRepository: AlbumCollectionRepository
         private set
     lateinit var libraryHomeRepository: LibraryHomeRepository
         private set
@@ -63,16 +72,20 @@ class ZMusicApplication : Application() {
         super.onCreate()
         sessionRepository = SessionRepository(this)
         audioQualityStore = AudioQualityStore(this)
+        chromeGlassStore = ChromeGlassStore(this)
         playbackBridge = PlaybackBridge(this, sessionRepository)
         likedPlaylistRepository = LikedPlaylistRepository(this, sessionRepository)
         homeFeedRepository = HomeFeedRepository(sessionRepository)
         playlistTracksCache = PlaylistTracksCache(this)
+        albumTracksCache = AlbumTracksCache(this)
         searchHistoryRepository = SearchHistoryRepository(this)
         playlistCollectionRepository = PlaylistCollectionRepository()
+        albumCollectionRepository = AlbumCollectionRepository()
         libraryHomeRepository = LibraryHomeRepository(
             sessionRepository,
             likedPlaylistRepository,
             playlistCollectionRepository,
+            albumCollectionRepository,
         )
         userSpaceBackgroundStore = UserSpaceBackgroundStore(this)
         sessionWarmup = SessionWarmup(

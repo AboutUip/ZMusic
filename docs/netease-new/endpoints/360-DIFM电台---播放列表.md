@@ -1,0 +1,23 @@
+# DIFM电台 - 播放列表
+
+> **接口路径（摘自原文）:** `/dj/difm/playing/tracks/list`
+
+**文档说明:** 接口与 [NeteaseCloudMusicApiEnhanced](https://github.com/neteasecloudmusicapienhanced/api-enhanced) 约定一致；正文来自仓库内 `docs/netease-new/API.md` 并按章节拆分。API 基地址由应用配置提供，文档不写死服务端点。
+
+---
+
+说明: 调用此接口, 获取DIFM播放列表
+
+**必选参数 :**
+
+`source`: 来源, 0: 最嗨电音 1: 古典电台 2: 爵士电台
+
+`channelId`: 频道id
+
+**可选参数 :**
+
+`limit`: 返回数量, 默认为 5
+
+**接口地址:** `/dj/difm/playing/tracks/list`
+
+**调用例子:** `/dj/difm/playing/tracks/list?source=0&channelId=1012`

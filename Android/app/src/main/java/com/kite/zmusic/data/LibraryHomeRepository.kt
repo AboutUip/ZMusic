@@ -35,6 +35,7 @@ class LibraryHomeRepository(
     private val sessionRepository: SessionRepository,
     private val likedPlaylistRepository: LikedPlaylistRepository,
     private val playlistCollection: PlaylistCollectionRepository,
+    private val albumCollection: AlbumCollectionRepository,
     private val authClient: NcmAuthClient = NcmAuthClient(),
     private val userClient: NcmUserClient = NcmUserClient(),
 ) {
@@ -44,6 +45,7 @@ class LibraryHomeRepository(
 
     private val _snapshot = MutableStateFlow(LibraryHomeSnapshot())
     val snapshot: StateFlow<LibraryHomeSnapshot> = _snapshot.asStateFlow()
+    val albums: StateFlow<AlbumCollectionSnapshot> get() = albumCollection.snapshot
 
     fun peek(): LibraryHomeSnapshot = _snapshot.value
 
@@ -61,6 +63,7 @@ class LibraryHomeRepository(
         loadJob = null
         _snapshot.value = LibraryHomeSnapshot()
         playlistCollection.clear()
+        albumCollection.clear()
     }
 
     suspend fun refresh(force: Boolean = false) {
@@ -68,6 +71,7 @@ class LibraryHomeRepository(
             val session = sessionRepository.session.value
             if (session == null) {
                 playlistCollection.clear()
+                albumCollection.clear()
                 _snapshot.value = LibraryHomeSnapshot(error = "未登录")
                 return
             }
@@ -114,12 +118,22 @@ class LibraryHomeRepository(
                     val subDef = async {
                         runCatching { userClient.userSubcount(session.cookie) }.getOrNull()
                     }
+                    val albumsDef = async {
+                        if (session.isGuest) {
+                            null
+                        } else {
+                            runCatching {
+                                userClient.albumSublist(session.cookie, limit = AlbumPage, offset = 0)
+                            }.getOrNull()
+                        }
+                    }
                     HomeFetch(
                         detail = detailDef.await(),
                         level = levelDef.await(),
                         vip = vipDef.await(),
                         playlists = plDef.await(),
                         subcount = subDef.await(),
+                        albums = albumsDef.await(),
                     )
                 }
                 var profile = fetched.detail?.let { NcmLibraryParse.userProfileFromDetail(it) }
@@ -143,6 +157,10 @@ class LibraryHomeRepository(
                 val playlistsMerged = mergeHeartTrackCount(playlists, likedSnap)
                 playlistCollection.replaceAll(playlistsMerged)
                 val subcount = fetched.subcount?.let { NcmLibraryParse.subcountFromJson(it) }
+                applyAlbumPage(fetched.albums)
+                subcount?.let { sc ->
+                    profile = profile.copy(artistFollows = sc.subArtistCount.toLong().coerceAtLeast(0L))
+                }
                 _snapshot.update {
                     it.copy(
                         loading = false,
@@ -176,15 +194,82 @@ class LibraryHomeRepository(
         _snapshot.update { it.copy(likedTrackCount = count) }
     }
 
+    suspend fun unsubscribeAlbum(album: CollectedAlbum): String {
+        val session = sessionRepository.session.value ?: return "请先登录"
+        albumCollection.setSubscribed(album.id, false)
+        return try {
+            val json = userClient.albumSub(album.id, false, session.cookie)
+            if (NcmJson.apiCode(json) != 200) {
+                albumCollection.setSubscribed(album.id, true, album)
+                NcmJson.userFacingMessage(json, "取消收藏失败")
+            } else {
+                "已取消收藏"
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            albumCollection.setSubscribed(album.id, true, album)
+            NcmJson.userFacingThrowable(e, "取消收藏失败")
+        }
+    }
+
+    suspend fun loadMoreAlbums() {
+        val session = sessionRepository.session.value ?: return
+        val cur = albumCollection.peek()
+        if (!cur.hasMore || cur.loadingMore || cur.loading) return
+        albumCollection.markLoading(more = true)
+        try {
+            val json = userClient.albumSublist(
+                session.cookie,
+                limit = AlbumPage,
+                offset = cur.albums.size,
+            )
+            val (page, total, more) = NcmHomeParse.collectedAlbumPage(json, AlbumPage)
+            if (NcmJson.apiCode(json) != 200 && page.isEmpty()) {
+                albumCollection.fail(
+                    NcmJson.userFacingMessage(json, "专辑加载失败"),
+                    more = true,
+                )
+                return
+            }
+            albumCollection.appendPage(page, total, more && page.isNotEmpty())
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            albumCollection.fail(NcmJson.userFacingThrowable(e, "专辑加载失败"), more = true)
+        }
+    }
+
+    private fun applyAlbumPage(json: JSONObject?) {
+        if (json == null) {
+            if (albumCollection.peek().albums.isEmpty()) {
+                albumCollection.replacePage(emptyList(), 0, false)
+            }
+            return
+        }
+        if (NcmJson.apiCode(json) != 200) {
+            albumCollection.fail(
+                NcmJson.userFacingMessage(json, "专辑加载失败"),
+                more = false,
+            )
+            return
+        }
+        val (albums, total, more) = NcmHomeParse.collectedAlbumPage(json, AlbumPage)
+        albumCollection.replacePage(albums, total, more)
+    }
+
     private data class HomeFetch(
         val detail: JSONObject?,
         val level: JSONObject?,
         val vip: JSONObject?,
         val playlists: JSONObject,
         val subcount: JSONObject?,
+        val albums: JSONObject?,
     )
 
     companion object {
+        private const val AlbumPage = 20
+
         fun mergeHeartTrackCount(
             playlists: List<PlaylistSummary>,
             snap: LikedPlaylistRepository.Snapshot?,

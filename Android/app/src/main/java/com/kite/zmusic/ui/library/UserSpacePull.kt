@@ -51,8 +51,8 @@ internal fun spaceSceneProgress(t: Float): Float {
 }
 
 /**
- * 昵称 / 签名 / 听歌数据分槽离场，回退原路入场。
- * [slot] 0 昵称+等级，1 签名，2 听歌进度。
+ * 昵称 / 签名 / 资料行分槽离场，回退原路入场。
+ * [slot] 0 昵称，1 签名+标签，2 关注粉丝等指标。
  */
 internal fun spaceIdentitySlot(t: Float, slot: Int): Float {
     val start = 0.03f + slot * 0.08f

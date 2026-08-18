@@ -73,6 +73,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kite.zmusic.ZMusicApplication
+import com.kite.zmusic.data.CollectedAlbum
 import com.kite.zmusic.data.NcmHomeParse
 import com.kite.zmusic.data.RecommendMvCard
 import com.kite.zmusic.data.PlaylistSummary
@@ -101,6 +102,7 @@ fun SearchScreen(
     onBack: () -> Unit,
     onPlayTracks: (List<TrackRow>, Int, Long?, String?) -> Unit,
     onOpenPlaylist: (Long, String, String?) -> Unit,
+    onOpenAlbum: (Long, String) -> Unit,
     onOpenMv: (Long, String, String?, String?) -> Unit,
     onOpenArtist: (SearchArtistHit) -> Unit,
     onHint: (String) -> Unit,
@@ -251,6 +253,7 @@ fun SearchScreen(
                     onLoadMore = vm::loadMore,
                     onPlay = { list, i -> onPlayTracks(list, i, null, "搜索") },
                     onOpenPlaylist = onOpenPlaylist,
+                    onOpenAlbum = onOpenAlbum,
                     onOpenMv = { mv -> onOpenMv(mv.id, mv.name, mv.coverUrl, mv.artist) },
                     onOpenUser = { onHint("暂未支持查看用户") },
                     onOpenArtist = onOpenArtist,
@@ -307,7 +310,7 @@ private fun SearchField(
             decorationBox = { inner ->
                 if (value.isEmpty()) {
                     Text(
-                        "搜索歌曲、歌单、MV、歌手",
+                        "搜索歌曲、歌单、专辑、MV、歌手",
                         style = TextStyle(color = MainPalette.Hint, fontSize = 15.sp),
                     )
                 }
@@ -607,6 +610,7 @@ private fun SearchResults(
     onLoadMore: (SearchKind) -> Unit,
     onPlay: (List<TrackRow>, Int) -> Unit,
     onOpenPlaylist: (Long, String, String?) -> Unit,
+    onOpenAlbum: (Long, String) -> Unit,
     onOpenMv: (RecommendMvCard) -> Unit,
     onOpenUser: (SearchUserHit) -> Unit,
     onOpenArtist: (SearchArtistHit) -> Unit,
@@ -637,6 +641,7 @@ private fun SearchResults(
                 onLoadMore = { onLoadMore(kind) },
                 onPlay = onPlay,
                 onOpenPlaylist = onOpenPlaylist,
+                onOpenAlbum = onOpenAlbum,
                 onOpenMv = onOpenMv,
                 onOpenUser = onOpenUser,
                 onOpenArtist = onOpenArtist,
@@ -653,6 +658,7 @@ private fun SearchKindPage(
     onLoadMore: () -> Unit,
     onPlay: (List<TrackRow>, Int) -> Unit,
     onOpenPlaylist: (Long, String, String?) -> Unit,
+    onOpenAlbum: (Long, String) -> Unit,
     onOpenMv: (RecommendMvCard) -> Unit,
     onOpenUser: (SearchUserHit) -> Unit,
     onOpenArtist: (SearchArtistHit) -> Unit,
@@ -670,6 +676,7 @@ private fun SearchKindPage(
     val itemCount = when (kind) {
         SearchKind.Song -> ui.results.size
         SearchKind.Playlist -> ui.playlists.size
+        SearchKind.Album -> ui.albums.size
         SearchKind.Mv -> ui.mvs.size
         SearchKind.Artist -> ui.artists.size
         SearchKind.User -> ui.users.size
@@ -748,6 +755,15 @@ private fun SearchKindPage(
                             } else {
                                 null
                             },
+                        )
+                    }
+                    SearchKind.Album -> items(
+                        ui.albums,
+                        key = { "al-${it.id}" },
+                    ) { album ->
+                        SearchAlbumRow(
+                            album = album,
+                            onClick = { onOpenAlbum(album.id, album.name) },
                         )
                     }
                     SearchKind.Mv -> items(
@@ -1049,6 +1065,65 @@ private fun SearchPlaylistRow(
                     contentDescription = "更多",
                     tint = MainPalette.Hint,
                     modifier = Modifier.size(20.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SearchAlbumRow(
+    album: CollectedAlbum,
+    onClick: () -> Unit,
+) {
+    val meta = buildList {
+        album.artist?.let { add(it) }
+        val line = album.metaLine()
+        if (line.isNotEmpty()) add(line)
+    }.joinToString(" · ")
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick,
+            )
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        UrlImage(
+            url = album.coverUrl,
+            contentDescription = album.name,
+            modifier = Modifier
+                .size(72.dp)
+                .clip(RoundedCornerShape(8.dp)),
+            contentScale = ContentScale.Crop,
+        )
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = album.name,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = TextStyle(
+                    color = MainPalette.Ink,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                ),
+            )
+            if (meta.isNotEmpty()) {
+                Spacer(Modifier.height(3.dp))
+                Text(
+                    text = meta,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    style = TextStyle(
+                        color = MainPalette.Secondary,
+                        fontSize = 12.sp,
+                        lineHeight = 16.sp,
+                    ),
                 )
             }
         }

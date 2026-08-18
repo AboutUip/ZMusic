@@ -16,6 +16,14 @@ data class UserProfileBrief(
     val levelProgress: Float? = null,
     val nowPlayCount: Long? = null,
     val nextPlayCount: Long? = null,
+    /** 0 保密 / 1 男 / 2 女，与 `/user/update` 约定一致。 */
+    val gender: Int = 0,
+    val follows: Long? = null,
+    val followeds: Long? = null,
+    val expertTags: List<String> = emptyList(),
+    val medalCount: Int? = null,
+    /** `/user/subcount` 收藏歌手数，与 `follows` 合计为资料上的「关注」。 */
+    val artistFollows: Long = 0L,
 )
 
 enum class VipKind {
@@ -29,6 +37,13 @@ data class SubcountBrief(
     val createdPlaylistCount: Int,
     val subArtistCount: Int,
     val subAlbumCount: Int,
+)
+
+data class FollowedUser(
+    val id: Long,
+    val name: String,
+    val avatarUrl: String?,
+    val signature: String?,
 )
 
 data class PlaylistSummary(
@@ -140,6 +155,60 @@ data class PlaylistSubscribeMeta(
 data class TrackArtist(
     val id: Long,
     val name: String,
+)
+
+/**
+ * 收藏的专辑。封面是作品身份，年份 / 类型 / 公司是专辑才有的出版信息。
+ */
+data class CollectedAlbum(
+    val id: Long,
+    val name: String,
+    val coverUrl: String?,
+    val artist: String?,
+    val artistId: Long = 0L,
+    val artistCoverUrl: String? = null,
+    val size: Int = 0,
+    val publishTime: Long = 0L,
+    val company: String? = null,
+    val type: String? = null,
+    val alias: String? = null,
+) {
+    val yearLabel: String?
+        get() = formatAlbumYear(publishTime)
+
+    val typeLabel: String?
+        get() = formatAlbumType(type)
+
+    fun metaLine(): String = buildList {
+        yearLabel?.let { add(it) }
+        typeLabel?.let { add(it) }
+        if (size > 0) add("${size}首")
+    }.joinToString(" · ")
+}
+
+fun formatAlbumYear(publishTime: Long): String? {
+    if (publishTime <= 0L) return null
+    val year = java.util.Calendar.getInstance().apply { timeInMillis = publishTime }
+        .get(java.util.Calendar.YEAR)
+    return year.takeIf { it in 1900..2100 }?.toString()
+}
+
+fun formatAlbumType(raw: String?): String? {
+    val t = raw?.trim().orEmpty()
+    if (t.isEmpty() || t == "null") return null
+    return when (t.lowercase()) {
+        "ep" -> "EP"
+        "single", "单曲" -> "单曲"
+        "album", "专辑" -> "专辑"
+        else -> t
+    }
+}
+
+data class AlbumDynamic(
+    val isSub: Boolean,
+    val subCount: Int = 0,
+    val commentCount: Int = 0,
+    val shareCount: Int = 0,
 )
 
 data class TrackRow(
