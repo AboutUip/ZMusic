@@ -7,7 +7,7 @@ import com.kite.zmusic.data.HotSearchWord
 import com.kite.zmusic.data.NcmHomeParse
 import com.kite.zmusic.data.NcmJson
 import com.kite.zmusic.data.NcmLibraryParse
-import com.kite.zmusic.data.NcmUserClient
+import com.kite.zmusic.data.SearchRepository
 import com.kite.zmusic.data.RecommendMvCard
 import com.kite.zmusic.data.SearchArtistHit
 import com.kite.zmusic.data.SearchHistoryRepository
@@ -137,7 +137,7 @@ data class SearchUiState(
 class SearchViewModel(
     private val sessionRepository: SessionRepository,
     private val searchHistory: SearchHistoryRepository,
-    private val userClient: NcmUserClient = NcmUserClient(),
+    private val search: SearchRepository,
 ) : ViewModel() {
 
     private val _ui = MutableStateFlow(SearchUiState(history = searchHistory.items.value))
@@ -159,7 +159,7 @@ class SearchViewModel(
             val cookie = sessionRepository.session.value?.cookie.orEmpty()
             if (cookie.isBlank()) return@launch
             try {
-                val json = userClient.searchHotDetail(cookie)
+                val json = search.searchHotDetail(cookie)
                 _ui.update { it.copy(hotWords = NcmHomeParse.hotSearchWords(json).take(12)) }
             } catch (_: Exception) {
             }
@@ -334,10 +334,10 @@ class SearchViewModel(
         val cookie = sessionRepository.session.value?.cookie.orEmpty()
         _ui.update { it.copy(suggesting = true) }
         try {
-            val json = userClient.searchSuggest(keywords, cookie, mobile = true)
+            val json = search.searchSuggest(keywords, cookie, mobile = true)
             var words = NcmHomeParse.searchSuggestKeywords(json)
             if (words.isEmpty()) {
-                val web = userClient.searchSuggest(keywords, cookie, mobile = false)
+                val web = search.searchSuggest(keywords, cookie, mobile = false)
                 words = NcmHomeParse.searchSuggestKeywords(web)
             }
             if (_ui.value.phase != SearchPhase.Suggest) return
@@ -479,7 +479,7 @@ class SearchViewModel(
     ): SearchFetch {
         if (useLegacy == true) {
             return SearchFetch(
-                userClient.search(
+                search.search(
                     keywords,
                     cookie,
                     type = kind.apiType,
@@ -491,7 +491,7 @@ class SearchViewModel(
         }
         if (useLegacy == false) {
             return SearchFetch(
-                userClient.cloudSearch(
+                search.cloudSearch(
                     keywords,
                     cookie,
                     type = kind.apiType,
@@ -502,7 +502,7 @@ class SearchViewModel(
             )
         }
         val cloud = runCatching {
-            userClient.cloudSearch(
+            search.cloudSearch(
                 keywords,
                 cookie,
                 type = kind.apiType,
@@ -514,7 +514,7 @@ class SearchViewModel(
             return SearchFetch(cloud, false)
         }
         return SearchFetch(
-            userClient.search(
+            search.search(
                 keywords,
                 cookie,
                 type = kind.apiType,

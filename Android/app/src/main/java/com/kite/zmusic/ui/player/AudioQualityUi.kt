@@ -37,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kite.zmusic.data.AudioQuality
 import com.kite.zmusic.ui.main.MainPalette
+import com.kite.zmusic.ui.main.wallpaperItemChrome
 import kotlin.math.min
 
 /**
@@ -189,8 +190,7 @@ private fun AudioQualityGroup(
     Column(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(Color.White),
+            .wallpaperItemChrome(RoundedCornerShape(16.dp), MainPalette.Card),
     ) {
         items.forEachIndexed { index, q ->
             if (index > 0) {
@@ -226,7 +226,7 @@ private fun AudioQualitySettingsRow(
                 indication = null,
                 onClick = onClick,
             )
-            .background(if (selected) MainPalette.Accent.copy(alpha = 0.06f) else Color.Transparent)
+            .background(if (selected) MainPalette.Accent.copy(alpha = if (MainPalette.isDark) 0.16f else 0.06f) else Color.Transparent)
             .padding(horizontal = 14.dp, vertical = 13.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -236,7 +236,7 @@ private fun AudioQualitySettingsRow(
                 .clip(RoundedCornerShape(10.dp))
                 .background(
                     if (selected) MainPalette.Accent.copy(alpha = 0.14f)
-                    else Color(0xFFF0F1F4),
+                    else MainPalette.Placeholder,
                 ),
             contentAlignment = Alignment.Center,
         ) {
@@ -283,12 +283,15 @@ private fun AudioQualityTile(
 ) {
     val shape = RoundedCornerShape(if (compact) 12.dp else 14.dp)
     val titleColor = if (selected) MainPalette.Accent else MainPalette.Ink
+    val tileBg = if (selected) {
+        MainPalette.Accent.copy(alpha = if (MainPalette.isDark) 0.22f else 0.10f)
+    } else {
+        MainPalette.Card
+    }
     Column(
         modifier
             .clip(shape)
-            .background(
-                if (selected) MainPalette.Accent.copy(alpha = 0.10f) else Color.White.copy(alpha = 0.72f),
-            )
+            .background(tileBg)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,

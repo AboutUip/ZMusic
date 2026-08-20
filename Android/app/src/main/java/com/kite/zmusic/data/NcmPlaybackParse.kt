@@ -28,4 +28,22 @@ internal object NcmPlaybackParse {
         val tlyric = json.optJSONObject("tlyric") ?: return null
         return tlyric.optString("lyric").takeIf { it.isNotBlank() }
     }
+
+    fun yrcText(json: JSONObject): String? {
+        val yrcObj = json.optJSONObject("yrc")
+        if (yrcObj != null) {
+            return yrcObj.optString("lyric").takeIf { it.isNotBlank() }
+        }
+        val raw = json.optString("yrc")
+        return raw.takeIf { it.isNotBlank() && it.contains('[') }
+    }
+
+    fun ytlrcText(json: JSONObject): String? {
+        val ytlrcObj = json.optJSONObject("ytlrc")
+        if (ytlrcObj != null) {
+            return ytlrcObj.optString("lyric").takeIf { it.isNotBlank() }
+        }
+        val raw = json.optString("ytlrc")
+        return raw.takeIf { it.isNotBlank() && it.contains('[') }
+    }
 }

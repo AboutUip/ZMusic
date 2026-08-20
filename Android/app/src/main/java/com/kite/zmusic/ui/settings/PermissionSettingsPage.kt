@@ -55,12 +55,14 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import com.kite.zmusic.ui.icons.ZIcons
 import com.kite.zmusic.ui.main.MainPalette
+import com.kite.zmusic.ui.main.wallpaperItemChrome
 import com.kite.zmusic.ui.notice.showIslandNotice
 
 internal data class AppPermissionSnapshot(
     val notifications: Boolean,
     val backgroundRun: Boolean,
     val camera: Boolean,
+    val overlay: Boolean,
 ) {
     val subtitle: String
         get() {
@@ -68,10 +70,11 @@ internal data class AppPermissionSnapshot(
                 if (!notifications) add("通知")
                 if (!backgroundRun) add("后台运行")
                 if (!camera) add("相机")
+                if (!overlay) add("悬浮窗")
             }
             return when {
-                missing.isEmpty() -> "通知、后台运行、相机均已开启"
-                missing.size == 3 -> "通知、后台运行、相机未开启"
+                missing.isEmpty() -> "通知、后台运行、相机、悬浮窗均已开启"
+                missing.size == 4 -> "通知、后台运行、相机、悬浮窗未开启"
                 else -> missing.joinToString("、") + "未开启"
             }
         }
@@ -81,6 +84,7 @@ internal data class AppPermissionSnapshot(
             notifications = notificationsEnabled(context),
             backgroundRun = backgroundRunEnabled(context),
             camera = cameraGranted(context),
+            overlay = overlayGranted(context),
         )
     }
 }
@@ -130,6 +134,16 @@ internal fun PermissionSettingsPage(
             context.showIslandNotice("未忽略电池优化时，系统可能在息屏后停止播放")
         }
     }
+    val overlayLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) {
+        refresh()
+        if (overlayGranted(context)) {
+            context.showIslandNotice("已开启悬浮窗")
+        } else {
+            context.showIslandNotice("未开启悬浮窗时，无法在应用外显示歌词")
+        }
+    }
 
     Column(
         modifier
@@ -152,8 +166,7 @@ internal fun PermissionSettingsPage(
         Column(
             Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp))
-                .background(Color.White),
+                .wallpaperItemChrome(RoundedCornerShape(16.dp)),
         ) {
             PermissionManageRow(
                 title = "通知",
@@ -196,6 +209,21 @@ internal fun PermissionSettingsPage(
                         context = context,
                         granted = snapshot.camera,
                         launcher = { cameraLauncher.launch(Manifest.permission.CAMERA) },
+                    )
+                },
+            )
+            PermissionRowDivider()
+            PermissionManageRow(
+                title = "悬浮窗",
+                purpose = "通知栏歌词显示（仅应用外）",
+                granted = snapshot.overlay,
+                icon = ZIcons.Lyrics,
+                tint = Color(0xFF7C5CE6),
+                onClick = {
+                    handleOverlayClick(
+                        context = context,
+                        granted = snapshot.overlay,
+                        launch = { overlayLauncher.launch(it) },
                     )
                 },
             )
@@ -357,6 +385,36 @@ private fun handleBackgroundClick(
     }
     openBackgroundManage(context)
 }
+
+private fun handleOverlayClick(
+    context: Context,
+    granted: Boolean,
+    launch: (Intent) -> Unit,
+) {
+    val intent = overlayPermissionIntent(context.packageName)
+    if (granted) {
+        if (canStart(context, intent)) {
+            launch(intent)
+        } else {
+            openAppDetailsSettings(context)
+        }
+        return
+    }
+    if (canStart(context, intent)) {
+        launch(intent)
+        return
+    }
+    openAppDetailsSettings(context)
+}
+
+internal fun overlayGranted(context: Context): Boolean =
+    Settings.canDrawOverlays(context)
+
+private fun overlayPermissionIntent(pkg: String): Intent =
+    Intent(
+        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+        Uri.fromParts("package", pkg, null),
+    )
 
 internal fun notificationsEnabled(context: Context): Boolean {
     if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return false

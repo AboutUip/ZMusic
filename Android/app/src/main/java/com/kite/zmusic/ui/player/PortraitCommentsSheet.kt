@@ -100,20 +100,18 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.fastForEach
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.kite.zmusic.ZMusicApplication
 import com.kite.zmusic.data.CommentHugUser
-import com.kite.zmusic.data.NcmAuthClient
-import com.kite.zmusic.data.NcmCommentParse
 import com.kite.zmusic.data.NcmJson
-import com.kite.zmusic.data.NcmUserClient
 import com.kite.zmusic.data.SongComment
 import com.kite.zmusic.data.SongCommentsCache
 import com.kite.zmusic.data.SongCommentsSnapshot
 import com.kite.zmusic.ui.common.UrlImage
 import com.kite.zmusic.ui.main.MainPalette
+import com.kite.zmusic.ui.main.pageSheetHazeStyle
 import com.kite.zmusic.ui.notice.showIslandNotice
 import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.HazeStyle
-import dev.chrisbanes.haze.HazeTint
 import dev.chrisbanes.haze.hazeEffect
 import kotlin.math.hypot
 import kotlin.math.min
@@ -122,26 +120,16 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
-private val CommentLabel = MainPalette.Ink
-private val CommentHint = MainPalette.Secondary
-private val CommentAccent = MainPalette.Accent
-private val CommentIconTint = MainPalette.Ink
-private val CommentQuoteBg = Color(0xFFF0F1F3)
+private val CommentLabel get() = MainPalette.Ink
+private val CommentHint get() = MainPalette.Secondary
+private val CommentAccent get() = MainPalette.Accent
+private val CommentIconTint get() = MainPalette.Ink
+private val CommentQuoteBg get() = MainPalette.Placeholder
 private val CommentPanelShape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp)
 private val CommentOpenEasing = CubicBezierEasing(0.16f, 1.02f, 0.3f, 1f)
 private val CommentCloseEasing = CubicBezierEasing(0.4f, 0f, 0.2f, 1f)
-private val CommentGlassStyle = HazeStyle(
-    backgroundColor = MainPalette.Page,
-    tints = listOf(
-        HazeTint(Color.White.copy(alpha = 0.78f)),
-        HazeTint(MainPalette.Page.copy(alpha = 0.52f)),
-    ),
-    blurRadius = 56.dp,
-    noiseFactor = 0.08f,
-    fallbackTint = HazeTint(MainPalette.Page.copy(alpha = 0.94f)),
-)
-private val CommentAvatarBg = Color(0xFFE8E8ED)
-private val CommentComposerFill = Color.White
+private val CommentAvatarBg get() = MainPalette.Placeholder
+private val CommentComposerFill get() = MainPalette.Card
 
 private const val CommentPageSize = 20
 
@@ -235,7 +223,6 @@ fun TransportCommentsIcon(
 fun PortraitCommentsSheet(
     songId: Long,
     cookie: String,
-    userClient: NcmUserClient,
     openProgress: Float,
     sheetFrac: Float,
     onExpandFullscreen: () -> Unit,
@@ -250,9 +237,13 @@ fun PortraitCommentsSheet(
     val listState = remember(listGeneration) { LazyListState() }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val app = context.applicationContext as ZMusicApplication
+    val commentsVm: CommentsViewModel = viewModel(
+        key = "comments-$songId",
+        factory = CommentsViewModelFactory(app.commentsRepository),
+    )
     val focusManager = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
-    val authClient = remember { NcmAuthClient() }
     val comments = remember { mutableStateListOf<SongComment>() }
     val expandedTextIds: SnapshotStateSet<Long> = remember { mutableStateSetOf() }
     val openFloorIds: SnapshotStateSet<Long> = remember { mutableStateSetOf() }
@@ -354,13 +345,10 @@ fun PortraitCommentsSheet(
     LaunchedEffect(cookie, openProgress > 0.5f) {
         if (cookie.isBlank() || openProgress <= 0.5f) return@LaunchedEffect
         try {
-            val status = authClient.loginStatus(cookie)
-            selfUid = NcmJson.userIdFromLoginStatus(status) ?: 0L
-            selfNickname = NcmJson.displayLabelFromLogin(status)?.ifBlank { null } ?: "我"
-            val profile = status.optJSONObject("profile")
-                ?: status.optJSONObject("data")?.optJSONObject("profile")
-            selfAvatar = profile?.optString("avatarUrl")
-                ?.takeIf { it.isNotBlank() && it != "null" }
+            val profile = commentsVm.selfProfile(cookie)
+            selfUid = profile.uid
+            selfNickname = profile.nickname
+            selfAvatar = profile.avatarUrl
         } catch (_: Exception) {
             selfUid = 0L
         }
@@ -399,7 +387,7 @@ fun PortraitCommentsSheet(
             val mode = requested
             val page = if (!useLegacy) {
                 try {
-                    val json = userClient.commentNew(
+                    commentsVm.pageNew(
                         songId = songIdUpdated,
                         cookie = cookieUpdated,
                         pageNo = nextPage,
@@ -411,23 +399,22 @@ fun PortraitCommentsSheet(
                             else -> null
                         },
                     )
-                    NcmCommentParse.pageFromCommentNew(json)
                 } catch (e: Exception) {
                     // 翻页失败不切旧接口，避免热度/时间列表被混进另一套排序
                     if (!reset) throw e
                     if (mode != CommentSortMode.Time) throw e
                     useLegacy = true
-                    val json = userClient.commentMusic(
+                    commentsVm.pageLegacy(
                         songId = songIdUpdated,
                         cookie = cookieUpdated,
                         limit = CommentPageSize,
                         offset = 0,
                         before = null,
+                        includeHotFirst = false,
                     )
-                    NcmCommentParse.pageFromCommentMusic(json, includeHotFirst = false)
                 }
             } else {
-                val json = userClient.commentMusic(
+                commentsVm.pageLegacy(
                     songId = songIdUpdated,
                     cookie = cookieUpdated,
                     limit = CommentPageSize,
@@ -437,8 +424,8 @@ fun PortraitCommentsSheet(
                     } else {
                         null
                     },
+                    includeHotFirst = reset,
                 )
-                    NcmCommentParse.pageFromCommentMusic(json, includeHotFirst = reset)
             }
             if (seq != fetchSeq) return
             if (reset) comments.clear()
@@ -549,18 +536,17 @@ fun PortraitCommentsSheet(
         if (replySending) return
         replySending = true
         try {
-            val json = userClient.commentPost(
+            val failHint = if (target != null) "回复失败，请稍后重试" else "评论失败，请稍后重试"
+            val postedResult = commentsVm.post(
                 songId = songIdUpdated,
                 content = text,
                 cookie = cookieUpdated,
                 replyCommentId = target?.commentId,
             )
-            val failHint = if (target != null) "回复失败，请稍后重试" else "评论失败，请稍后重试"
-            val code = json.optInt("code", -1)
-            if (code != 200) {
-                throw IllegalStateException(NcmJson.userFacingMessage(json, failHint))
+            if (!postedResult.ok) {
+                throw IllegalStateException(postedResult.message.ifBlank { failHint })
             }
-            val posted = NcmCommentParse.commentFromPostResponse(json)
+            val posted = postedResult.comment
             val optimistic = optimisticPosted(posted, text, target?.nickname)
             if (target != null) {
                 pendingFloorTop = pendingFloorTop + (target.commentId to optimistic)
@@ -683,7 +669,7 @@ fun PortraitCommentsSheet(
             Box(
                 Modifier
                     .matchParentSize()
-                    .hazeEffect(state = hazeState, style = CommentGlassStyle),
+                    .hazeEffect(state = hazeState, style = pageSheetHazeStyle()),
             )
         } else {
             Box(
@@ -695,14 +681,14 @@ fun PortraitCommentsSheet(
         Box(
             Modifier
                 .matchParentSize()
-                .background(Color.White.copy(alpha = 0.22f)),
+                .background(MainPalette.SheetWash),
         )
         Box(
             Modifier
                 .matchParentSize()
                 .border(
                     width = 1.dp,
-                    color = Color.White.copy(alpha = 0.55f),
+                    color = MainPalette.DockStroke,
                     shape = panelShape,
                 ),
         )
@@ -838,7 +824,7 @@ fun PortraitCommentsSheet(
                                 songId = songIdUpdated,
                                 cookie = cookieUpdated,
                                 selfUid = selfUid,
-                                userClient = userClient,
+                                commentsVm = commentsVm,
                                 floorRefreshTick = floorRefreshTick[item.commentId] ?: 0,
                                 pendingTopReply = pendingFloorTop[item.commentId],
                                 replyActive = replyTarget?.commentId == item.commentId,
@@ -965,7 +951,7 @@ private fun CommentSortSegment(
                 ),
                 modifier = Modifier
                     .clip(RoundedCornerShape(999.dp))
-                    .background(if (on) Color.White else Color.Transparent)
+                    .background(if (on) MainPalette.Card else Color.Transparent)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
@@ -1085,7 +1071,7 @@ private fun CommentComposerBar(
                     .height(40.dp)
                     .clip(RoundedCornerShape(12.dp))
                     .background(
-                        if (canSend) CommentAccent else Color(0xFFE8E8ED),
+                        if (canSend) CommentAccent else MainPalette.Placeholder,
                     )
                     .clickable(
                         enabled = canSend,
@@ -1139,7 +1125,7 @@ private fun CommentHeaderArrowButton(
         Modifier
             .size(36.dp)
             .clip(CircleShape)
-            .background(Color.White.copy(alpha = 0.78f))
+            .background(MainPalette.Card)
             .border(1.dp, MainPalette.Hairline, CircleShape)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -1183,7 +1169,7 @@ private fun CommentRow(
     songId: Long,
     cookie: String,
     selfUid: Long,
-    userClient: NcmUserClient,
+    commentsVm: CommentsViewModel,
     floorRefreshTick: Int,
     pendingTopReply: SongComment?,
     replyActive: Boolean,
@@ -1244,14 +1230,13 @@ private fun CommentRow(
         repliesLoading = true
         repliesError = null
         try {
-            val json = userClient.commentFloor(
+            val page = commentsVm.floor(
                 songId = songId,
                 parentCommentId = comment.commentId,
                 cookie = cookie,
                 limit = 20,
                 time = if (reset) null else replies.lastOrNull()?.timeMs,
             )
-            val page = NcmCommentParse.pageFromCommentFloor(json)
             replies = if (reset) page.comments else {
                 val seen = replies.mapTo(HashSet()) { it.commentId }
                 replies + page.comments.filter { seen.add(it.commentId) }
@@ -1309,13 +1294,13 @@ private fun CommentRow(
             )
         }
         try {
-            val json = userClient.commentLike(
-                songId = songId,
-                commentId = comment.commentId,
-                like = nextLiked,
-                cookie = cookie,
-            )
-            if (json.optInt("code", -1) != 200) {
+            if (!commentsVm.like(
+                    songId = songId,
+                    commentId = comment.commentId,
+                    like = nextLiked,
+                    cookie = cookie,
+                )
+            ) {
                 throw IllegalStateException("点赞失败")
             }
         } catch (_: Exception) {
@@ -1350,15 +1335,14 @@ private fun CommentRow(
         }
         try {
             // 严格对齐文档：uid=评论作者，cid=评论，sid=歌曲
-            val json = userClient.hugComment(
+            val ack = commentsVm.hug(
                 targetUid = comment.userId,
                 commentId = comment.commentId,
                 songId = songId,
                 cookie = cookie,
             )
-            val code = json.optInt("code", -1)
-            if (code != 200) {
-                throw IllegalStateException(NcmJson.userFacingMessage(json, "抱抱失败"))
+            if (!ack.ok) {
+                throw IllegalStateException(ack.message.ifBlank { "抱抱失败" })
             }
             hugged = true
             onHint("已抱抱 ${comment.nickname}")
@@ -1379,15 +1363,12 @@ private fun CommentRow(
         if (comment.userId <= 0L) return
         hugListLoading = true
         try {
-            val json = userClient.commentHugList(
+            hugUsers = commentsVm.hugUsers(
                 targetUid = comment.userId,
                 commentId = comment.commentId,
                 songId = songId,
                 cookie = cookie,
-                page = 1,
-                pageSize = 50,
             )
-            hugUsers = NcmCommentParse.pageFromHugList(json).users
             hugListOpen = true
         } catch (_: Exception) {
             onHint("抱抱列表加载失败")

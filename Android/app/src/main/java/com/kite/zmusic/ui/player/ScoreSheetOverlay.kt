@@ -60,10 +60,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kite.zmusic.R
 import com.kite.zmusic.data.TrackRow
-import com.kite.zmusic.data.VinylPlateColors
 import com.kite.zmusic.ui.common.UrlImage
 import com.kite.zmusic.ui.common.UrlImageCache
 import com.kite.zmusic.ui.main.MainPalette
+import com.kite.zmusic.ui.main.pageSheetHazeStyle
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeEffect
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.min
@@ -71,19 +73,17 @@ import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlinx.coroutines.yield
 
-private val LabelColor = MainPalette.Ink
-private val Accent = MainPalette.Accent
-private val IconTint = MainPalette.Ink
-private val HintColor = MainPalette.Secondary
+private val LabelColor get() = MainPalette.Ink
+private val Accent get() = MainPalette.Accent
+private val IconTint get() = MainPalette.Ink
+private val HintColor get() = MainPalette.Secondary
 private val PanelShape = RoundedCornerShape(18.dp)
 private val CoverShape = RoundedCornerShape(8.dp)
 private val CardShape = RoundedCornerShape(10.dp)
 /** 1:1 音乐卡片底 */
-private val CardBg = Color.White
-/** 曲谱弹窗底：浅色实底（展开/收起一致） */
-private val PanelBg = MainPalette.Page
-/** 切列遮挡专用：与面板同色，避免透出网格重组卡顿帧 */
-private val BlockerBg = MainPalette.Page
+private val CardBg get() = MainPalette.Card
+/** 切列遮挡专用：实底挡住网格重组卡顿帧 */
+private val BlockerBg get() = MainPalette.Page
 
 /** 打开/滚动时预热当前附近封面，避免大歌单整队解码 */
 private const val ScorePrefetchBehind = 12
@@ -108,6 +108,7 @@ fun ScoreSheetOverlay(
     onPlayTrack: (index: Int, vinylCenterRoot: Offset, vinylSizePx: Float) -> Unit,
     openGeneration: Int,
     onApproachEnd: (lastVisibleIndex: Int) -> Unit = {},
+    hazeState: HazeState? = null,
     modifier: Modifier = Modifier,
 ) {
     // 网格实际列数：仅在实底遮挡下跳变
@@ -165,17 +166,29 @@ fun ScoreSheetOverlay(
             .fillMaxHeight()
             .fillMaxWidth()
             .clip(PanelShape)
-            .background(PanelBg)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
                 onClick = {},
             ),
     ) {
+        if (hazeState != null) {
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .hazeEffect(state = hazeState, style = pageSheetHazeStyle()),
+            )
+        } else {
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .background(MainPalette.Page.copy(alpha = 0.96f)),
+            )
+        }
         Box(
             Modifier
                 .matchParentSize()
-                .background(Color.White.copy(alpha = 0.22f)),
+                .background(MainPalette.SheetWash),
         )
         Box(
             Modifier
@@ -723,7 +736,7 @@ private fun ScoreTrackCard(
                         .offset(x = vinylPeek)
                         .align(Alignment.CenterStart)
                         .clip(CoverShape)
-                        .background(Color(0xFFE8E8ED)),
+                        .background(MainPalette.Placeholder),
                 ) {
                     val url = track.coverUrl
                     if (showCover && !url.isNullOrBlank()) {
@@ -782,7 +795,7 @@ private fun ScoreExpandChevronButton(
         modifier = modifier
             .size(28.dp)
             .clip(CircleShape)
-            .background(Color.White.copy(alpha = 0.88f))
+            .background(MainPalette.Card)
             .border(1.dp, MainPalette.Hairline, CircleShape)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },

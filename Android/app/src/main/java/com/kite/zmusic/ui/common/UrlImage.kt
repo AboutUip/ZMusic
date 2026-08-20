@@ -1,7 +1,7 @@
 package com.kite.zmusic.ui.common
 
-import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -13,9 +13,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import com.kite.zmusic.ui.theme.MainPalette
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -29,20 +29,23 @@ private val UrlImageClient by lazy {
 
 /** 与 [UrlImage] 同一套缓存；只取位图，由调用方决定怎么铺进格子。 */
 @Composable
-fun rememberUrlImageBitmap(url: String?): ImageBitmap? {
+fun rememberUrlImageBitmap(
+    url: String?,
+    maxPx: Int = UrlImageCache.DECODE_MAX_PX,
+): ImageBitmap? {
     val context = LocalContext.current
     val urlKey = UrlImageCache.normalizeKey(url).orEmpty()
-    var bitmap by remember(urlKey) {
+    var bitmap by remember(urlKey, maxPx) {
         mutableStateOf(
-            urlKey.takeIf { it.isNotEmpty() }?.let { UrlImageCache.memoryGet(it) },
+            urlKey.takeIf { it.isNotEmpty() }?.let { UrlImageCache.memoryGet(it, maxPx) },
         )
     }
-    LaunchedEffect(urlKey) {
+    LaunchedEffect(urlKey, maxPx) {
         if (urlKey.isEmpty()) {
             bitmap = null
             return@LaunchedEffect
         }
-        UrlImageCache.memoryGet(urlKey)?.let {
+        UrlImageCache.memoryGet(urlKey, maxPx)?.let {
             bitmap = it
             return@LaunchedEffect
         }
@@ -51,11 +54,11 @@ fun rememberUrlImageBitmap(url: String?): ImageBitmap? {
                 val file = UrlImageCache.diskFile(context, urlKey)
                 if (!file.exists()) return@runCatching null
                 val bytes = file.readBytes()
-                decodeSampledBitmap(bytes)
+                UrlImageCache.decodeSampledBitmap(bytes, maxPx)
             }.getOrNull()
         }
         if (fromDisk != null) {
-            UrlImageCache.memoryPut(urlKey, fromDisk)
+            UrlImageCache.memoryPut(urlKey, fromDisk, maxPx)
             bitmap = fromDisk
             return@LaunchedEffect
         }
@@ -68,12 +71,12 @@ fun rememberUrlImageBitmap(url: String?): ImageBitmap? {
                     val file = UrlImageCache.diskFile(context, urlKey)
                     runCatching { file.writeBytes(bytes) }
                     UrlImageCache.trimDisk(context)
-                    decodeSampledBitmap(bytes)
+                    UrlImageCache.decodeSampledBitmap(bytes, maxPx)
                 }
             }.getOrNull()
         }
         if (fromNet != null) {
-            UrlImageCache.memoryPut(urlKey, fromNet)
+            UrlImageCache.memoryPut(urlKey, fromNet, maxPx)
             bitmap = fromNet
         }
     }
@@ -88,8 +91,9 @@ fun UrlImage(
     modifier: Modifier = Modifier,
     contentScale: ContentScale = ContentScale.Fit,
     showPlaceholder: Boolean = true,
+    maxPx: Int = UrlImageCache.DECODE_MAX_PX,
 ) {
-    val b = rememberUrlImageBitmap(url)
+    val b = rememberUrlImageBitmap(url, maxPx)
     Box(modifier, contentAlignment = Alignment.Center) {
         if (b != null) {
             Image(
@@ -99,21 +103,11 @@ fun UrlImage(
                 contentScale = contentScale,
             )
         } else if (showPlaceholder) {
-            CoverPlaceholderVinyl(Modifier.fillMaxSize())
+            if (maxPx <= UrlImageCache.THUMB_MAX_PX) {
+                Box(Modifier.fillMaxSize().background(MainPalette.Placeholder))
+            } else {
+                CoverPlaceholderVinyl(Modifier.fillMaxSize())
+            }
         }
     }
-}
-
-private fun decodeSampledBitmap(bytes: ByteArray, maxPx: Int = 2048): ImageBitmap? {
-    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
-    val w = bounds.outWidth
-    val h = bounds.outHeight
-    if (w <= 0 || h <= 0) return null
-    var sample = 1
-    while (w / sample > maxPx || h / sample > maxPx) {
-        sample *= 2
-    }
-    val opts = BitmapFactory.Options().apply { inSampleSize = sample }
-    return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)?.asImageBitmap()
 }

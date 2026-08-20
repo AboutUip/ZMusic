@@ -19,7 +19,7 @@ import org.json.JSONObject
 
 class LoginViewModel(
     private val sessionRepository: SessionRepository,
-    private val api: NcmAuthClient = NcmAuthClient(),
+    private val api: NcmAuthClient,
 ) : ViewModel() {
 
     var busy by mutableStateOf(false)

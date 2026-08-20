@@ -82,17 +82,18 @@ import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 import com.kite.zmusic.R
 import com.kite.zmusic.ui.common.GlassAlertDialog
+import com.kite.zmusic.ui.theme.MainPalette
 
 /** 网易云品牌红（官方视觉规范常用值）。 */
 private val CloudRed = Color(0xFFEC4141)
 private val CloudRedPressed = Color(0xFFD63535)
 private val CloudRedDisabled = Color(0xFFF3B4B4)
-private val Ink = Color(0xFF333333)
-private val InkSecondary = Color(0xFF888888)
-private val InkHint = Color(0xFFBBBBBB)
-private val Hairline = Color(0xFFE6E6E6)
-private val Page = Color(0xFFFFFFFF)
-private val PageSoft = Color(0xFFFAFAFA)
+private val Ink get() = MainPalette.Ink
+private val InkSecondary get() = MainPalette.Secondary
+private val InkHint get() = MainPalette.Hint
+private val Hairline get() = MainPalette.Hairline
+private val Page get() = MainPalette.Surface
+private val PageSoft get() = MainPalette.Page
 private val Danger = Color(0xFFE23D3D)
 
 internal val LoginPhoneRegex = Regex("^1[3-9]\\d{9}$")
@@ -149,15 +150,14 @@ internal fun LoginPortraitHost(
         }
     }
 
-    BackHandler {
+    BackHandler(enabled = err != null || step != PortraitStep.Landing) {
         when {
             err != null -> vm.dismissError()
-            step != PortraitStep.Landing -> {
+            else -> {
                 keyboard?.hide()
                 step = PortraitStep.Landing
                 smsCodeStage = false
             }
-            else -> onNavigateBack()
         }
     }
 
@@ -271,13 +271,14 @@ internal fun LoginPortraitHost(
 @Composable
 internal fun LoginLightSystemBars() {
     val view = LocalView.current
-    DisposableEffect(view) {
+    val light = !MainPalette.isDark
+    DisposableEffect(view, light) {
         val window = (view.context as? Activity)?.window
         val controller = window?.let { WindowCompat.getInsetsController(it, view) }
         val prevStatus = controller?.isAppearanceLightStatusBars
         val prevNav = controller?.isAppearanceLightNavigationBars
-        controller?.isAppearanceLightStatusBars = true
-        controller?.isAppearanceLightNavigationBars = true
+        controller?.isAppearanceLightStatusBars = light
+        controller?.isAppearanceLightNavigationBars = light
         onDispose {
             if (prevStatus != null) controller.isAppearanceLightStatusBars = prevStatus
             if (prevNav != null) controller.isAppearanceLightNavigationBars = prevNav

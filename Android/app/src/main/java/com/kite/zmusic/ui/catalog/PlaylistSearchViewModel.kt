@@ -3,9 +3,9 @@ package com.kite.zmusic.ui.catalog
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.kite.zmusic.data.CatalogRepository
 import com.kite.zmusic.data.LikedPlaylistRepository
 import com.kite.zmusic.data.NcmJson
-import com.kite.zmusic.data.NcmUserClient
 import com.kite.zmusic.data.PlaylistTrackLoader
 import com.kite.zmusic.data.PlaylistTracksCache
 import com.kite.zmusic.data.SessionRepository
@@ -41,7 +41,7 @@ class PlaylistSearchViewModel(
     private val playlistTracksCache: PlaylistTracksCache,
     private val likedPlaylistRepository: LikedPlaylistRepository,
     private val islandNotices: IslandNoticeCenter,
-    private val userClient: NcmUserClient = NcmUserClient(),
+    private val catalog: CatalogRepository,
 ) : ViewModel() {
 
     private var heartSource = heart
@@ -112,8 +112,8 @@ class PlaylistSearchViewModel(
             try {
                 if (heartSource) {
                     likedPlaylistRepository.applyLocalLike(track, liked = false)
-                    val json = userClient.likeSong(track.id, like = false, cookie)
-                    if (NcmJson.apiCode(json) != 200) {
+                    val ack = catalog.unlikeSong(track.id, cookie)
+                    if (!ack.ok) {
                         likedPlaylistRepository.applyLocalLike(track, liked = true, scheduleSync = false)
                         islandNotices.show("移除失败", track.coverUrl)
                         return@launch
@@ -125,8 +125,8 @@ class PlaylistSearchViewModel(
                     islandNotices.show("只能从自己创建的歌单移除歌曲", track.coverUrl)
                     return@launch
                 }
-                val json = userClient.playlistTracks("del", playlistId, listOf(track.id), cookie)
-                if (NcmJson.apiCode(json) != 200) {
+                val ack = catalog.deletePlaylistTracks(playlistId, listOf(track.id), cookie)
+                if (!ack.ok) {
                     islandNotices.show("无法从歌单移除", track.coverUrl)
                     return@launch
                 }
@@ -305,6 +305,7 @@ class PlaylistSearchViewModelFactory(
     private val playlistTracksCache: PlaylistTracksCache,
     private val likedPlaylistRepository: LikedPlaylistRepository,
     private val islandNotices: IslandNoticeCenter,
+    private val catalog: CatalogRepository,
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -317,6 +318,7 @@ class PlaylistSearchViewModelFactory(
                 playlistTracksCache,
                 likedPlaylistRepository,
                 islandNotices,
+                catalog,
             ) as T
         }
         error("Unknown ViewModel $modelClass")

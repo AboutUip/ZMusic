@@ -58,13 +58,14 @@ import com.kite.zmusic.data.SessionRepository
 import com.kite.zmusic.data.TrackRow
 import com.kite.zmusic.ui.catalog.CatalogTopBar
 import com.kite.zmusic.ui.catalog.CatalogTrackRow
-import com.kite.zmusic.ui.catalog.MainOverlay
+import com.kite.zmusic.ui.main.MainOverlay
 import com.kite.zmusic.ui.catalog.TrackOverflowMenu
 import com.kite.zmusic.ui.catalog.isPlaybackCurrent
 import com.kite.zmusic.ui.catalog.launchTrackDownload
 import com.kite.zmusic.ui.common.GlassAlertDialog
 import com.kite.zmusic.ui.common.UrlImage
 import com.kite.zmusic.ui.common.ZPullRefresh
+import com.kite.zmusic.ui.chrome.chromePage
 import com.kite.zmusic.ui.icons.ZIcons
 import com.kite.zmusic.ui.main.MainPalette
 
@@ -107,7 +108,7 @@ fun ArtistScreen(
     Column(
         modifier
             .fillMaxSize()
-            .background(MainPalette.Page)
+            .chromePage()
             .statusBarsPadding(),
     ) {
         CatalogTopBar(title = ui.name, onBack = onBack)
@@ -180,7 +181,7 @@ fun ArtistScreen(
         track = moreTrack,
         canRemove = false,
         onDismiss = { moreTrack = null },
-        onDownload = { launchTrackDownload(scope, app, it) },
+        onDownload = { track, options -> launchTrackDownload(scope, app, track, options) },
         onRemove = {},
         showAddToPlaylist = true,
         onOpenArtist = { id, name, cover -> onOpenArtist(id, name, cover) },
@@ -362,7 +363,7 @@ private fun ArtistHeader(
             Modifier
                 .size(96.dp)
                 .clip(CircleShape)
-                .background(Color(0xFFEDEDED)),
+                .background(MainPalette.Placeholder),
         ) {
             UrlImage(
                 url = ui.coverUrl,
@@ -604,7 +605,7 @@ private fun ArtistMvStrip(
                         .fillMaxWidth()
                         .aspectRatio(16f / 9f)
                         .clip(RoundedCornerShape(8.dp))
-                        .background(Color(0xFFEDEDED)),
+                        .background(MainPalette.Placeholder),
                 ) {
                     UrlImage(
                         url = mv.coverUrl,

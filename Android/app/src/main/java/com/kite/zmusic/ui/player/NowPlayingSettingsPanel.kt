@@ -33,10 +33,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -75,19 +72,17 @@ import androidx.compose.ui.unit.sp
 import com.kite.zmusic.data.PlayerDisplayPrefs
 import com.kite.zmusic.data.TitleAlignMode
 import com.kite.zmusic.data.VinylColorStyle
+import com.kite.zmusic.ui.main.MainControls
 import com.kite.zmusic.ui.main.MainPalette
+import com.kite.zmusic.ui.main.pageSheetHazeStyle
+import com.kite.zmusic.ui.theme.MainSlider
 import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.HazeStyle
-import dev.chrisbanes.haze.HazeTint
 import dev.chrisbanes.haze.hazeEffect
 import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlinx.coroutines.launch
 
-private val LabelColor = Color(0xFFFFFFFF)
-private val HintColor = Color(0xFFE8F0F8)
-private val Accent = Color(0xFF9AF0F0)
 private val IconTint = Color(0xFFD5DEE8)
 /** 右上 chrome 图标尺寸；间距取宽度 1/3。 */
 internal val NowPlayingChromeIconWidth = 40.dp
@@ -96,23 +91,9 @@ internal val NowPlayingChromeIconGap = NowPlayingChromeIconWidth / 3
 /** 比播放条整条圆角更轻 */
 private val ChromeShape = RoundedCornerShape(8.dp)
 private val PanelShape = RoundedCornerShape(18.dp)
-private val RowShape = RoundedCornerShape(12.dp)
-private val TextShadow = Shadow(color = Color.Black.copy(alpha = 0.7f), blurRadius = 10f)
+private val RowShape = RoundedCornerShape(14.dp)
 /** 与底部播放条一致：半透明黑底，无描边。 */
 private val ChromeBarBg = Color.Black.copy(alpha = 0.22f)
-/** 功能行：近不透明实底，与磨砂壳分层。 */
-private val SettingsRowBg = Color(0xF0141A24)
-/** 竖屏「竖屏显示」：与评论面板同一套浅色磨砂。 */
-private val PortraitSettingsGlassStyle = HazeStyle(
-    backgroundColor = MainPalette.Page,
-    tints = listOf(
-        HazeTint(Color.White.copy(alpha = 0.78f)),
-        HazeTint(MainPalette.Page.copy(alpha = 0.52f)),
-    ),
-    blurRadius = 56.dp,
-    noiseFactor = 0.08f,
-    fallbackTint = HazeTint(MainPalette.Page.copy(alpha = 0.94f)),
-)
 
 private data class SettingsPanelChrome(
     val light: Boolean,
@@ -123,25 +104,16 @@ private data class SettingsPanelChrome(
     val titleShadow: Shadow?,
 )
 
-private val DarkSettingsChrome = SettingsPanelChrome(
-    light = false,
-    label = LabelColor,
-    hint = HintColor,
-    accent = Accent,
-    rowBg = SettingsRowBg,
-    titleShadow = TextShadow,
-)
-
-private val LightSettingsChrome = SettingsPanelChrome(
+private fun sheetSettingsChrome() = SettingsPanelChrome(
     light = true,
     label = MainPalette.Ink,
     hint = MainPalette.Secondary,
     accent = MainPalette.Accent,
-    rowBg = Color.White,
+    rowBg = MainPalette.Card,
     titleShadow = null,
 )
 
-private val LocalSettingsChrome = staticCompositionLocalOf { DarkSettingsChrome }
+private val LocalSettingsChrome = staticCompositionLocalOf { sheetSettingsChrome() }
 
 /** 拖动布局相关滑条时，面板其余部分淡出以便预览真实效果。 */
 private enum class SettingsPreviewKey {
@@ -609,7 +581,7 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawRotationArrowHe
 }
 
 /**
- * 右侧设置面板：暗色磨砂（Haze）+ 高对比文字；分类 + 一行一功能；可垂直滚动。
+ * 播放设置面板：与「更多」同一套磨砂壳 + 卡片行色。
  * 拖动歌词字体 / 行距 / 水平位置时，其余面板淡出以便预览。
  */
 @Composable
@@ -650,27 +622,8 @@ fun NowPlayingSettingsSheet(
         hazeState = hazeState,
         dismissGate = resolvedTransferGate,
     )
-    val chrome = LightSettingsChrome
-    val sliderColors = SliderDefaults.colors(
-        thumbColor = MainPalette.Accent,
-        activeTrackColor = MainPalette.Accent,
-        inactiveTrackColor = Color(0xFFE5E5EA),
-        activeTickColor = Color.Transparent,
-        inactiveTickColor = Color.Transparent,
-        disabledThumbColor = MainPalette.Hint,
-        disabledActiveTrackColor = MainPalette.Accent.copy(alpha = 0.28f),
-        disabledInactiveTrackColor = Color(0xFFE5E5EA).copy(alpha = 0.7f),
-        disabledActiveTickColor = Color.Transparent,
-        disabledInactiveTickColor = Color.Transparent,
-    )
-    val switchColors = SwitchDefaults.colors(
-        checkedThumbColor = Color.White,
-        checkedTrackColor = MainPalette.Accent,
-        uncheckedThumbColor = Color.White,
-        uncheckedTrackColor = Color(0xFFE5E5EA),
-        uncheckedBorderColor = Color.Transparent,
-        checkedBorderColor = Color.Transparent,
-    )
+    val chrome = sheetSettingsChrome()
+    val switchColors = MainControls.switchColors()
 
     var previewKey by remember { mutableStateOf<SettingsPreviewKey?>(null) }
     var focusKey by remember { mutableStateOf<SettingsPreviewKey?>(null) }
@@ -752,7 +705,7 @@ fun NowPlayingSettingsSheet(
                     Modifier
                         .matchParentSize()
                         .graphicsLayer { alpha = dim }
-                        .hazeEffect(state = hazeState, style = PortraitSettingsGlassStyle) {
+                        .hazeEffect(state = hazeState, style = pageSheetHazeStyle()) {
                             blurRadius = glassBlurRadius
                         },
                 )
@@ -769,7 +722,7 @@ fun NowPlayingSettingsSheet(
             Modifier
                 .matchParentSize()
                 .graphicsLayer { alpha = dim }
-                .background(Color.White.copy(alpha = 0.22f)),
+                .background(MainPalette.SheetWash),
         )
 
         Column(
@@ -897,7 +850,6 @@ fun NowPlayingSettingsSheet(
                                 value = prefs.lyricOffsetYDp,
                                 valueRange = PlayerDisplayPrefs.LYRIC_OFFSET_MIN..
                                     PlayerDisplayPrefs.LYRIC_OFFSET_MAX,
-                                colors = sliderColors,
                                 onValueChange = {
                                     onPrefsChange(prefs.copy(lyricOffsetYDp = it))
                                 },
@@ -916,7 +868,6 @@ fun NowPlayingSettingsSheet(
                                 value = prefs.lyricBackgroundTransparency,
                                 valueRange = PlayerDisplayPrefs.LYRIC_BG_TRANSPARENCY_MIN..
                                     PlayerDisplayPrefs.LYRIC_BG_TRANSPARENCY_MAX,
-                                colors = sliderColors,
                                 onValueChange = {
                                     onPrefsChange(prefs.copy(lyricBackgroundTransparency = it))
                                 },
@@ -944,6 +895,53 @@ fun NowPlayingSettingsSheet(
                             }
                         }
                     }
+                    SettingsCategory(title = "个性化", titleAlpha = dim) {
+                        SettingsAlpha(dim) {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                SettingsSwitchRow(
+                                    title = "歌词页自动清屏",
+                                    subtitle = "无操作后隐藏所选区域；清屏时歌词会在整屏垂直居中",
+                                    checked = prefs.portraitLyricAutoClear,
+                                    colors = switchColors,
+                                    onCheckedChange = { on ->
+                                        onPrefsChange(prefs.copy(portraitLyricAutoClear = on))
+                                    },
+                                )
+                                SettingsSliderRow(
+                                    title = "清屏时间",
+                                    valueLabel = "${prefs.portraitLyricAutoClearSeconds} 秒",
+                                    value = prefs.portraitLyricAutoClearSeconds.toFloat(),
+                                    valueRange = PlayerDisplayPrefs.AUTO_CLEAR_SECONDS_MIN.toFloat()..
+                                        PlayerDisplayPrefs.AUTO_CLEAR_SECONDS_MAX.toFloat(),
+                                    steps = PlayerDisplayPrefs.AUTO_CLEAR_SECONDS_MAX -
+                                        PlayerDisplayPrefs.AUTO_CLEAR_SECONDS_MIN - 1,
+                                    enabled = prefs.portraitLyricAutoClear,
+                                    onValueChange = {
+                                        onPrefsChange(
+                                            prefs.copy(
+                                                portraitLyricAutoClearSeconds = it.roundToInt(),
+                                            ),
+                                        )
+                                    },
+                                )
+                                SettingsAutoClearTargetsRow(
+                                    top = prefs.portraitLyricAutoClearTop,
+                                    transport = prefs.portraitLyricAutoClearTransport,
+                                    toolbar = prefs.portraitLyricAutoClearToolbar,
+                                    enabled = prefs.portraitLyricAutoClear,
+                                    onChange = { top, transport, toolbar ->
+                                        onPrefsChange(
+                                            prefs.copy(
+                                                portraitLyricAutoClearTop = top,
+                                                portraitLyricAutoClearTransport = transport,
+                                                portraitLyricAutoClearToolbar = toolbar,
+                                            ),
+                                        )
+                                    },
+                                )
+                            }
+                        }
+                    }
                     SettingsCategory(title = "黑胶", titleAlpha = dim) {
                         SettingsAlpha(dim) {
                             SettingsSwitchRow(
@@ -963,7 +961,6 @@ fun NowPlayingSettingsSheet(
                                 value = prefs.vinylSizeScale,
                                 valueRange = PlayerDisplayPrefs.VINYL_SIZE_SCALE_MIN..
                                     PlayerDisplayPrefs.VINYL_SIZE_SCALE_MAX,
-                                colors = sliderColors,
                                 onValueChange = {
                                     onPrefsChange(prefs.copy(vinylSizeScale = it))
                                 },
@@ -979,7 +976,6 @@ fun NowPlayingSettingsSheet(
                                 value = prefs.vinylOffsetYDp,
                                 valueRange = PlayerDisplayPrefs.VINYL_OFFSET_Y_MIN..
                                     PlayerDisplayPrefs.VINYL_OFFSET_Y_MAX,
-                                colors = sliderColors,
                                 onValueChange = {
                                     onPrefsChange(prefs.copy(vinylOffsetYDp = it))
                                 },
@@ -996,7 +992,6 @@ fun NowPlayingSettingsSheet(
                                 valueLabel = String.format("%.0f%%", prefs.uiScale * 100f),
                                 value = prefs.uiScale,
                                 valueRange = PlayerDisplayPrefs.UI_MIN..PlayerDisplayPrefs.UI_MAX,
-                                colors = sliderColors,
                                 onValueChange = {
                                     onPrefsChange(prefs.copy(uiScale = it))
                                 },
@@ -1012,7 +1007,6 @@ fun NowPlayingSettingsSheet(
                                 value = prefs.portraitTransportOffsetYDp,
                                 valueRange = PlayerDisplayPrefs.PORTRAIT_TRANSPORT_OFFSET_Y_MIN..
                                     PlayerDisplayPrefs.PORTRAIT_TRANSPORT_OFFSET_Y_MAX,
-                                colors = sliderColors,
                                 onValueChange = {
                                     onPrefsChange(prefs.copy(portraitTransportOffsetYDp = it))
                                 },
@@ -1105,7 +1099,6 @@ fun NowPlayingSettingsSheet(
                                 value = prefs.titleOffsetYDp,
                                 valueRange = PlayerDisplayPrefs.TITLE_OFFSET_Y_MIN..
                                     PlayerDisplayPrefs.TITLE_OFFSET_Y_MAX,
-                                colors = sliderColors,
                                 onValueChange = { onPrefsChange(prefs.copy(titleOffsetYDp = it)) },
                             )
                         }
@@ -1116,7 +1109,6 @@ fun NowPlayingSettingsSheet(
                             valueLabel = String.format("%.0f", prefs.lyricLineSpacingDp),
                             value = prefs.lyricLineSpacingDp,
                             valueRange = PlayerDisplayPrefs.LINE_SPACING_MIN..PlayerDisplayPrefs.LINE_SPACING_MAX,
-                            colors = sliderColors,
                             onValueChange = { onPrefsChange(prefs.copy(lyricLineSpacingDp = it)) },
                             onPreviewDragActiveChange = {
                                 onPreviewDrag(SettingsPreviewKey.LineSpacing, it)
@@ -1133,7 +1125,6 @@ fun NowPlayingSettingsSheet(
                                     PlayerDisplayPrefs.LYRIC_AROUND_MAX.toFloat(),
                                 steps = PlayerDisplayPrefs.LYRIC_AROUND_MAX -
                                     PlayerDisplayPrefs.LYRIC_AROUND_MIN - 1,
-                                colors = sliderColors,
                                 onValueChange = {
                                     onPrefsChange(
                                         prefs.copy(
@@ -1153,7 +1144,6 @@ fun NowPlayingSettingsSheet(
                                     PlayerDisplayPrefs.LYRIC_AROUND_MAX.toFloat(),
                                 steps = PlayerDisplayPrefs.LYRIC_AROUND_MAX -
                                     PlayerDisplayPrefs.LYRIC_AROUND_MIN - 1,
-                                colors = sliderColors,
                                 onValueChange = {
                                     onPrefsChange(
                                         prefs.copy(
@@ -1174,7 +1164,6 @@ fun NowPlayingSettingsSheet(
                             value = prefs.lyricOffsetXDp,
                             valueRange = PlayerDisplayPrefs.LYRIC_OFFSET_MIN..
                                 PlayerDisplayPrefs.LYRIC_OFFSET_MAX,
-                            colors = sliderColors,
                             onValueChange = { onPrefsChange(prefs.copy(lyricOffsetXDp = it)) },
                             onPreviewDragActiveChange = {
                                 onPreviewDrag(SettingsPreviewKey.OffsetX, it)
@@ -1190,7 +1179,6 @@ fun NowPlayingSettingsSheet(
                             valueLabel = String.format("%.0f%%", prefs.uiScale * 100f),
                             value = prefs.uiScale,
                             valueRange = PlayerDisplayPrefs.UI_MIN..PlayerDisplayPrefs.UI_MAX,
-                            colors = sliderColors,
                             onValueChange = { onPrefsChange(prefs.copy(uiScale = it)) },
                             onPreviewDragActiveChange = {
                                 onPreviewDrag(SettingsPreviewKey.UiScale, it)
@@ -1223,7 +1211,6 @@ fun NowPlayingSettingsSheet(
                                 value = prefs.transportBottomInsetDp,
                                 valueRange = PlayerDisplayPrefs.TRANSPORT_BOTTOM_INSET_MIN..
                                     PlayerDisplayPrefs.TRANSPORT_BOTTOM_INSET_MAX,
-                                colors = sliderColors,
                                 enabled = !prefs.transportDocked,
                                 onValueChange = {
                                     onPrefsChange(prefs.copy(transportBottomInsetDp = it))
@@ -1262,7 +1249,6 @@ fun NowPlayingSettingsSheet(
                                 value = prefs.vinylSizeScale,
                                 valueRange = PlayerDisplayPrefs.VINYL_SIZE_SCALE_MIN..
                                     PlayerDisplayPrefs.VINYL_SIZE_SCALE_MAX,
-                                colors = sliderColors,
                                 onValueChange = { onPrefsChange(prefs.copy(vinylSizeScale = it)) },
                             )
                             SettingsSliderRow(
@@ -1271,7 +1257,6 @@ fun NowPlayingSettingsSheet(
                                 value = prefs.vinylOuterScale,
                                 valueRange = PlayerDisplayPrefs.VINYL_OUTER_SCALE_MIN..
                                     PlayerDisplayPrefs.VINYL_OUTER_SCALE_MAX,
-                                colors = sliderColors,
                                 onValueChange = { onPrefsChange(prefs.copy(vinylOuterScale = it)) },
                             )
                             SettingsSliderRow(
@@ -1283,7 +1268,6 @@ fun NowPlayingSettingsSheet(
                                 value = prefs.vinylCenterRadiusFrac,
                                 valueRange = PlayerDisplayPrefs.VINYL_CENTER_RADIUS_MIN..
                                     PlayerDisplayPrefs.VINYL_CENTER_RADIUS_MAX,
-                                colors = sliderColors,
                                 enabled = !prefs.vinylFullCover,
                                 onValueChange = {
                                     onPrefsChange(prefs.copy(vinylCenterRadiusFrac = it))
@@ -1300,7 +1284,6 @@ fun NowPlayingSettingsSheet(
                                 value = prefs.vinylGestureDamping,
                                 valueRange = PlayerDisplayPrefs.VINYL_GESTURE_DAMPING_MIN..
                                     PlayerDisplayPrefs.VINYL_GESTURE_DAMPING_MAX,
-                                colors = sliderColors,
                                 onValueChange = {
                                     onPrefsChange(prefs.copy(vinylGestureDamping = it))
                                 },
@@ -1311,7 +1294,6 @@ fun NowPlayingSettingsSheet(
                                 value = prefs.vinylOffsetXDp,
                                 valueRange = PlayerDisplayPrefs.VINYL_OFFSET_MIN..
                                     PlayerDisplayPrefs.VINYL_OFFSET_MAX,
-                                colors = sliderColors,
                                 onValueChange = { onPrefsChange(prefs.copy(vinylOffsetXDp = it)) },
                             )
                             SettingsSliderRow(
@@ -1320,7 +1302,6 @@ fun NowPlayingSettingsSheet(
                                 value = prefs.vinylOffsetYDp,
                                 valueRange = PlayerDisplayPrefs.VINYL_OFFSET_Y_MIN..
                                     PlayerDisplayPrefs.VINYL_OFFSET_Y_MAX,
-                                colors = sliderColors,
                                 enabled = !prefs.vinylAbsoluteCenter,
                                 onValueChange = { onPrefsChange(prefs.copy(vinylOffsetYDp = it)) },
                             )
@@ -1446,7 +1427,7 @@ private fun SettingsVinylColorRow(
                 .fillMaxWidth()
                 .height(36.dp)
                 .clip(RoundedCornerShape(10.dp))
-                .background(Color(0xFFE5E5EA))
+                .background(MainPalette.TrackOff)
                 .pointerInput(styles.size) {
                     val segW = size.width / styles.size.toFloat()
                     detectHorizontalDragGestures(
@@ -1606,7 +1587,7 @@ private fun SettingsTitleAlignRow(
                 .fillMaxWidth()
                 .height(36.dp)
                 .clip(RoundedCornerShape(10.dp))
-                .background(Color(0xFFE5E5EA))
+                .background(MainPalette.TrackOff)
                 .pointerInput(modes.size) {
                     val segW = size.width / modes.size.toFloat()
                     detectHorizontalDragGestures(
@@ -1731,7 +1712,7 @@ private fun SettingsCategory(
                 )
             } else {
                 TextStyle(
-                    color = Accent.copy(alpha = 0.85f),
+                    color = chrome.accent.copy(alpha = 0.85f),
                     fontFamily = FontFamily.Monospace,
                     fontSize = 9.sp,
                     letterSpacing = 1.6.sp,
@@ -1809,6 +1790,111 @@ private fun SettingsActionRow(
 }
 
 @Composable
+private fun SettingsAutoClearTargetsRow(
+    top: Boolean,
+    transport: Boolean,
+    toolbar: Boolean,
+    enabled: Boolean = true,
+    onChange: (Boolean, Boolean, Boolean) -> Unit,
+) {
+    val chrome = LocalSettingsChrome.current
+    val enT by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (enabled) 1f else 0.40f,
+        animationSpec = tween(280, easing = FastOutSlowInEasing),
+        label = "settingsAutoClearTargetsEn",
+    )
+    data class Target(val label: String, val on: Boolean, val set: (Boolean) -> Unit)
+    val items = listOf(
+        Target("顶部区域", top) { next ->
+            if (!next && !transport && !toolbar) return@Target
+            onChange(next, transport, toolbar)
+        },
+        Target("播放控件", transport) { next ->
+            if (!next && !top && !toolbar) return@Target
+            onChange(top, next, toolbar)
+        },
+        Target("底部工具栏", toolbar) { next ->
+            if (!next && !top && !transport) return@Target
+            onChange(top, transport, next)
+        },
+    )
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .graphicsLayer { alpha = enT }
+            .clip(RowShape)
+            .background(chrome.rowBg)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+    ) {
+        Text(
+            text = "清屏包含",
+            style = TextStyle(
+                color = chrome.label,
+                fontFamily = FontFamily.SansSerif,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = if (chrome.light) 15.sp else 14.sp,
+                shadow = chrome.titleShadow,
+            ),
+        )
+        Spacer(Modifier.height(2.dp))
+        Text(
+            text = "可多选；至少保留一项",
+            style = TextStyle(
+                color = chrome.hint,
+                fontFamily = if (chrome.light) FontFamily.SansSerif else FontFamily.Monospace,
+                fontSize = if (chrome.light) 12.sp else 9.sp,
+                letterSpacing = if (chrome.light) 0.sp else 0.3.sp,
+                lineHeight = if (chrome.light) 16.sp else 12.sp,
+                shadow = chrome.titleShadow,
+            ),
+        )
+        Spacer(Modifier.height(10.dp))
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            items.forEach { item ->
+                key(item.label) {
+                val selected = item.on
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(
+                            if (selected) {
+                                MainPalette.Accent.copy(alpha = 0.22f)
+                            } else {
+                                MainPalette.TrackOff
+                            },
+                        )
+                        .clickable(
+                            enabled = enabled,
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = { item.set(!item.on) },
+                        )
+                        .padding(vertical = 8.dp, horizontal = 4.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = item.label,
+                        style = TextStyle(
+                            color = if (selected) MainPalette.Accent else chrome.hint,
+                            fontFamily = FontFamily.SansSerif,
+                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                            fontSize = 12.sp,
+                            textAlign = TextAlign.Center,
+                        ),
+                        maxLines = 1,
+                    )
+                }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun SettingsSwitchRow(
     title: String,
     subtitle: String,
@@ -1871,7 +1957,6 @@ private fun SettingsSliderRow(
     valueLabel: String,
     value: Float,
     valueRange: ClosedFloatingPointRange<Float>,
-    colors: androidx.compose.material3.SliderColors,
     onValueChange: (Float) -> Unit,
     enabled: Boolean = true,
     steps: Int = 0,
@@ -1894,7 +1979,9 @@ private fun SettingsSliderRow(
         Modifier
             .fillMaxWidth()
             .clip(RowShape)
-            .background(chrome.rowBg.copy(alpha = if (enabled) 1f else 0.72f))
+            .background(
+                if (enabled) chrome.rowBg else chrome.rowBg.copy(alpha = chrome.rowBg.alpha * 0.72f),
+            )
             .padding(horizontal = 12.dp, vertical = 10.dp),
     ) {
         Row(
@@ -1925,13 +2012,13 @@ private fun SettingsSliderRow(
             )
         }
         Spacer(Modifier.height(4.dp))
-        Slider(
+        MainSlider(
             value = safeValue,
             onValueChange = { next ->
                 val clamped = next
                     .takeIf { it.isFinite() }
                     ?.coerceIn(valueRange.start, valueRange.endInclusive)
-                    ?: return@Slider
+                    ?: return@MainSlider
                 val previewCb = onPreviewUpdated
                 if (previewCb != null && !previewArmed) {
                     previewArmed = true
@@ -1948,26 +2035,10 @@ private fun SettingsSliderRow(
             valueRange = valueRange,
             steps = steps,
             enabled = enabled,
-            colors = colors,
             interactionSource = sliderIx,
-            modifier = Modifier.fillMaxWidth(),
-            thumb = {
-                SliderDefaults.Thumb(
-                    interactionSource = sliderIx,
-                    colors = colors,
-                    enabled = enabled,
-                )
-            },
-            track = { state ->
-                SliderDefaults.Track(
-                    sliderState = state,
-                    enabled = enabled,
-                    colors = colors,
-                    thumbTrackGapSize = 0.dp,
-                    trackInsideCornerSize = 0.dp,
-                    drawStopIndicator = null,
-                )
-            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(28.dp),
         )
     }
 }

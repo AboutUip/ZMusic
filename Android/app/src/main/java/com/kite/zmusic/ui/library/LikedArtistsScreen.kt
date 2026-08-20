@@ -67,7 +67,9 @@ import com.kite.zmusic.ui.common.GlassActionSheet
 import com.kite.zmusic.ui.common.GlassAlertDialog
 import com.kite.zmusic.ui.common.GlassSheetAction
 import com.kite.zmusic.ui.common.UrlImage
+import com.kite.zmusic.ui.common.UrlImageCache
 import com.kite.zmusic.ui.common.ZPullRefresh
+import com.kite.zmusic.ui.chrome.chromePage
 import com.kite.zmusic.ui.icons.ZIcons
 import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.notice.showIslandNotice
@@ -100,7 +102,7 @@ fun LikedArtistsScreen(
     Column(
         modifier
             .fillMaxSize()
-            .background(MainPalette.Page)
+            .chromePage()
             .statusBarsPadding()
             .imePadding(),
     ) {
@@ -501,7 +503,7 @@ fun LikedArtistsSearchScreen(
     Column(
         modifier
             .fillMaxSize()
-            .background(MainPalette.Page)
+            .chromePage()
             .statusBarsPadding()
             .imePadding(),
     ) {
@@ -678,7 +680,11 @@ private fun rememberLikedArtistsViewModel(
     val app = LocalContext.current.applicationContext as ZMusicApplication
     return viewModel(
         key = LikedArtistsVmKey,
-        factory = LikedArtistsViewModelFactory(sessionRepository, app.islandNoticeCenter),
+        factory = LikedArtistsViewModelFactory(
+            sessionRepository,
+            app.islandNoticeCenter,
+            app.artistRepository,
+        ),
     )
 }
 
@@ -736,7 +742,7 @@ private fun LikedArtistSearchField(
             .fillMaxWidth()
             .height(42.dp)
             .clip(RoundedCornerShape(21.dp))
-            .background(Color(0xFFF0F0F2))
+            .background(MainPalette.Placeholder)
             .padding(horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -824,6 +830,7 @@ private fun FollowPersonRow(
                     .size(48.dp)
                     .clip(CircleShape),
                 contentScale = ContentScale.Crop,
+                maxPx = UrlImageCache.THUMB_MAX_PX,
             )
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {

@@ -1,4 +1,4 @@
-package com.kite.zmusic.ui.catalog
+package com.kite.zmusic.ui.main
 
 sealed class MainOverlay {
     data object Daily : MainOverlay()

@@ -1,6 +1,5 @@
 package com.kite.zmusic.ui.common
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
@@ -156,7 +155,7 @@ internal fun GlassAlertOverlay(
     }
     if (spec == null) return
 
-    BackHandler(enabled = visible) { spec.onDismiss() }
+    val backUi = rememberPredictiveBackUi(enabled = visible, onBack = spec.onDismiss)
 
     val reveal = remember { Animatable(0f) }
     LaunchedEffect(visible) {
@@ -168,7 +167,7 @@ internal fun GlassAlertOverlay(
         }
     }
 
-    val t = reveal.value
+    val t = reveal.value * (1f - backUi.progress)
     Box(
         modifier
             .fillMaxSize()
@@ -208,7 +207,7 @@ private fun GlassAlertCard(
     modifier: Modifier = Modifier,
 ) {
     val screenH = LocalConfiguration.current.screenHeightDp
-    val extraMax = (screenH * 0.40f).dp
+    val extraMax = (screenH * 0.52f).dp
     Column(
         modifier
             .padding(horizontal = if (landscape) 48.dp else 28.dp)
@@ -261,15 +260,8 @@ private fun GlassAlertCard(
                 Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 24.dp)
-                    .then(
-                        if (landscape) {
-                            Modifier
-                                .heightIn(max = extraMax)
-                                .verticalScroll(rememberScrollState())
-                        } else {
-                            Modifier
-                        },
-                    ),
+                    .heightIn(max = extraMax)
+                    .verticalScroll(rememberScrollState()),
                 content = extra,
             )
         }
@@ -384,7 +376,7 @@ fun GlassPromptField(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
-            .background(Color.White.copy(alpha = 0.62f))
+            .background(MainPalette.Card)
             .padding(horizontal = 14.dp, vertical = 12.dp),
         decorationBox = { inner ->
             Box {

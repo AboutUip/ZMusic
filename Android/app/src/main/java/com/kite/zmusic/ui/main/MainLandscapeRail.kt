@@ -31,6 +31,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
@@ -60,7 +62,7 @@ fun LandscapeNavRail(
         modifier
             .width(LandscapeRailWidth)
             .fillMaxHeight()
-            .background(MainPalette.Surface)
+            .wallpaperItemChrome(RectangleShape)
             .windowInsetsPadding(insets),
     ) {
         Column(
@@ -148,7 +150,7 @@ private fun RailItem(
     onClick: () -> Unit,
     icon: @Composable () -> Unit,
 ) {
-    val bg = if (selected) MainPalette.Accent.copy(alpha = 0.10f) else MainPalette.Surface
+    val bg = if (selected) MainPalette.Accent.copy(alpha = 0.10f) else Color.Transparent
     Row(
         Modifier
             .fillMaxWidth()

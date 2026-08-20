@@ -18,6 +18,7 @@ import androidx.media3.exoplayer.audio.DefaultAudioSink
 import com.kite.zmusic.R
 import com.kite.zmusic.data.AudioQuality
 import com.kite.zmusic.data.AudioQualityStore
+import com.kite.zmusic.data.PersistentPlaybackStore
 import com.kite.zmusic.data.LikedPlaylistRepository
 import com.kite.zmusic.data.LyricRepository
 import com.kite.zmusic.data.NcmHomeParse
@@ -51,6 +52,12 @@ import kotlin.random.Random
 /**
  * Service 内播放协调：队列、NCM URL 按需解析、歌词、模式。
  * 不负责通知 / FGS（由 MediaSessionService 独占）。
+ *
+ * 本阶段保持单类：起播语义（空队列发布、URL 解析、FM 续播）没有单元测试护栏，
+ * 不要按“文件太大”再拆实现。边界：
+ * - 对外：`playQueue` / `playIndex` / skip / mode / FM
+ * - 对内：按需 `PlayUrlResolver`、短 TTL 预取、歌词加载
+ * - 不：Compose、repository 组装（由 Application / Service 注入）
  */
 @UnstableApi
 class PlaylistCoordinator(
@@ -60,7 +67,8 @@ class PlaylistCoordinator(
     private val lyricRepository: LyricRepository,
     private val likedPlaylistRepository: LikedPlaylistRepository,
     private val audioQualityStore: AudioQualityStore,
-    private val userClient: NcmUserClient = NcmUserClient(),
+    private val persistentPlaybackStore: PersistentPlaybackStore,
+    private val userClient: NcmUserClient,
     private val onClearAndStopService: (() -> Unit)? = null,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -68,9 +76,17 @@ class PlaylistCoordinator(
     private val _spectrum = MutableStateFlow(AudioSpectrumBands.ZERO)
     val spectrum: StateFlow<AudioSpectrumBands> = _spectrum.asStateFlow()
 
+    private var lastSpectrumPublishMs = 0L
     private val spectrumProcessor = SpectrumTapAudioProcessor { bands ->
-        // StateFlow 线程安全；音频线程直写，少一帧主线程 post 延迟
-        _spectrum.value = bands
+        // 音频 hop ~6ms；UI 只需约一帧一次。量化后相等则跳过，避免掀整棵 Compose 树。
+        val now = android.os.SystemClock.elapsedRealtime()
+        val quantized = bands.quantized()
+        if (quantized == _spectrum.value) return@SpectrumTapAudioProcessor
+        if (now - lastSpectrumPublishMs < 16L && quantized != AudioSpectrumBands.ZERO) {
+            return@SpectrumTapAudioProcessor
+        }
+        lastSpectrumPublishMs = now
+        _spectrum.value = quantized
     }
 
     private val renderersFactory = object : DefaultRenderersFactory(context) {
@@ -103,14 +119,24 @@ class PlaylistCoordinator(
 
     val player: Player = QueueAwarePlayer(exoPlayer)
 
+    private val persistentFocus = PersistentPlaybackFocus(
+        context = context,
+        store = persistentPlaybackStore,
+        scope = scope,
+        player = exoPlayer,
+        musicAudioAttrs = musicAudioAttrs,
+    )
+
     private val _ui = MutableStateFlow(PlaybackUiState())
     val ui: StateFlow<PlaybackUiState> = _ui.asStateFlow()
 
     private var playbackMode: PlaybackMode = PlaybackMode.ORDER
     private var fmActive: Boolean = false
+    private var intelligenceActive: Boolean = false
     private var fmHydrateJob: Job? = null
     private var pendingFmAdvance: Boolean = false
     private var fmKickExtra: Boolean = false
+    private val radioActive: Boolean get() = fmActive || intelligenceActive
 
     private var loadJob: Job? = null
     private var lyricJob: Job? = null
@@ -137,6 +163,12 @@ class PlaylistCoordinator(
      */
     private var holdAutoAdvance = false
     private var pendingAdvanceAfterHold = false
+    /** 定时停止与 STATE_ENDED 竞态：已暂停则勿再自动切歌。 */
+    private var suppressAutoAdvanceOnce = false
+
+    /** 由 [PlaybackBridge] 在 attach 时注入；倒计时本身不挂在本类上。 */
+    @Volatile
+    var sleepTimer: SleepTimer? = null
     private var appliedQuality: AudioQuality = audioQualityStore.current()
 
     private val playerListener = object : Player.Listener {
@@ -165,11 +197,13 @@ class PlaylistCoordinator(
         }
 
         override fun onIsPlayingChanged(isPlaying: Boolean) {
+            persistentFocus.onIsPlayingChanged(isPlaying)
             _ui.update { it.copy(isPlaying = isPlaying) }
             if (!isPlaying) persistSnapshot()
         }
 
         override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+            if (persistentFocus.consumePlayWhenReadyChange(playWhenReady, reason)) return
             _ui.update { it.copy(playWhenReady = playWhenReady) }
         }
 
@@ -205,23 +239,36 @@ class PlaylistCoordinator(
         stateStore.load()?.let { snap ->
             playbackMode = snap.playbackMode
             fmActive = snap.fmActive
-            fmKickExtra = fmActive
-            if (fmActive && playbackMode == PlaybackMode.SHUFFLE) {
+            intelligenceActive = snap.intelligenceActive
+            fmKickExtra = radioActive
+            if (radioActive && playbackMode == PlaybackMode.SHUFFLE) {
                 playbackMode = PlaybackMode.ORDER
             }
-            val mem = snap.currentTrack?.id?.let { lyricRepository.peekMemory(it) }
-            _ui.value = if (mem != null && mem.isNotEmpty()) {
-                snap.copy(lyricLines = mem, playbackMode = playbackMode, fmActive = fmActive)
+            val mem = snap.currentTrack?.id?.let { lyricRepository.peekPack(it) }
+            _ui.value = if (mem != null && mem.original.isNotEmpty()) {
+                snap.copy(
+                    lyricLines = mem.original,
+                    translatedLyricLines = mem.translated,
+                    wordLyricLines = mem.wordOriginal,
+                    translatedWordLyricLines = mem.wordTranslated,
+                    playbackMode = playbackMode,
+                    fmActive = fmActive,
+                    intelligenceActive = intelligenceActive,
+                )
             } else {
-                snap.copy(playbackMode = playbackMode, fmActive = fmActive)
+                snap.copy(
+                    playbackMode = playbackMode,
+                    fmActive = fmActive,
+                    intelligenceActive = intelligenceActive,
+                )
             }
-            if (fmActive) ensureFmLookahead()
+            if (radioActive) ensureRadioLookahead()
             snap.currentTrack?.id?.let { songId ->
                 scope.launch {
                     val cookie = sessionRepository.session.value?.cookie.orEmpty()
-                    val lines = lyricRepository.loadBestEffort(songId, cookie)
-                    if (_ui.value.currentTrack?.id == songId && lines.isNotEmpty()) {
-                        _ui.update { it.copy(lyricLines = lines) }
+                    val pack = lyricRepository.loadBestEffort(songId, cookie)
+                    if (_ui.value.currentTrack?.id == songId && pack.original.isNotEmpty()) {
+                        _ui.update { it.withLyricPack(pack) }
                     }
                 }
             }
@@ -230,6 +277,7 @@ class PlaylistCoordinator(
         }
         applyRepeatMode()
         startTicker()
+        persistentFocus.start()
         scope.launch {
             audioQualityStore.quality.drop(1).collect { next ->
                 if (next == appliedQuality) return@collect
@@ -245,17 +293,21 @@ class PlaylistCoordinator(
         sourcePlaylistId: Long? = null,
         sourcePlaylistTitle: String? = null,
         fmSession: Boolean = false,
+        intelligenceSession: Boolean = false,
     ) {
+        if (sleepTimer?.onLeavingTrack() == true) return
         if (tracks.isEmpty()) return
         val idx = startIndex.coerceIn(0, tracks.lastIndex)
-        if (!fmSession) {
+        val radio = fmSession || intelligenceSession
+        if (!radio) {
             fmHydrateJob?.cancel()
             fmHydrateJob = null
             pendingFmAdvance = false
         }
         fmActive = fmSession
-        fmKickExtra = fmSession
-        if (fmSession && playbackMode == PlaybackMode.SHUFFLE) {
+        intelligenceActive = intelligenceSession
+        fmKickExtra = radio
+        if (radio && playbackMode == PlaybackMode.SHUFFLE) {
             playbackMode = PlaybackMode.ORDER
             preparedShuffleNext = null
             shuffleHistory.clear()
@@ -276,15 +328,19 @@ class PlaylistCoordinator(
                 loadPending = true,
                 hasQueue = true,
                 lyricLines = emptyList(),
+                translatedLyricLines = emptyList(),
+                wordLyricLines = emptyList(),
+                translatedWordLyricLines = emptyList(),
                 sourcePlaylistId = sourcePlaylistId,
                 sourcePlaylistTitle = sourcePlaylistTitle,
                 playbackMode = playbackMode,
                 fmActive = fmSession,
+                intelligenceActive = intelligenceSession,
             )
         }
         persistSnapshot()
         loadAndPlayIndex(idx)
-        if (fmSession) ensureFmLookahead()
+        if (radio) ensureRadioLookahead()
     }
 
     fun startPersonalFm(onStarted: () -> Unit = {}) {
@@ -299,6 +355,76 @@ class PlaylistCoordinator(
             context.showIslandNotice("已开启私人漫游")
             onStarted()
         }
+    }
+
+    fun startIntelligence(
+        songId: Long,
+        playlistId: Long,
+        playlistTitle: String? = null,
+        startSongId: Long = songId,
+        onStarted: () -> Unit = {},
+    ) {
+        if (songId <= 0L || playlistId <= 0L) {
+            context.showIslandNotice("先在我喜欢的音乐里收藏几首歌")
+            return
+        }
+        fmHydrateJob?.cancel()
+        scope.launch {
+            val tracks = fetchIntelligenceBatch(songId, playlistId, startSongId)
+            if (tracks.isEmpty()) {
+                context.showIslandNotice("暂时没有心动歌曲")
+                return@launch
+            }
+            val start = tracks.indexOfFirst { it.id == startSongId }.takeIf { it >= 0 } ?: 0
+            playQueue(
+                tracks,
+                start,
+                playlistId,
+                "心动模式",
+                intelligenceSession = true,
+            )
+            context.showIslandNotice("已开启心动模式")
+            onStarted()
+        }
+    }
+
+    /** 功能页 / 播放页更多：固定用「我喜欢的音乐」当种子歌单。 */
+    fun startIntelligenceFromContext(onStarted: () -> Unit = {}) {
+        scope.launch {
+            val liked = resolveLikedForIntelligence()
+            if (liked == null || liked.playlistId <= 0L) {
+                context.showIslandNotice("先在我喜欢的音乐里收藏几首歌")
+                return@launch
+            }
+            val playing = _ui.value.currentTrack
+            val seed = playing?.id?.takeIf { id ->
+                liked.likedIds.contains(id) || liked.tracks.any { it.id == id }
+            } ?: liked.tracks.firstOrNull()?.id
+                ?: liked.displayIds.firstOrNull()
+                ?: liked.allLikedIds.firstOrNull()
+                ?: 0L
+            if (seed <= 0L) {
+                context.showIslandNotice("先在我喜欢的音乐里收藏几首歌")
+                return@launch
+            }
+            startIntelligence(
+                songId = seed,
+                playlistId = liked.playlistId,
+                playlistTitle = liked.title.ifBlank { "心动模式" },
+                onStarted = onStarted,
+            )
+        }
+    }
+
+    private suspend fun resolveLikedForIntelligence(): LikedPlaylistRepository.Snapshot? {
+        val cached = likedPlaylistRepository.peek()
+        if (cached != null && cached.playlistId > 0L &&
+            (cached.tracks.isNotEmpty() || cached.displayIds.isNotEmpty() || cached.allLikedIds.isNotEmpty())
+        ) {
+            return cached
+        }
+        return runCatching { likedPlaylistRepository.forceRefresh() }.getOrNull()
+            ?: likedPlaylistRepository.peek()?.takeIf { it.playlistId > 0L }
     }
 
     /** 在当前队列内跳转到指定索引（保留队列与随机历史策略）。 */
@@ -320,7 +446,7 @@ class PlaylistCoordinator(
      * 按当前曲 id 重定位索引，不打断正在播的媒体。
      */
     fun expandQueueFromSourcePlaylist(playlistId: Long, tracks: List<TrackRow>) {
-        if (playlistId <= 0L || tracks.isEmpty()) return
+        if (intelligenceActive || playlistId <= 0L || tracks.isEmpty()) return
         val ui = _ui.value
         if (!ui.hasQueue || ui.sourcePlaylistId != playlistId) return
         if (tracks.size <= ui.queue.size) {
@@ -349,6 +475,7 @@ class PlaylistCoordinator(
     }
 
     fun clearQueue() {
+        sleepTimer?.cancel()
         cancelLoads()
         urlCache.clear()
         unplayableUntil.clear()
@@ -360,6 +487,7 @@ class PlaylistCoordinator(
         fmHydrateJob = null
         pendingFmAdvance = false
         fmActive = false
+        intelligenceActive = false
         exoPlayer.stop()
         exoPlayer.clearMediaItems()
         playbackMode = _ui.value.playbackMode
@@ -386,17 +514,8 @@ class PlaylistCoordinator(
 
     /** MV 占用焦点时：暂停歌曲且不要在 MV 暂停时被系统焦点抢回去。 */
     fun yieldToForeignPlayback(active: Boolean) {
-        if (active) {
-            if (exoPlayer.playWhenReady) exoPlayer.pause()
-            exoPlayer.setAudioAttributes(musicAudioAttrs, false)
-        } else {
-            exoPlayer.setAudioAttributes(musicAudioAttrs, true)
-        }
+        persistentFocus.setForeignYield(active)
     }
-
-    private var volumeFadeJob: Job? = null
-    /** Exo 逻辑音量目标（与系统音量无关）；seek 渐起后回到此值。 */
-    private var playbackVolume = 1f
 
     fun seekTo(ms: Long) {
         val target = ms.coerceAtLeast(0L)
@@ -406,26 +525,7 @@ class PlaylistCoordinator(
         _ui.update { it.copy(positionMs = target) }
         // 大幅跳转且正在播放：1s 声音渐起，避免位置硬切
         if (jumped && exoPlayer.isPlaying) {
-            fadeVolumeIn(durationMs = 1_000L)
-        }
-    }
-
-    private fun fadeVolumeIn(durationMs: Long) {
-        volumeFadeJob?.cancel()
-        val end = playbackVolume.coerceIn(0f, 1f)
-        volumeFadeJob = scope.launch {
-            exoPlayer.volume = 0f
-            val steps = 24
-            val stepDelay = (durationMs / steps).coerceAtLeast(1L)
-            for (i in 1..steps) {
-                if (!isActive) return@launch
-                delay(stepDelay)
-                // ease-out：前段更快可闻，尾段柔和贴合
-                val t = i / steps.toFloat()
-                val eased = 1f - (1f - t) * (1f - t)
-                exoPlayer.volume = end * eased
-            }
-            exoPlayer.volume = end
+            persistentFocus.fadeInFromSilence(durationMs = 1_000L)
         }
     }
 
@@ -433,15 +533,15 @@ class PlaylistCoordinator(
         pendingAdvanceAfterHold = false
         val i = _ui.value.index
         if (!_ui.value.hasQueue || i < 0) return
-        val ni = nextPlayableIndex(i)
+        val ni = nextPlayableIndex(i, wrap = !radioActive)
         if (ni != null) {
             loadAndPlayIndex(ni, recordShuffleHistory = true)
-            if (fmActive) ensureFmLookahead()
+            if (radioActive) ensureRadioLookahead()
             return
         }
-        if (fmActive) {
+        if (radioActive) {
             pendingFmAdvance = true
-            ensureFmLookahead()
+            ensureRadioLookahead()
         }
     }
 
@@ -473,7 +573,7 @@ class PlaylistCoordinator(
     }
 
     fun cyclePlaybackMode() {
-        playbackMode = if (fmActive) {
+        playbackMode = if (radioActive) {
             when (playbackMode) {
                 PlaybackMode.ORDER -> PlaybackMode.REPEAT_ONE
                 PlaybackMode.REPEAT_ONE, PlaybackMode.SHUFFLE -> PlaybackMode.ORDER
@@ -498,9 +598,7 @@ class PlaylistCoordinator(
     fun release() {
         cancelLoads()
         tickerJob?.cancel()
-        volumeFadeJob?.cancel()
-        volumeFadeJob = null
-        exoPlayer.volume = playbackVolume
+        persistentFocus.release()
         exoPlayer.removeListener(playerListener)
         exoPlayer.release()
         _spectrum.value = AudioSpectrumBands.ZERO
@@ -525,9 +623,52 @@ class PlaylistCoordinator(
                 if (exoPlayer.currentMediaItem?.mediaId != expectedId) continue
                 val st = exoPlayer.playbackState
                 if (st == Player.STATE_IDLE || st == Player.STATE_ENDED) continue
-                val pos = exoPlayer.currentPosition
+                // seek 时 BUFFERING，currentPosition 可能短暂为 0，勿把进度条打回开头
+                val pos = exoPlayer.currentPosition.coerceAtLeast(0L)
+                if (st == Player.STATE_BUFFERING && pos <= 48L && ui.positionMs > 200L) {
+                    continue
+                }
                 _ui.update { it.copy(positionMs = pos) }
             }
+        }
+    }
+
+    /** 倒计时到点且不等本首结束：立即暂停。 */
+    fun pauseForSleepTimer() {
+        sleepTimer?.cancel()
+        pendingAdvanceAfterHold = false
+        pendingFmAdvance = false
+        if (exoPlayer.playbackState == Player.STATE_ENDED) {
+            suppressAutoAdvanceOnce = true
+        }
+        exoPlayer.pause()
+        exoPlayer.playWhenReady = false
+        _ui.update {
+            it.copy(
+                isPlaying = false,
+                playWhenReady = false,
+                buffering = false,
+                loadPending = false,
+            )
+        }
+        persistSnapshot()
+        applyRepeatMode()
+        context.showIslandNotice("已定时停止", _ui.value.currentTrack?.coverUrl)
+    }
+
+    fun restoreRepeatAfterSleepCancel() {
+        applyRepeatMode()
+    }
+
+    /** 到点且选择等本首结束：关掉单曲循环，若已停住则立刻结束。 */
+    fun onSleepWaitDeadline() {
+        exoPlayer.repeatMode = Player.REPEAT_MODE_OFF
+        val st = exoPlayer.playbackState
+        if (!exoPlayer.playWhenReady ||
+            st == Player.STATE_ENDED ||
+            st == Player.STATE_IDLE
+        ) {
+            pauseForSleepTimer()
         }
     }
 
@@ -556,6 +697,11 @@ class PlaylistCoordinator(
     }
 
     private fun onEnded() {
+        if (suppressAutoAdvanceOnce) {
+            suppressAutoAdvanceOnce = false
+            return
+        }
+        if (sleepTimer?.onTrackEnded() == true) return
         if (holdAutoAdvance) {
             pendingAdvanceAfterHold = true
             exoPlayer.pause()
@@ -576,13 +722,14 @@ class PlaylistCoordinator(
                 exoPlayer.play()
             }
             PlaybackMode.ORDER, PlaybackMode.SHUFFLE -> {
-                val ni = nextPlayableIndex(_ui.value.index)
+                val wrapList = playbackMode == PlaybackMode.ORDER && !radioActive
+                val ni = nextPlayableIndex(_ui.value.index, wrap = wrapList)
                 if (ni != null) {
                     loadAndPlayIndex(ni, recordShuffleHistory = true)
-                    if (fmActive) ensureFmLookahead()
-                } else if (fmActive) {
+                    if (radioActive) ensureRadioLookahead()
+                } else if (radioActive) {
                     pendingFmAdvance = true
-                    ensureFmLookahead()
+                    ensureRadioLookahead()
                 } else {
                     exoPlayer.pause()
                     _ui.update {
@@ -601,7 +748,7 @@ class PlaylistCoordinator(
 
     /** 评论关闭后：按「下一首」切歌并播放（含原单曲循环模式下的挂起曲末）。 */
     private fun advanceAfterCommentsHold() {
-        val ni = nextPlayableIndex(_ui.value.index)
+        val ni = nextPlayableIndex(_ui.value.index, wrap = !radioActive)
         if (ni != null) {
             loadAndPlayIndex(ni, recordShuffleHistory = true)
         } else {
@@ -611,7 +758,7 @@ class PlaylistCoordinator(
     }
 
     /** 跳过预检失败曲目后的下一首（切歌 / 播完 / 预览一致）。 */
-    private fun nextPlayableIndex(from: Int): Int? {
+    private fun nextPlayableIndex(from: Int, wrap: Boolean = false): Int? {
         val q = _ui.value.queue
         if (q.isEmpty()) return null
         return when (playbackMode) {
@@ -621,7 +768,13 @@ class PlaylistCoordinator(
                     if (!isUnplayable(q[i].id)) return i
                     i++
                 }
-                null
+                if (!wrap) return null
+                i = 0
+                while (i < from) {
+                    if (!isUnplayable(q[i].id)) return i
+                    i++
+                }
+                from.takeIf { it in q.indices && !isUnplayable(q[it].id) }
             }
             PlaybackMode.SHUFFLE -> {
                 repeat(q.size.coerceAtMost(12)) {
@@ -679,7 +832,7 @@ class PlaylistCoordinator(
             _ui.update { it.copy(peekNextTrack = null, peekPrevTrack = null) }
             return
         }
-        val next = nextPlayableIndex(i)?.let { ui.queue.getOrNull(it) }
+        val next = nextPlayableIndex(i, wrap = !radioActive)?.let { ui.queue.getOrNull(it) }
         val prev = prevPlayableIndex(i)?.let { ui.queue.getOrNull(it) }
         _ui.update { it.copy(peekNextTrack = next, peekPrevTrack = prev) }
         pruneUrlCache(
@@ -687,7 +840,7 @@ class PlaylistCoordinator(
                 ui.currentTrack?.id?.let { add(it) }
                 next?.id?.let { add(it) }
                 prev?.id?.let { add(it) }
-                if (ui.fmActive) {
+                if (ui.radioActive) {
                     ui.queue.drop(ui.index + 1).take(FM_AHEAD).forEach { add(it.id) }
                 }
             },
@@ -709,7 +862,7 @@ class PlaylistCoordinator(
                 val neighbors = buildList {
                     ui.peekNextTrack?.let { add(it) }
                     ui.peekPrevTrack?.let { add(it) }
-                    if (ui.fmActive) {
+                    if (ui.radioActive) {
                         addAll(ui.queue.drop(ui.index + 1).take(FM_AHEAD))
                     }
                 }.distinctBy { it.id }
@@ -727,7 +880,7 @@ class PlaylistCoordinator(
                             add(async { UrlImageCache.prefetch(context, url) })
                         }
                         current?.let { t ->
-                            if (lyricRepository.peekMemory(t.id) == null) {
+                            if (lyricRepository.peekPack(t.id)?.translationResolved != true) {
                                 add(async { lyricRepository.prefetch(t.id, cookie) })
                             }
                         }
@@ -827,6 +980,9 @@ class PlaylistCoordinator(
         recordShuffleHistory: Boolean = false,
         resumePlayWhenReady: Boolean = true,
     ) {
+        if (!isRetry && idx != _ui.value.index && sleepTimer?.onLeavingTrack() == true) {
+            return
+        }
         val track = _ui.value.queue.getOrNull(idx) ?: return
         if (!isRetry) {
             if (retryIndex != idx) {
@@ -859,7 +1015,7 @@ class PlaylistCoordinator(
         // 切走后下一首预选作废，保证之后「下一首」重新随机
         preparedShuffleNext = null
         val startPos = resumeAtMs.coerceAtLeast(0L)
-        val cachedLyrics = lyricRepository.peekMemory(track.id)
+        val cachedLyrics = lyricRepository.peekPack(track.id)
         // 切歌：只暂停旧曲，勿 stop/clearMediaItems —— 清空播放列表会拆掉 Media3 通知再重建，触发系统 FGS 警告
         exoPlayer.playWhenReady = false
         // 同步更新索引 / peek，黑胶可继续滑；音源在后台加载
@@ -872,22 +1028,27 @@ class PlaylistCoordinator(
                 error = null,
                 positionMs = startPos,
                 durationMs = track.durationMs.coerceAtLeast(0L),
-                lyricLines = cachedLyrics.orEmpty(),
+                lyricLines = cachedLyrics?.original.orEmpty(),
+                translatedLyricLines = cachedLyrics?.translated.orEmpty(),
+                wordLyricLines = cachedLyrics?.wordOriginal.orEmpty(),
+                translatedWordLyricLines = cachedLyrics?.wordTranslated.orEmpty(),
                 isPlaying = false,
                 playWhenReady = false,
             )
         }
         refreshPeeksAndPrefetch()
-        if (fmActive) ensureFmLookahead()
+        if (radioActive) ensureRadioLookahead()
         val loadGen = track.id
         loadJob = scope.launch {
             val cookie = sessionRepository.session.value?.cookie.orEmpty()
             try {
-                // 磁盘歌词优先填上，避免等网络
-                if (_ui.value.lyricLines.isEmpty()) {
+                // 磁盘歌词优先填上，避免等网络；并补齐译文
+                if (_ui.value.lyricLines.isEmpty() ||
+                    cachedLyrics?.translationResolved != true
+                ) {
                     val diskOrNet = lyricRepository.loadBestEffort(track.id, cookie)
-                    if (diskOrNet.isNotEmpty() && _ui.value.currentTrack?.id == track.id) {
-                        _ui.update { it.copy(lyricLines = diskOrNet) }
+                    if (diskOrNet.original.isNotEmpty() && _ui.value.currentTrack?.id == track.id) {
+                        _ui.update { it.withLyricPack(diskOrNet) }
                     }
                 }
                 // 已被更新的快切目标取代则放弃
@@ -956,13 +1117,13 @@ class PlaylistCoordinator(
         if (failedId != null) markUnplayable(failedId)
         when (playbackMode) {
             PlaybackMode.ORDER -> {
-                val ni = nextPlayableIndex(failedIndex)
+                val ni = nextPlayableIndex(failedIndex, wrap = !radioActive)
                 if (ni != null) {
                     loadAndPlayIndex(ni, recordShuffleHistory = false)
-                    if (fmActive) ensureFmLookahead()
-                } else if (fmActive) {
+                    if (radioActive) ensureRadioLookahead()
+                } else if (radioActive) {
                     pendingFmAdvance = true
-                    ensureFmLookahead()
+                    ensureRadioLookahead()
                 } else {
                     _ui.update { it.copy(loadPending = false, isPlaying = false, playWhenReady = false, buffering = false) }
                 }
@@ -1012,39 +1173,39 @@ class PlaylistCoordinator(
     private fun loadLyricsAsync(songId: Long, cookie: String) {
         lyricJob?.cancel()
         lyricJob = scope.launch {
-            val lines = lyricRepository.loadBestEffort(songId, cookie)
+            val pack = lyricRepository.loadBestEffort(songId, cookie)
             if (_ui.value.currentTrack?.id == songId) {
-                _ui.update { it.copy(lyricLines = lines) }
+                _ui.update { it.withLyricPack(pack) }
             }
         }
     }
 
-    private fun ensureFmLookahead() {
-        if (!fmActive) return
+    private fun ensureRadioLookahead() {
+        if (!radioActive) return
         if (fmHydrateJob?.isActive == true) return
         val remaining = _ui.value.queue.size - _ui.value.index - 1
         if (remaining >= FM_AHEAD && !fmKickExtra) return
-        fmHydrateJob = scope.launch { hydrateFmLookahead() }
+        fmHydrateJob = scope.launch { hydrateRadioLookahead() }
     }
 
-    private suspend fun hydrateFmLookahead() {
+    private suspend fun hydrateRadioLookahead() {
         var requests = 0
-        while (currentCoroutineContext().isActive && fmActive && requests < FM_MAX_REQUESTS) {
+        while (currentCoroutineContext().isActive && radioActive && requests < FM_MAX_REQUESTS) {
             val remaining = _ui.value.queue.size - _ui.value.index - 1
             if (remaining >= FM_AHEAD) break
-            val batch = fetchPersonalFmBatch()
+            val batch = fetchRadioBatch()
             requests++
             if (batch.isEmpty()) break
-            if (!appendFmTracks(batch)) break
+            if (!appendRadioTracks(batch)) break
         }
-        if (currentCoroutineContext().isActive && fmActive && requests < FM_MAX_REQUESTS) {
-            val extra = fetchPersonalFmBatch()
+        if (currentCoroutineContext().isActive && radioActive && requests < FM_MAX_REQUESTS) {
+            val extra = fetchRadioBatch()
             requests++
-            if (extra.isNotEmpty()) appendFmTracks(extra)
+            if (extra.isNotEmpty()) appendRadioTracks(extra)
         }
         fmKickExtra = false
         refreshPeeksAndPrefetch()
-        if (pendingFmAdvance && fmActive) {
+        if (pendingFmAdvance && radioActive) {
             val ni = nextPlayableIndex(_ui.value.index)
             if (ni != null) {
                 pendingFmAdvance = false
@@ -1053,14 +1214,37 @@ class PlaylistCoordinator(
         }
     }
 
-    private fun appendFmTracks(tracks: List<TrackRow>): Boolean {
-        if (!fmActive || tracks.isEmpty()) return false
+    private fun appendRadioTracks(tracks: List<TrackRow>): Boolean {
+        if (!radioActive || tracks.isEmpty()) return false
         val seen = _ui.value.queue.mapTo(HashSet()) { it.id }
         val extra = tracks.filter { it.id > 0L && seen.add(it.id) }
         if (extra.isEmpty()) return false
         _ui.update { it.copy(queue = it.queue + extra) }
         persistSnapshot()
         return true
+    }
+
+    private suspend fun fetchRadioBatch(): List<TrackRow> =
+        if (intelligenceActive) fetchIntelligenceBatch() else fetchPersonalFmBatch()
+
+    private suspend fun fetchIntelligenceBatch(
+        songId: Long = _ui.value.currentTrack?.id ?: 0L,
+        playlistId: Long = _ui.value.sourcePlaylistId ?: 0L,
+        startSongId: Long = songId,
+    ): List<TrackRow> {
+        val cookie = sessionRepository.session.value?.cookie.orEmpty()
+        if (cookie.isBlank() || songId <= 0L || playlistId <= 0L) return emptyList()
+        return runCatching {
+            val json = withContext(Dispatchers.IO) {
+                userClient.playmodeIntelligenceList(
+                    songId = songId,
+                    playlistId = playlistId,
+                    cookie = cookie,
+                    startSongId = startSongId,
+                )
+            }
+            NcmHomeParse.intelligenceTracks(json)
+        }.getOrDefault(emptyList())
     }
 
     private suspend fun fetchPersonalFmBatch(): List<TrackRow> {
@@ -1077,9 +1261,7 @@ class PlaylistCoordinator(
         lyricJob?.cancel()
         errorRetryJob?.cancel()
         if (!keepPrefetch) prefetchJob?.cancel()
-        volumeFadeJob?.cancel()
-        volumeFadeJob = null
-        exoPlayer.volume = playbackVolume
+        persistentFocus.snapVolume()
     }
 
     private fun persistSnapshot() {
@@ -1123,8 +1305,8 @@ class PlaylistCoordinator(
     private fun canSeekNext(): Boolean {
         val i = _ui.value.index
         if (!_ui.value.hasQueue || i < 0) return false
-        if (fmActive) return true
-        return nextPlayableIndex(i) != null
+        if (radioActive) return true
+        return nextPlayableIndex(i, wrap = true) != null
     }
 
     private inner class QueueAwarePlayer(player: ExoPlayer) : ForwardingPlayer(player) {

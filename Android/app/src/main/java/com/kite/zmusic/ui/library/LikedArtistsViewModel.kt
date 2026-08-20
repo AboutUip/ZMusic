@@ -6,10 +6,9 @@ import androidx.lifecycle.viewModelScope
 import com.kite.zmusic.data.FollowedUser
 import com.kite.zmusic.data.LikedArtist
 import com.kite.zmusic.data.NcmArtistParse
-import com.kite.zmusic.data.NcmAuthClient
+import com.kite.zmusic.data.ArtistRepository
 import com.kite.zmusic.data.NcmJson
 import com.kite.zmusic.data.NcmLibraryParse
-import com.kite.zmusic.data.NcmUserClient
 import com.kite.zmusic.data.SessionRepository
 import com.kite.zmusic.ui.notice.IslandNoticeCenter
 import kotlinx.coroutines.CancellationException
@@ -46,8 +45,7 @@ data class LikedArtistsUi(
 class LikedArtistsViewModel(
     private val sessionRepository: SessionRepository,
     private val islandNotices: IslandNoticeCenter,
-    private val userClient: NcmUserClient = NcmUserClient(),
-    private val authClient: NcmAuthClient = NcmAuthClient(),
+    private val artists: ArtistRepository,
 ) : ViewModel() {
     private val _ui = MutableStateFlow(LikedArtistsUi())
     val ui: StateFlow<LikedArtistsUi> = _ui.asStateFlow()
@@ -147,7 +145,7 @@ class LikedArtistsViewModel(
         }
         viewModelScope.launch {
             try {
-                val json = userClient.artistSub(artist.id, follow = false, cookie)
+                val json = artists.subscribe(artist.id, follow = false, cookie)
                 val code = NcmJson.apiCode(json)
                 if (code == 301 || code == 302) {
                     restore(snapshot)
@@ -195,7 +193,7 @@ class LikedArtistsViewModel(
             )
         }
         try {
-            val json = userClient.artistSublist(session.cookie, limit = PageSize, offset = 0)
+            val json = artists.sublist(session.cookie, limit = PageSize, offset = 0)
             val (list, more) = NcmArtistParse.likedArtists(json, PageSize)
             _ui.update { state ->
                 state.copy(
@@ -260,7 +258,7 @@ class LikedArtistsViewModel(
                 }
                 return
             }
-            val json = userClient.userFollows(uid, session.cookie, limit = PageSize, offset = 0)
+            val json = artists.userFollows(uid, session.cookie, limit = PageSize, offset = 0)
             val (list, more) = NcmLibraryParse.followedUsers(json, PageSize)
             _ui.update { state ->
                 state.copy(
@@ -296,7 +294,7 @@ class LikedArtistsViewModel(
         if (uid <= 0L) return
         if (showLoading) _ui.update { it.copy(usersLoadingMore = true) }
         try {
-            val json = userClient.userFollows(
+            val json = artists.userFollows(
                 uid,
                 session.cookie,
                 limit = limit,
@@ -321,7 +319,7 @@ class LikedArtistsViewModel(
 
     private suspend fun resolveUid(cookie: String): Long {
         if (selfUid > 0L) return selfUid
-        val uid = NcmJson.userIdFromLoginStatus(authClient.loginStatus(cookie)) ?: 0L
+        val uid = artists.loginUserId(cookie)
         if (uid > 0L) selfUid = uid
         return uid
     }
@@ -330,7 +328,7 @@ class LikedArtistsViewModel(
         val session = sessionRepository.session.value ?: return
         if (showLoading) _ui.update { it.copy(loadingMore = true) }
         try {
-            val json = userClient.artistSublist(
+            val json = artists.sublist(
                 session.cookie,
                 limit = limit,
                 offset = _ui.value.artists.size,
@@ -426,11 +424,12 @@ private fun filterUsers(users: List<FollowedUser>, query: String): List<Followed
 class LikedArtistsViewModelFactory(
     private val sessionRepository: SessionRepository,
     private val islandNotices: IslandNoticeCenter,
+    private val artists: ArtistRepository,
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(LikedArtistsViewModel::class.java)) {
-            return LikedArtistsViewModel(sessionRepository, islandNotices) as T
+            return LikedArtistsViewModel(sessionRepository, islandNotices, artists) as T
         }
         error("Unknown ViewModel $modelClass")
     }

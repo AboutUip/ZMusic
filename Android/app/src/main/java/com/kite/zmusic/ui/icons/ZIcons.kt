@@ -2,14 +2,22 @@ package com.kite.zmusic.ui.icons
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.FormatAlignLeft
+import androidx.compose.material.icons.automirrored.rounded.FormatAlignRight
 import androidx.compose.material.icons.automirrored.rounded.Logout
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
+import androidx.compose.material.icons.rounded.AlignHorizontalCenter
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.BatteryChargingFull
 import androidx.compose.material.icons.rounded.BlurOn
+import androidx.compose.material.icons.rounded.CalendarMonth
+import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.LibraryAdd
 import androidx.compose.material.icons.rounded.LibraryAddCheck
-import androidx.compose.material.icons.rounded.CalendarMonth
+import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.LockOpen
+import androidx.compose.material.icons.rounded.Lyrics
+import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Close
@@ -20,10 +28,12 @@ import androidx.compose.material.icons.rounded.EmojiEvents
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.HideImage
+import androidx.compose.material.icons.rounded.Headset
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Mic
@@ -31,17 +41,25 @@ import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.PhotoCamera
+import androidx.compose.material.icons.rounded.ExpandMore
+import androidx.compose.material.icons.rounded.FormatAlignCenter
 import androidx.compose.material.icons.rounded.Forward5
 import androidx.compose.material.icons.rounded.Fullscreen
 import androidx.compose.material.icons.rounded.FullscreenExit
+import androidx.compose.material.icons.rounded.PictureInPictureAlt
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Radio
+import androidx.compose.material.icons.rounded.Remove
 import androidx.compose.material.icons.rounded.Replay5
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.SkipNext
+import androidx.compose.material.icons.rounded.SkipPrevious
+import androidx.compose.material.icons.rounded.Timer
+import androidx.compose.material.icons.rounded.Translate
 import androidx.compose.material.icons.rounded.VideoLibrary
+import androidx.compose.material.icons.rounded.VolunteerActivism
 import androidx.compose.material.icons.rounded.Wallpaper
 import androidx.compose.material.icons.rounded.WorkspacePremium
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -58,20 +76,28 @@ object ZIcons {
     val Search: ImageVector get() = Icons.Rounded.Search
     val Settings: ImageVector get() = Icons.Rounded.Settings
     val GraphicEq: ImageVector get() = Icons.Rounded.GraphicEq
+    val Headset: ImageVector get() = Icons.Rounded.Headset
     val Security: ImageVector get() = Icons.Rounded.Security
     val Notifications: ImageVector get() = Icons.Rounded.Notifications
     val Camera: ImageVector get() = Icons.Rounded.PhotoCamera
     val Battery: ImageVector get() = Icons.Rounded.BatteryChargingFull
     val BlurOn: ImageVector get() = Icons.Rounded.BlurOn
+    val DarkMode: ImageVector get() = Icons.Rounded.DarkMode
     val Info: ImageVector get() = Icons.Rounded.Info
+    val Lock: ImageVector get() = Icons.Rounded.Lock
+    val LockOpen: ImageVector get() = Icons.Rounded.LockOpen
+    val Lyrics: ImageVector get() = Icons.Rounded.Lyrics
     val Favorite: ImageVector get() = Icons.Rounded.Favorite
     val More: ImageVector get() = Icons.Rounded.MoreVert
+    val MoreHoriz: ImageVector get() = Icons.Rounded.MoreHoriz
+    val Comments: ImageVector get() = Icons.Outlined.ChatBubbleOutline
     val Check: ImageVector get() = Icons.Rounded.Check
     val Manage: ImageVector get() = Icons.Rounded.Checklist
     val Close: ImageVector get() = Icons.Rounded.Close
     val History: ImageVector get() = Icons.Rounded.History
     val Play: ImageVector get() = Icons.Rounded.PlayArrow
     val Pause: ImageVector get() = Icons.Rounded.Pause
+    val PictureInPicture: ImageVector get() = Icons.Rounded.PictureInPictureAlt
     val Replay5: ImageVector get() = Icons.Rounded.Replay5
     val Forward5: ImageVector get() = Icons.Rounded.Forward5
     val Back: ImageVector get() = Icons.AutoMirrored.Rounded.ArrowBack
@@ -80,9 +106,18 @@ object ZIcons {
     val Charts: ImageVector get() = Icons.Rounded.EmojiEvents
     val Playlist: ImageVector get() = Icons.AutoMirrored.Rounded.QueueMusic
     val Add: ImageVector get() = Icons.Rounded.Add
+    val Remove: ImageVector get() = Icons.Rounded.Remove
+    val AlignHorizontalCenter: ImageVector get() = Icons.Rounded.AlignHorizontalCenter
+    val FormatAlignLeft: ImageVector get() = Icons.AutoMirrored.Rounded.FormatAlignLeft
+    val FormatAlignCenter: ImageVector get() = Icons.Rounded.FormatAlignCenter
+    val FormatAlignRight: ImageVector get() = Icons.AutoMirrored.Rounded.FormatAlignRight
+    val ExpandMore: ImageVector get() = Icons.Rounded.ExpandMore
     val Server: ImageVector get() = Icons.Rounded.Dns
     val Logout: ImageVector get() = Icons.AutoMirrored.Rounded.Logout
     val SkipNext: ImageVector get() = Icons.Rounded.SkipNext
+    val SkipPrevious: ImageVector get() = Icons.Rounded.SkipPrevious
+    val Timer: ImageVector get() = Icons.Rounded.Timer
+    val Translate: ImageVector get() = Icons.Rounded.Translate
     val CollectPlaylist: ImageVector get() = Icons.Rounded.LibraryAdd
     val CollectedPlaylist: ImageVector get() = Icons.Rounded.LibraryAddCheck
     val Vip: ImageVector get() = Icons.Rounded.WorkspacePremium
@@ -91,6 +126,7 @@ object ZIcons {
     val ChevronLeft: ImageVector get() = Icons.Rounded.ChevronLeft
     val ChevronRight: ImageVector get() = Icons.Rounded.ChevronRight
     val Wallpaper: ImageVector get() = Icons.Rounded.Wallpaper
+    val Sponsor: ImageVector get() = Icons.Rounded.VolunteerActivism
     val HideImage: ImageVector get() = Icons.Rounded.HideImage
     val RelatedMv: ImageVector get() = Icons.Rounded.VideoLibrary
     val Fullscreen: ImageVector get() = Icons.Rounded.Fullscreen

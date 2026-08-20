@@ -462,6 +462,29 @@ class NcmUserClient(
         get("/personal_fm", mapOf("cookie" to cookie, "timestamp" to ts()))
     }
 
+    /**
+     * 心动模式 / 智能播放。`id` 种子曲，`pid` 所在歌单，`sid` 起播曲。
+     */
+    suspend fun playmodeIntelligenceList(
+        songId: Long,
+        playlistId: Long,
+        cookie: String,
+        startSongId: Long = songId,
+        count: Int = 50,
+    ): JSONObject = withContext(Dispatchers.IO) {
+        get(
+            "/playmode/intelligence/list",
+            mapOf(
+                "id" to songId.toString(),
+                "pid" to playlistId.toString(),
+                "sid" to startSongId.toString(),
+                "count" to count.toString(),
+                "cookie" to cookie,
+                "timestamp" to ts(),
+            ),
+        )
+    }
+
     suspend fun searchHotDetail(cookie: String): JSONObject = withContext(Dispatchers.IO) {
         get("/search/hot/detail", mapOf("cookie" to cookie, "timestamp" to ts()))
     }
@@ -571,7 +594,7 @@ class NcmUserClient(
 
     suspend fun lyric(songId: Long, cookie: String): JSONObject = withContext(Dispatchers.IO) {
         get(
-            "/lyric",
+            "/lyric/new",
             mapOf(
                 "id" to songId.toString(),
                 "cookie" to cookie,

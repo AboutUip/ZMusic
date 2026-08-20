@@ -13,6 +13,7 @@ import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
 import com.kite.zmusic.data.LyricRepository
+import com.kite.zmusic.data.NcmUserClient
 import com.kite.zmusic.data.SessionRepository
 import com.kite.zmusic.data.TrackRow
 import kotlinx.coroutines.CoroutineScope
@@ -38,10 +39,11 @@ import java.util.concurrent.atomic.AtomicBoolean
 class PlaybackBridge(
     context: Context,
     private val sessionRepository: SessionRepository,
+    userClient: NcmUserClient,
 ) {
     private val appContext = context.applicationContext
     private val stateStore = PlaybackStateStore(appContext)
-    val lyricRepository = LyricRepository(appContext)
+    val lyricRepository = LyricRepository(appContext, userClient)
     private val mainHandler = Handler(Looper.getMainLooper())
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
@@ -60,6 +62,9 @@ class PlaybackBridge(
     private val _spectrum = MutableStateFlow(AudioSpectrumBands.ZERO)
     val spectrum: StateFlow<AudioSpectrumBands> = _spectrum.asStateFlow()
 
+    private val _pendingOpenPlayer = MutableStateFlow(false)
+    val pendingOpenPlayer: StateFlow<Boolean> = _pendingOpenPlayer.asStateFlow()
+
     @Volatile
     var onBindSessionPlayer: ((Player) -> Unit)? = null
 
@@ -68,6 +73,13 @@ class PlaybackBridge(
 
     private val pending = CopyOnWriteArrayList<() -> Unit>()
     private val connecting = AtomicBoolean(false)
+
+    private val sleepTimerCtrl = SleepTimer(
+        scope = scope,
+        onStopNow = { runOnCoordinator { it.pauseForSleepTimer() } },
+        onWaitDeadline = { runOnCoordinator { it.onSleepWaitDeadline() } },
+    )
+    val sleepTimer: StateFlow<SleepTimerUi> = sleepTimerCtrl.ui
 
     init {
         // 冷启动：有队列快照时立刻补歌词，不必等点播放才拉起 Service
@@ -78,10 +90,23 @@ class PlaybackBridge(
     fun sessionRepository(): SessionRepository = sessionRepository
     fun lyricRepository(): LyricRepository = lyricRepository
 
+    /** 通知栏点进 App：主壳打开全屏播放器。 */
+    fun requestOpenPlayer() {
+        _pendingOpenPlayer.value = true
+    }
+
+    fun consumeOpenPlayerRequest() {
+        _pendingOpenPlayer.value = false
+    }
+
     /** Service onCreate：注册 Coordinator 并刷 pending。 */
     @Synchronized
     fun attachCoordinator(coord: PlaylistCoordinator) {
         coordinator = coord
+        coord.sleepTimer = sleepTimerCtrl
+        if (sleepTimerCtrl.ui.value.pendingStopAfterTrack) {
+            coord.pauseForSleepTimer()
+        }
         uiCollectJob?.cancel()
         uiCollectJob = scope.launch {
             coord.ui.collectLatest { publishFromCoordinator(it, isExplicitClear = false) }
@@ -105,6 +130,7 @@ class PlaybackBridge(
         spectrumCollectJob?.cancel()
         spectrumCollectJob = null
         _spectrum.value = AudioSpectrumBands.ZERO
+        coord.sleepTimer = null
         coordinator = null
         // 保留队列快照到 UI（暂停态）；补齐 peek，避免杀进程后仅 hydrate 时无法手势切歌
         val kept = _ui.value.copy(
@@ -135,18 +161,20 @@ class PlaybackBridge(
     /** 当前曲目无歌词时异步补齐（磁盘优先，不依赖是否正在播放）。 */
     private fun ensureLyricsForCurrentTrack() {
         val trackId = _ui.value.currentTrack?.id ?: return
-        if (_ui.value.lyricLines.isNotEmpty()) return
-        lyricRepository.peekMemory(trackId)?.takeIf { it.isNotEmpty() }?.let { cached ->
-            _ui.value = _ui.value.copy(lyricLines = cached)
+        lyricRepository.peekPack(trackId)?.takeIf { it.translationResolved }?.let { cached ->
+            if (cached.original.isNotEmpty()) {
+                _ui.value = _ui.value.withLyricPack(cached)
+            }
             return
         }
+        if (_ui.value.lyricLines.isNotEmpty() && _ui.value.translatedLyricLines.isNotEmpty()) return
         lyricJob?.cancel()
         lyricJob = scope.launch {
             val cookie = sessionRepository.session.value?.cookie.orEmpty()
-            val lines = lyricRepository.loadBestEffort(trackId, cookie)
-            if (lines.isEmpty()) return@launch
+            val pack = lyricRepository.loadBestEffort(trackId, cookie)
+            if (pack.original.isEmpty()) return@launch
             if (_ui.value.currentTrack?.id == trackId) {
-                _ui.value = _ui.value.copy(lyricLines = lines)
+                _ui.value = _ui.value.withLyricPack(pack)
             }
         }
     }
@@ -157,10 +185,18 @@ class PlaybackBridge(
         sourcePlaylistId: Long? = null,
         sourcePlaylistTitle: String? = null,
         fmSession: Boolean = false,
+        intelligenceSession: Boolean = false,
     ) {
         musicWillPlay?.invoke()
         runOnCoordinator {
-            it.playQueue(tracks, startIndex, sourcePlaylistId, sourcePlaylistTitle, fmSession)
+            it.playQueue(
+                tracks,
+                startIndex,
+                sourcePlaylistId,
+                sourcePlaylistTitle,
+                fmSession,
+                intelligenceSession,
+            )
         }
     }
 
@@ -169,15 +205,35 @@ class PlaybackBridge(
         runOnCoordinator { it.startPersonalFm(onStarted) }
     }
 
+    fun startIntelligence(
+        songId: Long,
+        playlistId: Long,
+        playlistTitle: String? = null,
+        startSongId: Long = songId,
+        onStarted: () -> Unit = {},
+    ) {
+        musicWillPlay?.invoke()
+        runOnCoordinator {
+            it.startIntelligence(songId, playlistId, playlistTitle, startSongId, onStarted)
+        }
+    }
+
+    fun startIntelligenceFromContext(onStarted: () -> Unit = {}) {
+        musicWillPlay?.invoke()
+        runOnCoordinator { it.startIntelligenceFromContext(onStarted) }
+    }
+
     fun playIndex(index: Int) = runOnCoordinator { it.playIndex(index) }
 
     /** 歌单缓存补全后同步扩展当前播放队列（同源 playlistId）。 */
     fun expandQueueFromSourcePlaylist(playlistId: Long, tracks: List<TrackRow>) {
+        if (_ui.value.intelligenceActive) return
         runOnCoordinator { it.expandQueueFromSourcePlaylist(playlistId, tracks) }
         // Service 未起时：仅改 Bridge 快照，保证曲谱列表先变完整
         val ui = _ui.value
         if (coordinator == null &&
             ui.hasQueue &&
+            !ui.intelligenceActive &&
             ui.sourcePlaylistId == playlistId &&
             tracks.size > ui.queue.size
         ) {
@@ -195,6 +251,7 @@ class PlaybackBridge(
     }
 
     fun clearQueue() {
+        sleepTimerCtrl.cancel()
         stateStore.clear()
         coordinator?.clearQueue()
         publishFromCoordinator(
@@ -250,7 +307,20 @@ class PlaybackBridge(
     /** 竖屏评论打开时挂起曲末自动切歌；关闭后若已曲末则进下一首。 */
     fun setHoldAutoAdvance(hold: Boolean) = runOnCoordinator { it.setHoldAutoAdvance(hold) }
 
+    fun startSleepTimer(minutes: Int, waitForTrackEnd: Boolean) {
+        sleepTimerCtrl.start(minutes, waitForTrackEnd)
+        ensureController()
+    }
+
+    fun cancelSleepTimer() {
+        sleepTimerCtrl.cancel()
+        runOnCoordinator { it.restoreRepeatAfterSleepCancel() }
+    }
+
+    fun setSleepTimerWaitForTrackEnd(wait: Boolean) = sleepTimerCtrl.setWaitForTrackEnd(wait)
+
     fun stopForLogout() {
+        sleepTimerCtrl.cancel()
         musicWillPlay?.invoke()
         stateStore.clear()
         val c = coordinator
@@ -273,21 +343,28 @@ class PlaybackBridge(
             return
         }
         // Coordinator 快照不含歌词时，保留 Bridge 已加载的同曲歌词
-        val merged = if (
-            !isExplicitClear &&
-            incoming.lyricLines.isEmpty() &&
-            _ui.value.lyricLines.isNotEmpty() &&
+        val sameTrack = !isExplicitClear &&
             incoming.currentTrack?.id != null &&
             incoming.currentTrack?.id == _ui.value.currentTrack?.id
-        ) {
-            incoming.copy(lyricLines = _ui.value.lyricLines)
+        val merged = if (sameTrack) {
+            incoming.copy(
+                lyricLines = incoming.lyricLines.ifEmpty { _ui.value.lyricLines },
+                translatedLyricLines = incoming.translatedLyricLines.ifEmpty {
+                    _ui.value.translatedLyricLines
+                },
+                wordLyricLines = incoming.wordLyricLines.ifEmpty { _ui.value.wordLyricLines },
+                translatedWordLyricLines = incoming.translatedWordLyricLines.ifEmpty {
+                    _ui.value.translatedWordLyricLines
+                },
+            )
         } else {
             incoming
         }
         _ui.value = merged
         if (merged.queue.isNotEmpty()) {
             stateStore.save(merged)
-            if (merged.lyricLines.isEmpty()) {
+            val pack = merged.currentTrack?.id?.let { lyricRepository.peekPack(it) }
+            if (merged.lyricLines.isEmpty() || pack?.translationResolved != true) {
                 ensureLyricsForCurrentTrack()
             }
         } else if (isExplicitClear) {
@@ -363,6 +440,7 @@ class PlaybackBridge(
     }
 
     fun shutdown() {
+        sleepTimerCtrl.cancel()
         releaseController()
         scope.cancel()
     }

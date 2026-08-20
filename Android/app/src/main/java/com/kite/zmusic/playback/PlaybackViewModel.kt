@@ -39,17 +39,40 @@ class PlaybackViewModel(
             initialValue = AudioSpectrumBands.ZERO,
         )
 
+    val pendingOpenPlayer: StateFlow<Boolean> = bridge.pendingOpenPlayer
+
+    fun consumeOpenPlayerRequest() = bridge.consumeOpenPlayerRequest()
+
     fun playQueue(
         tracks: List<TrackRow>,
         startIndex: Int,
         sourcePlaylistId: Long? = null,
         sourcePlaylistTitle: String? = null,
         fmSession: Boolean = false,
+        intelligenceSession: Boolean = false,
     ) {
-        bridge.playQueue(tracks, startIndex, sourcePlaylistId, sourcePlaylistTitle, fmSession)
+        bridge.playQueue(
+            tracks,
+            startIndex,
+            sourcePlaylistId,
+            sourcePlaylistTitle,
+            fmSession,
+            intelligenceSession,
+        )
     }
 
     fun startPersonalFm(onStarted: () -> Unit = {}) = bridge.startPersonalFm(onStarted)
+
+    fun startIntelligence(
+        songId: Long,
+        playlistId: Long,
+        playlistTitle: String? = null,
+        startSongId: Long = songId,
+        onStarted: () -> Unit = {},
+    ) = bridge.startIntelligence(songId, playlistId, playlistTitle, startSongId, onStarted)
+
+    fun startIntelligenceFromContext(onStarted: () -> Unit = {}) =
+        bridge.startIntelligenceFromContext(onStarted)
 
     fun playIndex(index: Int) = bridge.playIndex(index)
 

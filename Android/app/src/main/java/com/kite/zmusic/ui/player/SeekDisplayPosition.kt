@@ -7,8 +7,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import kotlin.math.abs
 
 /** 歌词点选 / 大幅跳转：进度条过渡时长区间。 */
@@ -26,7 +29,8 @@ private fun seekJumpDurationMs(distanceMs: Float): Int =
 /**
  * 播放进度展示位：
  * - 同曲小步进：瞬时跟随
- * - 切歌、归零、歌词点选等大幅跳转（前进 / 后退均）：动画过渡到目标
+ * - 拖进度条：跟手贴合，松手后不再从旧点 / 0 重播一遍
+ * - 切歌、歌词点选等大幅跳转：动画过渡到目标
  */
 @Composable
 fun rememberSeekDisplayPositionMs(
@@ -34,9 +38,20 @@ fun rememberSeekDisplayPositionMs(
     positionMs: Long,
     loadPending: Boolean,
     seeking: Boolean = false,
+    scrubPositionMs: Long = positionMs,
 ): Long {
     val anim = remember { Animatable(positionMs.toFloat().coerceAtLeast(0f)) }
     var boundTrackId by remember { mutableLongStateOf(trackId) }
+    var holdAfterScrub by remember { mutableStateOf(false) }
+    val scrubRef = rememberUpdatedState(scrubPositionMs)
+
+    LaunchedEffect(seeking) {
+        if (!seeking) return@LaunchedEffect
+        holdAfterScrub = true
+        snapshotFlow { scrubRef.value }.collect { ms ->
+            anim.snapTo(ms.toFloat().coerceAtLeast(0f))
+        }
+    }
 
     LaunchedEffect(trackId, positionMs, loadPending, seeking) {
         if (seeking) return@LaunchedEffect
@@ -47,12 +62,24 @@ fun rememberSeekDisplayPositionMs(
         val trackChanged = trackId != boundTrackId
         if (trackChanged) {
             boundTrackId = trackId
+            holdAfterScrub = false
         }
 
-        // 前进 / 后退的大幅跳转都动画；小步进（跟播）仍 snap
+        if (holdAfterScrub) {
+            holdAfterScrub = false
+            // 松手：进度条已在手指位置。player 可能仍是旧点或短暂报 0，保住展示。
+            if (!trackChanged &&
+                (target <= 48f && from > 64f || from - target > SeekFollowEpsilonMs)
+            ) {
+                return@LaunchedEffect
+            }
+            anim.snapTo(target)
+            return@LaunchedEffect
+        }
+
         val shouldAnimate = distance > SeekFollowEpsilonMs ||
             (trackChanged && distance > 64f) ||
-            (target <= 48f && from - target > 64f)
+            (trackChanged && target <= 48f && from - target > 64f)
 
         if (shouldAnimate) {
             anim.animateTo(

@@ -22,7 +22,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -30,22 +29,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kite.zmusic.data.AudioQuality
 import com.kite.zmusic.ui.main.MainPalette
+import com.kite.zmusic.ui.main.pageSheetHazeStyle
 import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.HazeStyle
-import dev.chrisbanes.haze.HazeTint
 import dev.chrisbanes.haze.hazeEffect
 
 private val QualityPanelShape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp)
-private val QualityGlassStyle = HazeStyle(
-    backgroundColor = MainPalette.Page,
-    tints = listOf(
-        HazeTint(Color.White.copy(alpha = 0.78f)),
-        HazeTint(MainPalette.Page.copy(alpha = 0.52f)),
-    ),
-    blurRadius = 56.dp,
-    noiseFactor = 0.08f,
-    fallbackTint = HazeTint(MainPalette.Page.copy(alpha = 0.94f)),
-)
 
 /**
  * 竖屏音源面板：固定约 1/3 屏高，九档网格，选择即写入全局偏好。
@@ -74,7 +62,7 @@ fun PortraitQualitySheet(
             Box(
                 Modifier
                     .matchParentSize()
-                    .hazeEffect(state = hazeState, style = QualityGlassStyle),
+                    .hazeEffect(state = hazeState, style = pageSheetHazeStyle()),
             )
         } else {
             Box(
@@ -86,7 +74,7 @@ fun PortraitQualitySheet(
         Box(
             Modifier
                 .matchParentSize()
-                .background(Color.White.copy(alpha = 0.22f)),
+                .background(MainPalette.SheetWash),
         )
         Column(
             Modifier

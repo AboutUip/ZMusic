@@ -8,7 +8,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.kite.zmusic.data.SessionRepository
 import com.kite.zmusic.data.TrackRow
-import com.kite.zmusic.ui.catalog.MainOverlay
+import com.kite.zmusic.ui.main.MainOverlay
 import com.kite.zmusic.ui.features.FeaturesScreen
 import com.kite.zmusic.ui.home.HomeScreen
 import com.kite.zmusic.ui.library.LibraryScreen
@@ -22,6 +22,7 @@ fun MainSectionContent(
     onOpenOverlay: (MainOverlay) -> Unit = {},
     onOpenProfile: () -> Unit = {},
     onStartFm: () -> Unit = {},
+    onStartIntelligence: () -> Unit = {},
     onPlaySong: (Long) -> Unit = {},
     onHint: (String) -> Unit = {},
     contentBottomInset: Dp = 0.dp,
@@ -48,6 +49,7 @@ fun MainSectionContent(
                 contentBottomInset = contentBottomInset,
                 onOpenOverlay = onOpenOverlay,
                 onStartFm = onStartFm,
+                onStartIntelligence = onStartIntelligence,
                 modifier = pageMod,
             )
         }

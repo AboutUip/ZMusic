@@ -65,7 +65,6 @@ import androidx.compose.ui.zIndex
 import com.kite.zmusic.data.PlayerDisplayPrefs
 import com.kite.zmusic.data.TitleLineStyle
 import com.kite.zmusic.data.TrackRow
-import com.kite.zmusic.data.VinylPlateColors
 import com.kite.zmusic.ui.common.UrlImageCache
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeStyle

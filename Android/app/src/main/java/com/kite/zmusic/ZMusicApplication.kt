@@ -1,172 +1,103 @@
 package com.kite.zmusic
 
 import android.app.Application
+import android.content.res.Configuration
 import com.kite.zmusic.data.AlbumCollectionRepository
 import com.kite.zmusic.data.AlbumTracksCache
 import com.kite.zmusic.data.AudioQualityStore
+import com.kite.zmusic.data.LyricOverlayStore
+import com.kite.zmusic.data.LyricRenderStore
+import com.kite.zmusic.data.PersistentPlaybackStore
 import com.kite.zmusic.data.ChromeGlassStore
+import com.kite.zmusic.data.ThemeStore
+import com.kite.zmusic.data.HomeFeedRepository
 import com.kite.zmusic.data.LibraryHomeRepository
 import com.kite.zmusic.data.LikedPlaylistRepository
-import com.kite.zmusic.data.HomeFeedRepository
 import com.kite.zmusic.data.NcmUserClient
-import com.kite.zmusic.data.PlaylistEditor
 import com.kite.zmusic.data.PlaylistCollectionRepository
+import com.kite.zmusic.data.PlaylistEditor
 import com.kite.zmusic.data.PlaylistTracksCache
 import com.kite.zmusic.data.SearchHistoryRepository
 import com.kite.zmusic.data.SessionRepository
 import com.kite.zmusic.data.SessionWarmup
 import com.kite.zmusic.data.TrackExportRepository
 import com.kite.zmusic.data.UserSpaceBackgroundStore
+import com.kite.zmusic.overlay.LyricOverlayController
 import com.kite.zmusic.playback.MvPlayback
 import com.kite.zmusic.playback.PlaybackBridge
+import com.kite.zmusic.playback.PlaybackQueueSync
 import com.kite.zmusic.ui.notice.IslandNoticeCenter
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.launch
+import com.kite.zmusic.ui.theme.MainColors
+import com.kite.zmusic.ui.theme.MainPalette
 
 class ZMusicApplication : Application() {
-    lateinit var sessionRepository: SessionRepository
-        private set
-    lateinit var audioQualityStore: AudioQualityStore
-        private set
-    lateinit var chromeGlassStore: ChromeGlassStore
-        private set
-    lateinit var playbackBridge: PlaybackBridge
-        private set
-    lateinit var likedPlaylistRepository: LikedPlaylistRepository
-        private set
-    lateinit var homeFeedRepository: HomeFeedRepository
-        private set
-    lateinit var playlistTracksCache: PlaylistTracksCache
-        private set
-    lateinit var albumTracksCache: AlbumTracksCache
-        private set
-    lateinit var searchHistoryRepository: SearchHistoryRepository
-        private set
-    lateinit var playlistCollectionRepository: PlaylistCollectionRepository
-        private set
-    lateinit var albumCollectionRepository: AlbumCollectionRepository
-        private set
-    lateinit var libraryHomeRepository: LibraryHomeRepository
-        private set
-    lateinit var userSpaceBackgroundStore: UserSpaceBackgroundStore
-        private set
-    lateinit var sessionWarmup: SessionWarmup
-        private set
-    lateinit var islandNoticeCenter: IslandNoticeCenter
-        private set
-    lateinit var trackExportRepository: TrackExportRepository
-        private set
-    lateinit var playlistEditor: PlaylistEditor
-        private set
-    lateinit var mvPlayback: MvPlayback
+    lateinit var container: AppContainer
         private set
 
-    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    val ncmUserClient: NcmUserClient get() = container.ncmUserClient
+    val ncmAuthClient get() = container.ncmAuthClient
+    val sessionRepository: SessionRepository get() = container.sessionRepository
+    val audioQualityStore: AudioQualityStore get() = container.audioQualityStore
+    val persistentPlaybackStore: PersistentPlaybackStore get() = container.persistentPlaybackStore
+    val lyricRenderStore: LyricRenderStore get() = container.lyricRenderStore
+    val lyricOverlayStore: LyricOverlayStore get() = container.lyricOverlayStore
+    val chromeGlassStore: ChromeGlassStore get() = container.chromeGlassStore
+    val themeStore: ThemeStore get() = container.themeStore
+    val chromeWallpaperStore get() = container.chromeWallpaperStore
+    val playbackBridge: PlaybackBridge get() = container.playbackBridge
+    val likedPlaylistRepository: LikedPlaylistRepository get() = container.likedPlaylistRepository
+    val homeFeedRepository: HomeFeedRepository get() = container.homeFeedRepository
+    val playlistTracksCache: PlaylistTracksCache get() = container.playlistTracksCache
+    val albumTracksCache: AlbumTracksCache get() = container.albumTracksCache
+    val searchHistoryRepository: SearchHistoryRepository get() = container.searchHistoryRepository
+    val playlistCollectionRepository: PlaylistCollectionRepository
+        get() = container.playlistCollectionRepository
+    val albumCollectionRepository: AlbumCollectionRepository get() = container.albumCollectionRepository
+    val libraryHomeRepository: LibraryHomeRepository get() = container.libraryHomeRepository
+    val userSpaceBackgroundStore: UserSpaceBackgroundStore get() = container.userSpaceBackgroundStore
+    val sessionWarmup: SessionWarmup get() = container.sessionWarmup
+    val islandNoticeCenter: IslandNoticeCenter get() = container.islandNoticeCenter
+    val trackExportRepository: TrackExportRepository get() = container.trackExportRepository
+    val playlistEditor: PlaylistEditor get() = container.playlistEditor
+    val mvPlayback: MvPlayback get() = container.mvPlayback
+    val songRepository get() = container.songRepository
+    val catalogRepository get() = container.catalogRepository
+    val commentsRepository get() = container.commentsRepository
+    val searchRepository get() = container.searchRepository
+    val artistRepository get() = container.artistRepository
+
+    private lateinit var queueSync: PlaybackQueueSync
+    private lateinit var lyricOverlayController: LyricOverlayController
 
     override fun onCreate() {
         super.onCreate()
-        sessionRepository = SessionRepository(this)
-        audioQualityStore = AudioQualityStore(this)
-        chromeGlassStore = ChromeGlassStore(this)
-        playbackBridge = PlaybackBridge(this, sessionRepository)
-        likedPlaylistRepository = LikedPlaylistRepository(this, sessionRepository)
-        homeFeedRepository = HomeFeedRepository(sessionRepository)
-        playlistTracksCache = PlaylistTracksCache(this)
-        albumTracksCache = AlbumTracksCache(this)
-        searchHistoryRepository = SearchHistoryRepository(this)
-        playlistCollectionRepository = PlaylistCollectionRepository()
-        albumCollectionRepository = AlbumCollectionRepository()
-        libraryHomeRepository = LibraryHomeRepository(
-            sessionRepository,
-            likedPlaylistRepository,
-            playlistCollectionRepository,
-            albumCollectionRepository,
+        container = AppContainer(this)
+        val night = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK ==
+            Configuration.UI_MODE_NIGHT_YES
+        MainPalette.bind(
+            if (themeStore.current().resolveDark(night)) MainColors.Dark else MainColors.Light,
         )
-        userSpaceBackgroundStore = UserSpaceBackgroundStore(this)
-        sessionWarmup = SessionWarmup(
-            sessionRepository,
-            onUserId = { uid -> playlistCollectionRepository.setSelfUserId(uid) },
-        )
-        islandNoticeCenter = IslandNoticeCenter()
-        trackExportRepository = TrackExportRepository(this, audioQualityStore)
-        playlistEditor = PlaylistEditor(
-            sessionRepository,
-            NcmUserClient(),
-            playlistCollectionRepository,
-            playlistTracksCache,
-            likedPlaylistRepository,
-            libraryHomeRepository,
-        )
-        mvPlayback = MvPlayback(this, sessionRepository, playbackBridge)
         playbackBridge.musicWillPlay = { mvPlayback.stop() }
-        wirePlaylistQueueSync()
-        wirePlaybackQueueAbsorb()
+        queueSync = PlaybackQueueSync(
+            likedPlaylistRepository = likedPlaylistRepository,
+            playlistTracksCache = playlistTracksCache,
+            sessionRepository = sessionRepository,
+            playbackBridge = playbackBridge,
+        )
+        queueSync.start()
+        lyricOverlayController = LyricOverlayController(
+            app = this,
+            store = lyricOverlayStore,
+            playback = playbackBridge,
+            mvPlayback = mvPlayback,
+        )
+        lyricOverlayController.start()
     }
 
-    fun isSourcePlaylistComplete(playlistId: Long): Boolean {
-        if (playlistId <= 0L) return true
-        likedPlaylistRepository.peek()?.takeIf { it.playlistId == playlistId }?.let {
-            return it.complete
-        }
-        return playlistTracksCache.peek(playlistId)?.complete ?: true
-    }
+    fun isSourcePlaylistComplete(playlistId: Long): Boolean =
+        queueSync.isSourcePlaylistComplete(playlistId)
 
-    /** 按分页缓存把同源歌单补到至少 [minCount] 首；[wirePlaylistQueueSync] 会扩播放队列。 */
     fun hydrateSourcePlaylist(playlistId: Long, minCount: Int) {
-        if (playlistId <= 0L || minCount <= 0) return
-        appScope.launch {
-            val liked = likedPlaylistRepository.peek()
-            if (liked != null && liked.playlistId == playlistId) {
-                likedPlaylistRepository.ensureLoadedThrough(minCount)
-                return@launch
-            }
-            val cookie = sessionRepository.session.value?.cookie.orEmpty()
-            if (cookie.isBlank()) return@launch
-            val title = playlistTracksCache.peek(playlistId)?.title.orEmpty()
-            runCatching {
-                playlistTracksCache.ensureLoadedThrough(playlistId, title, cookie, minCount)
-            }
-        }
-    }
-
-    /** 歌单后台补全 → 同步扩展当前播放队列（横屏曲谱等依赖 queue）。 */
-    private fun wirePlaylistQueueSync() {
-        appScope.launch {
-            likedPlaylistRepository.snapshot.collectLatest { snap ->
-                if (snap == null || snap.playlistId <= 0L || snap.tracks.isEmpty()) return@collectLatest
-                playbackBridge.expandQueueFromSourcePlaylist(snap.playlistId, snap.tracks)
-            }
-        }
-        appScope.launch {
-            playlistTracksCache.updates.collect { entry ->
-                if (entry.tracks.isEmpty()) return@collect
-                playbackBridge.expandQueueFromSourcePlaylist(entry.playlistId, entry.tracks)
-            }
-        }
-    }
-
-    /** 播放页（曲谱 / 黑胶）把队列补全后，写回歌单缓存，避免退出仍停在首屏 40 首。 */
-    private fun wirePlaybackQueueAbsorb() {
-        appScope.launch {
-            playbackBridge.ui
-                .map { ui -> ui.sourcePlaylistId to ui.queue.size }
-                .distinctUntilChanged()
-                .collect { (pid, size) ->
-                    if (pid == null || pid <= 0L || size <= 1) return@collect
-                    val queue = playbackBridge.ui.value.queue
-                    if (queue.size < size) return@collect
-                    val liked = likedPlaylistRepository.peek()
-                    if (liked != null && liked.playlistId == pid) {
-                        runCatching { likedPlaylistRepository.absorbIfLonger(queue) }
-                    } else {
-                        runCatching { playlistTracksCache.absorbIfLonger(pid, queue) }
-                    }
-                }
-        }
+        queueSync.hydrateSourcePlaylist(playlistId, minCount)
     }
 }

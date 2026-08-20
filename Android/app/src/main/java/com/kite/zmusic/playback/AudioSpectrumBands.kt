@@ -8,6 +8,11 @@ data class AudioSpectrumBands(
     val mid: Float = 0f,
     val high: Float = 0f,
 ) {
+    fun quantized(steps: Int = 32): AudioSpectrumBands {
+        fun q(v: Float): Float = (v.coerceIn(0f, 1f) * steps).toInt() / steps.toFloat()
+        return AudioSpectrumBands(q(low), q(mid), q(high))
+    }
+
     companion object {
         val ZERO = AudioSpectrumBands()
     }

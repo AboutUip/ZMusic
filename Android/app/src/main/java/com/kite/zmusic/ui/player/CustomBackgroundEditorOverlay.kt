@@ -79,7 +79,6 @@ import androidx.compose.ui.unit.sp
 import com.kite.zmusic.data.PlayerBackgroundPreset
 import com.kite.zmusic.data.PlayerDisplayPrefs
 import com.kite.zmusic.data.TrackRow
-import com.kite.zmusic.data.VinylPlateColors
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch

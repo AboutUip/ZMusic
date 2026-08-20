@@ -1,11 +1,20 @@
 package com.kite.zmusic.data
 
+/** 逐字歌词中的一个字/词。 */
+data class LyricWord(
+    val timeMs: Long,
+    val durationMs: Long,
+    val text: String,
+)
+
 /**
  * 网易云 [mm:ss.xx] / [mm:ss] 行歌词解析。
+ * [words] 非空表示来自 `yrc` / `ytlrc`，可供逐字着色。
  */
 data class LrcLine(
     val timeMs: Long,
     val text: String,
+    val words: List<LyricWord> = emptyList(),
 )
 
 object LrcParser {

@@ -4,7 +4,6 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.os.Build
-import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -54,7 +53,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
@@ -74,16 +72,24 @@ import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kite.zmusic.ZMusicApplication
-import com.kite.zmusic.data.NcmLibraryParse
-import com.kite.zmusic.data.NcmUserClient
+import com.kite.zmusic.data.ChromeGlassMode
 import com.kite.zmusic.data.SessionRepository
 import com.kite.zmusic.data.TrackRow
 import com.kite.zmusic.playback.MvPlayback
-import com.kite.zmusic.playback.MvUiState
 import com.kite.zmusic.playback.PlaybackViewModel
 import com.kite.zmusic.ui.artist.resolveTrackArtists
-import com.kite.zmusic.ui.catalog.CatalogOverlayHost
-import com.kite.zmusic.ui.catalog.MainOverlay
+import com.kite.zmusic.ui.chrome.ChromeWallpaperLayer
+import com.kite.zmusic.ui.chrome.LocalChromeWallpaperFrame
+import com.kite.zmusic.ui.chrome.LocalChromeWallpaperPainted
+import com.kite.zmusic.ui.chrome.LocalWallpaperViewport
+import com.kite.zmusic.ui.chrome.WallpaperViewport
+import com.kite.zmusic.ui.chrome.chromePage
+import com.kite.zmusic.ui.chrome.chromeWallpaperSurface
+import com.kite.zmusic.ui.common.PredictiveBackAxis
+import com.kite.zmusic.ui.common.predictiveBackLayer
+import com.kite.zmusic.ui.common.rememberPredictiveBackUi
+import com.kite.zmusic.ui.main.CatalogOverlayHost
+import com.kite.zmusic.ui.main.MainOverlay
 import com.kite.zmusic.ui.catalog.PlaylistManageBar
 import com.kite.zmusic.ui.catalog.PlaylistManageBridge
 import com.kite.zmusic.ui.library.SpaceDarkBarsProgress
@@ -175,10 +181,20 @@ fun MainShell(
     val playerHomePx = remember { mutableIntStateOf(0) }
     var playerLayerVisible by remember { mutableStateOf(false) }
     val density = LocalDensity.current
-    val liveCompact =
-        if (compactDragging.value) compactDrag.floatValue else compactAnim.value
+    val compactSettling = remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val app = context.applicationContext as ZMusicApplication
+    val mvActive by remember(app.mvPlayback) {
+        app.mvPlayback.ui.map { it.active }.distinctUntilChanged()
+    }.collectAsStateWithLifecycle(app.mvPlayback.ui.value.active)
+    val scope = rememberCoroutineScope()
+    // 布局用的压缩进度：滚动跟手时不读每帧 drag，避免掀开 Pager 里的首页。
     val compactProgress =
-        if (showFullPlayer) dockCompactHold.floatValue else liveCompact
+        if (showFullPlayer || compactDragging.value || compactSettling.value) {
+            dockCompactHold.floatValue
+        } else {
+            compactAnim.value
+        }
 
     val nestedScroll = remember {
         object : NestedScrollConnection {
@@ -219,17 +235,16 @@ fun MainShell(
                     else -> if (current >= 0.5f) 1f else 0f
                 }
                 compactDragging.value = false
+                compactSettling.value = true
                 compactAnim.snapTo(current)
                 compactAnim.animateTo(target, DockSpring)
+                dockCompactHold.floatValue = target
+                compactSettling.value = false
                 return Velocity.Zero
             }
         }
     }
 
-    val context = LocalContext.current
-    val app = context.applicationContext as ZMusicApplication
-    val mvUi by app.mvPlayback.ui.collectAsStateWithLifecycle()
-    val scope = rememberCoroutineScope()
     val navBarLive = remember { mutableStateOf(0.dp) }
 
     fun rememberDockRestBottom(navBottom: Dp) {
@@ -241,7 +256,7 @@ fun MainShell(
         val dockPart = if (landscape || overlay != null) {
             0.dp
         } else {
-            lerp(FloatingDockHeight, FloatingDockCompactHeight, liveCompact) +
+            lerp(FloatingDockHeight, FloatingDockCompactHeight, compactProgress) +
                 FloatingChromeGap
         }
         return with(density) {
@@ -254,7 +269,8 @@ fun MainShell(
     }
 
     fun captureDockForPlayer() {
-        dockCompactHold.floatValue = liveCompact
+        dockCompactHold.floatValue =
+            if (compactDragging.value) compactDrag.floatValue else compactAnim.value
         compactDragging.value = false
         rememberDockRestBottom(navBarLive.value)
         if (playerHomePx.intValue <= 0) {
@@ -274,8 +290,22 @@ fun MainShell(
         }
         showFullPlayer = false
     }
+
+    val pendingOpenPlayer by playback.pendingOpenPlayer.collectAsStateWithLifecycle()
+    LaunchedEffect(pendingOpenPlayer, playingTrackId, mvActive) {
+        if (!pendingOpenPlayer) return@LaunchedEffect
+        if (mvActive) {
+            playback.consumeOpenPlayerRequest()
+            return@LaunchedEffect
+        }
+        if (playingTrackId > 0L) {
+            playback.consumeOpenPlayerRequest()
+            openFullPlayer()
+        }
+    }
     var pendingPlay by remember { mutableStateOf<PendingPlayRequest?>(null) }
     var pendingFm by remember { mutableStateOf(false) }
+    var pendingIntelligenceFromContext by remember { mutableStateOf(false) }
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
@@ -283,6 +313,8 @@ fun MainShell(
         pendingPlay = null
         val startFm = pendingFm
         pendingFm = false
+        val intelCtx = pendingIntelligenceFromContext
+        pendingIntelligenceFromContext = false
         if (pending != null) {
             playback.playQueue(pending.tracks, pending.startIndex, pending.playlistId, pending.playlistTitle)
             openFullPlayer()
@@ -291,6 +323,11 @@ fun MainShell(
             }
         } else if (startFm) {
             playback.startPersonalFm { openFullPlayer() }
+            if (!granted) {
+                context.showIslandNotice("未开启通知时，系统可能在息屏后限制后台播放")
+            }
+        } else if (intelCtx) {
+            playback.startIntelligenceFromContext { openFullPlayer() }
             if (!granted) {
                 context.showIslandNotice("未开启通知时，系统可能在息屏后限制后台播放")
             }
@@ -333,12 +370,27 @@ fun MainShell(
         playback.startPersonalFm { openFullPlayer() }
     }
 
+    fun startIntelligenceFromContextWithPermission() {
+        if (Build.VERSION.SDK_INT >= 33) {
+            val granted = ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS,
+            ) == PackageManager.PERMISSION_GRANTED
+            if (!granted) {
+                pendingIntelligenceFromContext = true
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                return
+            }
+        }
+        playback.startIntelligenceFromContext { openFullPlayer() }
+    }
+
     fun hint(msg: String) {
         context.showIslandNotice(msg)
     }
 
-    LaunchedEffect(playingTrackId, mvUi.active) {
-        if (mvUi.active) {
+    LaunchedEffect(playingTrackId, mvActive) {
+        if (mvActive) {
             showFullPlayer = false
         } else if (playingTrackId <= 0L) {
             closeFullPlayer()
@@ -445,12 +497,14 @@ fun MainShell(
 
     val backdrop = rememberLayerBackdrop()
     val dockHaze = remember { HazeState() }
+    val itemHaze = remember { HazeState() }
+    var wallpaperViewport by remember { mutableStateOf<WallpaperViewport?>(null) }
     val overlayOpen = overlay != null
     val spaceOpen = userSpaceProgress > 0.18f
     val holdChrome = showFullPlayer || playerLayerVisible
     val showDock = !overlayOpen || overlay is MainOverlay.Mv
     val showManage = playlistManage.active && overlay is MainOverlay.Playlist && !showFullPlayer
-    val showMini = (mvUi.active || playingTrackId > 0L) && !showManage
+    val showMini = (mvActive || playingTrackId > 0L) && !showManage
     dockHiddenRef.value = landscape || !showDock
     LaunchedEffect(overlay) {
         if (overlay !is MainOverlay.Playlist) playlistManage.exit()
@@ -469,8 +523,19 @@ fun MainShell(
         animationSpec = tween(320, easing = FastOutSlowInEasing),
         label = "dockReveal",
     )
+    val currentDest = MainPagerDestinations.getOrElse(
+        if (landscape) landscapePage else pagerState.currentPage,
+    ) { MainDestination.Home }
+    val wallpaper by app.chromeWallpaperStore.state.collectAsStateWithLifecycle()
+    val wallpaperFrame = wallpaper.frame(
+        chromeWallpaperSurface(
+            overlay = overlay,
+            destination = currentDest,
+        ),
+        landscape,
+    )
     val navBarDp = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    val freezeChromePad = holdChrome || compactDragging.value
+    val freezeChromePad = holdChrome || compactDragging.value || compactSettling.value
     val chromeBottomGap =
         if ((holdChrome || compactDragging.value) && dockRestBottomHold.value > 0.dp) {
             dockRestBottomHold.value
@@ -500,12 +565,18 @@ fun MainShell(
             }
         }
         if (!freezeChromePad) {
-            dockCompactHold.floatValue = liveCompact
+            dockCompactHold.floatValue = compactProgress
             dockInsetHold.value = liveChromeInset
         }
     }
     val chromeInset =
         if (freezeChromePad && dockInsetHold.value > 0.dp) dockInsetHold.value else liveChromeInset
+
+    val glassMode = LocalChromeGlassStyle.current.mode
+    val itemChrome = if (wallpaperFrame != null) wallpaper.itemChrome else ChromeGlassMode.Solid
+    val needLiquid = glassMode == ChromeGlassMode.Liquid || itemChrome == ChromeGlassMode.Liquid
+    val needItemFrosted = wallpaperFrame != null && itemChrome == ChromeGlassMode.Frosted
+    val needDockFrosted = glassMode == ChromeGlassMode.Frosted
 
     val sectionContent: @Composable (MainDestination) -> Unit = { dest ->
         MainSectionContent(
@@ -518,13 +589,13 @@ fun MainShell(
             onOpenOverlay = { pushOverlay(it) },
             onOpenProfile = { goTo(MainDestination.Profile) },
             onStartFm = { startFmWithPermission() },
+            onStartIntelligence = { startIntelligenceFromContextWithPermission() },
             onPlaySong = { songId ->
                 scope.launch {
                     val cookie = sessionRepository.session.value?.cookie.orEmpty()
                     val track = withContext(Dispatchers.IO) {
                         runCatching {
-                            val json = NcmUserClient().songDetail(listOf(songId), cookie)
-                            NcmLibraryParse.tracksFromSongDetail(json).firstOrNull()
+                            app.songRepository.trackById(songId, cookie)
                         }.getOrNull()
                     }
                     if (track != null) {
@@ -555,8 +626,53 @@ fun MainShell(
             .onGloballyPositioned {
                 shellHpx.intValue = it.size.height
                 shellTopPx.floatValue = it.positionInWindow().y
+                wallpaperViewport = WallpaperViewport(
+                    width = it.size.width.toFloat(),
+                    height = it.size.height.toFloat(),
+                    originInWindow = it.positionInWindow(),
+                )
             },
     ) {
+        CompositionLocalProvider(
+            LocalWallpaperViewport provides wallpaperViewport,
+            LocalChromeWallpaperPainted provides (wallpaperFrame != null),
+            LocalChromeWallpaperFrame provides wallpaperFrame,
+            LocalChromeHaze provides itemHaze,
+            LocalChromeBackdrop provides backdrop,
+            LocalWallpaperItemChrome provides if (wallpaperFrame != null) wallpaper.itemChrome else null,
+        ) {
+        Box(
+            Modifier.fillMaxSize(),
+        ) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .then(
+                        if (needLiquid && wallpaperFrame != null) {
+                            Modifier.layerBackdrop(backdrop)
+                        } else {
+                            Modifier
+                        },
+                    )
+                    .then(
+                        if (needItemFrosted) {
+                            Modifier.hazeSource(state = itemHaze, zIndex = 0f)
+                        } else {
+                            Modifier
+                        },
+                    )
+                    .then(
+                        if (needDockFrosted && wallpaperFrame != null) {
+                            Modifier.hazeSource(state = dockHaze, zIndex = 0f)
+                        } else {
+                            Modifier
+                        },
+                    ),
+            ) {
+                if (wallpaperFrame != null) {
+                    ChromeWallpaperLayer(frame = wallpaperFrame)
+                }
+            }
         Row(Modifier.fillMaxSize()) {
             if (landscape) {
                 val spaceT = spaceChromeLeave(userSpaceProgress)
@@ -598,20 +714,28 @@ fun MainShell(
         Box(
             Modifier
                 .fillMaxSize()
-                .layerBackdrop(backdrop),
+                .then(
+                    if (needLiquid && wallpaperFrame == null) {
+                        Modifier.layerBackdrop(backdrop)
+                    } else {
+                        Modifier
+                    },
+                )
+                .then(
+                    if (needDockFrosted) {
+                        Modifier.hazeSource(state = dockHaze, zIndex = 1f)
+                    } else {
+                        Modifier
+                    },
+                ),
         ) {
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .hazeSource(state = dockHaze, zIndex = 0f),
-            ) {
             if (landscape) {
                 LandscapeCoverPages(
                     currentIndex = landscapePage,
                     clipLayer = userSpaceProgress < 0.02f,
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(MainPalette.Page),
+                        .chromePage(),
                 ) { index ->
                     sectionContent(MainPagerDestinations[index])
                 }
@@ -620,9 +744,9 @@ fun MainShell(
                     state = pagerState,
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(MainPalette.Page)
+                        .chromePage()
                         .nestedScroll(nestedScroll),
-                    beyondViewportPageCount = 2,
+                    beyondViewportPageCount = 1,
                     userScrollEnabled = !showFullPlayer && !overlayOpen && !spaceOpen,
                 ) { page ->
                     sectionContent(MainPagerDestinations[page])
@@ -651,10 +775,11 @@ fun MainShell(
                 includeMv = false,
                 modifier = Modifier.fillMaxSize(),
             )
-            }
         }
 
-        CompositionLocalProvider(LocalChromeHaze provides dockHaze) {
+        CompositionLocalProvider(
+            LocalChromeHaze provides dockHaze,
+        ) {
         Column(
             Modifier
                 .align(Alignment.BottomCenter)
@@ -702,23 +827,12 @@ fun MainShell(
                     ) {
                         MiniPlayerSlot(
                             playback = playback,
-                            mv = mvUi,
                             mvPlayback = app.mvPlayback,
                             backdrop = backdrop,
-                            onOpenFull = {
-                                if (mvUi.active) {
-                                    if (overlay !is MainOverlay.Mv) {
-                                        pushOverlay(
-                                            MainOverlay.Mv(
-                                                id = mvUi.mvId,
-                                                title = mvUi.title,
-                                                coverUrl = mvUi.coverUrl,
-                                                artist = mvUi.artistLine,
-                                            ),
-                                        )
-                                    }
-                                } else {
-                                    openFullPlayer()
+                            onOpenFull = { openFullPlayer() },
+                            onOpenMv = { overlayMv ->
+                                if (overlay !is MainOverlay.Mv) {
+                                    pushOverlay(overlayMv)
                                 }
                             },
                             modifier = Modifier
@@ -792,7 +906,13 @@ fun MainShell(
                             onDestination = { dest -> goTo(dest) },
                             onDragByTabs = ::dragDockByTabs,
                             onDragSettled = ::settleDockPager,
-                            compactProgress = compactProgress,
+                            compactProgress = {
+                                when {
+                                    showFullPlayer -> dockCompactHold.floatValue
+                                    compactDragging.value -> compactDrag.floatValue
+                                    else -> compactAnim.value
+                                }
+                            },
                             landscape = landscape,
                             backdrop = backdrop,
                         )
@@ -801,8 +921,10 @@ fun MainShell(
             }
             }
         }
-        }
-        }
+        } // weight 内容格
+        } // 横竖 Row
+        } // 整屏 backdrop / 壁纸采样
+        } // 壁纸 CompositionLocal
 
         val liveMv = overlay as? MainOverlay.Mv
         var heldMv by remember { mutableStateOf<MainOverlay.Mv?>(null) }
@@ -832,6 +954,7 @@ fun MainShell(
                         targetOffsetY = { it },
                     ),
             ) {
+                val mvUi by app.mvPlayback.ui.collectAsStateWithLifecycle()
                 MvPlayerScreen(
                     overlay = renderMv,
                     playback = app.mvPlayback,
@@ -850,8 +973,8 @@ fun MainShell(
             }
         }
 
-        AnimatedVisibility(
-            visible = showFullPlayer && playingTrackId > 0L && !mvUi.active,
+        androidx.compose.animation.AnimatedVisibility(
+            visible = showFullPlayer && playingTrackId > 0L && !mvActive,
             modifier = Modifier
                 .fillMaxSize()
                 .zIndex(130f),
@@ -898,46 +1021,120 @@ private data class PendingPlayRequest(
     val playlistTitle: String?,
 )
 
+private data class MiniMusicChrome(
+    val track: TrackRow,
+    val playWhenReady: Boolean,
+    val loadPending: Boolean,
+    val durationMs: Long,
+)
+
+private data class MiniMvChrome(
+    val active: Boolean,
+    val mvId: Long,
+    val title: String,
+    val artistLine: String,
+    val coverUrl: String?,
+    val playWhenReady: Boolean,
+    val buffering: Boolean,
+    val durationMs: Long,
+    val loading: Boolean,
+)
+
 @Composable
 private fun MiniPlayerSlot(
     playback: PlaybackViewModel,
-    mv: MvUiState,
     mvPlayback: MvPlayback,
     backdrop: Backdrop,
     onOpenFull: () -> Unit,
+    onOpenMv: (MainOverlay.Mv) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    if (mv.active) {
+    val mvChrome by remember(mvPlayback) {
+        mvPlayback.ui.map {
+            MiniMvChrome(
+                active = it.active,
+                mvId = it.mvId,
+                title = it.title,
+                artistLine = it.artistLine,
+                coverUrl = it.coverUrl,
+                playWhenReady = it.playWhenReady,
+                buffering = it.buffering,
+                durationMs = it.durationMs,
+                loading = it.loading,
+            )
+        }.distinctUntilChanged()
+    }.collectAsStateWithLifecycle(
+        MiniMvChrome(
+            active = false,
+            mvId = 0L,
+            title = "",
+            artistLine = "",
+            coverUrl = null,
+            playWhenReady = false,
+            buffering = false,
+            durationMs = 0L,
+            loading = false,
+        ),
+    )
+    if (mvChrome.active) {
+        val mvPositions = remember(mvPlayback) {
+            mvPlayback.ui.map { it.positionMs }.distinctUntilChanged()
+        }
         MiniPlayerBar(
             track = TrackRow(
-                id = -mv.mvId,
-                name = mv.title.ifBlank { "MV" },
-                artists = mv.artistLine,
+                id = -mvChrome.mvId,
+                name = mvChrome.title.ifBlank { "MV" },
+                artists = mvChrome.artistLine,
                 album = null,
-                durationMs = mv.durationMs,
-                coverUrl = mv.coverUrl,
+                durationMs = mvChrome.durationMs,
+                coverUrl = mvChrome.coverUrl,
             ),
-            isPlaying = mv.playWhenReady,
-            buffering = mv.buffering || mv.loading,
-            positionMs = mv.positionMs,
-            durationMs = mv.durationMs,
-            loadPending = mv.loading,
-            onOpenFull = onOpenFull,
+            isPlaying = mvChrome.playWhenReady,
+            buffering = mvChrome.buffering || mvChrome.loading,
+            durationMs = mvChrome.durationMs,
+            positions = mvPositions,
+            initialPositionMs = mvPlayback.ui.value.positionMs,
+            loadPending = mvChrome.loading,
+            onOpenFull = {
+                onOpenMv(
+                    MainOverlay.Mv(
+                        id = mvChrome.mvId,
+                        title = mvChrome.title,
+                        coverUrl = mvChrome.coverUrl,
+                        artist = mvChrome.artistLine,
+                    ),
+                )
+            },
             onTogglePlay = { mvPlayback.togglePlayPause() },
             backdrop = backdrop,
             modifier = modifier,
         )
         return
     }
-    val playbackState by playback.ui.collectAsStateWithLifecycle()
-    val tr = playbackState.currentTrack ?: return
+    val music by remember(playback) {
+        playback.ui.map { st ->
+            st.currentTrack?.let { t ->
+                MiniMusicChrome(
+                    track = t,
+                    playWhenReady = st.playWhenReady,
+                    loadPending = st.loadPending,
+                    durationMs = st.durationMs,
+                )
+            }
+        }.distinctUntilChanged()
+    }.collectAsStateWithLifecycle(null)
+    val chrome = music ?: return
+    val positions = remember(playback) {
+        playback.ui.map { it.positionMs }.distinctUntilChanged()
+    }
     MiniPlayerBar(
-        track = tr,
-        isPlaying = playbackState.playWhenReady,
-        buffering = playbackState.loadPending,
-        positionMs = playbackState.positionMs,
-        durationMs = playbackState.durationMs,
-        loadPending = playbackState.loadPending,
+        track = chrome.track,
+        isPlaying = chrome.playWhenReady,
+        buffering = chrome.loadPending,
+        durationMs = chrome.durationMs,
+        positions = positions,
+        initialPositionMs = playback.ui.value.positionMs,
+        loadPending = chrome.loadPending,
         onOpenFull = onOpenFull,
         onTogglePlay = { playback.togglePlayPause() },
         backdrop = backdrop,
@@ -954,11 +1151,11 @@ private fun FullPlayerSlot(
     onOpenArtist: (Long, String, String?) -> Unit,
 ) {
     val st by playback.ui.collectAsStateWithLifecycle()
-    val spectrum by playback.spectrum.collectAsStateWithLifecycle()
     if (st.currentTrack == null) return
     val app = LocalContext.current.applicationContext as ZMusicApplication
     val scope = rememberCoroutineScope()
-    BackHandler(onBack = onDismiss)
+    val backUi = rememberPredictiveBackUi(enabled = true, onBack = onDismiss)
+    Box(Modifier.fillMaxSize().predictiveBackLayer(backUi, PredictiveBackAxis.Vertical)) {
     NowPlayingScreen(
         state = st,
         isLandscape = landscape,
@@ -970,7 +1167,6 @@ private fun FullPlayerSlot(
         onCyclePlaybackMode = playback::cyclePlaybackMode,
         onPlayQueueIndex = playback::playIndex,
         onHoldAutoAdvanceChange = playback::setHoldAutoAdvance,
-        spectrum = spectrum,
         modifier = Modifier.fillMaxSize(),
         landscapeStartInset = 0.dp,
         onOpenSourcePlaylist = st.sourcePlaylistId?.let { plId ->
@@ -983,7 +1179,7 @@ private fun FullPlayerSlot(
             val track = st.currentTrack ?: return@NowPlayingScreen
             scope.launch {
                 val cookie = app.sessionRepository.session.value?.cookie.orEmpty()
-                val found = resolveTrackArtists(track, cookie)
+                val found = resolveTrackArtists(track, cookie, app.songRepository)
                 val a = found.firstOrNull()
                 if (a == null) {
                     app.islandNoticeCenter.show("暂时无法打开这位歌手", track.coverUrl)
@@ -994,6 +1190,7 @@ private fun FullPlayerSlot(
             }
         },
     )
+    }
 }
 
 @Composable
@@ -1021,7 +1218,6 @@ private fun LandscapeCoverPages(
                         .then(
                             if (clipLayer) {
                                 Modifier.graphicsLayer {
-                                    compositingStrategy = CompositingStrategy.Offscreen
                                     clip = true
                                 }
                             } else {

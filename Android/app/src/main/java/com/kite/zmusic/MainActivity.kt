@@ -8,12 +8,12 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import com.kite.zmusic.config.NcmApiConfig
 import com.kite.zmusic.data.ServerConfigRepository
 import com.kite.zmusic.navigation.ZMusicNavHost
 import com.kite.zmusic.ui.orientation.SessionRotationLockStore
 import com.kite.zmusic.ui.orientation.ZMusicOrientationHost
+import com.kite.zmusic.ui.theme.MainPalette
 import com.kite.zmusic.ui.theme.ZMusicTheme
 
 class MainActivity : ComponentActivity() {
@@ -27,11 +27,12 @@ class MainActivity : ComponentActivity() {
             Log.d("ZMusic", "NCM API base URL: ${NcmApiConfig.baseUrl}")
         }
         enableEdgeToEdge()
+        consumeOpenPlayerIntent(intent)
         setContent {
             ZMusicTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
-                    color = Color(0xFFEEF4F7),
+                    color = MainPalette.Page,
                 ) {
                     ZMusicOrientationHost(modifier = Modifier.fillMaxSize()) {
                         ZMusicNavHost(modifier = Modifier.fillMaxSize())
@@ -56,5 +57,23 @@ class MainActivity : ComponentActivity() {
         setIntent(intent)
         // 通知 / singleTop 回前台
         SessionRotationLockStore.applyTo(this)
+        consumeOpenPlayerIntent(intent)
+    }
+
+    private fun consumeOpenPlayerIntent(intent: android.content.Intent?) {
+        if (intent == null) return
+        val open = intent.getBooleanExtra(EXTRA_OPEN_PLAYER, false) ||
+            intent.action == ACTION_OPEN_PLAYER
+        if (!open) return
+        (application as ZMusicApplication).playbackBridge.requestOpenPlayer()
+        intent.removeExtra(EXTRA_OPEN_PLAYER)
+        if (intent.action == ACTION_OPEN_PLAYER) {
+            intent.action = android.content.Intent.ACTION_MAIN
+        }
+    }
+
+    companion object {
+        const val ACTION_OPEN_PLAYER = "com.kite.zmusic.OPEN_PLAYER"
+        const val EXTRA_OPEN_PLAYER = "open_player"
     }
 }

@@ -1,6 +1,5 @@
 package com.kite.zmusic.ui.common
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
@@ -151,7 +150,7 @@ internal fun GlassActionSheetOverlay(
     if (spec == null) return
 
     val screenH = LocalConfiguration.current.screenHeightDp
-    BackHandler(enabled = visible) { spec.onDismiss() }
+    val backUi = rememberPredictiveBackUi(enabled = visible, onBack = spec.onDismiss)
 
     val reveal = remember { Animatable(0f) }
     LaunchedEffect(visible, state.presentSeq) {
@@ -163,7 +162,7 @@ internal fun GlassActionSheetOverlay(
         }
     }
 
-    val t = reveal.value
+    val t = reveal.value * (1f - backUi.progress)
     Box(
         modifier
             .fillMaxSize()

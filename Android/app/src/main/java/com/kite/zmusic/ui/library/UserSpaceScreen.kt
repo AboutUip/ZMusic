@@ -1,6 +1,5 @@
 package com.kite.zmusic.ui.library
 
-import android.graphics.BitmapFactory
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -35,10 +34,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
@@ -50,9 +50,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.Shadow
-import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.TransformOrigin
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
@@ -71,7 +69,7 @@ import com.kite.zmusic.data.SubcountBrief
 import com.kite.zmusic.data.UserProfileBrief
 import com.kite.zmusic.data.VipKind
 import com.kite.zmusic.ui.common.GlassAlertDialog
-import com.kite.zmusic.ui.common.UrlImage
+import com.kite.zmusic.ui.common.UrlImageCache
 import com.kite.zmusic.ui.icons.ZIcons
 import kotlin.math.PI
 import kotlin.math.floor
@@ -133,6 +131,7 @@ internal fun UserSpaceOverlay(
     likedTrackCount: Int,
     subcount: SubcountBrief?,
     customBgPath: String?,
+    backgroundUrl: String? = null,
     avatarStart: Offset,
     avatarStartSize: Float,
     reveal: UserSpaceRevealState,
@@ -200,6 +199,8 @@ internal fun UserSpaceOverlay(
         UserSpaceBackdrop(
             progress = sceneT,
             pageOffset = pager.offset,
+            localPath = customBgPath,
+            backgroundUrl = backgroundUrl,
         )
 
         ConstellationStage(
@@ -224,7 +225,6 @@ internal fun UserSpaceOverlay(
                 scaleY = scale
                 transformOrigin = TransformOrigin(0f, 0f)
                 clip = false
-                compositingStrategy = CompositingStrategy.ModulateAlpha
             },
         )
 
@@ -322,10 +322,20 @@ internal fun UserSpaceOverlay(
 private fun UserSpaceBackdrop(
     progress: Float,
     pageOffset: Float,
+    localPath: String?,
+    backgroundUrl: String?,
 ) {
     val t = progress.coerceIn(0f, 1f)
     if (t <= 0.01f) return
     Box(Modifier.fillMaxSize()) {
+        ProfileFixedBackground(
+            backgroundUrl = backgroundUrl,
+            localPath = localPath,
+            ignoreChrome = true,
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer { alpha = t },
+        )
         Box(
             Modifier
                 .fillMaxSize()
@@ -338,27 +348,34 @@ private fun UserSpaceBackdrop(
 @Composable
 private fun SpaceStarField(progress: Float, pageOffset: Float) {
     val dots = remember { skyDots() }
-    var seconds by remember { mutableFloatStateOf(0f) }
-    LaunchedEffect(Unit) {
+    val timeHolder = remember { floatArrayOf(0f) }
+    var drawGen by remember { mutableIntStateOf(0) }
+    val appear = progress.coerceIn(0f, 1f)
+    val offsetRef = rememberUpdatedState(pageOffset)
+    val motion = appear > 0.04f
+    LaunchedEffect(motion) {
+        if (!motion) return@LaunchedEffect
         val origin = withFrameNanos { it }
         while (true) {
             withFrameNanos { now ->
-                seconds = (now - origin) / 1_000_000_000f
+                timeHolder[0] = (now - origin) / 1_000_000_000f
+                drawGen++
             }
         }
     }
-    val appear = progress.coerceIn(0f, 1f)
     Canvas(
         Modifier
             .fillMaxSize()
             .graphicsLayer { alpha = appear },
     ) {
+        drawGen
         val w = size.width
         val h = size.height
-        val time = seconds
+        val time = timeHolder[0]
+        val po = offsetRef.value
         dots.forEach { d ->
             val twinkle = 0.38f + 0.62f * (0.5f + 0.5f * sin(d.phase + time * d.pulse))
-            val x = fract(d.x + time * d.vx - pageOffset * 0.04f * d.depth) * w
+            val x = fract(d.x + time * d.vx - po * 0.04f * d.depth) * w
             val y = fract(d.y + time * d.vy) * h
             drawCircle(
                 color = Color.White.copy(
@@ -713,7 +730,9 @@ internal fun rememberFileImageBitmap(path: String?): ImageBitmap? {
             return@LaunchedEffect
         }
         bitmap = withContext(Dispatchers.IO) {
-            runCatching { BitmapFactory.decodeFile(path)?.asImageBitmap() }.getOrNull()
+            runCatching {
+                UrlImageCache.decodeSampledFile(path, 1080)
+            }.getOrNull()
         }
     }
     return bitmap

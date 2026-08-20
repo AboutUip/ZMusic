@@ -29,21 +29,28 @@ object UrlImageCache {
             .build()
     }
 
-    /** 曲谱网格 / 歌单翻页后仍要留住已出图的封面 */
-    private const val MEMORY_MAX_ENTRIES = 256
+    /** 曲谱网格 / 歌单翻页后仍要留住已出图的封面；按像素预算而不是张数 */
+    private const val MEMORY_MAX_KB = 32 * 1024
     private const val DISK_MAX_BYTES = 96L * 1024 * 1024
     private const val DISK_MAX_FILES = 400
+    internal const val DECODE_MAX_PX = 720
+    internal const val THUMB_MAX_PX = 256
 
-    private val memory = object : LruCache<String, ImageBitmap>(MEMORY_MAX_ENTRIES) {}
-
-    fun memoryGet(url: String): ImageBitmap? {
-        val key = normalizeKey(url) ?: return null
-        return memory.get(key)
+    private val memory = object : LruCache<String, ImageBitmap>(MEMORY_MAX_KB) {
+        override fun sizeOf(key: String, value: ImageBitmap): Int {
+            val bytes = value.width.toLong() * value.height.toLong() * 4L
+            return (bytes / 1024L).toInt().coerceAtLeast(1)
+        }
     }
 
-    fun memoryPut(url: String, bitmap: ImageBitmap) {
-        val key = normalizeKey(url) ?: return
-        memory.put(key, bitmap)
+    fun memoryGet(url: String, maxPx: Int = DECODE_MAX_PX): ImageBitmap? {
+        val urlKey = normalizeKey(url) ?: return null
+        return memory.get(memoryKey(urlKey, maxPx))
+    }
+
+    fun memoryPut(url: String, bitmap: ImageBitmap, maxPx: Int = DECODE_MAX_PX) {
+        val urlKey = normalizeKey(url) ?: return
+        memory.put(memoryKey(urlKey, maxPx), bitmap)
     }
 
     fun diskFile(context: Context, url: String): File {
@@ -56,7 +63,7 @@ object UrlImageCache {
     /** 预热磁盘 + 内存，供黑胶手势瞬间露脸。 */
     suspend fun prefetch(context: Context, url: String?) {
         val key = normalizeKey(url) ?: return
-        if (memory.get(key) != null) return
+        if (memory.get(memoryKey(key, DECODE_MAX_PX)) != null) return
         withContext(Dispatchers.IO) {
             runCatching {
                 val file = diskFile(context, key)
@@ -73,9 +80,8 @@ object UrlImageCache {
                         }
                     }
                 }
-                val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
-                    ?: return@runCatching
-                memory.put(key, bmp)
+                val bmp = decodeSampledBitmap(bytes) ?: return@runCatching
+                memory.put(memoryKey(key, DECODE_MAX_PX), bmp)
             }
         }
     }
@@ -87,7 +93,7 @@ object UrlImageCache {
     suspend fun prefetchAll(
         context: Context,
         urls: Collection<String?>,
-        parallelism: Int = 6,
+        parallelism: Int = 3,
     ) {
         val distinct = urls.mapNotNull { normalizeKey(it) }.distinct()
         if (distinct.isEmpty()) return
@@ -138,6 +144,36 @@ object UrlImageCache {
     /** 缓存键：trim 后的完整 URL，严格一对一，禁止用曲目 id 顶替以免换封面后串图。 */
     fun normalizeKey(url: String?): String? =
         url?.trim()?.takeIf { it.isNotEmpty() }
+
+    fun decodeSampledBitmap(bytes: ByteArray, maxPx: Int = DECODE_MAX_PX): ImageBitmap? {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        val w = bounds.outWidth
+        val h = bounds.outHeight
+        if (w <= 0 || h <= 0) return null
+        var sample = 1
+        while (w / sample > maxPx || h / sample > maxPx) {
+            sample *= 2
+        }
+        val opts = BitmapFactory.Options().apply { inSampleSize = sample }
+        return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)?.asImageBitmap()
+    }
+
+    fun decodeSampledFile(path: String, maxPx: Int = DECODE_MAX_PX): ImageBitmap? {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(path, bounds)
+        val w = bounds.outWidth
+        val h = bounds.outHeight
+        if (w <= 0 || h <= 0) return null
+        var sample = 1
+        while (w / sample > maxPx || h / sample > maxPx) {
+            sample *= 2
+        }
+        val opts = BitmapFactory.Options().apply { inSampleSize = sample }
+        return BitmapFactory.decodeFile(path, opts)?.asImageBitmap()
+    }
+
+    private fun memoryKey(url: String, maxPx: Int): String = "$url|$maxPx"
 
     private fun sha256Hex(input: String): String {
         val md = MessageDigest.getInstance("SHA-256")

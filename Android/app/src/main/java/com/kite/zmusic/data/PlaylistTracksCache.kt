@@ -25,7 +25,7 @@ import java.util.concurrent.ConcurrentHashMap
  */
 class PlaylistTracksCache(
     context: Context,
-    private val userClient: NcmUserClient = NcmUserClient(),
+    private val userClient: NcmUserClient,
 ) {
     data class Entry(
         val playlistId: Long,

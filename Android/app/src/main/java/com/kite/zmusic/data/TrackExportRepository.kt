@@ -22,9 +22,10 @@ class TrackExportException(message: String) : Exception(message)
 class TrackExportRepository(
     context: Context,
     private val audioQualityStore: AudioQualityStore,
-    private val userClient: NcmUserClient = NcmUserClient(),
+    private val userClient: NcmUserClient,
 ) {
     private val appContext = context.applicationContext
+    private val prefs = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
     private val client by lazy {
         OkHttpClient.Builder()
             .connectTimeout(20, TimeUnit.SECONDS)
@@ -34,74 +35,108 @@ class TrackExportRepository(
             .build()
     }
 
-    suspend fun export(track: TrackRow, cookie: String): String = withContext(Dispatchers.IO) {
+    fun lastOptions(): TrackExportOptions = TrackExportOptions(
+        quality = AudioQuality.fromLevel(prefs.getString(KEY_QUALITY, null))
+            .takeIf { prefs.contains(KEY_QUALITY) }
+            ?: audioQualityStore.current(),
+        includeCover = prefs.getBoolean(KEY_COVER, true),
+        includeLyrics = prefs.getBoolean(KEY_LYRICS, true),
+        includeMetadata = prefs.getBoolean(KEY_META, true),
+    )
+
+    fun rememberOptions(options: TrackExportOptions) {
+        prefs.edit()
+            .putString(KEY_QUALITY, options.quality.level)
+            .putBoolean(KEY_COVER, options.includeCover)
+            .putBoolean(KEY_LYRICS, options.includeLyrics)
+            .putBoolean(KEY_META, options.includeMetadata)
+            .apply()
+    }
+
+    suspend fun export(
+        track: TrackRow,
+        cookie: String,
+        options: TrackExportOptions = lastOptions(),
+    ): String = withContext(Dispatchers.IO) {
         if (track.id <= 0L) throw TrackExportException("无法下载这首歌")
         val folder = folderName(track)
         val relative = "$ROOT/$folder/"
-        val audioUrl = resolveAudioUrl(track.id, cookie)
+        val audioUrl = resolveAudioUrl(track.id, cookie, options.quality)
             ?: throw TrackExportException("暂时没有可下载的音源")
         val audioBytes = downloadBytes(audioUrl)
             ?: throw TrackExportException("音频下载失败")
+        clearFolder(relative)
         val (audioName, audioMime) = audioFileOf(audioBytes)
         writeFile(relative, audioName, audioMime, audioBytes)
 
         var coverName: String? = null
-        track.coverUrl?.takeIf { it.isNotBlank() }?.let { url ->
-            val bytes = downloadBytes(url)
-            if (bytes != null && bytes.isNotEmpty()) {
-                val (name, mime) = coverFileOf(bytes)
-                writeFile(relative, name, mime, bytes)
-                coverName = name
+        if (options.includeCover) {
+            track.coverUrl?.takeIf { it.isNotBlank() }?.let { url ->
+                val bytes = downloadBytes(url)
+                if (bytes != null && bytes.isNotEmpty()) {
+                    val (name, mime) = coverFileOf(bytes)
+                    writeFile(relative, name, mime, bytes)
+                    coverName = name
+                }
             }
         }
 
         var lyricName: String? = null
         var transName: String? = null
-        runCatching {
-            val json = userClient.lyric(track.id, cookie)
-            NcmPlaybackParse.lrcText(json)?.let { lrc ->
-                writeFile(relative, "lyrics.lrc", "text/plain", lrc.toByteArray(Charsets.UTF_8))
-                lyricName = "lyrics.lrc"
-            }
-            NcmPlaybackParse.translatedLrcText(json)?.let { lrc ->
-                writeFile(relative, "lyrics.trans.lrc", "text/plain", lrc.toByteArray(Charsets.UTF_8))
-                transName = "lyrics.trans.lrc"
+        if (options.includeLyrics) {
+            runCatching {
+                val json = userClient.lyric(track.id, cookie)
+                NcmPlaybackParse.lrcText(json)?.let { lrc ->
+                    writeFile(relative, "lyrics.lrc", MIME_LRC, lrc.toByteArray(Charsets.UTF_8))
+                    lyricName = "lyrics.lrc"
+                }
+                NcmPlaybackParse.translatedLrcText(json)?.let { lrc ->
+                    writeFile(relative, "lyrics.trans.lrc", MIME_LRC, lrc.toByteArray(Charsets.UTF_8))
+                    transName = "lyrics.trans.lrc"
+                }
             }
         }
 
-        val meta = JSONObject()
-            .put("schema", SCHEMA)
-            .put("id", track.id)
-            .put("name", track.name)
-            .put("artists", track.artists)
-            .put("album", track.album ?: JSONObject.NULL)
-            .put("durationMs", track.durationMs)
-            .put("source", "ncm")
-            .put("folder", folder)
-            .put("exportedAt", System.currentTimeMillis())
-            .put(
-                "files",
-                JSONObject()
-                    .put("audio", audioName)
-                    .put("cover", coverName ?: JSONObject.NULL)
-                    .put("lyrics", lyricName ?: JSONObject.NULL)
-                    .put("lyricsTranslated", transName ?: JSONObject.NULL),
+        if (options.includeMetadata) {
+            val meta = JSONObject()
+                .put("schema", SCHEMA)
+                .put("id", track.id)
+                .put("name", track.name)
+                .put("artists", track.artists)
+                .put("album", track.album ?: JSONObject.NULL)
+                .put("durationMs", track.durationMs)
+                .put("quality", options.quality.level)
+                .put("source", "ncm")
+                .put("folder", folder)
+                .put("exportedAt", System.currentTimeMillis())
+                .put(
+                    "files",
+                    JSONObject()
+                        .put("audio", audioName)
+                        .put("cover", coverName ?: JSONObject.NULL)
+                        .put("lyrics", lyricName ?: JSONObject.NULL)
+                        .put("lyricsTranslated", transName ?: JSONObject.NULL),
+                )
+            writeFile(
+                relative,
+                "music.json",
+                "application/json",
+                meta.toString(2).toByteArray(Charsets.UTF_8),
             )
-        writeFile(
-            relative,
-            "music.json",
-            "application/json",
-            meta.toString(2).toByteArray(Charsets.UTF_8),
-        )
+        }
         folder
     }
 
-    private suspend fun resolveAudioUrl(trackId: Long, cookie: String): String? {
+    private suspend fun resolveAudioUrl(
+        trackId: Long,
+        cookie: String,
+        quality: AudioQuality,
+    ): String? {
         return PlayUrlResolver.resolve(
             userClient = userClient,
             trackId = trackId,
             cookie = cookie,
-            quality = audioQualityStore.current(),
+            quality = quality,
         )
     }
 
@@ -142,7 +177,7 @@ class TrackExportRepository(
         val values = ContentValues().apply {
             put(MediaStore.Downloads.DISPLAY_NAME, displayName)
             put(MediaStore.Downloads.MIME_TYPE, mime)
-            put(MediaStore.Downloads.RELATIVE_PATH, relativeDir)
+            put(MediaStore.Downloads.RELATIVE_PATH, normalizeRelativeDir(relativeDir))
             put(MediaStore.Downloads.IS_PENDING, 1)
         }
         return appContext.contentResolver.insert(
@@ -151,28 +186,64 @@ class TrackExportRepository(
         ) ?: throw TrackExportException("无法创建下载文件")
     }
 
+    private fun clearFolder(relativeDir: String) {
+        val resolver = appContext.contentResolver
+        val variants = relativePathVariants(relativeDir)
+        val sel = variants.joinToString(" OR ") { "${MediaStore.Downloads.RELATIVE_PATH}=?" }
+        runCatching {
+            resolver.delete(MediaStore.Downloads.EXTERNAL_CONTENT_URI, sel, variants)
+        }.onFailure {
+            Log.w(TAG, "clear folder failed", it)
+        }
+    }
+
     private fun findExisting(relativeDir: String, displayName: String): Uri? {
         val resolver = appContext.contentResolver
-        val projection = arrayOf(MediaStore.Downloads._ID)
-        val sel = "${MediaStore.Downloads.RELATIVE_PATH}=? AND ${MediaStore.Downloads.DISPLAY_NAME}=?"
+        val projection = arrayOf(
+            MediaStore.Downloads._ID,
+            MediaStore.Downloads.DISPLAY_NAME,
+        )
+        val variants = relativePathVariants(relativeDir)
+        val sel = "(" + variants.joinToString(" OR ") { "${MediaStore.Downloads.RELATIVE_PATH}=?" } +
+            ") AND ${MediaStore.Downloads.DISPLAY_NAME}=?"
+        val args = variants + displayName
         resolver.query(
             MediaStore.Downloads.EXTERNAL_CONTENT_URI,
             projection,
             sel,
-            arrayOf(relativeDir, displayName),
+            args,
             null,
         )?.use { cursor ->
-            if (!cursor.moveToFirst()) return null
-            val id = cursor.getLong(0)
-            return Uri.withAppendedPath(MediaStore.Downloads.EXTERNAL_CONTENT_URI, id.toString())
+            while (cursor.moveToNext()) {
+                val id = cursor.getLong(0)
+                val gotName = cursor.getString(1)
+                if (gotName == displayName) {
+                    return Uri.withAppendedPath(MediaStore.Downloads.EXTERNAL_CONTENT_URI, id.toString())
+                }
+            }
         }
         return null
     }
+
+    private fun relativePathVariants(relativeDir: String): Array<String> {
+        val trimmed = relativeDir.trimEnd('/')
+        return arrayOf("$trimmed/", trimmed)
+    }
+
+    private fun normalizeRelativeDir(relativeDir: String): String =
+        relativeDir.trimEnd('/') + "/"
 
     companion object {
         private const val TAG = "TrackExport"
         const val SCHEMA = "zmusic.track.v1"
         const val ROOT = "Download/ZMusic"
+        private const val PREFS = "zmusic_track_export"
+        private const val KEY_QUALITY = "quality"
+        private const val KEY_COVER = "cover"
+        private const val KEY_LYRICS = "lyrics"
+        private const val KEY_META = "meta"
+        /** 不用 text/plain：MediaStore 会按 MIME 再拼 .txt，变成 lyrics.lrc.txt。 */
+        private const val MIME_LRC = "application/octet-stream"
 
         fun folderName(track: TrackRow): String {
             val idPart = "[${track.id}]"
@@ -196,9 +267,17 @@ class TrackExportRepository(
         }
 
         private fun audioFileOf(bytes: ByteArray): Pair<String, String> {
+            if (bytes.size >= 4) {
+                val head4 = bytes.copyOfRange(0, 4).toString(Charsets.US_ASCII)
+                if (head4 == "fLaC") return "audio.flac" to "audio/flac"
+                if (head4 == "OggS") return "audio.ogg" to "audio/ogg"
+            }
             if (bytes.size >= 12) {
                 val brand = bytes.copyOfRange(4, 8).toString(Charsets.US_ASCII)
                 if (brand == "ftyp") return "audio.m4a" to "audio/mp4"
+                val riff = bytes.copyOfRange(0, 4).toString(Charsets.US_ASCII)
+                val wave = bytes.copyOfRange(8, 12).toString(Charsets.US_ASCII)
+                if (riff == "RIFF" && wave == "WAVE") return "audio.wav" to "audio/wav"
             }
             return "audio.mp3" to "audio/mpeg"
         }

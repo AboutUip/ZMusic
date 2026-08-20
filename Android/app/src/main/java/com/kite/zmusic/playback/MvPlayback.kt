@@ -79,7 +79,7 @@ class MvPlayback(
     context: Context,
     private val sessionRepository: SessionRepository,
     private val playbackBridge: PlaybackBridge,
-    private val userClient: NcmUserClient = NcmUserClient(),
+    private val userClient: NcmUserClient,
 ) {
     private val appContext = context.applicationContext
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)

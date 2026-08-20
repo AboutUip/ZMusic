@@ -6,4 +6,7 @@
     <string name="playback_mode_order">列表循环</string>
     <string name="playback_mode_repeat_one">单曲循环</string>
     <string name="playback_mode_shuffle">随机播放</string>
+    <string name="playback_lyrics_overlay_on">关闭歌词</string>
+    <string name="playback_lyrics_overlay_off">歌词显示</string>
+    <string name="playback_lyrics_overlay_unlock">取消锁定</string>
 </resources>

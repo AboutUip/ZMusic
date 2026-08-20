@@ -46,9 +46,10 @@ import com.kite.zmusic.data.NcmHomeParse
 import com.kite.zmusic.data.RecommendMvCard
 import com.kite.zmusic.data.SessionRepository
 import com.kite.zmusic.ui.catalog.CatalogTopBar
-import com.kite.zmusic.ui.catalog.MainOverlay
+import com.kite.zmusic.ui.main.MainOverlay
 import com.kite.zmusic.ui.common.UrlImage
 import com.kite.zmusic.ui.common.ZPullRefresh
+import com.kite.zmusic.ui.chrome.chromePage
 import com.kite.zmusic.ui.main.MainPalette
 
 internal fun artistViewModelKey(artistId: Long) = "artist-$artistId"
@@ -69,6 +70,7 @@ internal fun rememberArtistViewModel(
             seedCover = seedCover,
             sessionRepository = sessionRepository,
             islandNotices = app.islandNoticeCenter,
+            artists = app.artistRepository,
         ),
     )
 }
@@ -106,7 +108,7 @@ fun ArtistAlbumsScreen(
     Column(
         modifier
             .fillMaxSize()
-            .background(MainPalette.Page)
+            .chromePage()
             .statusBarsPadding(),
     ) {
         CatalogTopBar(title = "专辑", onBack = onBack)
@@ -214,7 +216,7 @@ fun ArtistMvsScreen(
     Column(
         modifier
             .fillMaxSize()
-            .background(MainPalette.Page)
+            .chromePage()
             .statusBarsPadding(),
     ) {
         CatalogTopBar(title = "MV", onBack = onBack)
@@ -358,7 +360,7 @@ private fun MvGridTile(
                 .fillMaxWidth()
                 .aspectRatio(16f / 9f)
                 .clip(RoundedCornerShape(8.dp))
-                .background(Color(0xFFEDEDED)),
+                .background(MainPalette.Placeholder),
         ) {
             UrlImage(
                 url = mv.coverUrl,

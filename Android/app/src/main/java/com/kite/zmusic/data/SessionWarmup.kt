@@ -8,7 +8,7 @@ import kotlinx.coroutines.sync.withLock
  */
 class SessionWarmup(
     private val sessionRepository: SessionRepository,
-    private val authClient: NcmAuthClient = NcmAuthClient(),
+    private val authClient: NcmAuthClient,
     private val onUserId: (Long) -> Unit = {},
 ) {
     private val mutex = Mutex()

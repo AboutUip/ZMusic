@@ -32,8 +32,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 class LikedPlaylistRepository(
     context: Context,
     private val sessionRepository: SessionRepository,
-    private val authClient: NcmAuthClient = NcmAuthClient(),
-    private val userClient: NcmUserClient = NcmUserClient(),
+    private val authClient: NcmAuthClient,
+    private val userClient: NcmUserClient,
 ) {
     data class Snapshot(
         val playlistId: Long,

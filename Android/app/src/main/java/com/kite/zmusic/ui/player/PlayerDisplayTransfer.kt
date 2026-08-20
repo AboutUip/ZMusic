@@ -49,9 +49,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -80,10 +78,10 @@ import com.google.zxing.common.HybridBinarizer
 import com.kite.zmusic.data.PlayerDisplayPrefs
 import com.kite.zmusic.data.PlayerDisplayPrefsCodec
 import com.kite.zmusic.data.lerpPlayerDisplayPrefs
+import com.kite.zmusic.ui.main.MainPalette
+import com.kite.zmusic.ui.main.pageSheetHazeStyle
 import com.kite.zmusic.ui.notice.showIslandNotice
 import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.HazeStyle
-import dev.chrisbanes.haze.HazeTint
 import dev.chrisbanes.haze.hazeEffect
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
@@ -93,26 +91,13 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private val TransferLabel = Color(0xFFFFFFFF)
-private val TransferHint = Color(0xFFE8F0F8)
-private val TransferAccent = Color(0xFF9AF0F0)
-private val TransferIconTint = Color(0xFFD5DEE8)
+private val TransferLabel get() = MainPalette.Ink
+private val TransferHint get() = MainPalette.Secondary
+private val TransferAccent get() = MainPalette.Accent
+private val TransferIconTint get() = MainPalette.Ink
 private val TransferPanelShape = RoundedCornerShape(18.dp)
-private val TransferRowShape = RoundedCornerShape(12.dp)
-private val TransferTextShadow = Shadow(color = Color.Black.copy(alpha = 0.7f), blurRadius = 10f)
-private val TransferGlassBg = Color(0xFF03060A)
-private val TransferGlassStyle = HazeStyle(
-    backgroundColor = TransferGlassBg,
-    tints = listOf(
-        HazeTint(Color(0xFF020408).copy(alpha = 0.78f)),
-        HazeTint(Color(0xFF060A12).copy(alpha = 0.60f)),
-        HazeTint(Color.Black.copy(alpha = 0.42f)),
-    ),
-    blurRadius = 84.dp,
-    noiseFactor = 0.20f,
-    fallbackTint = HazeTint(Color(0xCC05080E)),
-)
-private val TransferRowBg = Color(0xF0141A24)
+private val TransferRowShape = RoundedCornerShape(14.dp)
+private val TransferRowBg get() = MainPalette.Card
 private val TransferCurve = CubicBezierEasing(0.16f, 1.02f, 0.3f, 1f)
 
 /** 设置层外部点击 / 返回时，优先关闭导入导出顶层。 */
@@ -412,41 +397,9 @@ private fun TransferPanelChrome(hazeState: HazeState) {
         Box(
             Modifier
                 .matchParentSize()
-                .hazeEffect(state = hazeState, style = TransferGlassStyle) {
-                    blurRadius = 84.dp
-                    noiseFactor = 0.20f
-                    fallbackTint = HazeTint(Color(0xCC05080E))
-                },
+                .hazeEffect(state = hazeState, style = pageSheetHazeStyle()),
         )
-        Box(Modifier.matchParentSize().background(Color(0x9905080E)))
-        Box(
-            Modifier
-                .matchParentSize()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            Color.White.copy(alpha = 0.03f),
-                            Color.Transparent,
-                            Color.Black.copy(alpha = 0.55f),
-                        ),
-                    ),
-                ),
-        )
-        Box(
-            Modifier
-                .matchParentSize()
-                .border(
-                    width = 1.dp,
-                    brush = Brush.verticalGradient(
-                        colors = listOf(
-                            Color.White.copy(alpha = 0.16f),
-                            Color.White.copy(alpha = 0.05f),
-                            Color.White.copy(alpha = 0.08f),
-                        ),
-                    ),
-                    shape = TransferPanelShape,
-                ),
-        )
+        Box(Modifier.matchParentSize().background(MainPalette.SheetWash))
     }
 }
 
@@ -873,11 +826,10 @@ private fun TransferEyebrow(text: String) {
     Text(
         text = text,
         style = TextStyle(
-            color = TransferAccent.copy(alpha = 0.75f),
-            fontFamily = FontFamily.Monospace,
-            fontSize = 9.sp,
-            letterSpacing = 2.sp,
-            shadow = TransferTextShadow,
+            color = TransferHint,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = 0.4.sp,
         ),
     )
 }
@@ -889,10 +841,9 @@ private fun TransferTitle(text: String) {
         style = TextStyle(
             color = TransferLabel,
             fontFamily = FontFamily.SansSerif,
-            fontWeight = FontWeight.SemiBold,
-            fontSize = 17.sp,
-            letterSpacing = 0.3.sp,
-            shadow = TransferTextShadow,
+            fontWeight = FontWeight.Bold,
+            fontSize = 20.sp,
+            letterSpacing = (-0.2).sp,
         ),
     )
 }
@@ -910,14 +861,14 @@ private fun TransferPrimaryButton(
             .height(44.dp)
             .clip(TransferRowShape)
             .background(
-                if (enabled) TransferAccent.copy(alpha = 0.22f) else Color.White.copy(alpha = 0.06f),
+                if (enabled) TransferAccent.copy(alpha = 0.16f) else MainPalette.Card,
             )
             .border(
                 width = 1.dp,
                 color = if (enabled) {
                     TransferAccent.copy(alpha = 0.35f)
                 } else {
-                    Color.White.copy(alpha = 0.08f)
+                    MainPalette.Hairline
                 },
                 shape = TransferRowShape,
             )

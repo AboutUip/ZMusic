@@ -43,6 +43,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import com.kite.zmusic.ui.theme.MainPalette
 
 private enum class RegisterStep {
     Phone,
@@ -50,10 +51,10 @@ private enum class RegisterStep {
     Profile,
 }
 
-private val Page = Color(0xFFFFFFFF)
-private val Ink = Color(0xFF333333)
-private val InkSecondary = Color(0xFF888888)
-private val InkHint = Color(0xFFBBBBBB)
+private val Page get() = MainPalette.Surface
+private val Ink get() = MainPalette.Ink
+private val InkSecondary get() = MainPalette.Secondary
+private val InkHint get() = MainPalette.Hint
 private val CloudRed = Color(0xFFEC4141)
 
 /**
@@ -205,7 +206,7 @@ private fun RegisterPhonePane(
                         Modifier
                             .padding(horizontal = 12.dp)
                             .size(width = 1.dp, height = 16.dp)
-                            .background(Color(0xFFE6E6E6)),
+                            .background(MainPalette.Placeholder),
                     )
                 },
                 keyboardType = KeyboardType.Phone,

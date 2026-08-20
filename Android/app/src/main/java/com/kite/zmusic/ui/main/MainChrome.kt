@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -25,14 +26,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
@@ -54,17 +59,8 @@ import dev.chrisbanes.haze.HazeStyle
 import dev.chrisbanes.haze.HazeTint
 import dev.chrisbanes.haze.hazeEffect
 
-internal object MainPalette {
-    val Page = Color(0xFFF6F7F9)
-    val Surface = Color(0xFFFFFFFF)
-    val Ink = Color(0xFF2C2C2E)
-    val Secondary = Color(0xFF8E8E93)
-    val Hint = Color(0xFFC7C7CC)
-    val Accent = Color(0xFFEC4141)
-    val Hairline = Color(0x14000000)
-    val DockGlass = Color(0xE6FFFFFF)
-    val DockStroke = Color(0x33FFFFFF)
-}
+internal typealias MainPalette = com.kite.zmusic.ui.theme.MainPalette
+internal typealias MainControls = com.kite.zmusic.ui.theme.MainControls
 
 internal val FloatingDockHeight = 64.dp
 internal val FloatingDockCompactHeight = 52.dp
@@ -94,6 +90,14 @@ internal val LocalChromeGlassStyle = staticCompositionLocalOf { ChromeGlassStyle
 
 internal val LocalChromeHaze = staticCompositionLocalOf<HazeState?> { null }
 
+internal val LocalChromeBackdrop = staticCompositionLocalOf<Backdrop?> { null }
+
+/**
+ * 自定义背景铺上时，设置条目 / 个人页歌单等组件边界。
+ * null 表示本页没铺图，继续用纯色底。
+ */
+internal val LocalWallpaperItemChrome = staticCompositionLocalOf<ChromeGlassMode?> { null }
+
 private val FrostedBlurMin = 4.dp
 private val FrostedBlurMax = 72.dp
 
@@ -106,6 +110,26 @@ private fun ChromeGlassStyle.scaledBlur(base: Dp): Dp {
 private fun ChromeGlassStyle.scaledLens(base: Dp): Dp =
     base * refraction.coerceIn(ChromeGlassStyle.REFRACTION_MIN, ChromeGlassStyle.REFRACTION_MAX)
 
+/**
+ * Kyant lens 高度必须小于圆角，否则 RenderThread SIGSEGV。
+ * 侧栏整块矩形圆角为 0，不能开 lens。
+ */
+private fun Density.lensCapPx(shape: Shape): Float {
+    if (shape === RectangleShape) return 0f
+    val probe = Size(512f, 512f)
+    val minR = when (shape) {
+        is RoundedCornerShape -> minOf(
+            shape.topStart.toPx(probe, this),
+            shape.topEnd.toPx(probe, this),
+            shape.bottomStart.toPx(probe, this),
+            shape.bottomEnd.toPx(probe, this),
+        )
+        else -> 8.dp.toPx()
+    }
+    if (minR < 1f) return 0f
+    return minR * 0.82f
+}
+
 private fun ChromeGlassStyle.frostedBlur(): Dp =
     lerp(FrostedBlurMin, FrostedBlurMax, blur.coerceIn(0f, 1f))
 
@@ -113,13 +137,27 @@ private fun ChromeGlassStyle.frostedTintAlpha(): Float =
     0.16f + 0.14f * blur.coerceIn(0f, 1f)
 
 private fun ChromeGlassStyle.frostedHazeStyle(): HazeStyle {
-    val tint = Color.White.copy(alpha = frostedTintAlpha())
+    val tint = MainPalette.glassFill(frostedTintAlpha())
     return HazeStyle(
-        backgroundColor = Color.Transparent,
+        backgroundColor = MainPalette.glassFill(0.22f),
         tints = listOf(HazeTint(tint)),
         blurRadius = frostedBlur(),
         noiseFactor = 0.04f + 0.08f * blur.coerceIn(0f, 1f),
-        fallbackTint = HazeTint(Color.White.copy(alpha = 0.28f)),
+        fallbackTint = HazeTint(MainPalette.glassFill(0.62f)),
+    )
+}
+
+internal fun pageSheetHazeStyle(): HazeStyle {
+    val page = MainPalette.Page
+    return HazeStyle(
+        backgroundColor = page,
+        tints = listOf(
+            HazeTint(MainPalette.SheetTint),
+            HazeTint(page.copy(alpha = 0.52f)),
+        ),
+        blurRadius = 56.dp,
+        noiseFactor = 0.08f,
+        fallbackTint = HazeTint(page.copy(alpha = 0.94f)),
     )
 }
 
@@ -139,37 +177,69 @@ internal fun Modifier.chromeGlassSurface(
     surface: Color,
     depthEffect: Boolean = true,
 ): Modifier = when (style.mode) {
-    ChromeGlassMode.Liquid -> drawBackdrop(
-        backdrop = backdrop,
-        shape = { shape },
-        effects = {
-            vibrancy()
-            blur(style.scaledBlur(liquidBlur).toPx())
-            val lensH = style.scaledLens(liquidLensHeight).toPx()
-            val lensA = style.scaledLens(liquidLensAmount).toPx()
-            if (lensH > 0.5f) {
-                lens(lensH, lensA, depthEffect = depthEffect)
-            }
-        },
-        highlight = { Highlight(width = highlightWidth, alpha = highlightAlpha) },
-        shadow = { null },
-        onDrawSurface = { drawRect(surface) },
-    )
+    ChromeGlassMode.Liquid -> composed {
+        val cap = with(LocalDensity.current) { lensCapPx(shape) }
+        val lensH = with(LocalDensity.current) {
+            style.scaledLens(liquidLensHeight).toPx()
+        }.coerceAtMost(cap)
+        val lensA = with(LocalDensity.current) {
+            style.scaledLens(liquidLensAmount).toPx()
+        }.coerceAtMost(cap * 2f)
+        drawBackdrop(
+            backdrop = backdrop,
+            shape = { shape },
+            effects = {
+                vibrancy()
+                blur(style.scaledBlur(liquidBlur).toPx())
+                if (lensH > 0.5f) {
+                    lens(lensH, lensA, depthEffect = depthEffect)
+                }
+            },
+            highlight = { Highlight(width = highlightWidth, alpha = highlightAlpha) },
+            shadow = { null },
+            onDrawSurface = { drawRect(surface) },
+        )
+    }
     ChromeGlassMode.Frosted -> {
         val h = haze
         if (h != null) {
-            clip(shape).hazeEffect(state = h, style = style.frostedHazeStyle()) {
-                blurRadius = style.frostedBlur()
-                noiseFactor = 0.04f + 0.08f * style.blur.coerceIn(0f, 1f)
-                tints = listOf(HazeTint(Color.White.copy(alpha = style.frostedTintAlpha())))
-                fallbackTint = HazeTint(Color.White.copy(alpha = 0.28f))
-                backgroundColor = Color.Transparent
-            }
+            clip(shape).hazeEffect(state = h, style = style.frostedHazeStyle())
         } else {
-            clip(shape).background(Color.White.copy(alpha = 0.28f))
+            clip(shape).background(MainPalette.glassFill(0.62f))
         }
     }
-    ChromeGlassMode.Solid -> clip(shape).background(Color.White)
+    ChromeGlassMode.Solid -> clip(shape).background(MainPalette.Surface)
+}
+
+/**
+ * 铺了自定义背景时，把纯色条目改成磨砂 / 液态；数值跟 [LocalChromeGlassStyle]。
+ * 没铺图或选纯色时仍是 [MainPalette.Surface]。
+ */
+internal fun Modifier.wallpaperItemChrome(
+    shape: Shape,
+    solid: Color = MainPalette.Surface,
+): Modifier = composed {
+    val mode = LocalWallpaperItemChrome.current
+    if (mode == null || mode == ChromeGlassMode.Solid) {
+        return@composed clip(shape).background(solid)
+    }
+    val backdrop = LocalChromeBackdrop.current
+    if (mode == ChromeGlassMode.Liquid && backdrop == null) {
+        return@composed clip(shape).background(MainPalette.glassFill(0.62f))
+    }
+    chromeGlassSurface(
+        backdrop = backdrop ?: return@composed clip(shape).background(MainPalette.glassFill(0.62f)),
+        shape = shape,
+        style = LocalChromeGlassStyle.current.copy(mode = mode),
+        haze = LocalChromeHaze.current,
+        liquidBlur = 2.2.dp,
+        liquidLensHeight = 10.7.dp,
+        liquidLensAmount = 21.3.dp,
+        highlightWidth = 0.55.dp,
+        highlightAlpha = 0.38f,
+        surface = MainPalette.glassFill(0.30f),
+        depthEffect = true,
+    )
 }
 
 @Composable
@@ -223,7 +293,7 @@ internal fun MainPageHeader(
 internal fun Modifier.mainLiquidGlass(
     backdrop: Backdrop,
     shape: Shape,
-    surface: Color = Color.White.copy(alpha = 0.28f),
+    surface: Color? = null,
 ): Modifier = composed {
     chromeGlassSurface(
         backdrop = backdrop,
@@ -235,7 +305,7 @@ internal fun Modifier.mainLiquidGlass(
         liquidLensAmount = 21.3.dp,
         highlightWidth = 0.55.dp,
         highlightAlpha = 0.38f,
-        surface = surface,
+        surface = surface ?: MainPalette.glassFill(0.28f),
         depthEffect = true,
     )
 }
@@ -257,7 +327,7 @@ internal fun Modifier.profileLiquidGlass(
         liquidLensAmount = 16.dp,
         highlightWidth = 0.55.dp,
         highlightAlpha = 0.40f,
-        surface = Color.White.copy(alpha = 0.32f),
+        surface = MainPalette.glassFill(0.32f),
         depthEffect = true,
     )
 }
@@ -279,7 +349,7 @@ internal fun Modifier.dialogLiquidGlass(
         liquidLensAmount = 21.3.dp,
         highlightWidth = 0.55.dp,
         highlightAlpha = 0.40f,
-        surface = Color.White.copy(alpha = 0.34f),
+        surface = MainPalette.glassFill(0.34f),
         depthEffect = true,
     )
 }
@@ -302,7 +372,7 @@ internal fun Modifier.islandLiquidGlass(
         liquidLensAmount = 10.7.dp,
         highlightWidth = 0.5.dp,
         highlightAlpha = 0.42f,
-        surface = Color.White.copy(alpha = 0.26f),
+        surface = MainPalette.glassFill(0.26f),
         depthEffect = true,
     )
 }
@@ -345,9 +415,10 @@ internal fun Modifier.dockSunkenGlass(
     }
 }
 
+/** 首页/设置等跟色板走的页面：浅色深图标，深色浅图标。 */
 @Composable
 internal fun MainLightSystemBars() {
-    MainSystemBarIcons(lightIconsOnDarkScrim = false)
+    MainSystemBarIcons(lightIconsOnDarkScrim = MainPalette.isDark)
 }
 
 @Composable

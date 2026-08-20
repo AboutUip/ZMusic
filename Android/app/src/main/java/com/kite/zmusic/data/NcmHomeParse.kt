@@ -280,6 +280,22 @@ internal object NcmHomeParse {
         return tracksFromArray(arr)
     }
 
+    /** `/playmode/intelligence/list`：条目多为 `{ songInfo }`，也兼容直接歌曲对象。 */
+    fun intelligenceTracks(json: JSONObject): List<TrackRow> {
+        if (NcmJson.apiCode(json) != 200) return emptyList()
+        val arr = json.optJSONArray("data") ?: return emptyList()
+        return buildList {
+            for (i in 0 until arr.length()) {
+                val o = arr.optJSONObject(i) ?: continue
+                val song = o.optJSONObject("songInfo")
+                    ?: o.optJSONObject("song")
+                    ?: o.optJSONObject("songData")
+                    ?: o
+                NcmLibraryParse.trackFromSongObject(song)?.let { add(it) }
+            }
+        }
+    }
+
     /** `/search/suggest`：优先 mobile 的 allMatch，其次网页端歌曲/歌手/歌单名。 */
     fun searchSuggestKeywords(json: JSONObject): List<String> {
         val result = json.optJSONObject("result") ?: json.optJSONObject("data") ?: return emptyList()

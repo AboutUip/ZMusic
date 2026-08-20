@@ -100,12 +100,15 @@ import com.kite.zmusic.data.RecommendMvCard
 import com.kite.zmusic.playback.MvPlayback
 import com.kite.zmusic.playback.MvUiState
 import com.kite.zmusic.playback.PlaybackMode
-import com.kite.zmusic.ui.catalog.MainOverlay
+import com.kite.zmusic.ui.main.MainOverlay
 import com.kite.zmusic.ui.common.GlassActionSheet
 import com.kite.zmusic.ui.common.GlassSheetAction
 import com.kite.zmusic.ui.common.UrlImage
 import com.kite.zmusic.ui.icons.ZIcons
 import com.kite.zmusic.ui.main.LocalChromeHaze
+import com.kite.zmusic.ui.common.PredictiveBackAxis
+import com.kite.zmusic.ui.common.predictiveBackLayer
+import com.kite.zmusic.ui.common.rememberPredictiveBackUi
 import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.main.islandLiquidGlass
 import com.kite.zmusic.ui.main.mainLiquidGlass
@@ -229,8 +232,9 @@ fun MvPlayerScreen(
     val handleBack = {
         if (tempLandscape) leaveTempLandscape() else onBack()
     }
-
-    BackHandler(onBack = handleBack)
+    val backUi = rememberPredictiveBackUi(enabled = !tempLandscape, onBack = onBack)
+    BackHandler(enabled = tempLandscape, onBack = { leaveTempLandscape() })
+    val rootMod = modifier.predictiveBackLayer(backUi, PredictiveBackAxis.Vertical)
 
     val rotation: @Composable () -> Unit = {
         if (landscape && !tempLandscape) {
@@ -303,11 +307,11 @@ fun MvPlayerScreen(
             },
             onLoadMore = { playback.loadMoreRelated() },
             onArtist = onOpenArtist,
-            modifier = modifier,
+            modifier = rootMod,
         )
     } else {
         Column(
-            modifier
+            rootMod
                 .fillMaxSize()
                 .background(MainPalette.Page),
         ) {
@@ -1123,7 +1127,7 @@ private fun RelatedRow(
                 .width(148.dp)
                 .aspectRatio(16f / 9f)
                 .clip(RoundedCornerShape(6.dp))
-                .background(Color(0xFFEDEDED)),
+                .background(MainPalette.Placeholder),
         ) {
             UrlImage(
                 url = card.coverUrl,

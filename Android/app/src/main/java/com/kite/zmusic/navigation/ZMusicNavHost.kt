@@ -3,7 +3,9 @@ package com.kite.zmusic.navigation
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
 import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -93,6 +95,12 @@ fun ZMusicNavHost(modifier: Modifier = Modifier) {
                     initialOffsetY = { it / 10 },
                 )
             },
+            popEnterTransition = {
+                fadeIn(animationSpec = tween(280)) + scaleIn(
+                    initialScale = 0.94f,
+                    animationSpec = tween(280),
+                )
+            },
         ) {
             MainPlaceholderScreen(
                 sessionRepository = sessionRepository,
@@ -115,6 +123,12 @@ fun ZMusicNavHost(modifier: Modifier = Modifier) {
                 fadeOut(animationSpec = tween(280)) + slideOutVertically(
                     animationSpec = tween(280),
                     targetOffsetY = { it / 16 },
+                )
+            },
+            popExitTransition = {
+                fadeOut(animationSpec = tween(220)) + slideOutHorizontally(
+                    animationSpec = tween(280),
+                    targetOffsetX = { it },
                 )
             },
         ) {

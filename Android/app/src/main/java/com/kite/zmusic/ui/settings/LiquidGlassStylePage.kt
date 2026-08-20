@@ -1,5 +1,3 @@
-@file:OptIn(ExperimentalMaterial3Api::class)
-
 package com.kite.zmusic.ui.settings
 
 import android.annotation.SuppressLint
@@ -37,9 +35,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -77,6 +72,8 @@ import com.kite.zmusic.data.ChromeGlassMode
 import com.kite.zmusic.data.ChromeGlassStyle
 import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.main.chromeGlassSurface
+import com.kite.zmusic.ui.main.wallpaperItemChrome
+import com.kite.zmusic.ui.theme.MainSlider
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import dev.chrisbanes.haze.HazeState
@@ -87,8 +84,6 @@ import kotlinx.coroutines.launch
 private val PreviewShape = RoundedCornerShape(16.dp)
 private val ChipShape = RoundedCornerShape(percent = 50)
 private val CardShape = RoundedCornerShape(16.dp)
-private val SegmentTrack = Color(0xFFE5E5EA)
-private val SliderInactive = Color(0xFFE5E5EA)
 
 @Composable
 fun LiquidGlassStylePage(
@@ -213,8 +208,13 @@ fun LiquidGlassStylePage(
                 Modifier
                     .fillMaxWidth()
                     .graphicsLayer { alpha = t * applyAlpha }
-                    .clip(CardShape)
-                    .background(if (dirty) MainPalette.Accent else Color.White)
+                    .then(
+                        if (dirty) {
+                            Modifier.clip(CardShape).background(MainPalette.Accent)
+                        } else {
+                            Modifier.wallpaperItemChrome(CardShape)
+                        },
+                    )
                     .clickable(
                         enabled = dirty,
                         interactionSource = remember { MutableInteractionSource() },
@@ -303,8 +303,7 @@ private fun GlassControls(
                 alpha = local
                 translationY = 12.dp.toPx() * (1f - local)
             }
-            .clip(CardShape)
-            .background(Color.White),
+            .wallpaperItemChrome(CardShape),
     ) {
         GlassSliderRow(
             title = "折射率",
@@ -506,7 +505,7 @@ private fun GlassPreviewCard(
                             liquidLensAmount = 21.3.dp,
                             highlightWidth = 0.55.dp,
                             highlightAlpha = 0.38f,
-                            surface = Color.White.copy(alpha = 0.28f),
+                            surface = MainPalette.glassFill(0.28f),
                         ),
                     contentAlignment = Alignment.Center,
                 ) {
@@ -560,8 +559,7 @@ private fun GlassModePicker(
     Column(
         modifier
             .fillMaxWidth()
-            .clip(CardShape)
-            .background(Color.White)
+            .wallpaperItemChrome(CardShape)
             .padding(
                 horizontal = 14.dp,
                 vertical = if (compact) 10.dp else 14.dp,
@@ -572,7 +570,7 @@ private fun GlassModePicker(
                 .fillMaxWidth()
                 .height(38.dp)
                 .clip(RoundedCornerShape(10.dp))
-                .background(SegmentTrack)
+                .background(MainPalette.TrackOff)
                 .pointerInput(modes.size) {
                     val segW = size.width / modes.size.toFloat()
                     detectHorizontalDragGestures(
@@ -630,7 +628,7 @@ private fun GlassModePicker(
                     .width(segW - thumbPad * 2)
                     .fillMaxHeight()
                     .clip(RoundedCornerShape(8.dp))
-                    .background(Color.White)
+                    .background(MainPalette.Surface)
                     .border(
                         width = 1.dp,
                         color = MainPalette.Accent.copy(alpha = 0.28f),
@@ -694,18 +692,6 @@ private fun GlassSliderRow(
     compact: Boolean = false,
 ) {
     val sliderIx = remember { MutableInteractionSource() }
-    val colors = SliderDefaults.colors(
-        thumbColor = MainPalette.Accent,
-        activeTrackColor = MainPalette.Accent,
-        inactiveTrackColor = SliderInactive,
-        activeTickColor = Color.Transparent,
-        inactiveTickColor = Color.Transparent,
-        disabledThumbColor = MainPalette.Hint,
-        disabledActiveTrackColor = MainPalette.Accent.copy(alpha = 0.28f),
-        disabledInactiveTrackColor = SliderInactive.copy(alpha = 0.7f),
-        disabledActiveTickColor = Color.Transparent,
-        disabledInactiveTickColor = Color.Transparent,
-    )
     val safeValue = value
         .takeIf { it.isFinite() }
         ?.coerceIn(valueRange.start, valueRange.endInclusive)
@@ -741,37 +727,19 @@ private fun GlassSliderRow(
                 ),
             )
         }
-        Slider(
+        MainSlider(
             value = safeValue,
             onValueChange = { next ->
                 val clamped = next
                     .takeIf { it.isFinite() }
                     ?.coerceIn(valueRange.start, valueRange.endInclusive)
-                    ?: return@Slider
+                    ?: return@MainSlider
                 onValueChange(clamped)
             },
             valueRange = valueRange,
             enabled = enabled,
-            colors = colors,
             interactionSource = sliderIx,
             modifier = Modifier.fillMaxWidth(),
-            thumb = {
-                SliderDefaults.Thumb(
-                    interactionSource = sliderIx,
-                    colors = colors,
-                    enabled = enabled,
-                )
-            },
-            track = { state ->
-                SliderDefaults.Track(
-                    sliderState = state,
-                    enabled = enabled,
-                    colors = colors,
-                    thumbTrackGapSize = 0.dp,
-                    trackInsideCornerSize = 0.dp,
-                    drawStopIndicator = null,
-                )
-            },
         )
     }
 }

@@ -36,8 +36,8 @@ class LibraryHomeRepository(
     private val likedPlaylistRepository: LikedPlaylistRepository,
     private val playlistCollection: PlaylistCollectionRepository,
     private val albumCollection: AlbumCollectionRepository,
-    private val authClient: NcmAuthClient = NcmAuthClient(),
-    private val userClient: NcmUserClient = NcmUserClient(),
+    private val authClient: NcmAuthClient,
+    private val userClient: NcmUserClient,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val mutex = Mutex()

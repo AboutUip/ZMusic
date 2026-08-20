@@ -4,14 +4,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.kite.zmusic.data.HomeBanner
 import com.kite.zmusic.data.HomeFeedRepository
-import com.kite.zmusic.data.NcmHomeParse
-import com.kite.zmusic.data.NcmJson
-import com.kite.zmusic.data.NcmUserClient
 import com.kite.zmusic.data.RecommendMvCard
 import com.kite.zmusic.data.RecommendPlaylistCard
-import com.kite.zmusic.data.SessionRepository
 import com.kite.zmusic.data.TrackRow
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
@@ -31,9 +26,7 @@ data class HomeUiState(
 )
 
 class HomeViewModel(
-    private val sessionRepository: SessionRepository,
     private val homeFeed: HomeFeedRepository,
-    private val userClient: NcmUserClient = NcmUserClient(),
 ) : ViewModel() {
 
     val ui: StateFlow<HomeUiState> = homeFeed.feed.map { feed ->
@@ -70,23 +63,11 @@ class HomeViewModel(
 
     fun loadPersonalFm(onReady: (List<TrackRow>) -> Unit, onError: (String) -> Unit) {
         viewModelScope.launch {
-            val cookie = sessionRepository.session.value?.cookie.orEmpty()
-            if (cookie.isBlank()) {
-                onError("请先登录")
-                return@launch
-            }
-            try {
-                val json = userClient.personalFm(cookie)
-                val tracks = NcmHomeParse.personalFmTracks(json)
-                if (tracks.isEmpty()) {
-                    onError(NcmJson.userFacingMessage(json, "暂时没有漫游歌曲"))
-                    return@launch
-                }
+            val (tracks, err) = homeFeed.loadPersonalFm()
+            if (tracks.isEmpty()) {
+                onError(err ?: "暂时没有漫游歌曲")
+            } else {
                 onReady(tracks)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                onError(NcmJson.userFacingThrowable(e, "漫游加载失败"))
             }
         }
     }

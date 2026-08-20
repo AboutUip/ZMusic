@@ -1,6 +1,5 @@
 package com.kite.zmusic.ui.settings
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -35,6 +34,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -67,6 +67,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kite.zmusic.BuildConfig
 import com.kite.zmusic.R
 import com.kite.zmusic.ZMusicApplication
+import com.kite.zmusic.data.AppAppearance
 import com.kite.zmusic.data.ChromeGlassStyle
 import com.kite.zmusic.data.ServerConfigRepository
 import com.kite.zmusic.ui.common.GlassAlertDialog
@@ -75,10 +76,18 @@ import com.kite.zmusic.ui.icons.ZIcons
 import com.kite.zmusic.ui.legal.AboutLegalGlassBody
 import com.kite.zmusic.ui.legal.aboutLegalTitle
 import com.kite.zmusic.ui.login.LoginLegalKind
+import com.kite.zmusic.ui.chrome.ChromeWallpaperBackdrop
+import com.kite.zmusic.ui.chrome.chromePage
+import com.kite.zmusic.ui.chrome.LocalWallpaperViewport
+import com.kite.zmusic.ui.common.predictiveBackLayer
+import com.kite.zmusic.ui.common.rememberPredictiveBackUi
 import com.kite.zmusic.ui.main.LandscapeCoverEnter
 import com.kite.zmusic.ui.main.LandscapeCoverExit
+import com.kite.zmusic.ui.main.LocalWallpaperItemChrome
 import com.kite.zmusic.ui.main.MainPalette
+import com.kite.zmusic.ui.main.wallpaperItemChrome
 import com.kite.zmusic.ui.notice.showIslandNotice
+import com.kite.zmusic.ui.player.WordLyricSettingsPage
 import com.kite.zmusic.ui.server.ServerConfigViewModel
 import com.kite.zmusic.ui.server.ServerConfigViewModelFactory
 
@@ -106,18 +115,39 @@ fun SettingsScreen(
     var editServer by remember { mutableStateOf(false) }
     var confirmLogout by remember { mutableStateOf(false) }
     val aboutVisible = remember { MutableTransitionState(false) }
+    val sponsorVisible = remember { MutableTransitionState(false) }
     val permissionsVisible = remember { MutableTransitionState(false) }
     val qualityVisible = remember { MutableTransitionState(false) }
+    val persistentPlaybackVisible = remember { MutableTransitionState(false) }
+    val wordLyricVisible = remember { MutableTransitionState(false) }
     val glassVisible = remember { MutableTransitionState(false) }
+    val appearanceVisible = remember { MutableTransitionState(false) }
+    val wallpaperVisible = remember { MutableTransitionState(false) }
     var permissionSnapshot by remember { mutableStateOf(AppPermissionSnapshot.read(context)) }
     val audioQualityStore = remember {
         (context.applicationContext as ZMusicApplication).audioQualityStore
     }
     val audioQuality by audioQualityStore.quality.collectAsStateWithLifecycle()
+    val persistentPlaybackStore = remember {
+        (context.applicationContext as ZMusicApplication).persistentPlaybackStore
+    }
+    val persistentPlayback by persistentPlaybackStore.enabled.collectAsStateWithLifecycle()
+    val lyricRenderStore = remember {
+        (context.applicationContext as ZMusicApplication).lyricRenderStore
+    }
+    val lyricWordByWord by lyricRenderStore.wordByWord.collectAsStateWithLifecycle()
     val glassStore = remember {
         (context.applicationContext as ZMusicApplication).chromeGlassStore
     }
     val glassStyle by glassStore.style.collectAsStateWithLifecycle()
+    val themeStore = remember {
+        (context.applicationContext as ZMusicApplication).themeStore
+    }
+    val appearance by themeStore.appearance.collectAsStateWithLifecycle()
+    val wallpaperStore = remember {
+        (context.applicationContext as ZMusicApplication).chromeWallpaperStore
+    }
+    val wallpaper by wallpaperStore.state.collectAsStateWithLifecycle()
     var glassDraft by remember { mutableStateOf(glassStyle) }
     var confirmGlassLeave by remember { mutableStateOf(false) }
     var showAppreciate by remember { mutableStateOf(false) }
@@ -129,18 +159,9 @@ fun SettingsScreen(
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         permissionSnapshot = AppPermissionSnapshot.read(context)
     }
-    BackHandler(enabled = aboutVisible.targetState && legalKind == null && !showAppreciate) {
-        aboutVisible.targetState = false
-    }
     fun closePermissions() {
         permissionsVisible.targetState = false
         permissionSnapshot = AppPermissionSnapshot.read(context)
-    }
-    BackHandler(enabled = permissionsVisible.targetState) {
-        closePermissions()
-    }
-    BackHandler(enabled = qualityVisible.targetState) {
-        qualityVisible.targetState = false
     }
     fun applyGlass() {
         if (glassDraft == glassStyle) return
@@ -158,14 +179,11 @@ fun SettingsScreen(
             closeGlassPage()
         }
     }
-    BackHandler(enabled = glassVisible.targetState && !confirmGlassLeave) {
-        requestCloseGlass()
-    }
 
     Box(
         modifier
             .fillMaxSize()
-            .background(MainPalette.Page),
+            .chromePage(),
     ) {
         Column(
             Modifier
@@ -214,6 +232,42 @@ fun SettingsScreen(
                         tint = Color(0xFFB08D57),
                         onClick = { qualityVisible.targetState = true },
                     )
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(start = 62.dp)
+                            .height(0.5.dp)
+                            .background(MainPalette.Hairline),
+                    )
+                    SettingsRow(
+                        title = "持续播放",
+                        subtitle = if (persistentPlayback) {
+                            "已开启 · 与其他应用同时出声"
+                        } else {
+                            "已关闭 · 按系统规则让出"
+                        },
+                        icon = ZIcons.Headset,
+                        tint = Color(0xFF2E9B6B),
+                        onClick = { persistentPlaybackVisible.targetState = true },
+                    )
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(start = 62.dp)
+                            .height(0.5.dp)
+                            .background(MainPalette.Hairline),
+                    )
+                    SettingsRow(
+                        title = "逐字歌词",
+                        subtitle = if (lyricWordByWord) {
+                            "按字渲染 · 需歌曲提供逐字歌词"
+                        } else {
+                            "按行渲染"
+                        },
+                        icon = ZIcons.Lyrics,
+                        tint = Color(0xFF5B8DEF),
+                        onClick = { wordLyricVisible.targetState = true },
+                    )
                 }
                 Spacer(Modifier.height(22.dp))
                 SettingsGroup(
@@ -221,6 +275,20 @@ fun SettingsScreen(
                     reveal = reveal.value,
                     delay = 0.14f,
                 ) {
+                    SettingsRow(
+                        title = "外观",
+                        subtitle = appearance.subtitle,
+                        icon = ZIcons.DarkMode,
+                        tint = Color(0xFF6B7CFF),
+                        onClick = { appearanceVisible.targetState = true },
+                    )
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(start = 62.dp)
+                            .height(0.5.dp)
+                            .background(MainPalette.Hairline),
+                    )
                     SettingsRow(
                         title = "液态玻璃样式",
                         subtitle = glassStyle.settingsSubtitle,
@@ -230,6 +298,20 @@ fun SettingsScreen(
                             glassDraft = glassStore.current()
                             glassVisible.targetState = true
                         },
+                    )
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(start = 62.dp)
+                            .height(0.5.dp)
+                            .background(MainPalette.Hairline),
+                    )
+                    SettingsRow(
+                        title = "自定义背景",
+                        subtitle = wallpaper.settingsSubtitle,
+                        icon = ZIcons.Wallpaper,
+                        tint = Color(0xFF8B6BFF),
+                        onClick = { wallpaperVisible.targetState = true },
                     )
                 }
                 Spacer(Modifier.height(22.dp))
@@ -273,6 +355,20 @@ fun SettingsScreen(
                         tint = Color(0xFFE85D75),
                         onClick = { showAppreciate = true },
                     )
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(start = 62.dp)
+                            .height(0.5.dp)
+                            .background(MainPalette.Hairline),
+                    )
+                    SettingsRow(
+                        title = "赞助名单",
+                        subtitle = "谢谢投喂的人",
+                        icon = ZIcons.Sponsor,
+                        tint = Color(0xFFE0A85C),
+                        onClick = { sponsorVisible.targetState = true },
+                    )
                 }
                 Spacer(Modifier.height(22.dp))
                 SettingsGroup(
@@ -310,10 +406,45 @@ fun SettingsScreen(
             )
         }
         SettingsDrillHost(
+            visibleState = persistentPlaybackVisible,
+            landscape = landscape,
+            title = "持续播放",
+            onBack = { persistentPlaybackVisible.targetState = false },
+        ) {
+            PersistentPlaybackSettingsPage(
+                enabled = persistentPlayback,
+                onEnabledChange = { next ->
+                    if (next == persistentPlayback) return@PersistentPlaybackSettingsPage
+                    persistentPlaybackStore.setEnabled(next)
+                    context.showIslandNotice(if (next) "已开启持续播放" else "已关闭持续播放")
+                },
+                contentBottomInset = contentBottomInset,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        SettingsDrillHost(
+            visibleState = wordLyricVisible,
+            landscape = landscape,
+            title = "逐字歌词",
+            onBack = { wordLyricVisible.targetState = false },
+        ) {
+            WordLyricSettingsPage(
+                wordByWord = lyricWordByWord,
+                onWordByWordChange = { next ->
+                    if (next == lyricWordByWord) return@WordLyricSettingsPage
+                    lyricRenderStore.setWordByWord(next)
+                    context.showIslandNotice(if (next) "已切换到按字渲染" else "已切换到按行渲染")
+                },
+                contentBottomInset = contentBottomInset,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        SettingsDrillHost(
             visibleState = glassVisible,
             landscape = landscape,
             title = "液态玻璃样式",
             onBack = { requestCloseGlass() },
+            backEnabled = !confirmGlassLeave,
             actionLabel = "应用",
             actionEnabled = glassDraft != glassStyle,
             onAction = { applyGlass() },
@@ -331,15 +462,64 @@ fun SettingsScreen(
             )
         }
         SettingsDrillHost(
+            visibleState = appearanceVisible,
+            landscape = landscape,
+            title = "外观",
+            onBack = { appearanceVisible.targetState = false },
+        ) {
+            AppearanceSettingsPage(
+                selected = appearance,
+                onSelect = { next ->
+                    if (next == appearance) return@AppearanceSettingsPage
+                    themeStore.set(next)
+                    context.showIslandNotice(
+                        when (next) {
+                            AppAppearance.Light -> "已切换到浅色"
+                            AppAppearance.Dark -> "已切换到深色"
+                            AppAppearance.System -> "已跟随系统外观"
+                        },
+                    )
+                },
+                contentBottomInset = contentBottomInset,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        SettingsDrillHost(
+            visibleState = wallpaperVisible,
+            landscape = landscape,
+            title = "自定义背景",
+            onBack = { wallpaperVisible.targetState = false },
+            skipWallpaper = true,
+        ) {
+            ChromeWallpaperSettingsPage(
+                state = wallpaper,
+                store = wallpaperStore,
+                contentBottomInset = contentBottomInset,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        SettingsDrillHost(
             visibleState = aboutVisible,
             landscape = landscape,
             title = "关于",
             onBack = { aboutVisible.targetState = false },
+            backEnabled = legalKind == null && !showAppreciate,
         ) {
             AboutPage(
                 contentBottomInset = contentBottomInset,
                 onOpenTerms = { legalKind = LoginLegalKind.Terms },
                 onOpenPrivacy = { legalKind = LoginLegalKind.Privacy },
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        SettingsDrillHost(
+            visibleState = sponsorVisible,
+            landscape = landscape,
+            title = "赞助名单",
+            onBack = { sponsorVisible.targetState = false },
+        ) {
+            SponsorListPage(
+                contentBottomInset = contentBottomInset,
                 modifier = Modifier.fillMaxSize(),
             )
         }
@@ -491,13 +671,20 @@ private fun SettingsDrillHost(
     actionLabel: String? = null,
     actionEnabled: Boolean = true,
     onAction: (() -> Unit)? = null,
+    backEnabled: Boolean = true,
+    skipWallpaper: Boolean = false,
     content: @Composable () -> Unit,
 ) {
+    val backUi = rememberPredictiveBackUi(
+        enabled = visibleState.targetState && backEnabled,
+        onBack = onBack,
+    )
     AnimatedVisibility(
         visibleState = visibleState,
         modifier = Modifier
             .fillMaxSize()
-            .zIndex(1f),
+            .zIndex(1f)
+            .predictiveBackLayer(backUi),
         enter = if (landscape) {
             LandscapeCoverEnter
         } else {
@@ -509,12 +696,29 @@ private fun SettingsDrillHost(
             slideOutHorizontally(DrillSlideSpec) { it } + fadeOut(DrillFadeSpec)
         },
     ) {
-        Column(
-            Modifier
-                .fillMaxSize()
-                .background(MainPalette.Page)
-                .statusBarsPadding(),
-        ) {
+        Box(Modifier.fillMaxSize()) {
+            if (skipWallpaper) {
+                Box(Modifier.fillMaxSize().background(MainPalette.Page))
+            } else {
+                ChromeWallpaperBackdrop()
+            }
+            CompositionLocalProvider(
+                LocalWallpaperItemChrome provides if (skipWallpaper) {
+                    null
+                } else {
+                    LocalWallpaperItemChrome.current
+                },
+                LocalWallpaperViewport provides if (skipWallpaper) {
+                    null
+                } else {
+                    LocalWallpaperViewport.current
+                },
+            ) {
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .statusBarsPadding(),
+            ) {
             SettingsTopBar(
                 title = title,
                 onBack = onBack,
@@ -528,6 +732,8 @@ private fun SettingsDrillHost(
                     .fillMaxWidth(),
             ) {
                 content()
+            }
+            }
             }
         }
     }
@@ -610,8 +816,7 @@ private fun AboutMetaCard(rows: List<Pair<String, String>>) {
     Column(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(Color.White)
+            .wallpaperItemChrome(RoundedCornerShape(16.dp))
             .padding(horizontal = 18.dp, vertical = 6.dp),
     ) {
         rows.forEachIndexed { index, (label, value) ->
@@ -762,8 +967,7 @@ private fun SettingsGroup(
         Column(
             Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp))
-                .background(Color.White),
+                .wallpaperItemChrome(RoundedCornerShape(16.dp)),
         ) {
             content()
         }

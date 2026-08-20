@@ -18,7 +18,7 @@ import kotlinx.coroutines.launch
 
 class RegisterViewModel(
     private val sessionRepository: SessionRepository,
-    private val api: NcmAuthClient = NcmAuthClient(),
+    private val api: NcmAuthClient,
 ) : ViewModel() {
 
     var busy by mutableStateOf(false)
@@ -243,11 +243,12 @@ class RegisterViewModel(
 
 class RegisterViewModelFactory(
     private val sessionRepository: SessionRepository,
+    private val authClient: NcmAuthClient,
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(RegisterViewModel::class.java)) {
-            return RegisterViewModel(sessionRepository) as T
+            return RegisterViewModel(sessionRepository, authClient) as T
         }
         error("Unknown ViewModel: ${modelClass.name}")
     }

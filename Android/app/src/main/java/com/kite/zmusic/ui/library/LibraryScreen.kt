@@ -86,7 +86,12 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollDispatcher
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.TextUnit
@@ -97,29 +102,34 @@ import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kite.zmusic.ZMusicApplication
+import com.kite.zmusic.data.ChromeWallpaperSurface
 import com.kite.zmusic.data.CollectedAlbum
 import com.kite.zmusic.data.PlaylistSummary
 import com.kite.zmusic.data.SessionRepository
 import com.kite.zmusic.data.UserProfileBrief
 import com.kite.zmusic.data.VipKind
-import com.kite.zmusic.ui.catalog.MainOverlay
+import com.kite.zmusic.ui.main.MainOverlay
+import com.kite.zmusic.ui.chrome.LocalChromeWallpaperPainted
+import com.kite.zmusic.ui.chrome.chromePage
 import com.kite.zmusic.ui.common.GlassActionSheet
 import com.kite.zmusic.ui.common.GlassAlertDialog
 import com.kite.zmusic.ui.common.GlassPromptField
 import com.kite.zmusic.ui.common.GlassSheetAction
 import com.kite.zmusic.ui.common.UrlImage
+import com.kite.zmusic.ui.common.UrlImageCache
 import com.kite.zmusic.ui.common.rememberUrlImageBitmap
 import com.kite.zmusic.ui.icons.ZIcons
 import com.kite.zmusic.ui.notice.showIslandNotice
 import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.main.mainContentPadH
+import com.kite.zmusic.ui.main.wallpaperItemChrome
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
-private val ProfileBlankBrush = Brush.verticalGradient(
-    colors = listOf(Color(0xFFFBFBFC), MainPalette.Page),
+private fun profileBlankBrush() = Brush.verticalGradient(
+    colors = listOf(MainPalette.Surface, MainPalette.Page),
 )
 private val VipGold = Color(0xFFFFD789)
 private val SvipPlate = Color(0xFF1A120C)
@@ -142,13 +152,15 @@ private class CollectionPagerState(
     private var dragging: Boolean = false
     private var target: Float = initial
 
-    fun dragDelta(deltaPx: Float, widthPx: Float) {
+    fun dragDelta(deltaPx: Float, widthPx: Float): Float {
         if (!dragging) {
             cancelAnim()
             dragging = true
         }
         val w = widthPx.coerceAtLeast(1f)
-        offset = (offset - deltaPx / w).coerceIn(0f, 1f)
+        val old = offset
+        offset = (old - deltaPx / w).coerceIn(0f, 1f)
+        return (old - offset) * w
     }
 
     fun settle(velocityPx: Float): Float {
@@ -292,7 +304,9 @@ private fun LibraryHomeLandscape(
             onLoadMoreAlbums()
         }
     }
-    val hasPhoto = !customBgPath.isNullOrBlank() || !ui.profile?.backgroundUrl.isNullOrBlank()
+    val hasPhoto = LocalChromeWallpaperPainted.current ||
+        !customBgPath.isNullOrBlank() ||
+        !ui.profile?.backgroundUrl.isNullOrBlank()
     val p = spaceProgress.coerceIn(0f, 1f)
     val pulling = p > 0.001f
     val sheetA = spaceSheetAlpha(p)
@@ -300,7 +314,7 @@ private fun LibraryHomeLandscape(
     BoxWithConstraints(
         Modifier
             .fillMaxSize()
-            .background(MainPalette.Page)
+            .chromePage()
             .clipToBounds(),
     ) {
         val viewportH = maxHeight
@@ -346,7 +360,7 @@ private fun LibraryHomeLandscape(
                 Column(
                     Modifier
                         .fillMaxWidth()
-                        .background(MainPalette.Page)
+                        .chromePage()
                         .padding(horizontal = padH)
                         .then(
                             if (pulling) {
@@ -400,18 +414,20 @@ private fun ProfileLandscapeBanner(
     modifier: Modifier = Modifier,
 ) {
     Box(modifier.clipToBounds()) {
-        Box(
-            Modifier
-                .align(Alignment.BottomStart)
-                .fillMaxWidth()
-                .height(120.dp)
-                .graphicsLayer { alpha = (1f - spaceProgress).coerceIn(0f, 1f) }
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.55f)),
+        if (!LocalChromeWallpaperPainted.current) {
+            Box(
+                Modifier
+                    .align(Alignment.BottomStart)
+                    .fillMaxWidth()
+                    .height(120.dp)
+                    .graphicsLayer { alpha = (1f - spaceProgress).coerceIn(0f, 1f) }
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.55f)),
+                        ),
                     ),
-                ),
-        )
+            )
+        }
         Row(
             Modifier
                 .fillMaxSize()
@@ -537,6 +553,9 @@ fun LibraryScreen(
     var collectionKind by remember { mutableStateOf(LibraryCollectionKind.Playlist) }
     val uid = ui.profile?.userId ?: 0L
     var customBgPath by remember(uid) { mutableStateOf(app.userSpaceBackgroundStore.pathFor(uid)) }
+    val wallpaper by app.chromeWallpaperStore.state.collectAsStateWithLifecycle()
+    val profileChrome = wallpaper.frame(ChromeWallpaperSurface.Profile, isLandscape) != null
+    val heroBgPath = if (profileChrome) null else customBgPath
 
     fun openPlaylist(pl: PlaylistSummary) {
         onOpenOverlay(
@@ -556,7 +575,14 @@ fun LibraryScreen(
     }
 
     LaunchedEffect(pullState) {
-        snapshotFlow { pullState.progress }
+        snapshotFlow {
+            val raw = pullState.progress
+            when {
+                raw <= 0.001f -> 0f
+                raw >= 0.999f -> 1f
+                else -> (raw * 40f).toInt() / 40f
+            }
+        }
             .distinctUntilChanged()
             .collect { onUserSpaceProgress(it) }
     }
@@ -609,7 +635,7 @@ fun LibraryScreen(
                 onOpenPlaylist = ::openPlaylist,
                 pullState = pullState,
                 spaceProgress = spaceProgress,
-                customBgPath = customBgPath,
+                customBgPath = heroBgPath,
                 onAvatarPositioned = ::captureAvatar,
                 onMorePlaylist = { morePlaylist = it },
                 onCreatePlaylist = {
@@ -630,7 +656,7 @@ fun LibraryScreen(
                 onOpenPlaylist = ::openPlaylist,
                 pullState = pullState,
                 spaceProgress = spaceProgress,
-                customBgPath = customBgPath,
+                customBgPath = heroBgPath,
                 onAvatarPositioned = ::captureAvatar,
                 onMorePlaylist = { morePlaylist = it },
                 onCreatePlaylist = {
@@ -651,6 +677,7 @@ fun LibraryScreen(
             likedTrackCount = ui.likedTrackCount,
             subcount = ui.subcount,
             customBgPath = customBgPath,
+            backgroundUrl = ui.profile?.backgroundUrl,
             avatarStart = avatarStart,
             avatarStartSize = avatarStartSize,
             reveal = pullState,
@@ -851,7 +878,9 @@ private fun LibraryHomePortrait(
     }
     val identityAlpha = (1f - scrollPx / (heroPx * 0.48f)).coerceIn(0f, 1f)
     val sheetPadT = lerp(4.dp, statusTop + 6.dp, (scrollPx / (heroPx * 0.52f)).coerceIn(0f, 1f))
-    val hasPhoto = !customBgPath.isNullOrBlank() || !ui.profile?.backgroundUrl.isNullOrBlank()
+    val hasPhoto = LocalChromeWallpaperPainted.current ||
+        !customBgPath.isNullOrBlank() ||
+        !ui.profile?.backgroundUrl.isNullOrBlank()
     val atTop by remember {
         derivedStateOf {
             listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset <= 2
@@ -887,7 +916,7 @@ private fun LibraryHomePortrait(
     BoxWithConstraints(
         Modifier
             .fillMaxSize()
-            .background(MainPalette.Page)
+            .chromePage()
             .clipToBounds(),
     ) {
         val viewportH = maxHeight
@@ -984,7 +1013,7 @@ private fun LibraryHomePortrait(
                                 Modifier
                             },
                         )
-                        .background(MainPalette.Page),
+                        .chromePage(),
                 ) {
                     Column(
                         Modifier
@@ -1028,6 +1057,7 @@ private fun LibraryHomePortrait(
 
 @Composable
 private fun ProfileSheetBlend(modifier: Modifier = Modifier) {
+    if (LocalChromeWallpaperPainted.current) return
     Box(
         modifier
             .fillMaxWidth()
@@ -1050,7 +1080,13 @@ internal fun ProfileFixedBackground(
     backgroundUrl: String?,
     localPath: String? = null,
     modifier: Modifier = Modifier,
+    ignoreChrome: Boolean = false,
 ) {
+    val painted = !ignoreChrome && LocalChromeWallpaperPainted.current
+    if (painted) {
+        Box(modifier)
+        return
+    }
     val custom = !localPath.isNullOrBlank()
     val localBmp = rememberFileImageBitmap(if (custom) localPath else null)
     val remoteBmp = rememberUrlImageBitmap(if (custom) null else backgroundUrl)
@@ -1059,7 +1095,7 @@ internal fun ProfileFixedBackground(
     Box(
         modifier
             .clipToBounds()
-            .background(ProfileBlankBrush)
+            .background(profileBlankBrush())
             .then(
                 if (painter != null) {
                     Modifier.paint(
@@ -1159,7 +1195,7 @@ private fun ProfileIdentity(
                 .graphicsLayer { alpha = fade },
             contentAlignment = Alignment.Center,
         ) {
-            if (onPhoto && profile != null) {
+            if (onPhoto && profile != null && !LocalChromeWallpaperPainted.current) {
                 Box(
                     Modifier
                         .fillMaxWidth()
@@ -1521,7 +1557,7 @@ internal fun ProfileAvatar(
                 .border(2.dp, ring, CircleShape)
                 .padding(3.dp)
                 .clip(CircleShape)
-                .background(Color(0xFFF0F0F2)),
+                .background(MainPalette.Placeholder),
             contentAlignment = Alignment.Center,
         ) {
             val url = profile.avatarUrl
@@ -1531,6 +1567,7 @@ internal fun ProfileAvatar(
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop,
+                    maxPx = UrlImageCache.THUMB_MAX_PX,
                 )
             } else {
                 Text(
@@ -1739,14 +1776,27 @@ private fun CollectionSwipePages(
     val haptic = LocalHapticFeedback.current
     var widthPx by remember { mutableFloatStateOf(1f) }
     var dragFrom by remember { mutableStateOf(0) }
+    val nestedDispatcher = remember { NestedScrollDispatcher() }
+    val nestedConnection = remember { object : NestedScrollConnection {} }
     val drag = rememberDraggableState { delta ->
-        pager.dragDelta(delta, widthPx)
+        val parentPre = nestedDispatcher.dispatchPreScroll(
+            Offset(delta, 0f),
+            NestedScrollSource.UserInput,
+        )
+        val remaining = delta - parentPre.x
+        val self = pager.dragDelta(remaining, widthPx)
+        nestedDispatcher.dispatchPostScroll(
+            consumed = Offset(self, 0f),
+            available = Offset(remaining - self, 0f),
+            source = NestedScrollSource.UserInput,
+        )
     }
     Layout(
         modifier = Modifier
             .fillMaxWidth()
             .clipToBounds()
             .onSizeChanged { widthPx = it.width.toFloat().coerceAtLeast(1f) }
+            .nestedScroll(nestedConnection, nestedDispatcher)
             .draggable(
                 state = drag,
                 orientation = Orientation.Horizontal,
@@ -1754,17 +1804,27 @@ private fun CollectionSwipePages(
                     dragFrom = if (pager.offset >= 0.5f) 1 else 0
                 },
                 onDragStopped = { velocity ->
-                    val dest = pager.settle(velocity)
-                    val destPage = if (dest >= 0.5f) 1 else 0
-                    val kind = if (destPage == 1) {
-                        LibraryCollectionKind.Album
+                    val atStart = pager.offset <= 0.001f
+                    val atEnd = pager.offset >= 0.999f
+                    val passParent = (atStart && velocity > 0f) || (atEnd && velocity < 0f)
+                    if (passParent) {
+                        val available = Velocity(velocity, 0f)
+                        val consumed = nestedDispatcher.dispatchPreFling(available)
+                        nestedDispatcher.dispatchPostFling(consumed, available - consumed)
+                        pager.settle(0f)
                     } else {
-                        LibraryCollectionKind.Playlist
+                        val dest = pager.settle(velocity)
+                        val destPage = if (dest >= 0.5f) 1 else 0
+                        val kind = if (destPage == 1) {
+                            LibraryCollectionKind.Album
+                        } else {
+                            LibraryCollectionKind.Playlist
+                        }
+                        if (destPage != dragFrom) {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        }
+                        onSettled(kind)
                     }
-                    if (destPage != dragFrom) {
-                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                    }
-                    onSettled(kind)
                 },
             ),
         content = {
@@ -1807,8 +1867,7 @@ private fun CollectionKindSwitch(
         Modifier
             .width(148.dp)
             .height(32.dp)
-            .clip(RoundedCornerShape(10.dp))
-            .background(Color(0xFFE8E8EA)),
+            .wallpaperItemChrome(RoundedCornerShape(10.dp), MainPalette.Placeholder),
     ) {
         val segW = maxWidth / kinds.size
         Box(
@@ -1823,7 +1882,7 @@ private fun CollectionKindSwitch(
                 .width(segW - 6.dp)
                 .fillMaxHeight()
                 .clip(RoundedCornerShape(8.dp))
-                .background(Color.White),
+                .background(MainPalette.Surface),
         )
         Row(Modifier.fillMaxSize()) {
             kinds.forEach { kind ->
@@ -1985,6 +2044,7 @@ private fun CollectedAlbumTile(
                 .aspectRatio(1f)
                 .clip(RoundedCornerShape(8.dp)),
             contentScale = ContentScale.Crop,
+            maxPx = UrlImageCache.THUMB_MAX_PX,
         )
         Spacer(Modifier.height(6.dp))
         Text(
@@ -2066,8 +2126,7 @@ private fun PlaylistRow(
     Row(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(Color.White)
+            .wallpaperItemChrome(RoundedCornerShape(14.dp))
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -2091,6 +2150,7 @@ private fun PlaylistRow(
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop,
+                    maxPx = UrlImageCache.THUMB_MAX_PX,
                 )
             }
             Spacer(Modifier.width(12.dp))

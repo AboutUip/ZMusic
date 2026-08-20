@@ -28,6 +28,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -116,6 +117,8 @@ fun IslandNoticeRoot(
         LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     val alertHost = remember { GlassAlertHostState() }
     val actionSheetHost = remember { GlassActionSheetHostState() }
+    var islandLive by remember { mutableStateOf(false) }
+    val captureLive = islandLive || alertHost.visible || actionSheetHost.visible
     CompositionLocalProvider(
         LocalGlassAlertHost provides alertHost,
         LocalGlassActionSheetHost provides actionSheetHost,
@@ -126,12 +129,18 @@ fun IslandNoticeRoot(
             Box(
                 Modifier
                     .fillMaxSize()
-                    .layerBackdrop(backdrop),
+                    .then(if (captureLive) Modifier.layerBackdrop(backdrop) else Modifier),
             ) {
                 Box(
                     Modifier
                         .fillMaxSize()
-                        .hazeSource(state = islandHaze, zIndex = 0f),
+                        .then(
+                            if (captureLive) {
+                                Modifier.hazeSource(state = islandHaze, zIndex = 0f)
+                            } else {
+                                Modifier
+                            },
+                        ),
                 ) {
                     content()
                 }
@@ -140,6 +149,7 @@ fun IslandNoticeRoot(
                 center = app.islandNoticeCenter,
                 backdrop = backdrop,
                 landscape = landscape,
+                onLiveChange = { islandLive = it },
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .zIndex(500f),
@@ -165,6 +175,7 @@ private fun IslandNoticeHost(
     center: IslandNoticeCenter,
     backdrop: Backdrop,
     landscape: Boolean,
+    onLiveChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val density = LocalDensity.current
@@ -182,6 +193,8 @@ private fun IslandNoticeHost(
     val coverBlend = remember { Animatable(0f) }
     val alpha = remember { Animatable(0f) }
     val squashY = remember { Animatable(1f) }
+    val capturing = mounted || alpha.value > 0.02f
+    SideEffect { onLiveChange(capturing) }
 
     LaunchedEffect(center) {
         fun px(dp: Dp): Float = with(densityState.value) { dp.toPx() }

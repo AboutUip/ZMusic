@@ -27,29 +27,48 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.kite.zmusic.ui.catalog.MainOverlay
 import com.kite.zmusic.ui.icons.ZIcons
 import com.kite.zmusic.ui.main.MainContentPadTop
+import com.kite.zmusic.ui.main.MainOverlay
 import com.kite.zmusic.ui.main.MainPageHeader
 import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.main.mainContentPadH
+import com.kite.zmusic.ui.main.wallpaperItemChrome
 
 @Composable
 fun FeaturesScreen(
     contentBottomInset: Dp,
     onOpenOverlay: (MainOverlay) -> Unit,
     onStartFm: () -> Unit,
+    onStartIntelligence: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val landscape =
         LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     val padH = mainContentPadH(landscape)
+    val modes = remember { builtInListenModes() }
+    val enterListenMode: (ListenMode) -> Unit = { mode ->
+        when (mode.id) {
+            ListenModeId.Fm -> onStartFm()
+            ListenModeId.Heart -> onStartIntelligence()
+        }
+    }
+    val tools = listOf(
+        FeatureItem("每日推荐", "今天的三十首", MainPalette.Accent, ZIcons.Daily) {
+            onOpenOverlay(MainOverlay.Daily)
+        },
+        FeatureItem("排行榜", "官方与热歌榜", Color(0xFFFF9500), ZIcons.Charts) {
+            onOpenOverlay(MainOverlay.Charts)
+        },
+    )
 
     Column(
         modifier
@@ -60,7 +79,7 @@ fun FeaturesScreen(
         if (!landscape) {
             MainPageHeader(
                 title = "功能",
-                landscape = landscape,
+                landscape = false,
             )
         }
         Column(
@@ -70,35 +89,55 @@ fun FeaturesScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(bottom = contentBottomInset + 12.dp),
         ) {
-            Spacer(Modifier.height(14.dp))
-            ToolsGrid(
-                onDaily = { onOpenOverlay(MainOverlay.Daily) },
-                onFm = onStartFm,
-                onCharts = { onOpenOverlay(MainOverlay.Charts) },
+            Spacer(Modifier.height(if (landscape) 8.dp else 14.dp))
+            FeatureSectionTitle("听歌模式")
+            Spacer(Modifier.height(10.dp))
+            FeatureCardGrid(
+                items = modes.map { mode ->
+                    FeatureItem(mode.title, mode.caption, mode.accent, mode.icon) {
+                        enterListenMode(mode)
+                    }
+                },
             )
+            Spacer(Modifier.height(if (landscape) 22.dp else 26.dp))
+            FeatureSectionTitle("功能")
+            Spacer(Modifier.height(10.dp))
+            FeatureCardGrid(items = tools)
         }
     }
 }
 
 @Composable
-private fun ToolsGrid(
-    onDaily: () -> Unit,
-    onFm: () -> Unit,
-    onCharts: () -> Unit,
-) {
-    val tools = listOf(
-        ToolItem("每日推荐", "今天的三十首", MainPalette.Accent, ZIcons.Daily, onDaily),
-        ToolItem("私人漫游", "按口味连续听", Color(0xFF5070F0), ZIcons.Radio, onFm),
-        ToolItem("排行榜", "官方与热歌榜", Color(0xFFFF9500), ZIcons.Charts, onCharts),
+private fun FeatureSectionTitle(text: String) {
+    Text(
+        text = text,
+        style = TextStyle(
+            color = MainPalette.Ink,
+            fontSize = 17.sp,
+            fontWeight = FontWeight.Bold,
+        ),
+        modifier = Modifier.padding(horizontal = 2.dp),
     )
+}
+
+private data class FeatureItem(
+    val title: String,
+    val subtitle: String,
+    val color: Color,
+    val icon: ImageVector,
+    val onClick: () -> Unit,
+)
+
+@Composable
+private fun FeatureCardGrid(items: List<FeatureItem>) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        tools.chunked(2).forEach { row ->
+        items.chunked(2).forEach { row ->
             Row(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 row.forEach { item ->
-                    ToolCard(item, Modifier.weight(1f))
+                    FeatureCard(item, Modifier.weight(1f))
                 }
                 if (row.size == 1) Spacer(Modifier.weight(1f))
             }
@@ -106,20 +145,11 @@ private fun ToolsGrid(
     }
 }
 
-private data class ToolItem(
-    val title: String,
-    val subtitle: String,
-    val color: Color,
-    val icon: androidx.compose.ui.graphics.vector.ImageVector,
-    val onClick: () -> Unit,
-)
-
 @Composable
-private fun ToolCard(item: ToolItem, modifier: Modifier = Modifier) {
+private fun FeatureCard(item: FeatureItem, modifier: Modifier = Modifier) {
     Row(
         modifier
-            .clip(RoundedCornerShape(14.dp))
-            .background(Color.White)
+            .wallpaperItemChrome(RoundedCornerShape(14.dp))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
@@ -132,7 +162,7 @@ private fun ToolCard(item: ToolItem, modifier: Modifier = Modifier) {
             Modifier
                 .size(36.dp)
                 .clip(CircleShape)
-                .background(item.color.copy(alpha = 0.16f)),
+                .background(item.color.copy(alpha = if (MainPalette.isDark) 0.22f else 0.16f)),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
@@ -151,10 +181,18 @@ private fun ToolCard(item: ToolItem, modifier: Modifier = Modifier) {
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold,
                 ),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
             Text(
                 text = item.subtitle,
-                style = TextStyle(color = MainPalette.Secondary, fontSize = 11.sp),
+                style = TextStyle(
+                    color = MainPalette.Secondary,
+                    fontSize = 11.sp,
+                    lineHeight = 14.sp,
+                ),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
             )
         }
     }

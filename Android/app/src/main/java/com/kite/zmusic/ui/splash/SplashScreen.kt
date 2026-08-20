@@ -47,9 +47,10 @@ import kotlinx.coroutines.delay
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.pow
+import com.kite.zmusic.ui.theme.MainPalette
 
-private val Page = Color(0xFFEEF4F7)
-private val Ink = Color(0xFF1A2A32)
+private val Page get() = MainPalette.Page
+private val Ink get() = MainPalette.Ink
 private val InkSecondary = Color(0xFF6B7A82)
 private val Bloom = Color(0xFFEC4141)
 private val MoteA = Color(0xFFC45B5B)
@@ -549,13 +550,14 @@ private fun easeOutBack(t: Float): Float {
 @Composable
 private fun SplashLightSystemBars() {
     val view = LocalView.current
-    DisposableEffect(view) {
+    val light = !MainPalette.isDark
+    DisposableEffect(view, light) {
         val window = (view.context as? Activity)?.window
         val controller = window?.let { WindowCompat.getInsetsController(it, view) }
         val prevStatus = controller?.isAppearanceLightStatusBars
         val prevNav = controller?.isAppearanceLightNavigationBars
-        controller?.isAppearanceLightStatusBars = true
-        controller?.isAppearanceLightNavigationBars = true
+        controller?.isAppearanceLightStatusBars = light
+        controller?.isAppearanceLightNavigationBars = light
         onDispose {
             if (prevStatus != null) controller.isAppearanceLightStatusBars = prevStatus
             if (prevNav != null) controller.isAppearanceLightNavigationBars = prevNav

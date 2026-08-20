@@ -108,7 +108,7 @@ fun ServerConfigScreen(
                     .widthIn(max = 400.dp)
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(18.dp))
-                    .background(Color.White)
+                    .background(MainPalette.Surface)
                     .padding(horizontal = 18.dp, vertical = 18.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {

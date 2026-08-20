@@ -8,7 +8,7 @@ import com.kite.zmusic.data.ArtistSimilar
 import com.kite.zmusic.data.NcmArtistParse
 import com.kite.zmusic.data.NcmJson
 import com.kite.zmusic.data.NcmMvParse
-import com.kite.zmusic.data.NcmUserClient
+import com.kite.zmusic.data.ArtistRepository
 import com.kite.zmusic.data.RecommendMvCard
 import com.kite.zmusic.data.SessionRepository
 import com.kite.zmusic.data.TrackRow
@@ -59,7 +59,7 @@ class ArtistViewModel(
     seedCover: String?,
     private val sessionRepository: SessionRepository,
     private val islandNotices: IslandNoticeCenter,
-    private val userClient: NcmUserClient = NcmUserClient(),
+    private val artists: ArtistRepository,
 ) : ViewModel() {
 
     private val _ui = MutableStateFlow(
@@ -94,7 +94,7 @@ class ArtistViewModel(
         albumJob = viewModelScope.launch {
             _ui.update { it.copy(albumsLoading = true) }
             try {
-                val json = userClient.artistAlbums(
+                val json = artists.albums(
                     artistId,
                     cookie(),
                     limit = AlbumPage,
@@ -127,7 +127,7 @@ class ArtistViewModel(
         mvJob = viewModelScope.launch {
             _ui.update { it.copy(mvsLoading = true) }
             try {
-                val json = userClient.artistMv(
+                val json = artists.mvs(
                     artistId,
                     cookie(),
                     limit = MvPage,
@@ -167,7 +167,7 @@ class ArtistViewModel(
         viewModelScope.launch {
             _ui.update { it.copy(followBusy = true, followed = next) }
             try {
-                val json = userClient.artistSub(state.id, next, cookie)
+                val json = artists.subscribe(state.id, next, cookie)
                 val code = NcmJson.apiCode(json)
                 if (code == 301 || code == 302) {
                     revertFollow(next)
@@ -215,29 +215,29 @@ class ArtistViewModel(
         try {
             coroutineScope {
                 val detailDef = async {
-                    runCatching { userClient.artistDetail(artistId, cookie) }
+                    runCatching { artists.detail(artistId, cookie) }
                 }
                 val dynDef = async {
-                    runCatching { userClient.artistDetailDynamic(artistId, cookie) }
+                    runCatching { artists.detailDynamic(artistId, cookie) }
                 }
                 val songsDef = async {
-                    runCatching { userClient.artistTopSongs(artistId, cookie) }
+                    runCatching { artists.topSongs(artistId, cookie) }
                 }
                 val albumsDef = async {
                     runCatching {
-                        userClient.artistAlbums(artistId, cookie, limit = AlbumPage, offset = 0)
+                        artists.albums(artistId, cookie, limit = AlbumPage, offset = 0)
                     }
                 }
                 val mvsDef = async {
                     runCatching {
-                        userClient.artistMv(artistId, cookie, limit = MvPage, offset = 0)
+                        artists.mvs(artistId, cookie, limit = MvPage, offset = 0)
                     }
                 }
                 val bioDef = async {
-                    runCatching { userClient.artistDesc(artistId, cookie) }
+                    runCatching { artists.desc(artistId, cookie) }
                 }
                 val simiDef = async {
-                    runCatching { userClient.simiArtist(artistId, cookie) }
+                    runCatching { artists.similar(artistId, cookie) }
                 }
 
                 val detailJson = detailDef.await().getOrNull()

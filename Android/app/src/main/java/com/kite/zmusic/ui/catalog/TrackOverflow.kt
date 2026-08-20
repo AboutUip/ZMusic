@@ -12,6 +12,7 @@ import com.kite.zmusic.ZMusicApplication
 import com.kite.zmusic.data.PlaylistSummary
 import com.kite.zmusic.data.TrackArtist
 import com.kite.zmusic.data.TrackExportException
+import com.kite.zmusic.data.TrackExportOptions
 import com.kite.zmusic.data.TrackRow
 import com.kite.zmusic.ui.artist.resolveTrackArtists
 import com.kite.zmusic.ui.common.GlassActionSheet
@@ -26,7 +27,7 @@ internal fun TrackOverflowMenu(
     track: TrackRow?,
     canRemove: Boolean,
     onDismiss: () -> Unit,
-    onDownload: (TrackRow) -> Unit,
+    onDownload: (TrackRow, TrackExportOptions) -> Unit,
     onRemove: (TrackRow) -> Unit,
     removeConfirmTitle: String = "从歌单移除这首歌？",
     removeConfirmMessage: String = "这首歌会从当前歌单里拿掉，不会删除已下载的文件。",
@@ -37,6 +38,7 @@ internal fun TrackOverflowMenu(
     var confirmRemove by remember(track?.id) { mutableStateOf(false) }
     var pickingPlaylist by remember(track?.id) { mutableStateOf(false) }
     var pickingArtist by remember(track?.id) { mutableStateOf(false) }
+    var pickingExport by remember(track?.id) { mutableStateOf(false) }
     var artistChoices by remember(track?.id) { mutableStateOf<List<TrackArtist>>(emptyList()) }
     val current = track ?: return
     val app = LocalContext.current.applicationContext as ZMusicApplication
@@ -55,6 +57,17 @@ internal fun TrackOverflowMenu(
                     onDismiss()
                 },
                 onDismiss = onDismiss,
+            )
+        }
+        pickingExport -> {
+            TrackExportOptionsDialog(
+                title = "下载",
+                message = current.name,
+                onConfirm = { options ->
+                    onDownload(current, options)
+                    onDismiss()
+                },
+                onDismiss = { pickingExport = false },
             )
         }
         pickingArtist -> {
@@ -114,8 +127,7 @@ internal fun TrackOverflowMenu(
                 actions = buildList {
                     add(
                         GlassSheetAction("下载") {
-                            onDownload(current)
-                            onDismiss()
+                            pickingExport = true
                         },
                     )
                     if (showAddToPlaylist) {
@@ -130,7 +142,7 @@ internal fun TrackOverflowMenu(
                             GlassSheetAction("查看歌手") {
                                 scope.launch {
                                     val cookie = app.sessionRepository.session.value?.cookie.orEmpty()
-                                    val found = resolveTrackArtists(current, cookie)
+                                    val found = resolveTrackArtists(current, cookie, app.songRepository)
                                     when {
                                         found.isEmpty() -> {
                                             context.showIslandNotice("暂时无法打开这位歌手", current.coverUrl)
@@ -167,21 +179,23 @@ internal fun launchTrackDownload(
     scope: CoroutineScope,
     app: ZMusicApplication,
     track: TrackRow,
+    options: TrackExportOptions,
 ) {
     scope.launch {
-        downloadOneTrack(app, track)
+        downloadOneTrack(app, track, options)
     }
 }
 
 internal suspend fun launchTrackDownloads(
     app: ZMusicApplication,
     tracks: List<TrackRow>,
+    options: TrackExportOptions,
 ) {
     if (tracks.isEmpty()) return
     var ok = 0
     tracks.forEachIndexed { i, track ->
         app.islandNoticeCenter.show("正在下载 ${i + 1}/${tracks.size}", track.coverUrl)
-        if (downloadOneTrack(app, track, notify = false)) ok++
+        if (downloadOneTrack(app, track, options, notify = false)) ok++
     }
     app.islandNoticeCenter.show(
         if (ok == tracks.size) "已保存 ${ok} 首到 Download/ZMusic"
@@ -193,6 +207,7 @@ internal suspend fun launchTrackDownloads(
 private suspend fun downloadOneTrack(
     app: ZMusicApplication,
     track: TrackRow,
+    options: TrackExportOptions,
     notify: Boolean = true,
 ): Boolean {
     if (notify) {
@@ -203,7 +218,7 @@ private suspend fun downloadOneTrack(
         app.islandNoticeCenter.show("请先登录", track.coverUrl)
         return false
     }
-    return runCatching { app.trackExportRepository.export(track, cookie) }
+    return runCatching { app.trackExportRepository.export(track, cookie, options) }
         .onSuccess {
             if (notify) {
                 app.islandNoticeCenter.show("已保存到 Download/ZMusic", track.coverUrl)

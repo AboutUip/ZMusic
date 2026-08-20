@@ -57,27 +57,16 @@ import com.kite.zmusic.ui.common.UrlImage
 import com.kite.zmusic.ui.common.UrlImageCache
 import com.kite.zmusic.ui.icons.ZIcons
 import com.kite.zmusic.ui.main.MainPalette
+import com.kite.zmusic.ui.main.pageSheetHazeStyle
 import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.HazeStyle
-import dev.chrisbanes.haze.HazeTint
 import dev.chrisbanes.haze.hazeEffect
 
-private val QueueLabel = MainPalette.Ink
-private val QueueAccent = MainPalette.Accent
-private val QueueHint = MainPalette.Secondary
-private val QueueIconTint = Color(0xFFD5DEE8)
-private val QueueCoverBg = Color(0xFFE8E8ED)
+private val QueueLabel get() = MainPalette.Ink
+private val QueueAccent get() = MainPalette.Accent
+private val QueueHint get() = MainPalette.Secondary
+private val QueueIconTint get() = MainPalette.Ink
+private val QueueCoverBg get() = MainPalette.Placeholder
 private val QueuePanelShape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp)
-private val QueueGlassStyle = HazeStyle(
-    backgroundColor = MainPalette.Page,
-    tints = listOf(
-        HazeTint(Color.White.copy(alpha = 0.78f)),
-        HazeTint(MainPalette.Page.copy(alpha = 0.52f)),
-    ),
-    blurRadius = 56.dp,
-    noiseFactor = 0.08f,
-    fallbackTint = HazeTint(MainPalette.Page.copy(alpha = 0.94f)),
-)
 
 private const val QueuePrefetchBehind = 8
 private const val QueuePrefetchAhead = 24
@@ -211,7 +200,7 @@ fun PortraitQueueSheet(
             Box(
                 Modifier
                     .matchParentSize()
-                    .hazeEffect(state = hazeState, style = QueueGlassStyle),
+                    .hazeEffect(state = hazeState, style = pageSheetHazeStyle()),
             )
         } else {
             Box(
@@ -223,7 +212,7 @@ fun PortraitQueueSheet(
         Box(
             Modifier
                 .matchParentSize()
-                .background(Color.White.copy(alpha = 0.22f)),
+                .background(MainPalette.SheetWash),
         )
 
         Column(
@@ -361,7 +350,7 @@ private fun PortraitQueueSearchField(
             .fillMaxWidth()
             .height(42.dp)
             .clip(RoundedCornerShape(21.dp))
-            .background(Color(0xFFF0F0F2))
+            .background(MainPalette.Placeholder)
             .padding(horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

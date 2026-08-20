@@ -30,6 +30,7 @@ class PlaybackStateStore(context: Context) {
                 .putLong(KEY_SOURCE_ID, state.sourcePlaylistId ?: -1L)
                 .putString(KEY_SOURCE_TITLE, state.sourcePlaylistTitle)
                 .putBoolean(KEY_FM, state.fmActive)
+                .putBoolean(KEY_INTEL, state.intelligenceActive)
                 .apply()
         }.onFailure { Log.w(TAG, "save failed", it) }
     }
@@ -61,6 +62,7 @@ class PlaybackStateStore(context: Context) {
                 sourcePlaylistId = prefs.getLong(KEY_SOURCE_ID, -1L).takeIf { it > 0 },
                 sourcePlaylistTitle = prefs.getString(KEY_SOURCE_TITLE, null),
                 fmActive = prefs.getBoolean(KEY_FM, false),
+                intelligenceActive = prefs.getBoolean(KEY_INTEL, false),
             ).withHydratedPeeks()
         }.onFailure { Log.w(TAG, "load failed", it) }.getOrNull()
     }
@@ -91,5 +93,6 @@ class PlaybackStateStore(context: Context) {
         private const val KEY_SOURCE_ID = "source_id"
         private const val KEY_SOURCE_TITLE = "source_title"
         private const val KEY_FM = "fm_active"
+        private const val KEY_INTEL = "intelligence_active"
     }
 }

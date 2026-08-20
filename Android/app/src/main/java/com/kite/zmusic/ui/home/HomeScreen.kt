@@ -20,14 +20,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -59,8 +60,9 @@ import com.kite.zmusic.data.RecommendPlaylistCard
 import com.kite.zmusic.data.SessionRepository
 import com.kite.zmusic.data.TrackRow
 import com.kite.zmusic.ZMusicApplication
-import com.kite.zmusic.ui.catalog.MainOverlay
+import com.kite.zmusic.ui.main.MainOverlay
 import com.kite.zmusic.ui.common.UrlImage
+import com.kite.zmusic.ui.common.UrlImageCache
 import com.kite.zmusic.ui.common.ZPullRefresh
 import com.kite.zmusic.ui.icons.ZIcons
 import com.kite.zmusic.ui.main.MainContentPadTop
@@ -86,7 +88,7 @@ fun HomeScreen(
 ) {
     val app = LocalContext.current.applicationContext as ZMusicApplication
     val vm: HomeViewModel = viewModel(
-        factory = HomeViewModelFactory(sessionRepository, app.homeFeedRepository),
+        factory = HomeViewModelFactory(app.homeFeedRepository),
     )
     val ui by vm.ui.collectAsStateWithLifecycle()
     val landscape =
@@ -178,149 +180,148 @@ fun HomeScreen(
                 .weight(1f)
                 .fillMaxWidth(),
         ) {
-            Column(
-                Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = padH)
-                    .padding(bottom = contentBottomInset + 12.dp),
-            ) {
-        Spacer(Modifier.height(14.dp))
-        HomeSearchEntry(onClick = { onOpenOverlay(MainOverlay.Search) })
-        Spacer(Modifier.height(18.dp))
-
-        if (ui.loading &&
-            ui.playlists.isEmpty() &&
-            ui.dailySongs.isEmpty() &&
-            ui.newSongs.isEmpty() &&
-            ui.mvs.isEmpty() &&
-            ui.dailyPlaylists.isEmpty()
-        ) {
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .height(180.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                CircularProgressIndicator(
-                    color = MainPalette.Accent,
-                    strokeWidth = 2.dp,
-                    modifier = Modifier.size(28.dp),
-                )
-            }
-        }
-
-        ui.error?.let { err ->
-            Text(
-                text = err,
-                style = TextStyle(color = MainPalette.Secondary, fontSize = 13.sp, lineHeight = 18.sp),
+            LazyColumn(
                 modifier = Modifier
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = { vm.refresh() },
-                    )
-                    .padding(vertical = 8.dp),
-            )
-        }
-
-        if (ui.banners.isNotEmpty()) {
-            HomeBannerPager(
-                banners = ui.banners,
-                onBanner = onBanner,
-            )
-            Spacer(Modifier.height(20.dp))
-        }
-
-        if (landscape && ui.dailySongs.isNotEmpty()) {
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    .fillMaxSize()
+                    .padding(horizontal = padH),
+                contentPadding = PaddingValues(bottom = contentBottomInset + 12.dp),
             ) {
-                DailyRecommendCard(
-                    songs = ui.dailySongs,
-                    onPlay = { onOpenOverlay(MainOverlay.Daily) },
-                    modifier = Modifier.width(120.dp),
-                )
-                DailySongStrip(
-                    songs = ui.dailySongs,
-                    onPlayAt = { i -> onPlayTracks(ui.dailySongs, i, null, "每日推荐") },
-                    modifier = Modifier.weight(1f),
-                )
-            }
-            Spacer(Modifier.height(22.dp))
-        } else if (ui.dailySongs.isNotEmpty()) {
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                DailyRecommendCard(
-                    songs = ui.dailySongs,
-                    onPlay = { onOpenOverlay(MainOverlay.Daily) },
-                )
-                DailySongStrip(
-                    songs = ui.dailySongs,
-                    onPlayAt = { i -> onPlayTracks(ui.dailySongs, i, null, "每日推荐") },
-                    modifier = Modifier.weight(1f),
-                )
-            }
-            Spacer(Modifier.height(22.dp))
-        }
-
-        if (ui.playlists.isNotEmpty()) {
-            SectionTitle("推荐歌单")
-            Spacer(Modifier.height(12.dp))
-            HomePlaylistGrid(
-                playlists = ui.playlists,
-                columns = playlistCols,
-                onOpen = { onOpenOverlay(MainOverlay.Playlist(it.id, it.name, it.coverUrl)) },
-            )
-        }
-
-        if (ui.newSongs.isNotEmpty()) {
-            Spacer(Modifier.height(22.dp))
-            SectionTitle("新歌")
-            Spacer(Modifier.height(12.dp))
-            CoverStrip(
-                items = ui.newSongs.map {
-                    CoverStripItem(it.id, it.name, it.coverUrl, it.artists)
-                },
-                onOpen = { i -> onPlayTracks(ui.newSongs, i, null, "新歌") },
-            )
-        }
-
-        if (ui.mvs.isNotEmpty()) {
-            Spacer(Modifier.height(22.dp))
-            SectionTitle("推荐 MV")
-            Spacer(Modifier.height(12.dp))
-            MvStrip(
-                mvs = ui.mvs,
-                onOpen = {
-                    onOpenOverlay(
-                        MainOverlay.Mv(it.id, it.name, it.coverUrl, it.artist),
+                item(key = "search") {
+                    Spacer(Modifier.height(14.dp))
+                    HomeSearchEntry(onClick = { onOpenOverlay(MainOverlay.Search) })
+                    Spacer(Modifier.height(18.dp))
+                }
+                if (ui.loading &&
+                    ui.playlists.isEmpty() &&
+                    ui.dailySongs.isEmpty() &&
+                    ui.newSongs.isEmpty() &&
+                    ui.mvs.isEmpty() &&
+                    ui.dailyPlaylists.isEmpty()
+                ) {
+                    item(key = "loading") {
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .height(180.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            CircularProgressIndicator(
+                                color = MainPalette.Accent,
+                                strokeWidth = 2.dp,
+                                modifier = Modifier.size(28.dp),
+                            )
+                        }
+                    }
+                }
+                ui.error?.let { err ->
+                    item(key = "error") {
+                        Text(
+                            text = err,
+                            style = TextStyle(color = MainPalette.Secondary, fontSize = 13.sp, lineHeight = 18.sp),
+                            modifier = Modifier
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null,
+                                    onClick = { vm.refresh() },
+                                )
+                                .padding(vertical = 8.dp),
+                        )
+                    }
+                }
+                if (ui.banners.isNotEmpty()) {
+                    item(key = "banners") {
+                        HomeBannerPager(
+                            banners = ui.banners,
+                            onBanner = onBanner,
+                        )
+                        Spacer(Modifier.height(20.dp))
+                    }
+                }
+                if (ui.dailySongs.isNotEmpty()) {
+                    item(key = "daily") {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            DailyRecommendCard(
+                                songs = ui.dailySongs,
+                                onPlay = { onOpenOverlay(MainOverlay.Daily) },
+                            )
+                            DailySongStrip(
+                                songs = ui.dailySongs,
+                                onPlayAt = { i -> onPlayTracks(ui.dailySongs, i, null, "每日推荐") },
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                        Spacer(Modifier.height(22.dp))
+                    }
+                }
+                if (ui.playlists.isNotEmpty()) {
+                    item(key = "playlists-title", contentType = "section-title") {
+                        SectionTitle("推荐歌单")
+                        Spacer(Modifier.height(12.dp))
+                    }
+                    homePlaylistRowItems(
+                        keyPrefix = "pl",
+                        playlists = ui.playlists,
+                        columns = playlistCols,
+                        onOpen = { onOpenOverlay(MainOverlay.Playlist(it.id, it.name, it.coverUrl)) },
                     )
-                },
-            )
+                }
+                if (ui.newSongs.isNotEmpty()) {
+                    item(key = "newsongs") {
+                        val items = remember(ui.newSongs) {
+                            ui.newSongs.map {
+                                CoverStripItem(it.id, it.name, it.coverUrl, it.artists)
+                            }
+                        }
+                        Spacer(Modifier.height(22.dp))
+                        SectionTitle("新歌")
+                        Spacer(Modifier.height(12.dp))
+                        CoverStrip(
+                            items = items,
+                            onOpen = { i -> onPlayTracks(ui.newSongs, i, null, "新歌") },
+                        )
+                    }
+                }
+                if (ui.mvs.isNotEmpty()) {
+                    item(key = "mvs") {
+                        Spacer(Modifier.height(22.dp))
+                        SectionTitle("推荐 MV")
+                        Spacer(Modifier.height(12.dp))
+                        MvStrip(
+                            mvs = ui.mvs,
+                            onOpen = {
+                                onOpenOverlay(
+                                    MainOverlay.Mv(it.id, it.name, it.coverUrl, it.artist),
+                                )
+                            },
+                        )
+                    }
+                }
+                if (ui.dailyPlaylists.isNotEmpty()) {
+                    item(key = "dailyPlaylists") {
+                        val items = remember(ui.dailyPlaylists) {
+                            ui.dailyPlaylists.map {
+                                CoverStripItem(it.id, it.name, it.coverUrl, null)
+                            }
+                        }
+                        Spacer(Modifier.height(22.dp))
+                        SectionTitle("每日歌单")
+                        Spacer(Modifier.height(12.dp))
+                        CoverStrip(
+                            items = items,
+                            cardWidth = 100.dp,
+                            onOpen = { i ->
+                                val pl = ui.dailyPlaylists[i]
+                                onOpenOverlay(MainOverlay.Playlist(pl.id, pl.name, pl.coverUrl))
+                            },
+                        )
+                    }
+                }
+            }
         }
-
-        if (ui.dailyPlaylists.isNotEmpty()) {
-            Spacer(Modifier.height(22.dp))
-            SectionTitle("每日歌单")
-            Spacer(Modifier.height(12.dp))
-            CoverStrip(
-                items = ui.dailyPlaylists.map {
-                    CoverStripItem(it.id, it.name, it.coverUrl, null)
-                },
-                cardWidth = 100.dp,
-                onOpen = { i ->
-                    val pl = ui.dailyPlaylists[i]
-                    onOpenOverlay(MainOverlay.Playlist(pl.id, pl.name, pl.coverUrl))
-                },
-            )
-        }
-        }
-    }
     }
 }
 
@@ -365,7 +366,7 @@ private fun HomeSearchEntry(
         modifier
             .height(40.dp)
             .clip(RoundedCornerShape(20.dp))
-            .background(Color(0xFFF0F0F2))
+            .background(MainPalette.Placeholder)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
@@ -389,7 +390,13 @@ private fun HomeSearchEntry(
     }
 }
 
-private const val BannerVirtualPages = 50_000
+private const val BannerLoopCopies = 10_000
+
+private fun bannerLoopPage(page: Int, count: Int): Int {
+    if (count <= 0) return 0
+    val m = page % count
+    return if (m < 0) m + count else m
+}
 
 @Composable
 private fun HomeBannerPager(
@@ -403,29 +410,27 @@ private fun HomeBannerPager(
 ) {
     val count = banners.size
     val looped = count > 1
-    val startPage = remember(count) {
-        if (!looped) 0
-        else {
-            val mid = BannerVirtualPages / 2
-            mid - mid % count
+    val pager = rememberPagerState(
+        initialPage = if (looped) count * (BannerLoopCopies / 2) else 0,
+        pageCount = {
+            when {
+                count <= 0 -> 1
+                looped -> count * BannerLoopCopies
+                else -> count
+            }
+        },
+    )
+    val realPage = bannerLoopPage(pager.currentPage, count)
+
+    LaunchedEffect(count, looped) {
+        if (looped && pager.currentPage < count) {
+            pager.scrollToPage(count * (BannerLoopCopies / 2))
         }
     }
-    val pager = rememberPagerState(
-        initialPage = startPage,
-        pageCount = { if (looped) BannerVirtualPages else count.coerceAtLeast(1) },
-    )
-    val realPage = if (count == 0) 0 else pager.currentPage % count
-
-    LaunchedEffect(pager.settledPage, count) {
+    LaunchedEffect(pager.settledPage, count, looped) {
         if (!looped) return@LaunchedEffect
         delay(4200)
-        val next = pager.currentPage + 1
-        if (next >= BannerVirtualPages - count) {
-            val mid = BannerVirtualPages / 2
-            pager.scrollToPage(mid - mid % count + (pager.currentPage % count) + 1)
-        } else {
-            pager.animateScrollToPage(next)
-        }
+        pager.animateScrollToPage(pager.currentPage + 1)
     }
     Column {
         Box(modifier) {
@@ -434,7 +439,7 @@ private fun HomeBannerPager(
             beyondViewportPageCount = 1,
             modifier = Modifier.fillMaxSize(),
         ) { page ->
-            val b = banners[page % count]
+            val b = banners[bannerLoopPage(page, count)]
             Box(
                 Modifier
                     .fillMaxSize()
@@ -584,6 +589,7 @@ private fun DailySongStrip(
                         .size(72.dp)
                         .clip(RoundedCornerShape(8.dp)),
                     contentScale = ContentScale.Crop,
+                    maxPx = UrlImageCache.THUMB_MAX_PX,
                 )
                 Spacer(Modifier.height(6.dp))
                 Text(
@@ -610,33 +616,52 @@ private fun SectionTitle(text: String) {
 }
 
 @Composable
-private fun HomePlaylistGrid(
+private fun HomePlaylistRow(
+    playlists: List<RecommendPlaylistCard>,
+    columns: Int,
+    row: Int,
+    onOpen: (RecommendPlaylistCard) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        repeat(columns) { col ->
+            val i = row * columns + col
+            if (i < playlists.size) {
+                val pl = playlists[i]
+                PlaylistTile(
+                    pl = pl,
+                    onOpen = { onOpen(pl) },
+                    modifier = Modifier.weight(1f),
+                )
+            } else {
+                Spacer(Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+private fun LazyListScope.homePlaylistRowItems(
+    keyPrefix: String,
     playlists: List<RecommendPlaylistCard>,
     columns: Int,
     onOpen: (RecommendPlaylistCard) -> Unit,
 ) {
     val rows = (playlists.size + columns - 1) / columns
-    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        repeat(rows) { row ->
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                repeat(columns) { col ->
-                    val i = row * columns + col
-                    if (i < playlists.size) {
-                        val pl = playlists[i]
-                        PlaylistTile(
-                            pl = pl,
-                            onOpen = { onOpen(pl) },
-                            modifier = Modifier.weight(1f),
-                        )
-                    } else {
-                        Spacer(Modifier.weight(1f))
-                    }
-                }
-            }
-        }
+    items(
+        count = rows,
+        key = { row -> "$keyPrefix-$row" },
+        contentType = { "playlist-row" },
+    ) { row ->
+        HomePlaylistRow(
+            playlists = playlists,
+            columns = columns,
+            row = row,
+            onOpen = onOpen,
+            modifier = Modifier.padding(bottom = 14.dp),
+        )
     }
 }
 
@@ -674,6 +699,7 @@ private fun CoverStrip(
                         .size(cardWidth)
                         .clip(RoundedCornerShape(8.dp)),
                     contentScale = ContentScale.Crop,
+                    maxPx = UrlImageCache.THUMB_MAX_PX,
                 )
                 Spacer(Modifier.height(6.dp))
                 Text(
@@ -749,13 +775,14 @@ private fun MvTeaser(
                 .fillMaxWidth()
                 .aspectRatio(16f / 9f)
                 .clip(RoundedCornerShape(10.dp))
-                .background(Color(0xFFEDEDED)),
+                .background(MainPalette.Placeholder),
         ) {
             UrlImage(
                 url = mv.coverUrl,
                 contentDescription = mv.name,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,
+                maxPx = UrlImageCache.THUMB_MAX_PX,
             )
             if (mv.playCount > 0L) {
                 Text(
@@ -813,13 +840,14 @@ private fun PlaylistTile(
                 .fillMaxWidth()
                 .aspectRatio(1f)
                 .clip(RoundedCornerShape(8.dp))
-                .background(Color(0xFFEDEDED)),
+                .background(MainPalette.Placeholder),
         ) {
             UrlImage(
                 url = pl.coverUrl,
                 contentDescription = pl.name,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,
+                maxPx = UrlImageCache.THUMB_MAX_PX,
             )
             if (pl.playCount > 0L) {
                 Text(
@@ -861,13 +889,13 @@ private fun HomeLandscapeBody(
         onRefresh = onRefresh,
         modifier = modifier.fillMaxSize(),
     ) {
-        Column(
-            Modifier
+        LazyColumn(
+            modifier = Modifier
                 .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp)
-                .padding(top = 16.dp, bottom = contentBottomInset + 16.dp),
+                .padding(horizontal = 24.dp),
+            contentPadding = PaddingValues(top = 16.dp, bottom = contentBottomInset + 16.dp),
         ) {
+            item(key = "head") {
             Box(
                 Modifier
                     .fillMaxWidth()
@@ -954,11 +982,14 @@ private fun HomeLandscapeBody(
                 }
                 Spacer(Modifier.height(28.dp))
             }
-
+            }
             if (ui.playlists.isNotEmpty()) {
-                SectionTitle("推荐歌单")
-                Spacer(Modifier.height(14.dp))
-                HomePlaylistGrid(
+                item(key = "playlists-title", contentType = "section-title") {
+                    SectionTitle("推荐歌单")
+                    Spacer(Modifier.height(14.dp))
+                }
+                homePlaylistRowItems(
+                    keyPrefix = "pl",
                     playlists = ui.playlists,
                     columns = 5,
                     onOpen = { onOpenOverlay(MainOverlay.Playlist(it.id, it.name, it.coverUrl)) },
@@ -966,10 +997,13 @@ private fun HomeLandscapeBody(
             }
 
             if (ui.newSongs.isNotEmpty()) {
-                Spacer(Modifier.height(28.dp))
-                SectionTitle("新歌")
-                Spacer(Modifier.height(14.dp))
-                HomePlaylistGrid(
+                item(key = "newsongs-title", contentType = "section-title") {
+                    Spacer(Modifier.height(28.dp))
+                    SectionTitle("新歌")
+                    Spacer(Modifier.height(14.dp))
+                }
+                homePlaylistRowItems(
+                    keyPrefix = "ns",
                     playlists = ui.newSongs.map {
                         RecommendPlaylistCard(
                             id = it.id,
@@ -987,6 +1021,7 @@ private fun HomeLandscapeBody(
             }
 
             if (ui.mvs.isNotEmpty()) {
+                item(key = "mvs") {
                 Spacer(Modifier.height(28.dp))
                 SectionTitle("推荐 MV")
                 Spacer(Modifier.height(14.dp))
@@ -996,13 +1031,17 @@ private fun HomeLandscapeBody(
                         onOpenOverlay(MainOverlay.Mv(it.id, it.name, it.coverUrl, it.artist))
                     },
                 )
+                }
             }
 
             if (ui.dailyPlaylists.isNotEmpty()) {
-                Spacer(Modifier.height(28.dp))
-                SectionTitle("每日歌单")
-                Spacer(Modifier.height(14.dp))
-                HomePlaylistGrid(
+                item(key = "dailyPlaylists-title", contentType = "section-title") {
+                    Spacer(Modifier.height(28.dp))
+                    SectionTitle("每日歌单")
+                    Spacer(Modifier.height(14.dp))
+                }
+                homePlaylistRowItems(
+                    keyPrefix = "dpl",
                     playlists = ui.dailyPlaylists,
                     columns = 5,
                     onOpen = { onOpenOverlay(MainOverlay.Playlist(it.id, it.name, it.coverUrl)) },
@@ -1023,7 +1062,7 @@ private fun LandscapeDailyPanel(
     Column(
         modifier
             .clip(RoundedCornerShape(16.dp))
-            .background(Color.White)
+            .background(MainPalette.Surface)
             .padding(horizontal = 16.dp, vertical = 14.dp),
     ) {
         Row(
@@ -1071,6 +1110,7 @@ private fun LandscapeDailyPanel(
                         .size(40.dp)
                         .clip(RoundedCornerShape(6.dp)),
                     contentScale = ContentScale.Crop,
+                    maxPx = UrlImageCache.THUMB_MAX_PX,
                 )
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {

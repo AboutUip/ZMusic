@@ -5,6 +5,7 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Bundle
+import android.provider.Settings
 import android.util.Log
 import androidx.annotation.OptIn
 import androidx.media3.common.Player
@@ -12,6 +13,7 @@ import androidx.media3.common.util.BitmapLoader
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.CommandButton
 import androidx.media3.session.DefaultMediaNotificationProvider
+import androidx.media3.session.MediaNotification
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import androidx.media3.session.SessionCommand
@@ -34,7 +36,7 @@ import kotlinx.coroutines.launch
 
 /**
  * 薄宿主：ExoPlayer + MediaSession 在此；通知 / FGS 完全交给 Media3。
- * 通知栏在「上一首」左侧额外展示播放模式（列表循环 / 单曲循环 / 随机）。
+ * 通知栏：最左播放模式，最右歌词开关（锁定后该槽变为取消锁定）。
  */
 @OptIn(UnstableApi::class)
 class PlaybackService : MediaSessionService() {
@@ -45,6 +47,10 @@ class PlaybackService : MediaSessionService() {
 
     private val cyclePlaybackModeCommand =
         SessionCommand(ACTION_CYCLE_PLAYBACK_MODE, Bundle.EMPTY)
+    private val toggleLyricsOverlayCommand =
+        SessionCommand(ACTION_TOGGLE_LYRICS_OVERLAY, Bundle.EMPTY)
+    private val unlockLyricsOverlayCommand =
+        SessionCommand(ACTION_UNLOCK_LYRICS_OVERLAY, Bundle.EMPTY)
 
     override fun onCreate() {
         super.onCreate()
@@ -59,6 +65,8 @@ class PlaybackService : MediaSessionService() {
             lyricRepository = bridge.lyricRepository(),
             likedPlaylistRepository = app.likedPlaylistRepository,
             audioQualityStore = app.audioQualityStore,
+            persistentPlaybackStore = app.persistentPlaybackStore,
+            userClient = app.ncmUserClient,
             onClearAndStopService = {
                 pauseAllPlayersAndStopSelf()
             },
@@ -70,7 +78,11 @@ class PlaybackService : MediaSessionService() {
             this,
             0,
             Intent(this, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                action = MainActivity.ACTION_OPEN_PLAYER
+                putExtra(MainActivity.EXTRA_OPEN_PLAYER, true)
+                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                    Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
             },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
@@ -80,7 +92,11 @@ class PlaybackService : MediaSessionService() {
             .setBitmapLoader(ArtworkBitmapLoader(applicationContext, serviceScope))
             .setCallback(SessionCallback())
             .setMediaButtonPreferences(
-                ImmutableList.of(playbackModeButton(coord.ui.value.playbackMode)),
+                overlayMediaButtons(
+                    songMode = coord.ui.value.playbackMode,
+                    overlayEnabled = app.lyricOverlayStore.current().enabled,
+                    overlayLocked = app.lyricOverlayStore.current().locked,
+                ),
             )
             .build()
         bridge.onBindSessionPlayer = { player ->
@@ -101,12 +117,14 @@ class PlaybackService : MediaSessionService() {
             combine(
                 coord.ui.map { it.playbackMode },
                 app.mvPlayback.ui.map { it.active to it.playbackMode },
-            ) { songMode, mv ->
-                if (mv.first) mv.second else songMode
+                app.lyricOverlayStore.prefsFlow.map { it.enabled to it.locked },
+            ) { songMode, mv, overlay ->
+                val mode = if (mv.first) mv.second else songMode
+                Triple(mode, overlay.first, overlay.second)
             }.distinctUntilChanged()
-                .collect { mode ->
+                .collect { (mode, overlayOn, overlayLocked) ->
                     mediaSession?.setMediaButtonPreferences(
-                        ImmutableList.of(playbackModeButton(mode)),
+                        overlayMediaButtons(mode, overlayOn, overlayLocked),
                     )
                 }
         }
@@ -138,6 +156,55 @@ class PlaybackService : MediaSessionService() {
         }
         serviceScope.cancel()
         super.onDestroy()
+    }
+
+    private fun overlayMediaButtons(
+        songMode: PlaybackMode,
+        overlayEnabled: Boolean,
+        overlayLocked: Boolean,
+    ): ImmutableList<CommandButton> {
+        val builder = ImmutableList.builder<CommandButton>()
+        builder.add(playbackModeButton(songMode))
+        if (overlayEnabled && overlayLocked) {
+            builder.add(unlockLyricsButton())
+        } else {
+            builder.add(lyricsOverlayButton(overlayEnabled))
+        }
+        return builder.build()
+    }
+
+    private fun lyricsOverlayButton(enabled: Boolean): CommandButton {
+        val iconRes = if (enabled) R.drawable.ic_media_lyrics else R.drawable.ic_media_lyrics_off
+        val nameRes = if (enabled) R.string.playback_lyrics_overlay_on else R.string.playback_lyrics_overlay_off
+        return CommandButton.Builder(CommandButton.ICON_UNDEFINED)
+            .setDisplayName(getString(nameRes))
+            .setCustomIconResId(iconRes)
+            .setSessionCommand(toggleLyricsOverlayCommand)
+            .setSlots(CommandButton.SLOT_OVERFLOW)
+            .build()
+    }
+
+    private fun unlockLyricsButton(): CommandButton {
+        return CommandButton.Builder(CommandButton.ICON_UNDEFINED)
+            .setDisplayName(getString(R.string.playback_lyrics_overlay_unlock))
+            .setCustomIconResId(R.drawable.ic_media_lock_open)
+            .setSessionCommand(unlockLyricsOverlayCommand)
+            .setSlots(CommandButton.SLOT_OVERFLOW)
+            .build()
+    }
+
+    private fun toggleLyricsOverlay() {
+        val app = application as ZMusicApplication
+        if (!Settings.canDrawOverlays(this)) {
+            val intent = Intent(
+                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                Uri.fromParts("package", packageName, null),
+            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            runCatching { startActivity(intent) }
+            return
+        }
+        val store = app.lyricOverlayStore
+        store.setEnabled(!store.current().enabled)
     }
 
     private fun playbackModeButton(mode: PlaybackMode): CommandButton {
@@ -175,6 +242,8 @@ class PlaybackService : MediaSessionService() {
                 .setAvailableSessionCommands(
                     MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS.buildUpon()
                         .add(cyclePlaybackModeCommand)
+                        .add(toggleLyricsOverlayCommand)
+                        .add(unlockLyricsOverlayCommand)
                         .build(),
                 )
                 .build()
@@ -192,13 +261,21 @@ class PlaybackService : MediaSessionService() {
                 else coordinator?.cyclePlaybackMode()
                 return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
             }
+            if (customCommand.customAction == ACTION_TOGGLE_LYRICS_OVERLAY) {
+                toggleLyricsOverlay()
+                return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+            }
+            if (customCommand.customAction == ACTION_UNLOCK_LYRICS_OVERLAY) {
+                (application as ZMusicApplication).lyricOverlayStore.setLocked(false)
+                return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+            }
             return super.onCustomCommand(session, controller, customCommand, args)
         }
     }
 
     /**
-     * 默认顺序为 prev / play / next / overflow；
-     * 将播放模式按钮挪到最前，使通知栏呈现：模式 · 上一首 · 播放 · 下一首。
+     * 展开通知：模式 · 上一首 · 播放 · 下一首 · 歌词（锁定时该槽位变为取消锁定）。
+     * 折叠紧凑行：模式 · 播放 · 歌词/解锁。
      */
     private class ModeFirstMediaNotificationProvider(
         context: android.content.Context,
@@ -222,16 +299,39 @@ class PlaybackService : MediaSessionService() {
                 mediaButtonPreferences,
                 showPauseButton,
             )
-            val modeIndex = buttons.indexOfFirst {
-                it.sessionCommand?.customAction == ACTION_CYCLE_PLAYBACK_MODE
+            val mode = buttons.find { it.sessionCommand?.customAction == ACTION_CYCLE_PLAYBACK_MODE }
+            val lyrics = buttons.find { it.sessionCommand?.customAction == ACTION_TOGGLE_LYRICS_OVERLAY }
+            val unlock = buttons.find { it.sessionCommand?.customAction == ACTION_UNLOCK_LYRICS_OVERLAY }
+            val rest = buttons.filter { btn ->
+                val action = btn.sessionCommand?.customAction
+                action != ACTION_CYCLE_PLAYBACK_MODE &&
+                    action != ACTION_TOGGLE_LYRICS_OVERLAY &&
+                    action != ACTION_UNLOCK_LYRICS_OVERLAY
             }
-            if (modeIndex <= 0) return buttons
+            if (mode == null && lyrics == null && unlock == null) return buttons
             val builder = ImmutableList.builder<CommandButton>()
-            builder.add(buttons[modeIndex])
-            for (i in buttons.indices) {
-                if (i != modeIndex) builder.add(buttons[i])
+            if (mode != null) builder.add(mode)
+            rest.forEach { builder.add(it) }
+            when {
+                unlock != null -> builder.add(unlock)
+                lyrics != null -> builder.add(lyrics)
             }
             return builder.build()
+        }
+
+        override fun addNotificationActions(
+            mediaSession: MediaSession,
+            mediaButtons: ImmutableList<CommandButton>,
+            builder: androidx.core.app.NotificationCompat.Builder,
+            actionFactory: MediaNotification.ActionFactory,
+        ): IntArray {
+            super.addNotificationActions(mediaSession, mediaButtons, builder, actionFactory)
+            if (mediaButtons.isEmpty()) return intArrayOf()
+            val playIdx = mediaButtons.indices.firstOrNull { i ->
+                mediaButtons[i].playerCommand == Player.COMMAND_PLAY_PAUSE
+            } ?: (mediaButtons.size / 2)
+            val last = mediaButtons.size - 1
+            return intArrayOf(0, playIdx, last).distinct().toIntArray()
         }
     }
 
@@ -306,5 +406,7 @@ class PlaybackService : MediaSessionService() {
         private const val TAG = "PlaybackService"
         private const val CHANNEL_ID = "zmusic_playback"
         const val ACTION_CYCLE_PLAYBACK_MODE = "com.kite.zmusic.CYCLE_PLAYBACK_MODE"
+        const val ACTION_TOGGLE_LYRICS_OVERLAY = "com.kite.zmusic.TOGGLE_LYRICS_OVERLAY"
+        const val ACTION_UNLOCK_LYRICS_OVERLAY = "com.kite.zmusic.UNLOCK_LYRICS_OVERLAY"
     }
 }

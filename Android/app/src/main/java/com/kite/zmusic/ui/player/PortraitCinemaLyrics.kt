@@ -63,6 +63,7 @@ import androidx.compose.ui.util.lerp
 import com.kite.zmusic.data.LrcLine
 import com.kite.zmusic.data.LyricRoleStyle
 import com.kite.zmusic.data.PlayerDisplayPrefs
+import com.kite.zmusic.data.karaokeWords
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
@@ -116,9 +117,14 @@ fun PortraitCinemaLyrics(
     if (lines.isEmpty()) {
         Box(
             modifier
-                .fillMaxWidth()
+                .fillMaxSize()
                 .offset(y = offsetYBase.dp)
-                .graphicsLayer { this.alpha = contentA },
+                .graphicsLayer { this.alpha = contentA }
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onCollapse,
+                ),
             contentAlignment = Alignment.Center,
         ) {
             Text(
@@ -361,7 +367,6 @@ fun PortraitCinemaLyrics(
                 .offset(y = offsetY)
                 .fillMaxWidth()
                 .height(bandHeight)
-                .padding(horizontal = hPad)
                 .pointerInput(browsing, selectFrozen, lines.size, slotHeightPx) {
                     if (browsing || selectFrozen) return@pointerInput
                     val touchSlop = viewConfiguration.touchSlop
@@ -495,7 +500,9 @@ fun PortraitCinemaLyrics(
         ) {
             LazyColumn(
                 state = listState,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = hPad),
                 contentPadding = PaddingValues(vertical = centerPad),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 userScrollEnabled = (browsing || selectInteractive) && !dragSession,
@@ -616,6 +623,10 @@ fun PortraitCinemaLyrics(
                                         maxLines = 4,
                                         overflow = TextOverflow.Ellipsis,
                                         instantAppear = skipPlayingEnter,
+                                        words = line.karaokeWords(positionMs),
+                                        positionMs = positionMs,
+                                        unplayedColor = unplayedColor.copy(alpha = 0.42f),
+                                        tracking = live && !selectFrozen,
                                         style = TextStyle(
                                             color = playingColor.copy(
                                                 alpha = 0.55f + 0.45f * emphasis,

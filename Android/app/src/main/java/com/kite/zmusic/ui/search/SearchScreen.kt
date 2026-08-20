@@ -88,6 +88,7 @@ import com.kite.zmusic.ui.common.GlassActionSheet
 import com.kite.zmusic.ui.common.GlassAlertDialog
 import com.kite.zmusic.ui.common.GlassSheetAction
 import com.kite.zmusic.ui.common.UrlImage
+import com.kite.zmusic.ui.chrome.chromePage
 import com.kite.zmusic.ui.icons.ZIcons
 import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.notice.showIslandNotice
@@ -111,7 +112,7 @@ fun SearchScreen(
 ) {
     val app = LocalContext.current.applicationContext as ZMusicApplication
     val vm: SearchViewModel = viewModel(
-        factory = SearchViewModelFactory(sessionRepository, app.searchHistoryRepository),
+        factory = SearchViewModelFactory(sessionRepository, app.searchHistoryRepository, app.searchRepository),
     )
     val ui by vm.ui.collectAsStateWithLifecycle()
     val focus = LocalFocusManager.current
@@ -147,7 +148,7 @@ fun SearchScreen(
     Column(
         modifier
             .fillMaxSize()
-            .background(MainPalette.Page)
+            .chromePage()
             .statusBarsPadding()
             .imePadding(),
     ) {
@@ -282,7 +283,7 @@ private fun SearchField(
             .fillMaxWidth()
             .height(42.dp)
             .clip(RoundedCornerShape(21.dp))
-            .background(Color(0xFFF0F0F2))
+            .background(MainPalette.Placeholder)
             .padding(horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -426,7 +427,7 @@ private fun HistoryCapsule(
         modifier = Modifier
             .height(32.dp)
             .clip(shape)
-            .background(Color.White)
+            .background(MainPalette.Surface)
             .border(1.dp, MainPalette.Hairline, shape)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -504,7 +505,7 @@ private fun HotBlock(
                     ),
                     modifier = Modifier
                         .clip(RoundedCornerShape(16.dp))
-                        .background(Color.White)
+                        .background(MainPalette.Surface)
                         .border(1.dp, MainPalette.Hairline, RoundedCornerShape(16.dp))
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
@@ -808,7 +809,7 @@ private fun SearchKindPage(
         track = moreTrack,
         canRemove = false,
         onDismiss = { moreTrack = null },
-        onDownload = { launchTrackDownload(scope, app, it) },
+        onDownload = { track, options -> launchTrackDownload(scope, app, track, options) },
         onRemove = {},
         onOpenArtist = { id, name, cover ->
             onOpenArtist(SearchArtistHit(id, name, cover))

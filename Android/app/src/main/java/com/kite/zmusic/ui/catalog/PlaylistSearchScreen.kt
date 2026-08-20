@@ -56,7 +56,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kite.zmusic.ZMusicApplication
 import com.kite.zmusic.data.SessionRepository
 import com.kite.zmusic.data.TrackRow
+import com.kite.zmusic.ui.chrome.chromePage
 import com.kite.zmusic.ui.icons.ZIcons
+import com.kite.zmusic.ui.main.MainOverlay
 import com.kite.zmusic.ui.main.MainPalette
 import kotlinx.coroutines.delay
 
@@ -85,6 +87,7 @@ fun PlaylistSearchScreen(
             app.playlistTracksCache,
             app.likedPlaylistRepository,
             app.islandNoticeCenter,
+            app.catalogRepository,
         ),
     )
     val ui by vm.ui.collectAsStateWithLifecycle()
@@ -120,7 +123,7 @@ fun PlaylistSearchScreen(
     Column(
         modifier
             .fillMaxSize()
-            .background(MainPalette.Page)
+            .chromePage()
             .statusBarsPadding()
             .imePadding(),
     ) {
@@ -277,7 +280,7 @@ fun PlaylistSearchScreen(
             track = moreTrack,
             canRemove = canRemove,
             onDismiss = { moreTrack = null },
-            onDownload = { launchTrackDownload(scope, app, it) },
+            onDownload = { track, options -> launchTrackDownload(scope, app, track, options) },
             onRemove = { vm.removeTrack(it, overlay.owned) },
             removeConfirmTitle = if (overlay.heart) {
                 "从我喜欢的音乐移除？"
@@ -305,7 +308,7 @@ private fun PlaylistSearchField(
             .fillMaxWidth()
             .height(42.dp)
             .clip(RoundedCornerShape(21.dp))
-            .background(Color(0xFFF0F0F2))
+            .background(MainPalette.Placeholder)
             .padding(horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

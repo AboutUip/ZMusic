@@ -66,7 +66,6 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.currentStateAsState
 import com.kite.zmusic.data.PlayerDisplayPrefs
 import com.kite.zmusic.data.TrackRow
-import com.kite.zmusic.data.VinylPlateColors
 import com.kite.zmusic.ui.common.UrlImage
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
@@ -192,7 +191,9 @@ fun VinylTransitionStage(
     var bounceJob by remember { mutableStateOf<Job?>(null) }
 
     /**
-     * 顶层旋转角：用可变 Float 同步清零（非挂起），保证入场首帧必为 0°。
+     * 顶层旋转角：
+     * - [topSpinHolder] 每动画帧写入，不进 Compose 快照，避免掀整棵舞台；
+     * - [topSpinDeg] 只在暂停 / 切歌 / 归正时快照，保证入场首帧可读到 0°。
      * 旧实现按 trackId 缓存 Animatable，切歌首帧常仍读到上一圈角度。
      *
      * [topSpinEpoch] 与 [topSpinGen] 同步递增，但可读不依赖重组：
@@ -201,18 +202,23 @@ fun VinylTransitionStage(
     var topSpinDeg by remember { mutableFloatStateOf(0f) }
     var topSpinGen by remember { mutableIntStateOf(0) }
     val topSpinEpoch = remember { intArrayOf(0) }
+    val topSpinHolder = remember { floatArrayOf(0f) }
     /** 上一首预览前保存的当前盘角度；取消/回撤时还原，NaN 表示无待还原值 */
     var savedPrevSpinDeg by remember { mutableFloatStateOf(Float.NaN) }
+    fun writeTopSpin(deg: Float) {
+        topSpinHolder[0] = deg
+        topSpinDeg = deg
+    }
     fun resetTopSpin() {
         topSpinEpoch[0]++
         topSpinGen = topSpinEpoch[0]
-        topSpinDeg = 0f
+        writeTopSpin(0f)
     }
     fun restoreSavedPrevSpin() {
         if (savedPrevSpinDeg.isNaN()) return
         topSpinEpoch[0]++
         topSpinGen = topSpinEpoch[0]
-        topSpinDeg = savedPrevSpinDeg
+        writeTopSpin(savedPrevSpinDeg)
         savedPrevSpinDeg = Float.NaN
     }
 
@@ -227,13 +233,14 @@ fun VinylTransitionStage(
     // 选歌入场：连转已停时，把冻结角平滑归正，禁止瞬间跳到 0°
     LaunchedEffect(settleSpinUpright, track.id) {
         if (!settleSpinUpright) return@LaunchedEffect
-        val start = topSpinDeg
+        val start = topSpinHolder[0]
         val norm = ((start % 360f) + 360f) % 360f
         val shortest = if (norm <= 180f) norm else norm - 360f
+        writeTopSpin(start)
         topSpinEpoch[0]++
         topSpinGen = topSpinEpoch[0]
         if (abs(shortest) < 0.4f) {
-            topSpinDeg = 0f
+            writeTopSpin(0f)
             return@LaunchedEffect
         }
         val anim = Animatable(start)
@@ -244,9 +251,9 @@ fun VinylTransitionStage(
                 easing = FastOutSlowInEasing,
             ),
         ) {
-            if (settleSpin) topSpinDeg = value
+            if (settleSpin) writeTopSpin(value)
         }
-        if (settleSpin) topSpinDeg = 0f
+        if (settleSpin) writeTopSpin(0f)
     }
 
     LaunchedEffect(bounceRunning, exiting.size, dragging) {
@@ -293,7 +300,7 @@ fun VinylTransitionStage(
                 track = outgoing,
                 x = Animatable(fromX.coerceIn(-exitPx, 0f)),
                 scale = Animatable(fromScale.coerceIn(NextUnderScale, 1f)),
-                frozenSpinDeg = topSpinDeg,
+                frozenSpinDeg = topSpinHolder[0],
             )
             exiting.add(layer)
             trimExiting()
@@ -323,7 +330,7 @@ fun VinylTransitionStage(
             if (keepUnderSpin) {
                 // 入场覆盖期间底层旧盘保持冻结角；手势预览已存则沿用，按钮切歌则现取
                 if (savedPrevSpinDeg.isNaN()) {
-                    savedPrevSpinDeg = topSpinDeg
+                    savedPrevSpinDeg = topSpinHolder[0]
                 }
             } else {
                 savedPrevSpinDeg = Float.NaN
@@ -415,7 +422,7 @@ fun VinylTransitionStage(
                         prevRevealBase = x
                         bottomTrack = if (topTrack.id == settledId) topTrack else track
                         // 当前盘压到底层前先存角；顶层换上一首封面须从 0° 起
-                        savedPrevSpinDeg = topSpinDeg
+                        savedPrevSpinDeg = topSpinHolder[0]
                         resetTopSpin()
                         topTrack = peekPrev
                         showBottom = true
@@ -857,7 +864,8 @@ fun VinylTransitionStage(
                     spinDeg = topSpinDeg,
                     spinGen = topSpinGen,
                     spinEpoch = topSpinEpoch,
-                    onSpinDegChange = { topSpinDeg = it },
+                    spinHolder = topSpinHolder,
+                    onSpinDegChange = { writeTopSpin(it) },
                     spinning = spinning &&
                         !showBottom &&
                         !dragging &&
@@ -920,6 +928,8 @@ internal fun VinylDiscFace(
     spinGen: Int = 0,
     /** 与 spinGen 同源；动画帧内同步读取，不依赖重组后的 rememberUpdatedState */
     spinEpoch: IntArray? = null,
+    /** 连转时写入；父级切歌/离场读它，避免每帧 Compose 状态 */
+    spinHolder: FloatArray? = null,
     onSpinDegChange: ((Float) -> Unit)? = null,
     /** 选歌叠层等交接场景关闭样式过渡，避免从 0 动画到用户设置造成闪一下 */
     animateStyleChanges: Boolean = true,
@@ -950,19 +960,30 @@ internal fun VinylDiscFace(
     val spindleFrac = (SpindleHoleFrac / outer.coerceAtLeast(0.01f))
         .coerceIn(0.02f, 0.35f) * (1f - coverT)
 
+    // gen / 曲目变化时新建 Animatable，切歌首帧必为外部同步好的 spinDeg（通常 0°）
+    val spinAnim = remember(track.id, spinGen) { Animatable(spinDeg) }
     LaunchedEffect(spinning, track.id, spinGen) {
-        if (!spinning || onSpinDegChange == null) return@LaunchedEffect
+        if (!spinning) return@LaunchedEffect
         val gen = spinGen
-        // 切歌/gen 变更时外部已把 spinDeg 同步置 0；同曲暂停后再转则续当前角
-        val anim = Animatable(spinDeg)
-        while (isActive) {
-            anim.animateTo(
-                targetValue = anim.value + 360f,
-                animationSpec = tween(durationMillis = 28_000, easing = LinearEasing),
-            ) {
-                // 同步读 epoch，丢弃已被 resetTopSpin 作废的旧协程写回
-                val live = spinEpoch?.get(0) ?: gen
-                if (live == gen) onSpinDegChange(value)
+        spinAnim.snapTo(spinDeg)
+        try {
+            while (isActive) {
+                spinAnim.animateTo(
+                    targetValue = spinAnim.value + 360f,
+                    animationSpec = tween(durationMillis = 28_000, easing = LinearEasing),
+                ) {
+                    val live = spinEpoch?.get(0) ?: gen
+                    if (live == gen) {
+                        spinHolder?.set(0, value)
+                    }
+                }
+            }
+        } finally {
+            val live = spinEpoch?.get(0) ?: gen
+            if (live == gen) {
+                val v = spinAnim.value
+                spinHolder?.set(0, v)
+                onSpinDegChange?.invoke(v)
             }
         }
     }
@@ -983,7 +1004,11 @@ internal fun VinylDiscFace(
             Modifier
                 .fillMaxSize()
                 .graphicsLayer {
-                    rotationZ = spinDeg
+                    rotationZ = if (spinning) {
+                        spinAnim.value
+                    } else {
+                        spinHolder?.get(0) ?: spinDeg
+                    }
                     clip = false
                 },
             contentAlignment = Alignment.Center,

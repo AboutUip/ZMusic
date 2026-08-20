@@ -51,16 +51,17 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import com.kite.zmusic.ui.theme.MainPalette
 
 internal enum class LoginLegalKind {
     Terms,
     Privacy,
 }
 
-private val Page = Color(0xFFFFFFFF)
-private val Ink = Color(0xFF333333)
-private val InkSecondary = Color(0xFF888888)
-private val InkHint = Color(0xFFBBBBBB)
+private val Page get() = MainPalette.Surface
+private val Ink get() = MainPalette.Ink
+private val InkSecondary get() = MainPalette.Secondary
+private val InkHint get() = MainPalette.Hint
 private val CloudRed = Color(0xFFEC4141)
 
 private data class LegalSection(

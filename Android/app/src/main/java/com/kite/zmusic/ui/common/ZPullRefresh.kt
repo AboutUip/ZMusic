@@ -8,7 +8,6 @@ import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import com.kite.zmusic.ui.main.MainPalette
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -31,7 +30,7 @@ fun ZPullRefresh(
                 isRefreshing = refreshing,
                 state = state,
                 color = MainPalette.Accent,
-                containerColor = Color.White,
+                containerColor = MainPalette.Surface,
             )
         },
         content = content,

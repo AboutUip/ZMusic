@@ -43,7 +43,7 @@ data class HomeFeed(
  */
 class HomeFeedRepository(
     private val sessionRepository: SessionRepository,
-    private val userClient: NcmUserClient = NcmUserClient(),
+    private val userClient: NcmUserClient,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val mutex = Mutex()
@@ -309,6 +309,24 @@ class HomeFeedRepository(
             i++
         }
         return out to start + take
+    }
+
+    suspend fun loadPersonalFm(): Pair<List<TrackRow>, String?> {
+        val cookie = sessionRepository.session.value?.cookie.orEmpty()
+        if (cookie.isBlank()) return emptyList<TrackRow>() to "请先登录"
+        return try {
+            val json = userClient.personalFm(cookie)
+            val tracks = NcmHomeParse.personalFmTracks(json)
+            if (tracks.isEmpty()) {
+                emptyList<TrackRow>() to NcmJson.userFacingMessage(json, "暂时没有漫游歌曲")
+            } else {
+                tracks to null
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            emptyList<TrackRow>() to NcmJson.userFacingThrowable(e, "漫游加载失败")
+        }
     }
 
     companion object {

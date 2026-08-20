@@ -10,11 +10,8 @@ import com.kite.zmusic.data.ChartSummary
 import com.kite.zmusic.data.CollectedAlbum
 import com.kite.zmusic.data.HomeFeedRepository
 import com.kite.zmusic.data.LikedPlaylistRepository
-import com.kite.zmusic.data.NcmArtistParse
-import com.kite.zmusic.data.NcmHomeParse
+import com.kite.zmusic.data.CatalogRepository
 import com.kite.zmusic.data.NcmJson
-import com.kite.zmusic.data.NcmLibraryParse
-import com.kite.zmusic.data.NcmUserClient
 import com.kite.zmusic.data.PlaylistCollectionRepository
 import com.kite.zmusic.data.PlaylistSubscribeMeta
 import com.kite.zmusic.data.PlaylistSummary
@@ -27,8 +24,6 @@ import com.kite.zmusic.ui.notice.IslandNoticeCenter
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -76,7 +71,7 @@ data class ChartsUiState(
 
 private data class SubscribePin(val album: Boolean, val id: Long, val on: Boolean)
 
-class CatalogViewModel(
+open class CatalogViewModel(
     private val sessionRepository: SessionRepository,
     private val playlistTracksCache: PlaylistTracksCache,
     private val albumTracksCache: AlbumTracksCache,
@@ -85,7 +80,7 @@ class CatalogViewModel(
     private val playlistCollection: PlaylistCollectionRepository,
     private val albumCollection: AlbumCollectionRepository,
     private val islandNotices: IslandNoticeCenter,
-    private val userClient: NcmUserClient = NcmUserClient(),
+    private val catalog: CatalogRepository,
 ) : ViewModel() {
 
     private val _list = MutableStateFlow(CatalogListState())
@@ -407,8 +402,8 @@ class CatalogViewModel(
             try {
                 if (state.isHeartPlaylist) {
                     likedPlaylistRepository.applyLocalLike(track, liked = false)
-                    val json = userClient.likeSong(track.id, like = false, cookie)
-                    if (NcmJson.apiCode(json) != 200) {
+                    val ack = catalog.unlikeSong(track.id, cookie)
+                    if (!ack.ok) {
                         likedPlaylistRepository.applyLocalLike(track, liked = true, scheduleSync = false)
                         islandNotices.show("移除失败", track.coverUrl)
                         return@launch
@@ -420,8 +415,8 @@ class CatalogViewModel(
                     islandNotices.show("只能从自己创建的歌单移除歌曲", track.coverUrl)
                     return@launch
                 }
-                val json = userClient.playlistTracks("del", id, listOf(track.id), cookie)
-                if (NcmJson.apiCode(json) != 200) {
+                val ack = catalog.deletePlaylistTracks(id, listOf(track.id), cookie)
+                if (!ack.ok) {
                     islandNotices.show("无法从歌单移除", track.coverUrl)
                     return@launch
                 }
@@ -461,8 +456,8 @@ class CatalogViewModel(
                     unique.forEach { likedPlaylistRepository.applyLocalLike(it, liked = false) }
                     var failed = 0
                     for (track in unique) {
-                        val json = userClient.likeSong(track.id, like = false, cookie)
-                        if (NcmJson.apiCode(json) != 200) {
+                        val ack = catalog.unlikeSong(track.id, cookie)
+                        if (!ack.ok) {
                             likedPlaylistRepository.applyLocalLike(track, liked = true, scheduleSync = false)
                             failed++
                         }
@@ -486,8 +481,8 @@ class CatalogViewModel(
                 }
                 val ids = unique.map { it.id }
                 for (chunk in ids.chunked(50)) {
-                    val json = userClient.playlistTracks("del", id, chunk, cookie)
-                    if (NcmJson.apiCode(json) != 200) {
+                    val ack = catalog.deletePlaylistTracks(id, chunk, cookie)
+                    if (!ack.ok) {
                         islandNotices.show("无法从歌单移除", cover)
                         onFinished(false)
                         return@launch
@@ -557,14 +552,11 @@ class CatalogViewModel(
                 )
             }
             try {
-                val json = userClient.playlistSubscribe(id, next, cookie)
-                if (NcmJson.apiCode(json) != 200) {
+                val ack = catalog.playlistSubscribe(id, next, cookie)
+                if (!ack.ok) {
                     revertSubscribe(id, next)
                     islandNotices.show(
-                        NcmJson.userFacingMessage(
-                            json,
-                            if (next) "收藏失败" else "取消收藏失败",
-                        ),
+                        ack.message.ifBlank { if (next) "收藏失败" else "取消收藏失败" },
                         state.coverUrl,
                     )
                     return@launch
@@ -620,14 +612,11 @@ class CatalogViewModel(
                 )
             }
             try {
-                val json = userClient.albumSub(id, next, cookie)
-                if (NcmJson.apiCode(json) != 200) {
+                val ack = catalog.albumSubscribe(id, next, cookie)
+                if (!ack.ok) {
                     revertAlbumSubscribe(id, next)
                     islandNotices.show(
-                        NcmJson.userFacingMessage(
-                            json,
-                            if (next) "收藏失败" else "取消收藏失败",
-                        ),
+                        ack.message.ifBlank { if (next) "收藏失败" else "取消收藏失败" },
                         state.coverUrl,
                     )
                     return@launch
@@ -711,14 +700,8 @@ class CatalogViewModel(
             }
             val cookie = cookieOrNull() ?: return@launch
             try {
-                val (json, dynamicJson) = coroutineScope {
-                    val albumDef = async { userClient.album(id, cookie) }
-                    val dynamicDef = async {
-                        runCatching { userClient.albumDetailDynamic(id, cookie) }.getOrNull()
-                    }
-                    albumDef.await() to dynamicDef.await()
-                }
-                val album = NcmHomeParse.albumBrief(json, id)
+                val payload = catalog.loadAlbum(id, cookie)
+                val album = payload.album
                 if (album == null || album.songs.isEmpty()) {
                     _list.update {
                         if (it.tracks.isNotEmpty() && it.albumId == id) {
@@ -727,13 +710,13 @@ class CatalogViewModel(
                             CatalogListState(
                                 title = title,
                                 albumId = id,
-                                error = NcmJson.userFacingMessage(json, "专辑加载失败"),
+                                error = payload.error ?: "专辑加载失败",
                             )
                         }
                     }
                     return@launch
                 }
-                val dynamic = dynamicJson?.let { NcmHomeParse.albumDynamic(it) }
+                val dynamic = payload.dynamic
                 val entry = albumCacheEntry(album, dynamic)
                 albumTracksCache.save(entry)
                 applyAlbumEntry(entry, title)
@@ -811,7 +794,7 @@ class CatalogViewModel(
             val cookie = sessionRepository.session.value?.cookie.orEmpty()
             if (cookie.isBlank()) return@launch
             val dynamic = runCatching {
-                NcmHomeParse.albumDynamic(userClient.albumDetailDynamic(id, cookie))
+                catalog.albumDynamic(id, cookie)
             }.getOrNull() ?: return@launch
             if (_list.value.albumId != id) return@launch
             val subscribed = resolveAlbumSubscribed(id, dynamic.isSub)
@@ -863,15 +846,12 @@ class CatalogViewModel(
             }
             val cookie = sessionRepository.session.value?.cookie.orEmpty()
             try {
-                val json = userClient.artistSongs(artistId, cookie, order = "hot", limit = 50, offset = 0)
-                val (songs, more, total) = if (NcmJson.apiCode(json) == 200) {
-                    NcmArtistParse.songsPage(json)
-                } else {
-                    Triple(emptyList(), false, 0)
-                }
+                val (page, songsErr) = catalog.artistSongs(artistId, cookie, limit = 50, offset = 0)
+                var songs = page.songs
+                val more = page.hasMore
+                val total = page.total
                 val tracks = songs.ifEmpty {
-                    val hot = userClient.artistTopSongs(artistId, cookie)
-                    if (NcmJson.apiCode(hot) == 200) NcmArtistParse.topSongs(hot) else emptyList()
+                    catalog.artistTopSongs(artistId, cookie)
                 }
                 if (tracks.isEmpty()) {
                     _list.update {
@@ -881,7 +861,7 @@ class CatalogViewModel(
                             creatorName = name,
                             creatorAvatarUrl = coverUrl,
                             creatorId = artistId,
-                            error = NcmJson.userFacingMessage(json, "暂时没有歌曲"),
+                            error = songsErr ?: "暂时没有歌曲",
                         )
                     }
                     return@launch
@@ -925,24 +905,25 @@ class CatalogViewModel(
         moreJob = viewModelScope.launch {
             val cookie = sessionRepository.session.value?.cookie.orEmpty()
             try {
-                val json = userClient.artistSongs(
+                val (page, songsErr) = catalog.artistSongs(
                     id,
                     cookie,
-                    order = "hot",
                     limit = 50,
                     offset = state.tracks.size,
                 )
-                if (NcmJson.apiCode(json) != 200) {
+                if (songsErr != null && page.songs.isEmpty()) {
                     _list.update { it.copy(complete = true) }
                     return@launch
                 }
-                val (page, more, total) = NcmArtistParse.songsPage(json)
+                val more = page.hasMore
+                val total = page.total
+                val songsPage = page.songs
                 _list.update { cur ->
                     if (artistSongsId != id) return@update cur
-                    val merged = cur.tracks.mergeById(page) { it.id }
+                    val merged = cur.tracks.mergeById(songsPage) { it.id }
                     cur.copy(
                         tracks = merged,
-                        complete = !more || page.isEmpty(),
+                        complete = !more || songsPage.isEmpty(),
                         expectedCount = total.coerceAtLeast(merged.size),
                         subtitle = if (total > merged.size) "${merged.size} / $total 首" else "${merged.size} 首",
                     )
@@ -961,16 +942,11 @@ class CatalogViewModel(
             _charts.update { it.copy(loading = true, error = null) }
             val cookie = sessionRepository.session.value?.cookie.orEmpty()
             try {
-                val json = userClient.toplistDetail(cookie)
-                val charts = NcmHomeParse.charts(json)
+                val (charts, err) = catalog.charts(cookie)
                 _charts.update {
                     ChartsUiState(
                         charts = charts,
-                        error = if (charts.isEmpty()) {
-                            NcmJson.userFacingMessage(json, "暂时没有榜单")
-                        } else {
-                            null
-                        },
+                        error = err,
                     )
                 }
             } catch (e: CancellationException) {
@@ -986,23 +962,19 @@ class CatalogViewModel(
     suspend fun loadSong(id: Long): TrackRow? {
         val cookie = sessionRepository.session.value?.cookie.orEmpty()
         if (cookie.isBlank() || id <= 0L) return null
-        return runCatching {
-            val json = userClient.songDetail(listOf(id), cookie)
-            NcmLibraryParse.tracksFromSongDetail(json).firstOrNull()
-        }.getOrNull()
+        return runCatching { catalog.trackById(id, cookie) }.getOrNull()
     }
 
     private suspend fun fetchFm(replace: Boolean) {
         val cookie = cookieOrNull() ?: return
         try {
-            val json = userClient.personalFm(cookie)
-            val tracks = NcmHomeParse.personalFmTracks(json)
+            val (tracks, fmErr) = catalog.personalFm(cookie)
             if (tracks.isEmpty()) {
                 _list.update {
                     it.copy(
                         loading = false,
                         refreshing = false,
-                        error = NcmJson.userFacingMessage(json, "暂时没有漫游歌曲"),
+                        error = fmErr,
                     )
                 }
                 return
@@ -1061,7 +1033,7 @@ class CatalogViewModel(
         var syncedCover: String? = null
         _list.update {
             val same = it.playlistId == entry.playlistId
-            val merged = NcmLibraryParse.mergeLoadedInOrder(
+            val merged = catalog.mergeLoadedInOrder(
                 entry.allIds,
                 entry.tracks,
                 if (same) it.tracks else emptyList(),
@@ -1125,7 +1097,7 @@ class CatalogViewModel(
         val order = snap.orderKey()
         _list.update {
             val same = it.playlistId == snap.playlistId || it.isHeartPlaylist
-            val incoming = NcmLibraryParse.mergeLoadedInOrder(
+            val incoming = catalog.mergeLoadedInOrder(
                 order,
                 snap.tracks,
                 if (same) it.tracks else emptyList(),
@@ -1363,9 +1335,7 @@ class CatalogViewModel(
             var meta = cachedMeta
             if (cookie.isNotBlank()) {
                 val fetched = runCatching {
-                    NcmLibraryParse.playlistMetaFromDetail(
-                        userClient.playlistDetail(playlistId, cookie, limit = 1),
-                    )
+                    catalog.playlistMeta(playlistId, cookie)
                 }.getOrNull()?.takeIf { it.id == playlistId }
                 if (openPlaylistId != playlistId) return@launch
                 if (fetched != null) {
@@ -1379,9 +1349,7 @@ class CatalogViewModel(
             if (cookie.isBlank()) return@launch
             if (meta != null && playlistCollection.find(playlistId) != null) return@launch
             val subscribed = runCatching {
-                NcmLibraryParse.subscribedFromDynamic(
-                    userClient.playlistDetailDynamic(playlistId, cookie),
-                )
+                catalog.playlistSubscribed(playlistId, cookie)
             }.getOrNull()
             if (openPlaylistId != playlistId || subscribed == null) return@launch
             if (_list.value.isHeartPlaylist || _list.value.isOwnedPlaylist) return@launch

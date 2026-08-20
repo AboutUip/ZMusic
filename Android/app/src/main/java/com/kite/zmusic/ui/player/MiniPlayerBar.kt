@@ -1,6 +1,7 @@
 package com.kite.zmusic.ui.player
 
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -23,7 +24,12 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -36,34 +42,27 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kite.zmusic.data.TrackRow
 import com.kite.zmusic.ui.common.UrlImage
+import com.kite.zmusic.ui.common.UrlImageCache
 import com.kite.zmusic.ui.icons.ZIcons
 import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.main.mainLiquidGlass
 import com.kyant.backdrop.Backdrop
+import kotlinx.coroutines.flow.Flow
 
 @Composable
 fun MiniPlayerBar(
     track: TrackRow,
     isPlaying: Boolean,
     buffering: Boolean,
-    positionMs: Long,
     durationMs: Long,
+    positions: Flow<Long>,
+    initialPositionMs: Long,
     onOpenFull: () -> Unit,
     onTogglePlay: () -> Unit,
     backdrop: Backdrop,
     loadPending: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
-    val displayPos = rememberSeekDisplayPositionMs(
-        trackId = track.id,
-        positionMs = positionMs,
-        loadPending = loadPending,
-    )
-    val progress = if (durationMs > 0) {
-        (displayPos.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
-    } else {
-        0f
-    }
     val shape = RoundedCornerShape(24.dp)
     val noopDrag = rememberDraggableState { }
 
@@ -81,7 +80,7 @@ fun MiniPlayerBar(
             Modifier
                 .size(44.dp)
                 .clip(RoundedCornerShape(10.dp))
-                .background(Color(0xFFF0F0F2))
+                .background(MainPalette.Placeholder)
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
@@ -98,6 +97,7 @@ fun MiniPlayerBar(
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop,
+                    maxPx = UrlImageCache.THUMB_MAX_PX,
                 )
             }
         }
@@ -138,17 +138,13 @@ fun MiniPlayerBar(
                     )
                 }
             }
-            LinearProgressIndicator(
-                progress = { if (buffering) 0f else progress },
-                modifier = Modifier
-                    .padding(top = 6.dp)
-                    .fillMaxWidth()
-                    .height(2.dp)
-                    .clip(RoundedCornerShape(1.dp)),
-                color = MainPalette.Accent,
-                trackColor = Color(0x14000000),
-                gapSize = 0.dp,
-                drawStopIndicator = {},
+            MiniPlayerProgress(
+                trackId = track.id,
+                durationMs = if (durationMs > 0L) durationMs else track.durationMs,
+                buffering = buffering,
+                loadPending = loadPending,
+                positions = positions,
+                initialPositionMs = initialPositionMs,
             )
         }
         Box(
@@ -170,4 +166,80 @@ fun MiniPlayerBar(
             )
         }
     }
+}
+
+@Composable
+private fun MiniPlayerProgress(
+    trackId: Long,
+    durationMs: Long,
+    buffering: Boolean,
+    loadPending: Boolean,
+    positions: Flow<Long>,
+    initialPositionMs: Long,
+) {
+    val anim = remember {
+        Animatable(initialPositionMs.toFloat().coerceAtLeast(0f))
+    }
+    var boundTrackId by remember { mutableLongStateOf(trackId) }
+    val loadPendingRef = rememberUpdatedState(loadPending)
+    val bufferingRef = rememberUpdatedState(buffering)
+    val durationRef = rememberUpdatedState(durationMs)
+    val initialRef = rememberUpdatedState(initialPositionMs)
+    LaunchedEffect(trackId, positions) {
+        val seed = initialRef.value.toFloat().coerceAtLeast(0f)
+        if (seed > 48f && anim.value <= 48f) {
+            anim.snapTo(seed)
+        }
+        positions.collect { positionMs ->
+            val target = positionMs.toFloat().coerceAtLeast(0f)
+            val from = anim.value
+            val trackChanged = trackId != boundTrackId
+            if (trackChanged) boundTrackId = trackId
+            val holding = loadPendingRef.value || bufferingRef.value
+            if (miniProgressWrapToStart(from, target, durationRef.value, trackChanged)) {
+                anim.animateTo(
+                    targetValue = target,
+                    animationSpec = tween(
+                        durationMillis = 360,
+                        easing = FastOutSlowInEasing,
+                    ),
+                )
+                return@collect
+            }
+            // 续播 / 缓冲时的假 0：保住当前进度，不要从开头再跟一遍
+            if (target <= 48f && from > 200f && holding) {
+                return@collect
+            }
+            anim.snapTo(target)
+        }
+    }
+    LinearProgressIndicator(
+        progress = {
+            val dur = durationMs.toFloat()
+            if (dur <= 0f) 0f
+            else (anim.value / dur).coerceIn(0f, 1f)
+        },
+        modifier = Modifier
+            .padding(top = 6.dp)
+            .fillMaxWidth()
+            .height(2.dp)
+            .clip(RoundedCornerShape(1.dp)),
+        color = MainPalette.Accent,
+        trackColor = Color(0x14000000),
+        gapSize = 0.dp,
+        drawStopIndicator = {},
+    )
+}
+
+/** 曲末回到开头（单曲循环 / 自动下一首）才做回退动画；续播假 0 不动画。 */
+private fun miniProgressWrapToStart(
+    from: Float,
+    target: Float,
+    durationMs: Long,
+    trackChanged: Boolean,
+): Boolean {
+    if (target > 48f || from <= 64f || from - target <= 64f) return false
+    val dur = durationMs.toFloat()
+    val nearEnd = dur > 0f && (from >= dur * 0.75f || dur - from <= 5_000f)
+    return nearEnd || trackChanged
 }

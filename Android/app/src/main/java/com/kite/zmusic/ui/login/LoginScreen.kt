@@ -22,6 +22,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.kite.zmusic.ZMusicApplication
 import com.kite.zmusic.data.SessionRepository
 import com.kite.zmusic.ui.notice.showIslandNotice
 
@@ -42,8 +43,13 @@ fun LoginScreen(
     onNavigateBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val vm: LoginViewModel = viewModel(factory = LoginViewModelFactory(sessionRepository))
-    val registerVm: RegisterViewModel = viewModel(factory = RegisterViewModelFactory(sessionRepository))
+    val app = LocalContext.current.applicationContext as ZMusicApplication
+    val vm: LoginViewModel = viewModel(
+        factory = LoginViewModelFactory(sessionRepository, app.ncmAuthClient),
+    )
+    val registerVm: RegisterViewModel = viewModel(
+        factory = RegisterViewModelFactory(sessionRepository, app.ncmAuthClient),
+    )
     val context = LocalContext.current
     val isBusy = vm.busy
     val err = vm.bannerError
