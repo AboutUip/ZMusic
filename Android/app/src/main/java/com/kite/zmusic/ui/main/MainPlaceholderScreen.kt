@@ -120,9 +120,11 @@ fun MainPlaceholderScreen(
             MainGate.Ready -> {
                 LaunchedEffect(Unit) {
                     app.playbackBridge.hydrateForUi()
-                    app.likedPlaylistRepository.prefetchOnAppReady()
-                    app.homeFeedRepository.prefetchOnAppReady()
-                    app.libraryHomeRepository.prefetchOnAppReady()
+                    if (app.networkMode.state.value.online) {
+                        app.likedPlaylistRepository.prefetchOnAppReady()
+                        app.homeFeedRepository.prefetchOnAppReady()
+                        app.libraryHomeRepository.prefetchOnAppReady()
+                    }
                 }
                 AnimatedVisibility(
                     visible = true,

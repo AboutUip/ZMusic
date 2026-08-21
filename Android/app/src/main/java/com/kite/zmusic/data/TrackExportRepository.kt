@@ -1,5 +1,6 @@
 package com.kite.zmusic.data
 
+import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Context
 import android.net.Uri
@@ -26,6 +27,7 @@ class TrackExportRepository(
 ) {
     private val appContext = context.applicationContext
     private val prefs = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    var onLibraryChanged: (() -> Unit)? = null
     private val client by lazy {
         OkHttpClient.Builder()
             .connectTimeout(20, TimeUnit.SECONDS)
@@ -124,7 +126,90 @@ class TrackExportRepository(
                 meta.toString(2).toByteArray(Charsets.UTF_8),
             )
         }
+        notifyLibraryChanged()
         folder
+    }
+
+    /** 扫描 `Download/ZMusic` 下符合 [TRACK_EXPORT_SCHEMA] 的单曲文件夹。 */
+    suspend fun scanCachedTracks(): List<TrackRow> = withContext(Dispatchers.IO) {
+        queryExportFolders().mapNotNull { folder -> toCachedTrack(folder) }
+            .sortedByDescending { it.exportedAt }
+            .map { it.track }
+    }
+
+    suspend fun deleteCachedFolder(relativeDir: String?): Boolean = withContext(Dispatchers.IO) {
+        val folder = relativeDir?.takeIf { it.isNotBlank() } ?: return@withContext false
+        clearFolder(folder)
+        notifyLibraryChanged()
+        true
+    }
+
+    private fun notifyLibraryChanged() {
+        onLibraryChanged?.invoke()
+    }
+
+    private fun toCachedTrack(folder: ExportFolder): CachedScanHit? {
+        val jsonUri = folder.file("music.json") ?: return null
+        val raw = readText(jsonUri) ?: return null
+        val meta = parseTrackExportJson(raw) ?: return null
+        if (!exportFolderQualified(meta, folder.names)) return null
+        val audioUri = folder.file(meta.audioFile.orEmpty()) ?: return null
+        val coverUri = meta.coverFile?.let { folder.file(it) }
+        return CachedScanHit(
+            exportedAt = meta.exportedAt,
+            track = TrackRow(
+                id = meta.id,
+                name = meta.name,
+                artists = meta.artists,
+                album = meta.album,
+                durationMs = meta.durationMs,
+                coverUrl = coverUri?.toString(),
+                localAudioUri = audioUri.toString(),
+                localFolder = folder.key,
+                localLyricUri = meta.lyricsFile?.let { folder.file(it)?.toString() },
+                localTransLyricUri = meta.lyricsTranslatedFile?.let { folder.file(it)?.toString() },
+            ),
+        )
+    }
+
+    private fun queryExportFolders(): List<ExportFolder> {
+        val resolver = appContext.contentResolver
+        val projection = arrayOf(
+            MediaStore.Downloads._ID,
+            MediaStore.Downloads.DISPLAY_NAME,
+            MediaStore.Downloads.RELATIVE_PATH,
+        )
+        val grouped = linkedMapOf<String, MutableMap<String, Uri>>()
+        resolver.query(
+            MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+            projection,
+            "${MediaStore.Downloads.RELATIVE_PATH} LIKE ?",
+            arrayOf("$ROOT/%"),
+            "${MediaStore.Downloads.DATE_ADDED} DESC",
+        )?.use { cursor ->
+            val idCol = cursor.getColumnIndexOrThrow(MediaStore.Downloads._ID)
+            val nameCol = cursor.getColumnIndexOrThrow(MediaStore.Downloads.DISPLAY_NAME)
+            val pathCol = cursor.getColumnIndexOrThrow(MediaStore.Downloads.RELATIVE_PATH)
+            while (cursor.moveToNext()) {
+                val name = cursor.getString(nameCol) ?: continue
+                val rel = cursor.getString(pathCol) ?: continue
+                val key = exportSongFolderKey(rel) ?: continue
+                val uri = ContentUris.withAppendedId(
+                    MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                    cursor.getLong(idCol),
+                )
+                grouped.getOrPut(key) { linkedMapOf() }[name] = uri
+            }
+        }
+        return grouped.map { ExportFolder(it.key, it.value) }
+    }
+
+    private fun readText(uri: Uri): String? {
+        return runCatching {
+            appContext.contentResolver.openInputStream(uri)?.use {
+                it.readBytes().toString(Charsets.UTF_8)
+            }
+        }.getOrNull()?.takeIf { it.isNotBlank() }
     }
 
     private suspend fun resolveAudioUrl(
@@ -233,10 +318,23 @@ class TrackExportRepository(
     private fun normalizeRelativeDir(relativeDir: String): String =
         relativeDir.trimEnd('/') + "/"
 
+    private data class ExportFolder(
+        val key: String,
+        val files: Map<String, Uri>,
+    ) {
+        val names: Set<String> get() = files.keys
+        fun file(name: String): Uri? {
+            if (name.isBlank()) return null
+            return files.entries.firstOrNull { it.key.equals(name, ignoreCase = true) }?.value
+        }
+    }
+
+    private data class CachedScanHit(val exportedAt: Long, val track: TrackRow)
+
     companion object {
         private const val TAG = "TrackExport"
-        const val SCHEMA = "zmusic.track.v1"
-        const val ROOT = "Download/ZMusic"
+        const val SCHEMA = TRACK_EXPORT_SCHEMA
+        const val ROOT = TRACK_EXPORT_ROOT
         private const val PREFS = "zmusic_track_export"
         private const val KEY_QUALITY = "quality"
         private const val KEY_COVER = "cover"

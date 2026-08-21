@@ -44,6 +44,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -95,6 +96,7 @@ import com.kite.zmusic.ui.notice.showIslandNotice
 import com.kite.zmusic.ui.player.WordLyricSettingsPage
 import com.kite.zmusic.ui.server.ServerConfigViewModel
 import com.kite.zmusic.ui.server.ServerConfigViewModelFactory
+import kotlinx.coroutines.launch
 
 private const val AboutGithubUrl = "https://github.com/AboutUip/ZMusic"
 private const val AboutQqGroupId = "1015814598"
@@ -123,11 +125,14 @@ fun SettingsScreen(
     var editServer by remember { mutableStateOf(false) }
     var confirmLogout by remember { mutableStateOf(false) }
     val aboutVisible = remember { MutableTransitionState(false) }
+    val changelogVisible = remember { MutableTransitionState(false) }
     val sponsorVisible = remember { MutableTransitionState(false) }
     val partnersVisible = remember { MutableTransitionState(false) }
     val permissionsVisible = remember { MutableTransitionState(false) }
     val qualityVisible = remember { MutableTransitionState(false) }
     val persistentPlaybackVisible = remember { MutableTransitionState(false) }
+    val cacheVisible = remember { MutableTransitionState(false) }
+    val realtimeCacheVisible = remember { MutableTransitionState(false) }
     val wordLyricVisible = remember { MutableTransitionState(false) }
     val predictiveBackVisible = remember { MutableTransitionState(false) }
     val glassVisible = remember { MutableTransitionState(false) }
@@ -142,6 +147,16 @@ fun SettingsScreen(
         (context.applicationContext as ZMusicApplication).persistentPlaybackStore
     }
     val persistentPlayback by persistentPlaybackStore.enabled.collectAsStateWithLifecycle()
+    val downloadAccelStore = remember {
+        (context.applicationContext as ZMusicApplication).downloadAccelStore
+    }
+    val downloadAccel by downloadAccelStore.enabled.collectAsStateWithLifecycle()
+    val app = remember { context.applicationContext as ZMusicApplication }
+    val realtimeCacheStore = remember { app.realtimeCacheStore }
+    val realtimeCachePrefs by realtimeCacheStore.state.collectAsStateWithLifecycle()
+    val realtimeCache = remember { app.realtimeCache }
+    val realtimeOccupancy by realtimeCache.occupancy.collectAsStateWithLifecycle()
+    val settingsScope = rememberCoroutineScope()
     val predictiveBackStore = remember {
         (context.applicationContext as ZMusicApplication).predictiveBackStore
     }
@@ -285,6 +300,42 @@ fun SettingsScreen(
                 }
                 Spacer(Modifier.height(22.dp))
                 SettingsGroup(
+                    title = "缓存",
+                    reveal = reveal.value,
+                    delay = 0.12f,
+                ) {
+                    SettingsRow(
+                        title = "下载加速",
+                        subtitle = if (downloadAccel) {
+                            "已开启 · 命中本机缓存则跳过网络"
+                        } else {
+                            "已关闭 · 始终按音质在线拉取"
+                        },
+                        icon = ZIcons.Speed,
+                        tint = Color(0xFF3D9B8F),
+                        onClick = { cacheVisible.targetState = true },
+                    )
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(start = 62.dp)
+                            .height(0.5.dp)
+                            .background(MainPalette.Hairline),
+                    )
+                    SettingsRow(
+                        title = "实时缓存",
+                        subtitle = if (realtimeCachePrefs.enabled) {
+                            "已开启 · ${realtimeCachePrefs.mode.title}模式"
+                        } else {
+                            "已关闭 · 不采样不走本地缓存"
+                        },
+                        icon = ZIcons.Storage,
+                        tint = Color(0xFF5070F0),
+                        onClick = { realtimeCacheVisible.targetState = true },
+                    )
+                }
+                Spacer(Modifier.height(22.dp))
+                SettingsGroup(
                     title = "主题",
                     reveal = reveal.value,
                     delay = 0.14f,
@@ -372,6 +423,20 @@ fun SettingsScreen(
                         icon = ZIcons.Info,
                         tint = Color(0xFF5B7CFA),
                         onClick = { aboutVisible.targetState = true },
+                    )
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(start = 62.dp)
+                            .height(0.5.dp)
+                            .background(MainPalette.Hairline),
+                    )
+                    SettingsRow(
+                        title = "更新日志",
+                        subtitle = "按版本查阅更新预览",
+                        icon = ZIcons.History,
+                        tint = Color(0xFF2A9D8F),
+                        onClick = { changelogVisible.targetState = true },
                     )
                     Box(
                         Modifier
@@ -486,6 +551,62 @@ fun SettingsScreen(
             )
         }
         SettingsDrillHost(
+            visibleState = cacheVisible,
+            landscape = landscape,
+            title = "下载加速",
+            onBack = { cacheVisible.targetState = false },
+        ) {
+            CacheSettingsPage(
+                downloadAccel = downloadAccel,
+                onDownloadAccelChange = { next ->
+                    if (next == downloadAccel) return@CacheSettingsPage
+                    downloadAccelStore.setEnabled(next)
+                    context.showIslandNotice(
+                        if (next) "已开启下载加速" else "已关闭下载加速",
+                    )
+                },
+                contentBottomInset = contentBottomInset,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        SettingsDrillHost(
+            visibleState = realtimeCacheVisible,
+            landscape = landscape,
+            title = "实时缓存",
+            onBack = { realtimeCacheVisible.targetState = false },
+        ) {
+            RealtimeCacheSettingsPage(
+                enabled = realtimeCachePrefs.enabled,
+                onEnabledChange = { next ->
+                    if (next == realtimeCachePrefs.enabled) return@RealtimeCacheSettingsPage
+                    realtimeCacheStore.setEnabled(next)
+                    context.showIslandNotice(
+                        if (next) "已开启实时缓存" else "已关闭实时缓存",
+                    )
+                },
+                mode = realtimeCachePrefs.mode,
+                onModeChange = { next ->
+                    if (!next.available || next == realtimeCachePrefs.mode) return@RealtimeCacheSettingsPage
+                    realtimeCacheStore.setMode(next)
+                    context.showIslandNotice("已切换到${next.title}模式")
+                },
+                spaceValue = realtimeCachePrefs.spaceValue,
+                spaceUnit = realtimeCachePrefs.spaceUnit,
+                onSpaceChange = { value, unit ->
+                    realtimeCacheStore.setSpace(value, unit)
+                },
+                occupancy = realtimeOccupancy,
+                onClearCache = {
+                    settingsScope.launch {
+                        realtimeCache.clearAudioCache()
+                        context.showIslandNotice("已清空缓存")
+                    }
+                },
+                contentBottomInset = contentBottomInset,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        SettingsDrillHost(
             visibleState = glassVisible,
             landscape = landscape,
             title = "液态玻璃样式",
@@ -555,6 +676,17 @@ fun SettingsScreen(
                 contentBottomInset = contentBottomInset,
                 onOpenTerms = { legalKind = LoginLegalKind.Terms },
                 onOpenPrivacy = { legalKind = LoginLegalKind.Privacy },
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        SettingsDrillHost(
+            visibleState = changelogVisible,
+            landscape = landscape,
+            title = "更新日志",
+            onBack = { changelogVisible.targetState = false },
+        ) {
+            ChangelogPage(
+                contentBottomInset = contentBottomInset,
                 modifier = Modifier.fillMaxSize(),
             )
         }

@@ -46,6 +46,10 @@ class ZMusicApplication : Application() {
     val chromeGlassStore: ChromeGlassStore get() = container.chromeGlassStore
     val themeStore: ThemeStore get() = container.themeStore
     val chromeWallpaperStore get() = container.chromeWallpaperStore
+    val downloadAccelStore get() = container.downloadAccelStore
+    val downloadAccelIndex get() = container.downloadAccelIndex
+    val realtimeCacheStore get() = container.realtimeCacheStore
+    val realtimeCache get() = container.realtimeCache
     val playbackBridge: PlaybackBridge get() = container.playbackBridge
     val likedPlaylistRepository: LikedPlaylistRepository get() = container.likedPlaylistRepository
     val homeFeedRepository: HomeFeedRepository get() = container.homeFeedRepository
@@ -67,6 +71,7 @@ class ZMusicApplication : Application() {
     val commentsRepository get() = container.commentsRepository
     val searchRepository get() = container.searchRepository
     val artistRepository get() = container.artistRepository
+    val networkMode get() = container.networkMode
 
     private lateinit var queueSync: PlaybackQueueSync
     private lateinit var lyricOverlayController: LyricOverlayController
@@ -74,6 +79,12 @@ class ZMusicApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         container = AppContainer(this)
+        container.networkMode.start()
+        container.trackExportRepository.onLibraryChanged = {
+            container.downloadAccelIndex.notifyLibraryChanged()
+        }
+        container.downloadAccelIndex.start()
+        container.realtimeCache.start()
         // Application 阶段先按系统绑定，Activity 里再叠用户已存外观
         val systemDark = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK ==
             Configuration.UI_MODE_NIGHT_YES

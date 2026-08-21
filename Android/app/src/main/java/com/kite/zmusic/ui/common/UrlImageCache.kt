@@ -2,6 +2,7 @@ package com.kite.zmusic.ui.common
 
 import android.content.Context
 import android.graphics.BitmapFactory
+import android.net.Uri
 import android.util.LruCache
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -68,6 +69,7 @@ object UrlImageCache {
             runCatching {
                 val file = diskFile(context, key)
                 val bytes = when {
+                    isLocalMediaUri(key) -> readLocalBytes(context, key)
                     file.exists() -> file.readBytes()
                     else -> {
                         val req = imageRequest(key)
@@ -79,7 +81,7 @@ object UrlImageCache {
                             body
                         }
                     }
-                }
+                } ?: return@runCatching
                 val bmp = decodeSampledBitmap(bytes) ?: return@runCatching
                 memory.put(memoryKey(key, DECODE_MAX_PX), bmp)
             }
@@ -144,6 +146,18 @@ object UrlImageCache {
     /** 缓存键：trim 后的完整 URL，严格一对一，禁止用曲目 id 顶替以免换封面后串图。 */
     fun normalizeKey(url: String?): String? =
         url?.trim()?.takeIf { it.isNotEmpty() }
+
+    fun isLocalMediaUri(url: String): Boolean {
+        val t = url.trim()
+        return t.startsWith("content:", ignoreCase = true) ||
+            t.startsWith("file:", ignoreCase = true)
+    }
+
+    fun readLocalBytes(context: Context, url: String): ByteArray? {
+        return runCatching {
+            context.contentResolver.openInputStream(Uri.parse(url.trim()))?.use { it.readBytes() }
+        }.getOrNull()?.takeIf { it.isNotEmpty() }
+    }
 
     fun decodeSampledBitmap(bytes: ByteArray, maxPx: Int = DECODE_MAX_PX): ImageBitmap? {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }

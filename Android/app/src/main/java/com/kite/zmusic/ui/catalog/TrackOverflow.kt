@@ -29,6 +29,7 @@ internal fun TrackOverflowMenu(
     onDismiss: () -> Unit,
     onDownload: (TrackRow, TrackExportOptions) -> Unit,
     onRemove: (TrackRow) -> Unit,
+    showDownload: Boolean = true,
     removeConfirmTitle: String = "从歌单移除这首歌？",
     removeConfirmMessage: String = "这首歌会从当前歌单里拿掉，不会删除已下载的文件。",
     currentPlaylistId: Long = 0L,
@@ -125,11 +126,13 @@ internal fun TrackOverflowMenu(
                 contentKey = "track-overflow-${current.id}",
                 onDismiss = onDismiss,
                 actions = buildList {
-                    add(
-                        GlassSheetAction("下载") {
-                            pickingExport = true
-                        },
-                    )
+                    if (showDownload) {
+                        add(
+                            GlassSheetAction("下载") {
+                                pickingExport = true
+                            },
+                        )
+                    }
                     if (showAddToPlaylist) {
                         add(
                             GlassSheetAction("添加到歌单") {

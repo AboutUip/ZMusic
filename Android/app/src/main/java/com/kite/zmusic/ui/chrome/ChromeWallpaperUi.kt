@@ -59,7 +59,8 @@ fun chromeWallpaperSurface(
         -> destination.wallpaperSurface()
         MainOverlay.Settings -> ChromeWallpaperSurface.Settings
         MainOverlay.Search -> ChromeWallpaperSurface.Search
-        MainOverlay.Daily, MainOverlay.Fm, MainOverlay.Charts -> ChromeWallpaperSurface.Playlist
+        MainOverlay.Daily, MainOverlay.Fm, MainOverlay.Charts, MainOverlay.CachedSongs ->
+            ChromeWallpaperSurface.Playlist
         is MainOverlay.Playlist, is MainOverlay.PlaylistSearch -> ChromeWallpaperSurface.Playlist
         is MainOverlay.Album -> ChromeWallpaperSurface.Album
         is MainOverlay.Artist,
@@ -84,13 +85,6 @@ fun ChromeWallpaperState.paints(surface: ChromeWallpaperSurface?, landscape: Boo
 fun Modifier.chromePage(): Modifier = composed {
     val painted = LocalChromeWallpaperPainted.current
     background(if (painted) Color.Transparent else MainPalette.Page)
-}
-
-@Composable
-fun wallpaperScrim(): Color = if (MainPalette.isDark) {
-    Color.Black.copy(alpha = 0.28f)
-} else {
-    Color.White.copy(alpha = 0.32f)
 }
 
 @Composable
@@ -125,13 +119,15 @@ internal suspend fun preloadWallpaperBitmap(path: String) {
     if (decoded != null) WallpaperBitmapCache.put(path, decoded)
 }
 
+/**
+ * 只画用户的图，不跟主题盖遮罩。见 [wallpaperThemeScrimColor]。
+ */
 @Composable
 fun ChromeWallpaperLayer(
     frame: WallpaperFrame,
     modifier: Modifier = Modifier,
     placeholder: Color = MainPalette.Page,
 ) {
-    val scrim = wallpaperScrim()
     val loaded = rememberWallpaperBitmap(frame.imagePath)
     var held by remember { mutableStateOf<Pair<WallpaperFrame, ImageBitmap>?>(null) }
     val ready = loaded?.let { frame to it }
@@ -157,7 +153,6 @@ fun ChromeWallpaperLayer(
                 frame = draw.first,
                 modifier = Modifier.fillMaxSize(),
             )
-            Box(Modifier.fillMaxSize().background(scrim))
         }
     }
 }

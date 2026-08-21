@@ -11,6 +11,7 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -29,6 +30,7 @@ import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kite.zmusic.ZMusicApplication
+import com.kite.zmusic.data.NetworkPhase
 import com.kite.zmusic.data.SessionRepository
 import com.kite.zmusic.data.TrackRow
 import com.kite.zmusic.ui.artist.ArtistAlbumsScreen
@@ -38,11 +40,13 @@ import com.kite.zmusic.ui.catalog.CatalogCollectionPage
 import com.kite.zmusic.ui.catalog.PlaylistManageBridge
 import com.kite.zmusic.ui.catalog.PlaylistSearchScreen
 import com.kite.zmusic.ui.chrome.ChromeWallpaperBackdrop
+import com.kite.zmusic.ui.chrome.chromePage
 import com.kite.zmusic.ui.common.predictiveBackLayer
 import com.kite.zmusic.ui.common.rememberPredictiveBackUi
 import com.kite.zmusic.ui.library.LikedArtistsScreen
 import com.kite.zmusic.ui.library.LikedArtistsSearchScreen
 import com.kite.zmusic.ui.mv.MvPlayerScreen
+import com.kite.zmusic.ui.offline.OfflineEmptyPage
 import com.kite.zmusic.ui.search.SearchScreen
 import com.kite.zmusic.ui.search.SearchViewModel
 import com.kite.zmusic.ui.search.SearchViewModelFactory
@@ -173,28 +177,44 @@ private fun CatalogOverlayPage(
 ) {
     when (overlay) {
         MainOverlay.Search -> {
-            SearchScreen(
-                sessionRepository = sessionRepository,
-                contentBottomInset = contentBottomInset,
-                isTop = isTop,
-                onBack = onBack,
-                onPlayTracks = onPlayTracks,
-                onOpenPlaylist = onOpenPlaylist,
-                onOpenAlbum = { id, title ->
-                    onPushOverlay(MainOverlay.Album(id, title))
-                },
-                onOpenMv = { id, title, cover, artist ->
-                    onPushOverlay(MainOverlay.Mv(id, title, cover, artist))
-                },
-                onOpenArtist = { hit ->
-                    if (hit.id > 0L) {
-                        onPushOverlay(MainOverlay.Artist(hit.id, hit.name, hit.coverUrl))
-                    } else {
-                        onHint("暂时无法打开这位歌手")
-                    }
-                },
-                onHint = onHint,
-            )
+            val overlayApp = LocalContext.current.applicationContext as ZMusicApplication
+            val net by overlayApp.networkMode.state.collectAsStateWithLifecycle()
+            if (net.phase == NetworkPhase.Offline) {
+                OfflineEmptyPage(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .chromePage()
+                        .statusBarsPadding(),
+                    title = "搜索需要网络",
+                    caption = "联网后即可继续找歌",
+                    actionLabel = null,
+                    onBack = onBack,
+                    contentBottomInset = contentBottomInset,
+                )
+            } else {
+                SearchScreen(
+                    sessionRepository = sessionRepository,
+                    contentBottomInset = contentBottomInset,
+                    isTop = isTop,
+                    onBack = onBack,
+                    onPlayTracks = onPlayTracks,
+                    onOpenPlaylist = onOpenPlaylist,
+                    onOpenAlbum = { id, title ->
+                        onPushOverlay(MainOverlay.Album(id, title))
+                    },
+                    onOpenMv = { id, title, cover, artist ->
+                        onPushOverlay(MainOverlay.Mv(id, title, cover, artist))
+                    },
+                    onOpenArtist = { hit ->
+                        if (hit.id > 0L) {
+                            onPushOverlay(MainOverlay.Artist(hit.id, hit.name, hit.coverUrl))
+                        } else {
+                            onHint("暂时无法打开这位歌手")
+                        }
+                    },
+                    onHint = onHint,
+                )
+            }
         }
         MainOverlay.Settings -> {
             SettingsScreen(

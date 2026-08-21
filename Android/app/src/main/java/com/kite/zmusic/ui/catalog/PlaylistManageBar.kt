@@ -35,6 +35,7 @@ class PlaylistManageBridge {
     var selectedCount by mutableIntStateOf(0)
     var totalCount by mutableIntStateOf(0)
     var canRemove by mutableStateOf(false)
+    var canDownload by mutableStateOf(true)
     var busy by mutableStateOf(false)
 
     var onSelectAll: () -> Unit = {}
@@ -55,6 +56,7 @@ class PlaylistManageBridge {
         onCancel = {}
         onRemove = {}
         onDownload = {}
+        canDownload = true
     }
 }
 
@@ -68,6 +70,8 @@ internal fun PlaylistManageBar(
     onCancel: () -> Unit,
     backdrop: Backdrop,
     modifier: Modifier = Modifier,
+    canDownload: Boolean = true,
+    removeLabel: String = "全部移出歌单",
 ) {
     val shape = RoundedCornerShape(24.dp)
     val enabled = !busy
@@ -80,19 +84,21 @@ internal fun PlaylistManageBar(
         horizontalArrangement = Arrangement.SpaceEvenly,
     ) {
         ManageBarAction(
-            label = "全部移出歌单",
+            label = removeLabel,
             color = if (canRemove) MainPalette.Accent else MainPalette.Hint,
             enabled = enabled && canRemove && selectedCount > 0,
             onClick = onRemove,
             modifier = Modifier.weight(1f),
         )
-        ManageBarAction(
-            label = "全部下载",
-            color = MainPalette.Ink,
-            enabled = enabled && selectedCount > 0,
-            onClick = onDownload,
-            modifier = Modifier.weight(1f),
-        )
+        if (canDownload) {
+            ManageBarAction(
+                label = "全部下载",
+                color = MainPalette.Ink,
+                enabled = enabled && selectedCount > 0,
+                onClick = onDownload,
+                modifier = Modifier.weight(1f),
+            )
+        }
         ManageBarAction(
             label = "取消",
             color = MainPalette.Secondary,

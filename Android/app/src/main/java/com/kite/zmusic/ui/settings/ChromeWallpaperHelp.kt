@@ -25,7 +25,7 @@ internal fun wallpaperHelp(topic: WallpaperHelpTopic): WallpaperHelpDoc = when (
         sections = listOf(
             WallpaperHelpSection(
                 "这是什么",
-                "打开后，主界面可以用你自己的图当底，而不是纯色主题底。浅色 / 深色只改字和卡片颜色，和这张图不冲突。弹窗、灵动岛、播放页故意不铺，避免把字和控件埋进图里。",
+                "打开后，主界面可以用你自己的图当底，而不是纯色主题底。浅色 / 深色只改字和卡片颜色，不会给这张图再盖一层白或黑。弹窗、灵动岛、播放页故意不铺，避免把字和控件埋进图里。",
             ),
             WallpaperHelpSection(
                 "建议怎么用",

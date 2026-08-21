@@ -34,6 +34,7 @@ object ArtworkLoader {
             runCatching {
                 val file = UrlImageCache.diskFile(context, key)
                 val bytes = when {
+                    UrlImageCache.isLocalMediaUri(key) -> UrlImageCache.readLocalBytes(context, key)
                     file.exists() -> file.readBytes()
                     else -> {
                         val req = Request.Builder().url(key).get().build()

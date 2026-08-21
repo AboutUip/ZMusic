@@ -22,6 +22,17 @@ internal object PlayUrlResolver {
         return NcmPlaybackParse.songUrlForId(legacy, trackId)
     }
 
+    /** 只拉指定档，不回退。实时缓存按 (歌, 音质) 存，降档会串档。 */
+    suspend fun resolveExact(
+        userClient: NcmUserClient,
+        trackId: Long,
+        cookie: String,
+        quality: AudioQuality,
+    ): String? {
+        val cookieForUrl = if (quality.needsPcOs) cookieWithPlaybackOs(cookie) else cookie
+        return songUrlV1(userClient, trackId, cookieForUrl, quality)
+    }
+
     private suspend fun songUrlV1(
         userClient: NcmUserClient,
         trackId: Long,

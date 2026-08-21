@@ -217,7 +217,13 @@ data class TrackRow(
     val artists: String,
     val album: String?,
     val durationMs: Long,
-    /** 专辑封面，用于播放器与列表展示 */
+    /** 专辑封面，用于播放器与列表展示；缓存曲目可为 content:// */
     val coverUrl: String? = null,
     val artistRefs: List<TrackArtist> = emptyList(),
+    /** 本机导出音频（MediaStore / file URI），有则播放走本地，不请求音源 */
+    val localAudioUri: String? = null,
+    /** `Download/ZMusic/{文件夹}/`，删除缓存时清整夹 */
+    val localFolder: String? = null,
+    val localLyricUri: String? = null,
+    val localTransLyricUri: String? = null,
 )

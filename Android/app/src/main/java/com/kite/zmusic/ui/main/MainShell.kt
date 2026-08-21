@@ -48,6 +48,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -76,6 +77,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kite.zmusic.ZMusicApplication
 import com.kite.zmusic.data.ChromeGlassMode
 import com.kite.zmusic.data.ChromeWallpaperState
+import com.kite.zmusic.data.NetworkCommand
+import com.kite.zmusic.data.NetworkPhase
+import com.kite.zmusic.data.NetworkPhaseLogic
 import com.kite.zmusic.data.SessionRepository
 import com.kite.zmusic.data.TrackRow
 import com.kite.zmusic.playback.MvPlayback
@@ -115,6 +119,7 @@ import kotlin.math.floor
 import kotlin.math.roundToInt
 import kotlin.math.sign
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -158,7 +163,22 @@ fun MainShell(
     val playlistManage = remember { PlaylistManageBridge() }
     var userSpaceProgress by remember { mutableFloatStateOf(0f) }
     val overlay = overlayStack.lastOrNull()
+    val context = LocalContext.current
+    val app = context.applicationContext as ZMusicApplication
+    val net by app.networkMode.state.collectAsStateWithLifecycle()
     fun pushOverlay(next: MainOverlay) {
+        val phase = net.phase
+        val online = net.online
+        if (!online && next is MainOverlay.Search) {
+            context.showIslandNotice("搜索需要网络")
+            return
+        }
+        if (phase == NetworkPhase.Offline &&
+            next !is MainOverlay.CachedSongs &&
+            next !is MainOverlay.Settings
+        ) {
+            return
+        }
         if (next is MainOverlay.Mv) {
             val cur = overlayStack.lastOrNull() as? MainOverlay.Mv
             if (cur?.id == next.id) return
@@ -189,8 +209,6 @@ fun MainShell(
     var playerLayerVisible by remember { mutableStateOf(false) }
     val density = LocalDensity.current
     val compactSettling = remember { mutableStateOf(false) }
-    val context = LocalContext.current
-    val app = context.applicationContext as ZMusicApplication
     val mvActive by remember(app.mvPlayback) {
         app.mvPlayback.ui.map { it.active }.distinctUntilChanged()
     }.collectAsStateWithLifecycle(app.mvPlayback.ui.value.active)
@@ -363,6 +381,10 @@ fun MainShell(
     }
 
     fun startFmWithPermission() {
+        if (!net.online) {
+            context.showIslandNotice("当前无网络")
+            return
+        }
         if (Build.VERSION.SDK_INT >= 33) {
             val granted = ContextCompat.checkSelfPermission(
                 context,
@@ -378,6 +400,10 @@ fun MainShell(
     }
 
     fun startIntelligenceFromContextWithPermission() {
+        if (!net.online) {
+            context.showIslandNotice("当前无网络")
+            return
+        }
         if (Build.VERSION.SDK_INT >= 33) {
             val granted = ContextCompat.checkSelfPermission(
                 context,
@@ -453,6 +479,34 @@ fun MainShell(
         goTo(dest)
     }
 
+    val landscapeNow = rememberUpdatedState(landscape)
+    LaunchedEffect(Unit) {
+        launch {
+            delay(520)
+            var last: NetworkPhase? = null
+            app.networkMode.state.collect { ui ->
+                val to = ui.phase
+                if (to == last) return@collect
+                val from = last
+                last = to
+                NetworkPhaseLogic.islandNotice(from, to)?.let { context.showIslandNotice(it) }
+            }
+        }
+        app.networkMode.commands.collect { cmd ->
+            when (cmd) {
+                NetworkCommand.ForceHome -> {
+                    overlayStack = emptyList()
+                    app.mvPlayback.stop()
+                    if (landscapeNow.value) {
+                        landscapePage = 0
+                    } else {
+                        goTo(MainDestination.Home)
+                    }
+                }
+            }
+        }
+    }
+
     fun dragDockByTabs(deltaTabs: Float) {
         if (deltaTabs == 0f) return
         val info = pagerState.layoutInfo
@@ -510,11 +564,15 @@ fun MainShell(
     val spaceOpen = userSpaceProgress > 0.18f
     val holdChrome = showFullPlayer || playerLayerVisible
     val showDock = !overlayOpen || overlay is MainOverlay.Mv
-    val showManage = playlistManage.active && overlay is MainOverlay.Playlist && !showFullPlayer
+    val showManage = playlistManage.active &&
+        (overlay is MainOverlay.Playlist || overlay is MainOverlay.CachedSongs) &&
+        !showFullPlayer
     val showMini = (mvActive || playingTrackId > 0L) && !showManage
     dockHiddenRef.value = landscape || !showDock
     LaunchedEffect(overlay) {
-        if (overlay !is MainOverlay.Playlist) playlistManage.exit()
+        if (overlay !is MainOverlay.Playlist && overlay !is MainOverlay.CachedSongs) {
+            playlistManage.exit()
+        }
         if (overlay is MainOverlay.Mv && Build.VERSION.SDK_INT >= 33) {
             val granted = ContextCompat.checkSelfPermission(
                 context,
@@ -682,7 +740,7 @@ fun MainShell(
                         },
                     )
                     .then(
-                        if (needItemFrosted) {
+                        if (needItemFrosted || needDockFrosted) {
                             Modifier.hazeSource(state = itemHaze, zIndex = 0f)
                         } else {
                             Modifier
@@ -924,6 +982,8 @@ fun MainShell(
                             onCancel = { playlistManage.onCancel() },
                             backdrop = backdrop,
                             modifier = Modifier.fillMaxWidth(),
+                            canDownload = playlistManage.canDownload,
+                            removeLabel = if (overlay is MainOverlay.CachedSongs) "删除所选" else "全部移出歌单",
                         )
                     }
                 }

@@ -25,10 +25,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -42,6 +44,7 @@ import com.kite.zmusic.ui.main.MainPageHeader
 import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.main.mainContentPadH
 import com.kite.zmusic.ui.main.wallpaperItemChrome
+import com.kite.zmusic.ui.notice.showIslandNotice
 
 @Composable
 fun FeaturesScreen(
@@ -49,8 +52,10 @@ fun FeaturesScreen(
     onOpenOverlay: (MainOverlay) -> Unit,
     onStartFm: () -> Unit,
     onStartIntelligence: () -> Unit,
+    offline: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
     val landscape =
         LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     val padH = mainContentPadH(landscape)
@@ -67,6 +72,15 @@ fun FeaturesScreen(
         },
         FeatureItem("排行榜", "官方与热歌榜", Color(0xFFFF9500), ZIcons.Charts) {
             onOpenOverlay(MainOverlay.Charts)
+        },
+        FeatureItem(
+            title = "缓存的歌曲",
+            subtitle = "本机已下载",
+            color = Color(0xFF30D158),
+            icon = ZIcons.CachedSongs,
+            availableOffline = true,
+        ) {
+            onOpenOverlay(MainOverlay.CachedSongs)
         },
     )
 
@@ -93,6 +107,8 @@ fun FeaturesScreen(
             FeatureSectionTitle("听歌模式")
             Spacer(Modifier.height(10.dp))
             FeatureCardGrid(
+                offline = offline,
+                onOfflineBlocked = { context.showIslandNotice("当前无网络") },
                 items = modes.map { mode ->
                     FeatureItem(mode.title, mode.caption, mode.accent, mode.icon) {
                         enterListenMode(mode)
@@ -102,7 +118,11 @@ fun FeaturesScreen(
             Spacer(Modifier.height(if (landscape) 22.dp else 26.dp))
             FeatureSectionTitle("功能")
             Spacer(Modifier.height(10.dp))
-            FeatureCardGrid(items = tools)
+            FeatureCardGrid(
+                items = tools,
+                offline = offline,
+                onOfflineBlocked = { context.showIslandNotice("当前无网络") },
+            )
         }
     }
 }
@@ -125,11 +145,16 @@ private data class FeatureItem(
     val subtitle: String,
     val color: Color,
     val icon: ImageVector,
+    val availableOffline: Boolean = false,
     val onClick: () -> Unit,
 )
 
 @Composable
-private fun FeatureCardGrid(items: List<FeatureItem>) {
+private fun FeatureCardGrid(
+    items: List<FeatureItem>,
+    offline: Boolean,
+    onOfflineBlocked: () -> Unit,
+) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         items.chunked(2).forEach { row ->
             Row(
@@ -137,7 +162,12 @@ private fun FeatureCardGrid(items: List<FeatureItem>) {
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 row.forEach { item ->
-                    FeatureCard(item, Modifier.weight(1f))
+                    FeatureCard(
+                        item = item,
+                        enabled = !offline || item.availableOffline,
+                        onOfflineBlocked = onOfflineBlocked,
+                        modifier = Modifier.weight(1f),
+                    )
                 }
                 if (row.size == 1) Spacer(Modifier.weight(1f))
             }
@@ -146,14 +176,22 @@ private fun FeatureCardGrid(items: List<FeatureItem>) {
 }
 
 @Composable
-private fun FeatureCard(item: FeatureItem, modifier: Modifier = Modifier) {
+private fun FeatureCard(
+    item: FeatureItem,
+    enabled: Boolean,
+    onOfflineBlocked: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Row(
         modifier
+            .alpha(if (enabled) 1f else 0.4f)
             .wallpaperItemChrome(RoundedCornerShape(14.dp))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
-                onClick = item.onClick,
+                onClick = {
+                    if (enabled) item.onClick() else onOfflineBlocked()
+                },
             )
             .padding(14.dp),
         verticalAlignment = Alignment.CenterVertically,

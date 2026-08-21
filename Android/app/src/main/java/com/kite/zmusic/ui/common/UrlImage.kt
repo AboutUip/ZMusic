@@ -49,6 +49,19 @@ fun rememberUrlImageBitmap(
             bitmap = it
             return@LaunchedEffect
         }
+        if (UrlImageCache.isLocalMediaUri(urlKey)) {
+            val local = withContext(Dispatchers.IO) {
+                runCatching {
+                    val bytes = UrlImageCache.readLocalBytes(context, urlKey) ?: return@runCatching null
+                    UrlImageCache.decodeSampledBitmap(bytes, maxPx)
+                }.getOrNull()
+            }
+            if (local != null) {
+                UrlImageCache.memoryPut(urlKey, local, maxPx)
+                bitmap = local
+            }
+            return@LaunchedEffect
+        }
         val fromDisk: ImageBitmap? = withContext(Dispatchers.IO) {
             runCatching {
                 val file = UrlImageCache.diskFile(context, urlKey)

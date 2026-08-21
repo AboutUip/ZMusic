@@ -12,10 +12,15 @@ import com.kite.zmusic.data.PredictiveBackStore
 import com.kite.zmusic.data.ChromeGlassStore
 import com.kite.zmusic.data.ThemeStore
 import com.kite.zmusic.data.ChromeWallpaperStore
+import com.kite.zmusic.data.DownloadAccelIndex
+import com.kite.zmusic.data.DownloadAccelStore
+import com.kite.zmusic.data.RealtimeCacheController
+import com.kite.zmusic.data.RealtimeCacheStore
 import com.kite.zmusic.data.HomeFeedRepository
 import com.kite.zmusic.data.LibraryHomeRepository
 import com.kite.zmusic.data.LikedPlaylistRepository
 import com.kite.zmusic.data.NcmAuthClient
+import com.kite.zmusic.data.NetworkModeController
 import com.kite.zmusic.data.NcmUserClient
 import com.kite.zmusic.data.PlaylistCollectionRepository
 import com.kite.zmusic.data.PlaylistEditor
@@ -61,6 +66,8 @@ class AppContainer(app: Application) {
     val chromeGlassStore = ChromeGlassStore(app)
     val themeStore = ThemeStore(app)
     val chromeWallpaperStore = ChromeWallpaperStore(app)
+    val downloadAccelStore = DownloadAccelStore(app)
+    val realtimeCacheStore = RealtimeCacheStore(app)
     val playbackBridge = PlaybackBridge(app, sessionRepository, ncmUserClient)
     val likedPlaylistRepository = LikedPlaylistRepository(
         app,
@@ -90,6 +97,13 @@ class AppContainer(app: Application) {
     )
     val islandNoticeCenter = IslandNoticeCenter()
     val trackExportRepository = TrackExportRepository(app, audioQualityStore, ncmUserClient)
+    val downloadAccelIndex = DownloadAccelIndex(app, trackExportRepository, downloadAccelStore)
+    val realtimeCache = RealtimeCacheController(
+        app,
+        realtimeCacheStore,
+        sessionRepository,
+        ncmUserClient,
+    )
     val playlistEditor = PlaylistEditor(
         sessionRepository,
         ncmUserClient,
@@ -104,4 +118,10 @@ class AppContainer(app: Application) {
     val commentsRepository = CommentsRepository(ncmUserClient, ncmAuthClient)
     val searchRepository = SearchRepository(ncmUserClient)
     val artistRepository = ArtistRepository(ncmUserClient, ncmAuthClient)
+    val networkMode = NetworkModeController(
+        app,
+        homeFeedRepository,
+        libraryHomeRepository,
+        likedPlaylistRepository,
+    )
 }

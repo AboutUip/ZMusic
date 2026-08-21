@@ -25,6 +25,7 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Checklist
 import androidx.compose.material.icons.rounded.Dns
 import androidx.compose.material.icons.rounded.EmojiEvents
+import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.HideImage
@@ -63,6 +64,8 @@ import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Swipe
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
+import androidx.compose.material.icons.rounded.Speed
+import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material.icons.rounded.Translate
 import androidx.compose.material.icons.rounded.VideoLibrary
@@ -118,6 +121,9 @@ object ZIcons {
     val Daily: ImageVector get() = Icons.Rounded.CalendarMonth
     val Radio: ImageVector get() = Icons.Rounded.Radio
     val Charts: ImageVector get() = Icons.Rounded.EmojiEvents
+    val CachedSongs: ImageVector get() = Icons.Rounded.Folder
+    val Speed: ImageVector get() = Icons.Rounded.Speed
+    val Storage: ImageVector get() = Icons.Rounded.Storage
     val Playlist: ImageVector get() = Icons.AutoMirrored.Rounded.QueueMusic
     val Add: ImageVector get() = Icons.Rounded.Add
     val Remove: ImageVector get() = Icons.Rounded.Remove

@@ -123,6 +123,13 @@ internal fun TrackCollectionScreen(
     manageBridge: PlaylistManageBridge? = null,
     onOpenCreator: (() -> Unit)? = null,
     onOpenArtist: ((Long, String, String?) -> Unit)? = null,
+    overflowDeleteOnly: Boolean = false,
+    removeConfirmTitle: String? = null,
+    removeConfirmMessage: String? = null,
+    removeSelectedTitle: String? = null,
+    removeSelectedMessage: String? = null,
+    removeSelectedConfirmLabel: String? = null,
+    emptyHint: String? = null,
 ) {
     val app = LocalContext.current.applicationContext as ZMusicApplication
     val scope = rememberCoroutineScope()
@@ -131,7 +138,11 @@ internal fun TrackCollectionScreen(
     var confirmRemoveSelected by remember { mutableStateOf(false) }
     var exportTracks by remember { mutableStateOf<List<TrackRow>>(emptyList()) }
     var moreTrack by remember { mutableStateOf<TrackRow?>(null) }
-    val canRemove = onRemoveTrack != null && (state.isOwnedPlaylist || state.isHeartPlaylist)
+    val canRemove = onRemoveTrack != null &&
+        (overflowDeleteOnly || state.isOwnedPlaylist || state.isHeartPlaylist)
+    val showDownload = !overflowDeleteOnly
+    val showAddToPlaylist = !overflowDeleteOnly
+    val overflowArtist = if (overflowDeleteOnly) null else onOpenArtist
     val managing = manageBridge?.active == true
     val selected = remember(state.playlistId) { mutableStateSetOf<Long>() }
     val listState = rememberLazyListState()
@@ -161,6 +172,7 @@ internal fun TrackCollectionScreen(
             manageBridge.selectedCount = selected.size
             manageBridge.totalCount = state.tracks.size
             manageBridge.canRemove = canRemove
+            manageBridge.canDownload = showDownload
             manageBridge.onSelectAll = {
                 if (selected.size >= state.tracks.size && state.tracks.isNotEmpty()) {
                     selected.clear()
@@ -288,8 +300,20 @@ internal fun TrackCollectionScreen(
                                 )
                             }
                         }
+                    } else if (state.tracks.isEmpty() && !emptyHint.isNullOrBlank()) {
+                        item {
+                            Text(
+                                text = emptyHint,
+                                color = MainPalette.Secondary,
+                                fontSize = 14.sp,
+                                lineHeight = 20.sp,
+                                modifier = Modifier.padding(top = 8.dp, bottom = 24.dp),
+                            )
+                        }
                     }
-                    itemsIndexed(state.tracks, key = { _, t -> t.id }) { idx, t ->
+                    itemsIndexed(state.tracks, key = { _, t ->
+                        t.localFolder ?: t.id.toString()
+                    }) { idx, t ->
                         val current = isPlaybackCurrent(
                             trackId = t.id,
                             contextId = state.playlistId,
@@ -354,9 +378,13 @@ internal fun TrackCollectionScreen(
     if (confirmRemoveSelected) {
         val count = selected.size
         GlassAlertDialog(
-            title = if (state.isHeartPlaylist) "从我喜欢的音乐移除？" else "从歌单移除这些歌？",
-            message = "将移除已选的 $count 首，不会删除已下载的文件。",
-            confirmLabel = "全部移出",
+            title = removeSelectedTitle ?: if (state.isHeartPlaylist) {
+                "从我喜欢的音乐移除？"
+            } else {
+                "从歌单移除这些歌？"
+            },
+            message = removeSelectedMessage ?: "将移除已选的 $count 首，不会删除已下载的文件。",
+            confirmLabel = removeSelectedConfirmLabel ?: "全部移出",
             confirmDestructive = true,
             onConfirm = {
                 confirmRemoveSelected = false
@@ -399,13 +427,16 @@ internal fun TrackCollectionScreen(
         onDismiss = { moreTrack = null },
         onDownload = { track, options -> launchTrackDownload(scope, app, track, options) },
         onRemove = { onRemoveTrack?.invoke(it) },
-        removeConfirmTitle = if (state.isHeartPlaylist) {
+        showDownload = showDownload,
+        showAddToPlaylist = showAddToPlaylist,
+        removeConfirmTitle = removeConfirmTitle ?: if (state.isHeartPlaylist) {
             "从我喜欢的音乐移除？"
         } else {
             "从歌单移除这首歌？"
         },
+        removeConfirmMessage = removeConfirmMessage ?: "这首歌会从当前歌单里拿掉，不会删除已下载的文件。",
         currentPlaylistId = state.playlistId,
-        onOpenArtist = onOpenArtist,
+        onOpenArtist = overflowArtist,
     )
 }
 

@@ -287,6 +287,17 @@ internal fun MainPageHeader(
 }
 
 /**
+ * 跟 Dock / 迷你条同一套玻璃：液态 / 磨砂 / 纯色走 [LocalChromeGlassStyle]。
+ */
+internal fun Modifier.mainChromePlate(shape: Shape): Modifier = composed {
+    val backdrop = LocalChromeBackdrop.current
+    if (backdrop == null) {
+        return@composed clip(shape).background(MainPalette.Surface)
+    }
+    mainLiquidGlass(backdrop, shape)
+}
+
+/**
  * 主栏玻璃（Dock / 迷你条）。液态走 Kyant Backdrop；磨砂走 Haze；纯色不透明。
  * 折射高度不超过圆角（Dock 胶囊约 32dp，迷你条 20dp），过小会只剩一层雾。
  */

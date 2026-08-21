@@ -14,13 +14,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.kite.zmusic.ZMusicApplication
 import com.kite.zmusic.data.NcmConnectivityClient
 import com.kite.zmusic.data.ServerConfigRepository
+import com.kite.zmusic.data.isNetworkOnline
 import com.kite.zmusic.ui.login.LoginScreen
 import com.kite.zmusic.ui.main.MainPlaceholderScreen
 import com.kite.zmusic.ui.server.ServerConfigScreen
 import com.kite.zmusic.ui.splash.SplashScreen
-import com.kite.zmusic.ZMusicApplication
 
 private object Routes {
     const val Splash = "splash"
@@ -47,11 +48,15 @@ fun ZMusicNavHost(modifier: Modifier = Modifier) {
             SplashScreen(
                 checkReady = {
                     serverConfigRepository.applyToRuntime()
-                    val connected = NcmConnectivityClient().checkReachable().isSuccess
-                    if (connected) {
-                        runCatching { app.sessionWarmup.prefetch() }
+                    if (!appContext.isNetworkOnline()) {
+                        true
+                    } else {
+                        val connected = NcmConnectivityClient().checkReachable().isSuccess
+                        if (connected) {
+                            runCatching { app.sessionWarmup.prefetch() }
+                        }
+                        connected
                     }
-                    connected
                 },
                 onFinished = { connected ->
                     val dest = if (connected) Routes.MainPlaceholder else Routes.ServerConfig

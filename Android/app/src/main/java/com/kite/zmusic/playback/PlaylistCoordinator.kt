@@ -18,6 +18,12 @@ import androidx.media3.exoplayer.audio.DefaultAudioSink
 import com.kite.zmusic.R
 import com.kite.zmusic.data.AudioQuality
 import com.kite.zmusic.data.AudioQualityStore
+import com.kite.zmusic.data.DownloadAccelHit
+import com.kite.zmusic.data.DownloadAccelIndex
+import com.kite.zmusic.data.DownloadAccelStore
+import com.kite.zmusic.data.RealtimeCacheController
+import com.kite.zmusic.data.RealtimeCacheMode
+import com.kite.zmusic.data.RealtimeCacheStore
 import com.kite.zmusic.data.PersistentPlaybackStore
 import com.kite.zmusic.data.LikedPlaylistRepository
 import com.kite.zmusic.data.LyricRepository
@@ -27,8 +33,10 @@ import com.kite.zmusic.data.NcmUserClient
 import com.kite.zmusic.data.PlayUrlResolver
 import com.kite.zmusic.data.SessionRepository
 import com.kite.zmusic.data.TrackRow
+import com.kite.zmusic.data.isNetworkOnline
 import com.kite.zmusic.ui.common.UrlImageCache
 import com.kite.zmusic.ui.notice.showIslandNotice
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -67,12 +75,20 @@ class PlaylistCoordinator(
     private val lyricRepository: LyricRepository,
     private val likedPlaylistRepository: LikedPlaylistRepository,
     private val audioQualityStore: AudioQualityStore,
+    private val downloadAccelStore: DownloadAccelStore,
+    private val downloadAccelIndex: DownloadAccelIndex,
+    private val realtimeCacheStore: RealtimeCacheStore,
+    private val realtimeCache: RealtimeCacheController,
     private val persistentPlaybackStore: PersistentPlaybackStore,
     private val userClient: NcmUserClient,
     private val audioOutputController: AudioOutputController,
     private val onClearAndStopService: (() -> Unit)? = null,
 ) {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val scope = CoroutineScope(
+        SupervisorJob() + Dispatchers.Main.immediate + CoroutineExceptionHandler { _, e ->
+            Log.w(TAG, "uncaught", e)
+        },
+    )
 
     private val _spectrum = MutableStateFlow(AudioSpectrumBands.ZERO)
     val spectrum: StateFlow<AudioSpectrumBands> = _spectrum.asStateFlow()
@@ -171,6 +187,15 @@ class PlaylistCoordinator(
     @Volatile
     var sleepTimer: SleepTimer? = null
     private var appliedQuality: AudioQuality = audioQualityStore.current()
+    /** 下载加速命中提示：同一首歌连播不重复弹。 */
+    private var accelNoticeTrackId = 0L
+    private var sampleTrackId = 0L
+    private var sampleQuality = ""
+    private var sampleListenedMs = 0L
+    private var sampleDurationMs = 0L
+    private var sampleStartedAt = 0L
+    private var sampleAccumAt = 0L
+    private var sampleLastPos = -1L
 
     private val playerListener = object : Player.Listener {
         override fun onPlaybackStateChanged(playbackState: Int) {
@@ -284,7 +309,38 @@ class PlaylistCoordinator(
             audioQualityStore.quality.drop(1).collect { next ->
                 if (next == appliedQuality) return@collect
                 appliedQuality = next
+                val cur = _ui.value.currentTrack
+                if (cur != null && realtimeCache.playUri(cur.id, next) != null) {
+                    reloadCurrentForQuality()
+                    return@collect
+                }
+                if (cur != null && downloadAccelIndex.audioUri(cur.id) != null) return@collect
                 reloadCurrentForQuality()
+            }
+        }
+        scope.launch {
+            downloadAccelStore.enabled.drop(1).collect { on ->
+                if (!on) reloadCurrentForQuality()
+            }
+        }
+        scope.launch {
+            realtimeCacheStore.state.drop(1).collect { prefs ->
+                if (!prefs.enabled) {
+                    discardSample()
+                    reloadCurrentForQuality()
+                } else {
+                    switchCurrentToRealtimeCacheIfNeeded()
+                }
+            }
+        }
+        scope.launch {
+            downloadAccelIndex.hits.collect { map ->
+                switchCurrentToLocalIfNeeded(map)
+            }
+        }
+        scope.launch {
+            realtimeCache.indexRevision.drop(1).collect {
+                switchCurrentToRealtimeCacheIfNeeded()
             }
         }
     }
@@ -341,6 +397,7 @@ class PlaylistCoordinator(
             )
         }
         persistSnapshot()
+        flushSample()
         loadAndPlayIndex(idx)
         if (radio) ensureRadioLookahead()
     }
@@ -478,6 +535,7 @@ class PlaylistCoordinator(
 
     fun clearQueue() {
         sleepTimer?.cancel()
+        flushSample()
         cancelLoads()
         urlCache.clear()
         unplayableUntil.clear()
@@ -522,6 +580,8 @@ class PlaylistCoordinator(
         if (exoPlayer.mediaItemCount > 0) return
         val ui = _ui.value
         if (!ui.hasQueue || ui.index !in ui.queue.indices) return
+        val track = ui.queue[ui.index]
+        if (!hasLocalAudio(track) && !context.isNetworkOnline()) return
         loadAndPlayIndex(
             idx = ui.index,
             resumeAtMs = ui.positionMs.coerceAtLeast(0L),
@@ -613,6 +673,7 @@ class PlaylistCoordinator(
     }
 
     fun release() {
+        flushSample()
         cancelLoads()
         tickerJob?.cancel()
         persistentFocus.release()
@@ -647,6 +708,18 @@ class PlaylistCoordinator(
                     continue
                 }
                 _ui.update { it.copy(positionMs = pos) }
+                val dur = when {
+                    exoPlayer.duration > 0L && exoPlayer.duration != C.TIME_UNSET ->
+                        exoPlayer.duration
+                    else -> ui.durationMs
+                }
+                sampleTick(
+                    playing = exoPlayer.isPlaying && !ui.loadPending,
+                    track = ui.currentTrack,
+                    durationMs = dur,
+                    quality = audioQualityStore.current(),
+                    positionMs = pos,
+                )
             }
         }
     }
@@ -661,6 +734,7 @@ class PlaylistCoordinator(
         }
         exoPlayer.pause()
         exoPlayer.playWhenReady = false
+        flushSample()
         _ui.update {
             it.copy(
                 isPlaying = false,
@@ -937,8 +1011,10 @@ class PlaylistCoordinator(
                 for (t in neighbors) {
                     if (isUnplayable(t.id)) continue
                     if (urlCache[t.id]?.isFresh() == true) continue
-                    val url = resolvePlayUrl(t.id, cookie)
+                    if (!hasLocalAudio(t) && !context.isNetworkOnline()) continue
+                    val url = resolvePlayUrl(t, cookie)
                     if (url.isNullOrBlank()) {
+                        if (!context.isNetworkOnline()) continue
                         Log.d(TAG, "prefetch url miss → unplayable id=${t.id}")
                         markUnplayable(t.id)
                         clearPreparedIfTrack(t.id)
@@ -1002,6 +1078,16 @@ class PlaylistCoordinator(
             return
         }
         val track = _ui.value.queue.getOrNull(idx) ?: return
+        val nextQuality = audioQualityStore.current()
+        if (sampleTrackId > 0L &&
+            (sampleTrackId != track.id || sampleQuality != nextQuality.level)
+        ) {
+            flushSample()
+        }
+        val livePrefs = realtimeCacheStore.current()
+        if (livePrefs.liveDownloadEnabled) {
+            realtimeCache.notifyRealtimePlayStarted(track.id, nextQuality)
+        }
         if (!isRetry) {
             if (retryIndex != idx) {
                 retryIndex = idx
@@ -1061,7 +1147,19 @@ class PlaylistCoordinator(
             val cookie = sessionRepository.session.value?.cookie.orEmpty()
             try {
                 // 磁盘歌词优先填上，避免等网络；并补齐译文
-                if (_ui.value.lyricLines.isEmpty() ||
+                val accelHit = downloadAccelIndex.lookup(track.id)
+                val lyricUri = track.localLyricUri ?: accelHit?.lyricUri
+                val transLyricUri = track.localTransLyricUri ?: accelHit?.transLyricUri
+                val localLyrics = if (!lyricUri.isNullOrBlank() || !transLyricUri.isNullOrBlank()) {
+                    lyricRepository.loadFromLocalUris(lyricUri, transLyricUri)
+                } else {
+                    null
+                }
+                if (localLyrics != null && localLyrics.original.isNotEmpty() &&
+                    _ui.value.currentTrack?.id == track.id
+                ) {
+                    _ui.update { it.withLyricPack(localLyrics) }
+                } else if (_ui.value.lyricLines.isEmpty() ||
                     cachedLyrics?.translationResolved != true
                 ) {
                     val diskOrNet = lyricRepository.loadBestEffort(track.id, cookie)
@@ -1078,11 +1176,22 @@ class PlaylistCoordinator(
                     urlCache[track.id]?.takeIf { it.isFresh() }?.url
                 }
                 if (isRetry) urlCache.remove(track.id)
-                val url = cached ?: resolvePlayUrl(track.id, cookie)?.also {
+                val url = cached ?: resolvePlayUrl(track, cookie)?.also {
                     urlCache[track.id] = CachedUrl(it, System.currentTimeMillis())
                 }
                 if (_ui.value.currentTrack?.id != loadGen) return@launch
                 if (url.isNullOrBlank()) {
+                    if (!hasLocalAudio(track) && !context.isNetworkOnline()) {
+                        _ui.update {
+                            it.copy(
+                                loadPending = false,
+                                buffering = false,
+                                isPlaying = false,
+                                playWhenReady = false,
+                            )
+                        }
+                        return@launch
+                    }
                     markUnplayable(track.id)
                     postUnplayableNotice()
                     advanceAfterFailure(idx)
@@ -1097,11 +1206,27 @@ class PlaylistCoordinator(
                     exoPlayer.playWhenReady = resumePlayWhenReady
                 }
                 if (_ui.value.currentTrack?.id != loadGen) return@launch
+                if (!isRetry && resumePlayWhenReady) {
+                    maybeNoticeCacheAccel(track, url)
+                }
                 persistSnapshot()
-                loadLyricsAsync(track.id, cookie)
+                if (localLyrics == null || localLyrics.original.isEmpty()) {
+                    loadLyricsAsync(track.id, cookie)
+                }
             } catch (e: Exception) {
                 if (_ui.value.currentTrack?.id != loadGen) return@launch
                 Log.w(TAG, "loadAndPlayIndex failed", e)
+                if (!context.isNetworkOnline()) {
+                    _ui.update {
+                        it.copy(
+                            loadPending = false,
+                            buffering = false,
+                            isPlaying = false,
+                            playWhenReady = false,
+                        )
+                    }
+                    return@launch
+                }
                 markUnplayable(track.id)
                 postUnplayableNotice()
                 advanceAfterFailure(idx)
@@ -1304,13 +1429,179 @@ class PlaylistCoordinator(
         )
     }
 
-    private suspend fun resolvePlayUrl(trackId: Long, cookie: String): String? {
-        return PlayUrlResolver.resolve(
-            userClient = userClient,
-            trackId = trackId,
-            cookie = cookie,
-            quality = audioQualityStore.current(),
+    private fun switchCurrentToLocalIfNeeded(map: Map<Long, DownloadAccelHit>) {
+        val ui = _ui.value
+        val track = ui.currentTrack ?: return
+        val local = map[track.id]?.audioUri ?: return
+        val playing = exoPlayer.currentMediaItem?.localConfiguration?.uri?.toString()
+        if (playing == local) {
+            urlCache[track.id] = CachedUrl(local, System.currentTimeMillis())
+            if (exoPlayer.playWhenReady || ui.playWhenReady) {
+                maybeNoticeCacheAccel(track, local)
+            }
+            return
+        }
+        if (!ui.hasQueue || ui.index !in ui.queue.indices) return
+        val pos = exoPlayer.currentPosition.coerceAtLeast(0L).let { cur ->
+            if (cur > 0L) cur else ui.positionMs
+        }
+        val play = exoPlayer.playWhenReady || ui.playWhenReady
+        loadAndPlayIndex(
+            idx = ui.index,
+            isRetry = false,
+            resumeAtMs = pos,
+            resumePlayWhenReady = play,
         )
+    }
+
+    private fun switchCurrentToRealtimeCacheIfNeeded() {
+        val ui = _ui.value
+        val track = ui.currentTrack ?: return
+        val local = realtimeCache.playUri(track.id, audioQualityStore.current()) ?: return
+        val playing = exoPlayer.currentMediaItem?.localConfiguration?.uri?.toString()
+        if (playing == local) {
+            urlCache[track.id] = CachedUrl(local, System.currentTimeMillis())
+            return
+        }
+        if (!ui.hasQueue || ui.index !in ui.queue.indices) return
+        val pos = exoPlayer.currentPosition.coerceAtLeast(0L).let { cur ->
+            if (cur > 0L) cur else ui.positionMs
+        }
+        val play = exoPlayer.playWhenReady || ui.playWhenReady
+        loadAndPlayIndex(
+            idx = ui.index,
+            isRetry = false,
+            resumeAtMs = pos,
+            resumePlayWhenReady = play,
+        )
+    }
+
+    private fun sampleTick(
+        playing: Boolean,
+        track: TrackRow?,
+        durationMs: Long,
+        quality: AudioQuality,
+        positionMs: Long,
+    ) {
+        val prefs = realtimeCacheStore.current()
+        if (!prefs.enabled || !prefs.mode.available) {
+            discardSample()
+            return
+        }
+        val id = track?.id ?: 0L
+        if (id <= 0L) {
+            flushSample()
+            return
+        }
+        val q = quality.level
+        val wrapped = sampleTrackId == id &&
+            sampleQuality == q &&
+            sampleLastPos > 0L &&
+            durationMs > 0L &&
+            sampleLastPos > durationMs * 3 / 4 &&
+            positionMs < durationMs / 10 &&
+            sampleListenedMs >= 1_000L
+        if (wrapped || sampleTrackId != id || sampleQuality != q) {
+            if (wrapped || sampleTrackId > 0L) flushSample()
+            sampleTrackId = id
+            sampleQuality = q
+            sampleListenedMs = 0L
+            sampleDurationMs = durationMs.coerceAtLeast(0L)
+            sampleStartedAt = System.currentTimeMillis()
+            sampleAccumAt = 0L
+            sampleLastPos = positionMs
+        }
+        if (durationMs > sampleDurationMs) sampleDurationMs = durationMs
+        sampleLastPos = positionMs
+        if (playing && prefs.liveDownloadEnabled) {
+            realtimeCache.notifyRealtimePlayStarted(id, quality)
+        }
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (playing) {
+            if (sampleAccumAt > 0L) {
+                sampleListenedMs += (now - sampleAccumAt).coerceIn(0L, 500L)
+            }
+            sampleAccumAt = now
+        } else {
+            sampleAccumAt = 0L
+        }
+    }
+
+    private fun flushSample() {
+        val id = sampleTrackId
+        val quality = sampleQuality
+        val listened = sampleListenedMs
+        val duration = sampleDurationMs
+        val started = sampleStartedAt
+        val mode = realtimeCacheStore.current().mode
+        discardSample()
+        if (id <= 0L || quality.isBlank()) return
+        val q = AudioQuality.fromLevel(quality)
+        if (mode == RealtimeCacheMode.Realtime) {
+            realtimeCache.notifyRealtimePlayEnded(id, q, listened, duration)
+            return
+        }
+        if (mode == RealtimeCacheMode.Aggressive) {
+            realtimeCache.resetAggressiveListenSession()
+            return
+        }
+        if (listened < 200L) return
+        realtimeCache.recordSession(
+            trackId = id,
+            quality = q,
+            listenedMs = listened,
+            durationMs = duration,
+            startedAt = if (started > 0L) started else System.currentTimeMillis() - listened,
+            endedAt = System.currentTimeMillis(),
+        )
+    }
+
+    private fun discardSample() {
+        sampleTrackId = 0L
+        sampleQuality = ""
+        sampleListenedMs = 0L
+        sampleDurationMs = 0L
+        sampleStartedAt = 0L
+        sampleAccumAt = 0L
+        sampleLastPos = -1L
+    }
+
+    private fun maybeNoticeCacheAccel(track: TrackRow, playUrl: String) {
+        if (!downloadAccelStore.current()) {
+            accelNoticeTrackId = 0L
+            return
+        }
+        val local = downloadAccelIndex.audioUri(track.id)
+        if (local.isNullOrBlank() || playUrl != local) {
+            accelNoticeTrackId = 0L
+            return
+        }
+        if (accelNoticeTrackId == track.id) return
+        accelNoticeTrackId = track.id
+        val cover = track.coverUrl ?: downloadAccelIndex.lookup(track.id)?.coverUri
+        context.showIslandNotice("此歌曲已进行缓存加速", cover)
+    }
+
+    private fun hasLocalAudio(track: TrackRow): Boolean =
+        realtimeCache.playUri(track.id, audioQualityStore.current()) != null ||
+            !track.localAudioUri.isNullOrBlank() ||
+            downloadAccelIndex.audioUri(track.id) != null
+
+    private suspend fun resolvePlayUrl(track: TrackRow, cookie: String): String? {
+        realtimeCache.playUri(track.id, audioQualityStore.current())?.let { return it }
+        track.localAudioUri?.takeIf { it.isNotBlank() }?.let { return it }
+        downloadAccelIndex.audioUri(track.id)?.let { return it }
+        if (track.id <= 0L) return null
+        if (!context.isNetworkOnline()) return null
+        return runCatching {
+            PlayUrlResolver.resolve(
+                userClient = userClient,
+                trackId = track.id,
+                cookie = cookie,
+                quality = audioQualityStore.current(),
+            )
+        }.onFailure { Log.w(TAG, "resolvePlayUrl failed id=${track.id}", it) }
+            .getOrNull()
     }
 
     private fun pickShuffle(current: Int, size: Int): Int {

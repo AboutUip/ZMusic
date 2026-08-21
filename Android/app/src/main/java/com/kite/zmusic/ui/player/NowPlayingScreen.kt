@@ -162,6 +162,7 @@ import com.kite.zmusic.playback.PlaybackUiState
 import com.kite.zmusic.playback.PlaybackMode
 import com.kite.zmusic.playback.mergePlaylistQueue
 import com.kite.zmusic.ui.common.UrlImage
+import com.kite.zmusic.ui.common.rememberNetworkOnline
 import com.kite.zmusic.ui.notice.showIslandNotice
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeStyle
@@ -211,6 +212,8 @@ fun NowPlayingScreen(
     var sliderValue by remember { mutableFloatStateOf(0f) }
 
     val context = LocalContext.current
+    val online = rememberNetworkOnline()
+    val onlineNow = rememberUpdatedState(online)
     val displayPrefsStore = remember { PlayerDisplayPrefsStore(context) }
     var displayPrefs by remember { mutableStateOf(displayPrefsStore.load()) }
     var displayPrefsSaveJob by remember { mutableStateOf<Job?>(null) }
@@ -305,6 +308,7 @@ fun NowPlayingScreen(
     }
 
     fun toggleTrackLike() {
+        if (!onlineNow.value) return
         if (likeBusy || state.loadPending) return
         val cookie = app.sessionRepository.session.value?.cookie.orEmpty()
         if (cookie.isEmpty()) return
@@ -643,6 +647,7 @@ fun NowPlayingScreen(
         portraitScoreOpen = true
     }
     fun openPortraitQuality() {
+        if (!onlineNow.value) return
         closePortraitSettings()
         closePortraitScore()
         closePortraitLyricSelect()
@@ -659,12 +664,20 @@ fun NowPlayingScreen(
         portraitSettingsOpen = true
     }
     fun openPortraitComments() {
+        if (!onlineNow.value) return
         closePortraitSettings()
         closePortraitScore()
         closePortraitQuality()
         closePortraitLyricSelect()
         closePortraitMore()
         portraitCommentsOpen = true
+    }
+
+    LaunchedEffect(online) {
+        if (!online) {
+            closePortraitQuality()
+            closePortraitComments()
+        }
     }
 
     fun openPortraitPoster() {

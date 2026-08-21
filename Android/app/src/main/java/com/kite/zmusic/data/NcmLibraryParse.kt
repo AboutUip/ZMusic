@@ -542,6 +542,10 @@ internal object NcmLibraryParse {
             }
             o.put("artistRefs", arr)
         }
+        t.localAudioUri?.takeIf { it.isNotBlank() }?.let { o.put("localAudioUri", it) }
+        t.localFolder?.takeIf { it.isNotBlank() }?.let { o.put("localFolder", it) }
+        t.localLyricUri?.takeIf { it.isNotBlank() }?.let { o.put("localLyricUri", it) }
+        t.localTransLyricUri?.takeIf { it.isNotBlank() }?.let { o.put("localTransLyricUri", it) }
         return o
     }
 
@@ -558,6 +562,10 @@ internal object NcmLibraryParse {
             durationMs = o.optLong("durationMs", 0L),
             coverUrl = o.optString("coverUrl", "").takeIf { it.isNotBlank() },
             artistRefs = refs,
+            localAudioUri = o.optString("localAudioUri", "").takeIf { it.isNotBlank() },
+            localFolder = o.optString("localFolder", "").takeIf { it.isNotBlank() },
+            localLyricUri = o.optString("localLyricUri", "").takeIf { it.isNotBlank() },
+            localTransLyricUri = o.optString("localTransLyricUri", "").takeIf { it.isNotBlank() },
         )
     }
 

@@ -167,6 +167,7 @@ import com.kite.zmusic.playback.PlaybackUiState
 import com.kite.zmusic.playback.PlaybackMode
 import com.kite.zmusic.playback.mergePlaylistQueue
 import com.kite.zmusic.ui.common.UrlImage
+import com.kite.zmusic.ui.common.rememberNetworkOnline
 import com.kite.zmusic.ui.icons.ZIcons
 import com.kite.zmusic.ui.notice.showIslandNotice
 import dev.chrisbanes.haze.HazeState
@@ -229,6 +230,11 @@ internal fun PlayerTransport(
     /** 竖屏歌词清屏：底部工具栏透明度 */
     toolbarChromeAlpha: Float = 1f,
 ) {
+    val context = LocalContext.current
+    val online = rememberNetworkOnline()
+    fun requireOnline(action: () -> Unit) {
+        if (online) action() else context.showIslandNotice("当前无网络")
+    }
     val maxF = durationMs.toFloat().coerceAtLeast(1f)
     val sliderPos = if (sliderDragging) sliderValue else positionMs.toFloat()
     val displayPosMs = if (sliderDragging) sliderPos.toLong() else positionMs
@@ -360,11 +366,12 @@ internal fun PlayerTransport(
                 modifier = Modifier
                     .size(skipHit)
                     .clip(CircleShape)
+                    .alpha(if (online) 1f else 0.38f)
                     .clickable(
                         enabled = !controlsLocked,
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
-                        onClick = onToggleLike,
+                        onClick = { requireOnline(onToggleLike) },
                     ),
                 contentAlignment = Alignment.Center,
             ) {
@@ -556,7 +563,8 @@ internal fun PlayerTransport(
                     modifier = Modifier
                         .size(likeGlyphSize)
                         .clip(CircleShape)
-                        .clickable(onClick = onToggleLike),
+                        .alpha(if (online) 1f else 0.38f)
+                        .clickable(onClick = { requireOnline(onToggleLike) }),
                     contentAlignment = Alignment.Center,
                 ) {
                     TransportLikeIcon(
@@ -590,7 +598,8 @@ internal fun PlayerTransport(
                         icon = ZIcons.GraphicEq,
                         contentDescription = "音质",
                         tint = iconTint,
-                        onClick = onOpenQuality,
+                        enabled = online,
+                        onClick = { requireOnline(onOpenQuality) },
                     )
                 }
                 if (onOpenComments != null) {
@@ -598,7 +607,8 @@ internal fun PlayerTransport(
                         icon = ZIcons.Comments,
                         contentDescription = "评论",
                         tint = iconTint,
-                        onClick = onOpenComments,
+                        enabled = online,
+                        onClick = { requireOnline(onOpenComments) },
                     )
                 }
                 if (onOpenScore != null) {
@@ -731,10 +741,12 @@ private fun PortraitAccessoryIcon(
     contentDescription: String,
     tint: Color,
     onClick: () -> Unit,
+    enabled: Boolean = true,
 ) {
     Box(
         modifier = Modifier
             .size(36.dp)
+            .alpha(if (enabled) 1f else 0.38f)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,

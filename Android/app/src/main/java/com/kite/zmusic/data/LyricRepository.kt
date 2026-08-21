@@ -98,6 +98,29 @@ class LyricRepository(
         }
     }
 
+    suspend fun loadFromLocalUris(lrcUri: String?, transUri: String?): LyricPack {
+        return withContext(Dispatchers.IO) {
+            val original = readUriText(lrcUri)?.let(LrcParser::parse).orEmpty()
+            val translated = readUriText(transUri)?.let(LrcParser::parse).orEmpty()
+            if (original.isEmpty() && translated.isEmpty()) LyricPack.Empty
+            else LyricPack(
+                original = original,
+                translated = translated,
+                translationResolved = true,
+            )
+        }
+    }
+
+    private fun readUriText(uri: String?): String? {
+        val raw = uri?.trim().orEmpty()
+        if (raw.isEmpty()) return null
+        return runCatching {
+            appContext.contentResolver.openInputStream(android.net.Uri.parse(raw))?.use {
+                it.readBytes().toString(Charsets.UTF_8)
+            }
+        }.getOrNull()?.takeIf { it.isNotBlank() }
+    }
+
     /** 预热邻曲歌词（已命中则立刻返回）。 */
     suspend fun prefetch(songId: Long, cookie: String) {
         if (memory.get(songId)?.translationResolved == true) return

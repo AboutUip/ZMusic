@@ -30,12 +30,12 @@ data class MainColors(
     val trackOff: Color,
     val isDark: Boolean,
 ) {
+    /**
+     * 玻璃白膜。深浅同一套薄纱，不跟主题加厚。
+     * 浅色若按 [lightAlpha] 原样铺白，采到的图会被漂白。
+     */
     fun glassFill(lightAlpha: Float): Color =
-        if (isDark) {
-            Color.White.copy(alpha = (lightAlpha * 0.38f).coerceIn(0.06f, 0.18f))
-        } else {
-            Color.White.copy(alpha = lightAlpha)
-        }
+        Color.White.copy(alpha = (lightAlpha * 0.38f).coerceIn(0.06f, 0.18f))
 
     companion object {
         val Light = MainColors(

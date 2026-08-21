@@ -117,6 +117,39 @@ internal fun CatalogCollectionPage(
     manageBridge: PlaylistManageBridge? = null,
 ) {
     val app = LocalContext.current.applicationContext as ZMusicApplication
+    if (overlay is MainOverlay.CachedSongs) {
+        val cachedVm: CachedSongsViewModel = viewModel(
+            key = overlay.stackKey(),
+            factory = CachedSongsViewModelFactory(app.trackExportRepository),
+        )
+        LaunchedEffect(Unit) { cachedVm.load() }
+        val ui by cachedVm.list.collectAsStateWithLifecycle()
+        TrackCollectionScreen(
+            state = ui,
+            contentBottomInset = contentBottomInset,
+            onBack = onBack,
+            onPlayAt = { i ->
+                if (ui.tracks.isNotEmpty()) {
+                    onPlayTracks(ui.tracks, i, null, "缓存的歌曲")
+                }
+            },
+            onRetry = cachedVm::load,
+            playingTrackId = playingTrackId,
+            playingSourceId = playingSourceId,
+            isPlaying = isPlaying,
+            onRemoveTrack = cachedVm::removeTrack,
+            onRemoveTracks = cachedVm::removeTracks,
+            manageBridge = manageBridge,
+            overflowDeleteOnly = true,
+            removeConfirmTitle = "删除这首缓存？",
+            removeConfirmMessage = "会从下载目录删掉整份文件，不可恢复。",
+            removeSelectedTitle = "删除这些缓存？",
+            removeSelectedMessage = "将从下载目录删除已选歌曲的全部文件，不可恢复。",
+            removeSelectedConfirmLabel = "删除",
+            emptyHint = "还没有符合规范的缓存歌曲。从歌单下载后，会出现在 Download/ZMusic。",
+        )
+        return
+    }
     val vm: CatalogViewModel = viewModel(
         key = overlay.stackKey(),
         factory = CatalogViewModelFactory(
@@ -135,7 +168,7 @@ internal fun CatalogCollectionPage(
     when (overlay) {
         MainOverlay.Search, MainOverlay.Settings, is MainOverlay.PlaylistSearch, is MainOverlay.Mv,
         is MainOverlay.Artist, is MainOverlay.ArtistAlbums, is MainOverlay.ArtistMvs,
-        MainOverlay.LikedArtists, is MainOverlay.LikedArtistsSearch,
+        MainOverlay.LikedArtists, is MainOverlay.LikedArtistsSearch, MainOverlay.CachedSongs,
         -> Unit
         MainOverlay.Daily -> {
             LaunchedEffect(Unit) { vm.loadDaily() }
