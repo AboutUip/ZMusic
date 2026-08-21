@@ -7,5 +7,7 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
-    <color name="page_light">#FFEEF4F7</color>
+    <!-- 与 MainColors.Light.page / Dark.page 一致，供冷启动 windowBackground -->
+    <color name="page_light">#FFF6F7F9</color>
+    <color name="page_dark">#FF121214</color>
 </resources>

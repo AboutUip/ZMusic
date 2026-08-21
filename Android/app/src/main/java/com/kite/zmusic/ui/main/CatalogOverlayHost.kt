@@ -19,7 +19,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -105,7 +104,6 @@ fun CatalogOverlayHost(
             held = overlayStack
         }
     }
-    val backProgress = backUi.progress
     val landscape =
         LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     val enter = slideInHorizontally(OverlaySlideSpec) { it } + fadeIn(OverlayFadeSpec)
@@ -119,7 +117,6 @@ fun CatalogOverlayHost(
                 visibleState.targetState = overlayStack.any { it.stackKey() == item.stackKey() }
                 val isTop = overlayStack.lastOrNull()?.stackKey() == item.stackKey()
                 val cover = landscape && item is MainOverlay.Settings
-                val behind = index == render.lastIndex - 1 && backProgress > 0.001f && !isTop
                 AnimatedVisibility(
                     visibleState = visibleState,
                     modifier = Modifier
@@ -127,15 +124,7 @@ fun CatalogOverlayHost(
                         .zIndex(index.toFloat())
                         .then(
                             if (isTop) Modifier.predictiveBackLayer(backUi)
-                            else if (behind) {
-                                Modifier.graphicsLayer {
-                                    val s = 0.96f + 0.04f * backProgress
-                                    scaleX = s
-                                    scaleY = s
-                                }
-                            } else {
-                                Modifier
-                            },
+                            else Modifier,
                         ),
                     enter = if (cover) LandscapeCoverEnter else enter,
                     exit = if (cover) LandscapeCoverExit else exit,

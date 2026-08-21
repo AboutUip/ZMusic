@@ -14,7 +14,7 @@ data class SponsorEntry(
 
 /**
  * 赞助名单：assets/sponsors.json，进入页面时才读。
- * 字段 time / name / amount；amount 可以是数字或字符串。
+ * 字段 time / name / amount；amount 可以是数字或字符串，展示固定两位小数。
  * 数组从上到下就是列表顺序。
  */
 object SponsorRoster {
@@ -56,14 +56,6 @@ object SponsorRoster {
         return if (n != null) formatYuan(n) else text
     }
 
-    private fun formatYuan(value: Double): String {
-        val shown = if (value % 1.0 == 0.0) {
-            value.toInt().toString()
-        } else {
-            String.format(java.util.Locale.US, "%.2f", value)
-                .trimEnd('0')
-                .trimEnd('.')
-        }
-        return "¥$shown"
-    }
+    internal fun formatYuan(value: Double): String =
+        "¥" + String.format(java.util.Locale.US, "%.2f", value)
 }

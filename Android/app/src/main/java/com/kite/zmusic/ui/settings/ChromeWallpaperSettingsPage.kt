@@ -73,6 +73,7 @@ import com.kite.zmusic.data.ChromeWallpaperSurface
 import com.kite.zmusic.data.WallpaperFrame
 import com.kite.zmusic.ui.chrome.ChromeWallpaperLayer
 import com.kite.zmusic.ui.chrome.wallpaperAlignPan
+import com.kite.zmusic.ui.common.GlassAlertDialog
 import com.kite.zmusic.ui.icons.ZIcons
 import com.kite.zmusic.ui.main.MainControls
 import com.kite.zmusic.ui.main.MainPalette
@@ -104,6 +105,11 @@ fun ChromeWallpaperSettingsPage(
     var locked by remember { mutableStateOf(false) }
     var path by remember { mutableStateOf("") }
     var inherited by remember { mutableStateOf(false) }
+    var helpTopic by remember {
+        mutableStateOf(
+            if (store.helpSeen()) null else WallpaperHelpTopic.Guide,
+        )
+    }
 
     fun persist(next: WallpaperFrame) {
         inherited = false
@@ -180,6 +186,16 @@ fun ChromeWallpaperSettingsPage(
             ),
             modifier = Modifier.padding(horizontal = 4.dp),
         )
+        Spacer(Modifier.height(10.dp))
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            SettingsAccentLink("使用说明") { helpTopic = WallpaperHelpTopic.Guide }
+            SettingsAccentLink("不会铺的地方") { helpTopic = WallpaperHelpTopic.Limits }
+        }
         Spacer(Modifier.height(16.dp))
         Row(
             Modifier
@@ -222,9 +238,15 @@ fun ChromeWallpaperSettingsPage(
             selected = state.itemChrome,
             enabled = state.enabled,
             onSelect = { store.setItemChrome(it) },
+            onChromeHelp = { helpTopic = WallpaperHelpTopic.Chrome },
         )
         Spacer(Modifier.height(22.dp))
         SectionLabel("预览与构图")
+        Spacer(Modifier.height(6.dp))
+        SettingsAccentLink(
+            "构图怎么算",
+            modifier = Modifier.padding(horizontal = 4.dp),
+        ) { helpTopic = WallpaperHelpTopic.Canvas }
         Spacer(Modifier.height(8.dp))
         Text(
             text = "切场景不会丢掉缩放和位置。图可以小于屏幕，拖动画布即可。没单独配图的勾选页会继承通用。",
@@ -320,6 +342,11 @@ fun ChromeWallpaperSettingsPage(
         }
         Spacer(Modifier.height(22.dp))
         SectionLabel("铺在哪些页面")
+        Spacer(Modifier.height(6.dp))
+        SettingsAccentLink(
+            "覆盖、通用和分场景",
+            modifier = Modifier.padding(horizontal = 4.dp),
+        ) { helpTopic = WallpaperHelpTopic.Coverage }
         Spacer(Modifier.height(8.dp))
         if (editSurface == null) {
             Text(
@@ -389,7 +416,72 @@ fun ChromeWallpaperSettingsPage(
                 onClick = { store.setCoverage(ChromeWallpaperStore.DEFAULT_COVERAGE) },
             )
         }
+        Spacer(Modifier.height(12.dp))
+        SettingsAccentLink(
+            "个人页和用户空间图",
+            modifier = Modifier.padding(horizontal = 4.dp),
+        ) { helpTopic = WallpaperHelpTopic.Profile }
     }
+    helpTopic?.let { topic ->
+        val doc = wallpaperHelp(topic)
+        GlassAlertDialog(
+            title = doc.title,
+            onDismiss = {
+                store.markHelpSeen()
+                helpTopic = null
+            },
+            confirmLabel = "知道了",
+            cancelLabel = null,
+            onConfirm = {
+                store.markHelpSeen()
+                helpTopic = null
+            },
+            extraContent = {
+                doc.sections.forEachIndexed { index, section ->
+                    if (index > 0) Spacer(Modifier.height(14.dp))
+                    Text(
+                        text = section.heading,
+                        style = TextStyle(
+                            color = MainPalette.Ink,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            lineHeight = 20.sp,
+                        ),
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = section.body,
+                        style = TextStyle(
+                            color = MainPalette.Secondary,
+                            fontSize = 13.sp,
+                            lineHeight = 20.sp,
+                        ),
+                    )
+                }
+            },
+        )
+    }
+}
+
+@Composable
+internal fun SettingsAccentLink(
+    text: String,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    Text(
+        text = text,
+        modifier = modifier.clickable(
+            interactionSource = remember { MutableInteractionSource() },
+            indication = null,
+            onClick = onClick,
+        ),
+        style = TextStyle(
+            color = MainPalette.Accent,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Medium,
+        ),
+    )
 }
 
 @Composable
@@ -728,6 +820,7 @@ private fun ItemChromePicker(
     selected: ChromeGlassMode,
     enabled: Boolean,
     onSelect: (ChromeGlassMode) -> Unit,
+    onChromeHelp: () -> Unit,
 ) {
     val modes = listOf(
         ChromeGlassMode.Solid to "纯色",
@@ -740,6 +833,12 @@ private fun ItemChromePicker(
             .graphicsLayer { alpha = if (enabled) 1f else 0.46f },
     ) {
         SectionLabel("组件边界")
+        Spacer(Modifier.height(6.dp))
+        SettingsAccentLink(
+            "三种边界怎么选",
+            modifier = Modifier.padding(horizontal = 4.dp),
+            onClick = onChromeHelp,
+        )
         Spacer(Modifier.height(8.dp))
         Text(
             text = "只在已铺背景的页面生效。模糊和折射跟「液态玻璃样式」。主页和功能页不改组件；个人页只改下面的歌单列表。",

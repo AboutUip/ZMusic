@@ -1,5 +1,10 @@
 package com.kite.zmusic.ui.settings
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -91,6 +96,9 @@ import com.kite.zmusic.ui.player.WordLyricSettingsPage
 import com.kite.zmusic.ui.server.ServerConfigViewModel
 import com.kite.zmusic.ui.server.ServerConfigViewModelFactory
 
+private const val AboutGithubUrl = "https://github.com/AboutUip/ZMusic"
+private const val AboutQqGroupId = "1015814598"
+
 private val DrillSlideSpec = tween<IntOffset>(durationMillis = 320, easing = FastOutSlowInEasing)
 private val DrillFadeSpec = tween<Float>(durationMillis = 220)
 
@@ -116,10 +124,12 @@ fun SettingsScreen(
     var confirmLogout by remember { mutableStateOf(false) }
     val aboutVisible = remember { MutableTransitionState(false) }
     val sponsorVisible = remember { MutableTransitionState(false) }
+    val partnersVisible = remember { MutableTransitionState(false) }
     val permissionsVisible = remember { MutableTransitionState(false) }
     val qualityVisible = remember { MutableTransitionState(false) }
     val persistentPlaybackVisible = remember { MutableTransitionState(false) }
     val wordLyricVisible = remember { MutableTransitionState(false) }
+    val predictiveBackVisible = remember { MutableTransitionState(false) }
     val glassVisible = remember { MutableTransitionState(false) }
     val appearanceVisible = remember { MutableTransitionState(false) }
     val wallpaperVisible = remember { MutableTransitionState(false) }
@@ -132,6 +142,10 @@ fun SettingsScreen(
         (context.applicationContext as ZMusicApplication).persistentPlaybackStore
     }
     val persistentPlayback by persistentPlaybackStore.enabled.collectAsStateWithLifecycle()
+    val predictiveBackStore = remember {
+        (context.applicationContext as ZMusicApplication).predictiveBackStore
+    }
+    val predictiveBack by predictiveBackStore.enabled.collectAsStateWithLifecycle()
     val lyricRenderStore = remember {
         (context.applicationContext as ZMusicApplication).lyricRenderStore
     }
@@ -327,6 +341,24 @@ fun SettingsScreen(
                         tint = Color(0xFF5E5CE6),
                         onClick = { permissionsVisible.targetState = true },
                     )
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(start = 62.dp)
+                            .height(0.5.dp)
+                            .background(MainPalette.Hairline),
+                    )
+                    SettingsRow(
+                        title = "预测性返回",
+                        subtitle = if (predictiveBack) {
+                            "已开启 · 侧滑跟手预览"
+                        } else {
+                            "已关闭 · 返回不跟手（默认）"
+                        },
+                        icon = ZIcons.Swipe,
+                        tint = Color(0xFF3D7CFF),
+                        onClick = { predictiveBackVisible.targetState = true },
+                    )
                 }
                 Spacer(Modifier.height(22.dp))
                 SettingsGroup(
@@ -368,6 +400,20 @@ fun SettingsScreen(
                         icon = ZIcons.Sponsor,
                         tint = Color(0xFFE0A85C),
                         onClick = { sponsorVisible.targetState = true },
+                    )
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(start = 62.dp)
+                            .height(0.5.dp)
+                            .background(MainPalette.Hairline),
+                    )
+                    SettingsRow(
+                        title = "赞助商",
+                        subtitle = "支持本应用的伙伴",
+                        icon = ZIcons.Handshake,
+                        tint = Color(0xFF3478F6),
+                        onClick = { partnersVisible.targetState = true },
                     )
                 }
                 Spacer(Modifier.height(22.dp))
@@ -524,12 +570,42 @@ fun SettingsScreen(
             )
         }
         SettingsDrillHost(
+            visibleState = partnersVisible,
+            landscape = landscape,
+            title = "赞助商",
+            onBack = { partnersVisible.targetState = false },
+        ) {
+            PartnerListPage(
+                contentBottomInset = contentBottomInset,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        SettingsDrillHost(
             visibleState = permissionsVisible,
             landscape = landscape,
             title = "权限",
             onBack = { closePermissions() },
         ) {
             PermissionSettingsPage(
+                contentBottomInset = contentBottomInset,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        SettingsDrillHost(
+            visibleState = predictiveBackVisible,
+            landscape = landscape,
+            title = "预测性返回",
+            onBack = { predictiveBackVisible.targetState = false },
+        ) {
+            PredictiveBackSettingsPage(
+                enabled = predictiveBack,
+                onEnabledChange = { next ->
+                    if (next == predictiveBack) return@PredictiveBackSettingsPage
+                    predictiveBackStore.setEnabled(next)
+                    context.showIslandNotice(
+                        if (next) "已开启预测性返回" else "已关闭预测性返回",
+                    )
+                },
                 contentBottomInset = contentBottomInset,
                 modifier = Modifier.fillMaxSize(),
             )
@@ -746,6 +822,7 @@ private fun AboutPage(
     onOpenPrivacy: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
     val version = BuildConfig.VERSION_NAME
     Column(
         modifier
@@ -781,6 +858,22 @@ private fun AboutPage(
                 fontSize = 13.sp,
             ),
         )
+        Spacer(Modifier.height(18.dp))
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(20.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            AboutBrandIcon(
+                drawableRes = R.drawable.ic_brand_github,
+                contentDescription = "GitHub",
+                onClick = { openAboutGithub(context) },
+            )
+            AboutBrandIcon(
+                drawableRes = R.drawable.ic_brand_tencentqq,
+                contentDescription = "QQ 群",
+                onClick = { openAboutQqGroup(context) },
+            )
+        }
         Spacer(Modifier.height(28.dp))
         AboutMetaCard(
             rows = listOf(
@@ -809,6 +902,54 @@ private fun AboutPage(
             AboutLegalLink("《隐私政策》", onClick = onOpenPrivacy)
         }
     }
+}
+
+@Composable
+private fun AboutBrandIcon(
+    drawableRes: Int,
+    contentDescription: String,
+    onClick: () -> Unit,
+) {
+    Box(
+        Modifier
+            .size(44.dp)
+            .clip(CircleShape)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick,
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            painter = painterResource(drawableRes),
+            contentDescription = contentDescription,
+            tint = MainPalette.Ink,
+            modifier = Modifier.size(26.dp),
+        )
+    }
+}
+
+private fun openAboutGithub(context: Context) {
+    val ok = runCatching {
+        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(AboutGithubUrl)))
+    }.isSuccess
+    if (!ok) context.showIslandNotice("无法打开 GitHub")
+}
+
+private fun openAboutQqGroup(context: Context) {
+    val uri = Uri.parse(
+        "mqqapi://card/show_pslcard?src_type=internal&version=1&uin=$AboutQqGroupId&card_type=group&source=qrcode",
+    )
+    val opened = runCatching {
+        context.startActivity(Intent(Intent.ACTION_VIEW, uri))
+    }.isSuccess
+    if (opened) return
+    runCatching {
+        val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        cm.setPrimaryClip(ClipData.newPlainText("QQ群", AboutQqGroupId))
+    }
+    context.showIslandNotice("未安装 QQ，群号已复制：$AboutQqGroupId")
 }
 
 @Composable

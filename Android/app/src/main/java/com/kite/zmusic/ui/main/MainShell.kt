@@ -1,5 +1,6 @@
 package com.kite.zmusic.ui.main
 
+import android.util.Log
 import android.Manifest
 import android.content.pm.PackageManager
 import android.content.res.Configuration
@@ -53,6 +54,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
@@ -73,6 +75,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kite.zmusic.ZMusicApplication
 import com.kite.zmusic.data.ChromeGlassMode
+import com.kite.zmusic.data.ChromeWallpaperState
 import com.kite.zmusic.data.SessionRepository
 import com.kite.zmusic.data.TrackRow
 import com.kite.zmusic.playback.MvPlayback
@@ -85,6 +88,10 @@ import com.kite.zmusic.ui.chrome.LocalWallpaperViewport
 import com.kite.zmusic.ui.chrome.WallpaperViewport
 import com.kite.zmusic.ui.chrome.chromePage
 import com.kite.zmusic.ui.chrome.chromeWallpaperSurface
+import com.kite.zmusic.ui.chrome.pagerPageKeepsOwnWallpaperLayer
+import com.kite.zmusic.ui.chrome.pagerPageShowsOwnWallpaper
+import com.kite.zmusic.ui.chrome.preloadWallpaperBitmap
+import com.kite.zmusic.ui.chrome.wallpaperSurface
 import com.kite.zmusic.ui.common.PredictiveBackAxis
 import com.kite.zmusic.ui.common.predictiveBackLayer
 import com.kite.zmusic.ui.common.rememberPredictiveBackUi
@@ -534,6 +541,26 @@ fun MainShell(
         ),
         landscape,
     )
+    LaunchedEffect(
+        currentDest,
+        overlay,
+        wallpaperFrame?.imagePath,
+        wallpaperFrame?.offsetX,
+        wallpaperFrame?.scale,
+    ) {
+        Log.i(
+            "ZMusicWallpaper",
+            "shell dest=$currentDest overlay=${overlay?.javaClass?.simpleName} " +
+                "painted=${wallpaperFrame != null} path=${wallpaperFrame?.imagePath.orEmpty()} " +
+                "ox=${wallpaperFrame?.offsetX} scale=${wallpaperFrame?.scale}",
+        )
+    }
+    LaunchedEffect(wallpaper, landscape) {
+        MainPagerDestinations.forEach { dest ->
+            val path = wallpaper.frame(dest.wallpaperSurface(), landscape)?.imagePath
+            if (!path.isNullOrBlank()) preloadWallpaperBitmap(path)
+        }
+    }
     val navBarDp = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val freezeChromePad = holdChrome || compactDragging.value || compactSettling.value
     val chromeBottomGap =
@@ -737,7 +764,15 @@ fun MainShell(
                         .fillMaxSize()
                         .chromePage(),
                 ) { index ->
-                    sectionContent(MainPagerDestinations[index])
+                    val dest = MainPagerDestinations[index]
+                    PagerDestinationPane(
+                        destination = dest,
+                        currentDestination = currentDest,
+                        wallpaper = wallpaper,
+                        landscape = true,
+                    ) {
+                        sectionContent(dest)
+                    }
                 }
             } else {
                 HorizontalPager(
@@ -749,7 +784,15 @@ fun MainShell(
                     beyondViewportPageCount = 1,
                     userScrollEnabled = !showFullPlayer && !overlayOpen && !spaceOpen,
                 ) { page ->
-                    sectionContent(MainPagerDestinations[page])
+                    val dest = MainPagerDestinations[page]
+                    PagerDestinationPane(
+                        destination = dest,
+                        currentDestination = currentDest,
+                        wallpaper = wallpaper,
+                        landscape = false,
+                    ) {
+                        sectionContent(dest)
+                    }
                 }
             }
 
@@ -1140,6 +1183,47 @@ private fun MiniPlayerSlot(
         backdrop = backdrop,
         modifier = modifier,
     )
+}
+
+@Composable
+private fun PagerDestinationPane(
+    destination: MainDestination,
+    currentDestination: MainDestination,
+    wallpaper: ChromeWallpaperState,
+    landscape: Boolean,
+    content: @Composable () -> Unit,
+) {
+    val pageFrame = wallpaper.frame(destination.wallpaperSurface(), landscape)
+    val showOwn = pagerPageShowsOwnWallpaper(
+        pageIndex = MainPagerDestinations.indexOf(destination),
+        currentPage = MainPagerDestinations.indexOf(currentDestination),
+    )
+    LaunchedEffect(destination, currentDestination, showOwn, pageFrame?.imagePath) {
+        if (pageFrame != null && pagerPageKeepsOwnWallpaperLayer()) {
+            Log.i(
+                "ZMusicWallpaper",
+                "page-layer dest=$destination current=$currentDestination " +
+                    "showOwn=$showOwn path=${pageFrame.imagePath}",
+            )
+        }
+    }
+    CompositionLocalProvider(
+        LocalChromeWallpaperPainted provides (pageFrame != null),
+        LocalChromeWallpaperFrame provides pageFrame,
+    ) {
+        Box(Modifier.fillMaxSize()) {
+            if (pageFrame != null && pagerPageKeepsOwnWallpaperLayer()) {
+                ChromeWallpaperLayer(
+                    frame = pageFrame,
+                    placeholder = Color.Transparent,
+                    modifier = Modifier.graphicsLayer {
+                        alpha = if (showOwn) 1f else 0f
+                    },
+                )
+            }
+            content()
+        }
+    }
 }
 
 @Composable

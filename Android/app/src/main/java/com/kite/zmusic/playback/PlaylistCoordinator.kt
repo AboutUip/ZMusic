@@ -69,6 +69,7 @@ class PlaylistCoordinator(
     private val audioQualityStore: AudioQualityStore,
     private val persistentPlaybackStore: PersistentPlaybackStore,
     private val userClient: NcmUserClient,
+    private val audioOutputController: AudioOutputController,
     private val onClearAndStopService: (() -> Unit)? = null,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -235,6 +236,7 @@ class PlaylistCoordinator(
 
     init {
         exoPlayer.addListener(playerListener)
+        audioOutputController.attachPlayer(exoPlayer)
         // 从快照恢复模式与进度，不联网冲队列
         stateStore.load()?.let { snap ->
             playbackMode = snap.playbackMode
@@ -512,6 +514,21 @@ class PlaylistCoordinator(
         }
     }
 
+    /**
+     * 冷启动：有队列快照时以暂停态装入当前曲，让 Media3 挂上歌曲通知
+     *（不自动开播）。已有 MediaItem 时不重复装载。
+     */
+    fun preparePausedForNotification() {
+        if (exoPlayer.mediaItemCount > 0) return
+        val ui = _ui.value
+        if (!ui.hasQueue || ui.index !in ui.queue.indices) return
+        loadAndPlayIndex(
+            idx = ui.index,
+            resumeAtMs = ui.positionMs.coerceAtLeast(0L),
+            resumePlayWhenReady = false,
+        )
+    }
+
     /** MV 占用焦点时：暂停歌曲且不要在 MV 暂停时被系统焦点抢回去。 */
     fun yieldToForeignPlayback(active: Boolean) {
         persistentFocus.setForeignYield(active)
@@ -599,6 +616,7 @@ class PlaylistCoordinator(
         cancelLoads()
         tickerJob?.cancel()
         persistentFocus.release()
+        audioOutputController.detachPlayer(exoPlayer)
         exoPlayer.removeListener(playerListener)
         exoPlayer.release()
         _spectrum.value = AudioSpectrumBands.ZERO

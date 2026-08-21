@@ -185,6 +185,13 @@ import kotlin.math.sin
 import androidx.compose.ui.unit.lerp as lerpDp
 
 
+/** 右侧悬浮板离场：滑过面板宽 + 右缝，避免缝里还留一条再被卸掉。 */
+internal fun landscapeSideSheetSlideX(
+    progress: Float,
+    panelWidthPx: Float,
+    endPadPx: Float,
+): Float = (1f - progress.coerceIn(0f, 1f)) * (panelWidthPx + endPadPx)
+
 @Composable
 internal fun LandscapePlayerBody(
     track: TrackRow,
@@ -347,25 +354,15 @@ internal fun LandscapePlayerBody(
     val chromeT = chrome.value
 
     val settingsPanel = remember { Animatable(0f) }
-    /**
-     * 入场期间先静态壳，等 chrome/黑胶动画停稳再开实时磨砂，
-     * 既保留播放条与黑胶过渡，又避免源层变形把 Haze 打成实色。
-     */
-    var settingsHazeLive by remember { mutableStateOf(false) }
     LaunchedEffect(settingsOpen) {
         if (settingsOpen) {
-            settingsHazeLive = false
             // 走 showBar → chrome.animateTo，保留播放组件消失与黑胶缩放动画
             controlsVisible = false
             settingsPanel.animateTo(
                 targetValue = 1f,
                 animationSpec = tween(durationMillis = 460, easing = settingsCurve),
             )
-            // chrome 360ms 与面板 460ms 并行；停稳后再开实时磨砂
-            delay(64)
-            if (settingsOpen) settingsHazeLive = true
         } else {
-            settingsHazeLive = false
             settingsPanel.animateTo(
                 targetValue = 0f,
                 animationSpec = tween(durationMillis = 460, easing = settingsCurve),
@@ -711,7 +708,6 @@ internal fun LandscapePlayerBody(
 
     fun closeSettings() {
         onDisplayPrefsFlush()
-        settingsHazeLive = false
         settingsOpen = false
         // 常显 chrome 改由 settingsPanel 收完后再亮，见 LaunchedEffect(settingsOpen)
     }
@@ -944,7 +940,7 @@ internal fun LandscapePlayerBody(
         ) {
             return
         }
-        // 先开面板；chrome 与 haze 恢复见上方 LaunchedEffect(settingsOpen)
+        // 先开面板；chrome 收回见上方 LaunchedEffect(settingsOpen)
         settingsOpen = true
     }
 
@@ -1208,6 +1204,7 @@ internal fun LandscapePlayerBody(
         navPads.calculateEndPadding(chromeLayoutDir),
     )
     val chromeSidePad = navSideBalance + 28.dp
+    val chromeSidePadPx = with(density) { chromeSidePad.toPx() }
 
     BoxWithConstraints(
         modifier
@@ -1612,9 +1609,12 @@ internal fun LandscapePlayerBody(
                     .fillMaxHeight()
                     .fillMaxWidth(0.45f)
                     .zIndex(9f)
-                    // 仅上下留白；右缘贴屏，避免 endPad 黑边，并让滑入从屏幕边缘开始
-                    .padding(top = chromeSidePad, bottom = chromeSidePad)
-                    .clipToBounds(),
+                    .clipToBounds()
+                    .padding(
+                        top = chromeSidePad,
+                        bottom = chromeSidePad,
+                        end = chromeSidePad,
+                    ),
             ) {
                 val panelW = constraints.maxWidth.toFloat().coerceAtLeast(1f)
                 NowPlayingSettingsSheet(
@@ -1625,20 +1625,18 @@ internal fun LandscapePlayerBody(
                     onOpenLyricStyleEditor = { openLyricStyleEditor() },
                     onOpenTitleStyleEditor = { openTitleStyleEditor() },
                     hazeNonce = hazeNonce,
-                    // 入场跟 chrome 动画时用静态壳；停稳后再实时磨砂
-                    enableRealtimeHaze = settingsHazeLive,
+                    enableRealtimeHaze = true,
+                    showPanelBorder = true,
                     glassBlurRadius = 56.dp,
-                    // 右侧贴边：只圆左侧，避免右上/右下圆弧透出黑边
-                    panelShape = RoundedCornerShape(
-                        topStart = 18.dp,
-                        bottomStart = 18.dp,
-                    ),
                     transferDismissGate = settingsTransferDismissGate,
                     modifier = Modifier
                         .fillMaxSize()
                         .graphicsLayer {
-                            // 从右缘外整板滑入；裁剪在父级 clipToBounds
-                            translationX = (1f - settingsT) * panelW
+                            translationX = landscapeSideSheetSlideX(
+                                progress = settingsT,
+                                panelWidthPx = panelW,
+                                endPadPx = chromeSidePadPx,
+                            )
                         },
                 )
             }
@@ -1711,7 +1709,11 @@ internal fun LandscapePlayerBody(
                             .fillMaxSize()
                             .graphicsLayer {
                                 transformOrigin = TransformOrigin(1f, 0.5f)
-                                translationX = (1f - scoreT) * panelW
+                                translationX = landscapeSideSheetSlideX(
+                                    progress = scoreT,
+                                    panelWidthPx = panelW,
+                                    endPadPx = chromeSidePadPx,
+                                )
                                 alpha = scoreT
                             },
                     )

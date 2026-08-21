@@ -83,7 +83,7 @@ private val MorePanelShape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp
 private val MoreRowShape = RoundedCornerShape(14.dp)
 private val MoreCoverShape = RoundedCornerShape(8.dp)
 
-private enum class MorePage { Root, AddToPlaylist, SleepTimer, Translation }
+private enum class MorePage { Root, AddToPlaylist, SleepTimer, Translation, OutputDevice }
 
 private val MoreDrillSlide = tween<IntOffset>(durationMillis = 320, easing = FastOutSlowInEasing)
 private val MoreDrillFade = tween<Float>(durationMillis = 220)
@@ -134,6 +134,7 @@ fun PortraitMoreSheet(
     }
     var addingId by remember { mutableStateOf<Long?>(null) }
     val sleepTimer by app.playbackBridge.sleepTimer.collectAsStateWithLifecycle()
+    val audioOutput by app.audioOutputController.state.collectAsStateWithLifecycle()
     val navInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val dragHandleVertical by rememberUpdatedState(onDragHandleVertical)
     val dragHandleEnd by rememberUpdatedState(onDragHandleEnd)
@@ -201,11 +202,13 @@ fun PortraitMoreSheet(
                 targets = targets,
                 addingId = addingId,
                 sleepTimer = sleepTimer,
+                audioOutputSubtitle = audioOutput.moreSubtitle,
                 lyricPreferTranslation = lyricPreferTranslation,
                 hazeState = hazeState,
                 onOpenAddToPlaylist = { page = MorePage.AddToPlaylist },
                 onOpenSleepTimer = { page = MorePage.SleepTimer },
                 onOpenTranslation = { page = MorePage.Translation },
+                onOpenOutputDevice = { page = MorePage.OutputDevice },
                 onOpenPoster = onOpenPoster,
                 onOpenSettings = onOpenSettings,
                 onLyricPreferTranslationChange = onLyricPreferTranslationChange,
@@ -236,6 +239,9 @@ private fun moreCoverMinFrac(
             MoreSheetChromeH + navInset + MoreNestedHeaderH + list
         }
         MorePage.SleepTimer -> maxHeight * (2f / 3f)
+        MorePage.OutputDevice -> {
+            MoreSheetChromeH + navInset + MoreNestedHeaderH + 72.dp + 56.dp * 6
+        }
         MorePage.Translation -> {
             MoreSheetChromeH + navInset + MoreNestedHeaderH + 148.dp
         }
@@ -252,11 +258,13 @@ private fun MorePageStack(
     targets: List<PlaylistSummary>,
     addingId: Long?,
     sleepTimer: SleepTimerUi,
+    audioOutputSubtitle: String,
     lyricPreferTranslation: Boolean,
     hazeState: HazeState?,
     onOpenAddToPlaylist: () -> Unit,
     onOpenSleepTimer: () -> Unit,
     onOpenTranslation: () -> Unit,
+    onOpenOutputDevice: () -> Unit,
     onOpenPoster: () -> Unit,
     onOpenSettings: () -> Unit,
     onLyricPreferTranslationChange: (Boolean) -> Unit,
@@ -310,6 +318,13 @@ private fun MorePageStack(
                     "有译文时显示翻译歌词"
                 },
                 onClick = onOpenTranslation,
+            )
+            Spacer(Modifier.height(8.dp))
+            MoreActionRow(
+                icon = ZIcons.Speaker,
+                title = "输出设备",
+                subtitle = audioOutputSubtitle,
+                onClick = onOpenOutputDevice,
             )
             Spacer(Modifier.height(8.dp))
             MoreActionRow(
@@ -433,6 +448,7 @@ private fun MoreNestedCover(
                         MorePage.AddToPlaylist -> "添加到歌单"
                         MorePage.SleepTimer -> "定时停止"
                         MorePage.Translation -> "翻译"
+                        MorePage.OutputDevice -> "输出设备"
                         MorePage.Root -> "更多"
                     },
                     style = TextStyle(
@@ -530,6 +546,14 @@ private fun MoreNestedCover(
                     MoreTranslationPanel(
                         enabled = lyricPreferTranslation,
                         onEnabledChange = onLyricPreferTranslationChange,
+                    )
+                }
+                MorePage.OutputDevice -> {
+                    Spacer(Modifier.height(12.dp))
+                    PortraitAudioOutputPanel(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth(),
                     )
                 }
                 MorePage.Root -> Unit

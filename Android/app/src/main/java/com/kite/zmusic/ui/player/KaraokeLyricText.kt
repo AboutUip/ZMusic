@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import com.kite.zmusic.data.LyricWord
 
@@ -37,9 +38,14 @@ internal fun KaraokeLyricText(
     overflow: TextOverflow = TextOverflow.Clip,
 ) {
     val pos = rememberSmoothedLyricPositionMs(positionMs, tracking)
+    val horizontal = when (style.textAlign) {
+        TextAlign.Start, TextAlign.Left, TextAlign.Justify -> Arrangement.Start
+        TextAlign.End, TextAlign.Right -> Arrangement.End
+        else -> Arrangement.Center
+    }
     FlowRow(
         modifier = modifier,
-        horizontalArrangement = Arrangement.Center,
+        horizontalArrangement = horizontal,
         verticalArrangement = Arrangement.Center,
         maxLines = maxLines.coerceAtLeast(1),
     ) {

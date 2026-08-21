@@ -1,11 +1,16 @@
 package com.kite.zmusic.playback
 
+import android.Manifest
 import android.content.ComponentName
 import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import androidx.annotation.OptIn
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaController
@@ -84,6 +89,25 @@ class PlaybackBridge(
     init {
         // 冷启动：有队列快照时立刻补歌词，不必等点播放才拉起 Service
         ensureLyricsForCurrentTrack()
+    }
+
+    /**
+     * 冷启动：已授予通知权限且存在队列快照时，拉起 [PlaybackService] 并以暂停态
+     * 装入当前曲，使歌曲通知立刻出现（不必先点播放）。
+     * 未开通知权限则静默，保持「仅播放时才起服务」的原逻辑。
+     */
+    fun maybeWarmMediaNotificationOnColdStart() {
+        if (!canPostNotifications(appContext)) return
+        val snap = when {
+            _ui.value.queue.isNotEmpty() -> _ui.value
+            else -> stateStore.load()
+        } ?: return
+        if (snap.queue.isEmpty() || snap.index !in snap.queue.indices) return
+        if (_ui.value.queue.isEmpty()) {
+            _ui.value = snap.withHydratedPeeks().copy(hasQueue = true)
+        }
+        ensureLyricsForCurrentTrack()
+        runOnCoordinator { it.preparePausedForNotification() }
     }
 
     fun stateStore(): PlaybackStateStore = stateStore
@@ -447,5 +471,17 @@ class PlaybackBridge(
 
     companion object {
         private const val TAG = "PlaybackBridge"
+
+        /** 系统通知总开关 +（API 33+）POST_NOTIFICATIONS。 */
+        fun canPostNotifications(context: Context): Boolean {
+            if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return false
+            if (Build.VERSION.SDK_INT >= 33) {
+                return ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.POST_NOTIFICATIONS,
+                ) == PackageManager.PERMISSION_GRANTED
+            }
+            return true
+        }
     }
 }

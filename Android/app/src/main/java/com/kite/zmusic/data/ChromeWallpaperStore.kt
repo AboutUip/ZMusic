@@ -102,6 +102,12 @@ class ChromeWallpaperStore(context: Context) {
 
     fun current(): ChromeWallpaperState = _state.value
 
+    fun helpSeen(): Boolean = prefs.getBoolean(KEY_HELP_SEEN, false)
+
+    fun markHelpSeen() {
+        prefs.edit().putBoolean(KEY_HELP_SEEN, true).apply()
+    }
+
     fun setEnabled(enabled: Boolean) {
         commit(_state.value.copy(enabled = enabled))
     }
@@ -261,6 +267,7 @@ class ChromeWallpaperStore(context: Context) {
         private const val KEY_COVERAGE = "coverage"
         private const val KEY_GENERIC_P = "generic_p"
         private const val KEY_GENERIC_L = "generic_l"
+        private const val KEY_HELP_SEEN = "help_seen"
 
         val DEFAULT_COVERAGE: Set<ChromeWallpaperSurface> =
             setOf(ChromeWallpaperSurface.Home)

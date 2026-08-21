@@ -79,7 +79,6 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
-import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -129,7 +128,8 @@ private val CommentPanelShape = RoundedCornerShape(topStart = 22.dp, topEnd = 22
 private val CommentOpenEasing = CubicBezierEasing(0.16f, 1.02f, 0.3f, 1f)
 private val CommentCloseEasing = CubicBezierEasing(0.4f, 0f, 0.2f, 1f)
 private val CommentAvatarBg get() = MainPalette.Placeholder
-private val CommentComposerFill get() = MainPalette.Card
+private val CommentComposerFill get() = MainPalette.Placeholder
+private val CommentComposerDock get() = MainPalette.Surface
 
 private const val CommentPageSize = 20
 
@@ -217,7 +217,7 @@ fun TransportCommentsIcon(
 
 /**
  * 竖屏评论底栏面板：默认 2/3；上箭头扩至全屏；无拖拽改高。
- * 浅色液态玻璃；热度/时间排序、楼层、发评与回复。
+ * 外壳与「更多 / 曲谱 / 音源」同一套：磨砂 + SheetWash，无外侧描边。
  */
 @Composable
 fun PortraitCommentsSheet(
@@ -634,7 +634,7 @@ fun PortraitCommentsSheet(
     val typingComposer = replyTarget != null || composerFocused
     val listBottomPad = run {
         val measured = with(density) { composerHeightPx.toDp() }
-        (measured + 12.dp).coerceAtLeast(108.dp)
+        if (measured > 0.dp) measured else 56.dp
     }
 
     Box(
@@ -642,29 +642,21 @@ fun PortraitCommentsSheet(
             .fillMaxHeight()
             .fillMaxWidth()
             .clip(if (fullscreen) RoundedCornerShape(0.dp) else CommentPanelShape)
-            .then(
-                if (typingComposer) {
-                    Modifier.clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = {
-                            if (replyTarget != null) dismissReplyComposer()
-                            else {
-                                composerFocused = false
-                                keyboard?.hide()
-                                focusManager.clearFocus(force = true)
-                            }
-                        },
-                    )
-                } else {
-                    Modifier
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = {
+                    if (typingComposer) {
+                        if (replyTarget != null) dismissReplyComposer()
+                        else {
+                            composerFocused = false
+                            keyboard?.hide()
+                            focusManager.clearFocus(force = true)
+                        }
+                    }
                 },
-            )
-            .graphicsLayer {
-                this.clip = true
-            },
+            ),
     ) {
-        val panelShape = if (fullscreen) RoundedCornerShape(0.dp) else CommentPanelShape
         if (hazeState != null) {
             Box(
                 Modifier
@@ -683,26 +675,13 @@ fun PortraitCommentsSheet(
                 .matchParentSize()
                 .background(MainPalette.SheetWash),
         )
-        Box(
-            Modifier
-                .matchParentSize()
-                .border(
-                    width = 1.dp,
-                    color = MainPalette.DockStroke,
-                    shape = panelShape,
-                ),
-        )
 
         Column(
             Modifier
                 .fillMaxSize()
                 .padding(top = if (fullscreen) statusTop else 0.dp)
                 .padding(horizontal = 16.dp)
-                // 回复态底部由输入栏吃 inset，列表不再叠 nav，避免双重偏移
-                .padding(
-                    top = 12.dp,
-                    bottom = 0.dp,
-                ),
+                .padding(top = 14.dp),
         ) {
             Row(
                 Modifier.fillMaxWidth(),
@@ -714,17 +693,17 @@ fun PortraitCommentsSheet(
                         style = TextStyle(
                             color = CommentLabel,
                             fontFamily = FontFamily.SansSerif,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 17.sp,
-                            letterSpacing = 0.2.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 20.sp,
+                            letterSpacing = (-0.2).sp,
                         ),
                     )
                     Text(
                         text = if (total > 0L) "共 $total 条" else "说说你的想法",
                         style = TextStyle(
-                            color = CommentHint.copy(alpha = 0.85f),
+                            color = CommentHint,
                             fontFamily = FontFamily.SansSerif,
-                            fontSize = 12.sp,
+                            fontSize = 13.sp,
                         ),
                     )
                 }
@@ -980,131 +959,143 @@ private fun CommentComposerBar(
     Column(
         modifier
             .fillMaxWidth()
-            .windowInsetsPadding(WindowInsets.ime.union(WindowInsets.navigationBars))
+            .background(CommentComposerDock)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
                 onClick = {},
-            )
-            .padding(horizontal = 14.dp)
-            .padding(top = 8.dp, bottom = 10.dp),
+            ),
     ) {
-        if (replying) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(0.5.dp)
+                .background(MainPalette.Hairline),
+        )
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .windowInsetsPadding(WindowInsets.ime.union(WindowInsets.navigationBars))
+                .padding(horizontal = 14.dp)
+                .padding(top = 8.dp, bottom = 8.dp),
+        ) {
+            if (replying) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "回复 @$targetNickname",
+                        style = TextStyle(
+                            color = CommentAccent,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                        ),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text(
+                        text = "取消",
+                        style = TextStyle(
+                            color = CommentHint,
+                            fontSize = 12.sp,
+                        ),
+                        modifier = Modifier
+                            .clickable(
+                                enabled = !sending,
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = onDismissReply,
+                            )
+                            .padding(horizontal = 4.dp, vertical = 2.dp),
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+            }
             Row(
                 Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
+                verticalAlignment = Alignment.Bottom,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Text(
-                    text = "回复 @$targetNickname",
-                    style = TextStyle(
-                        color = CommentAccent,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium,
-                    ),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
-                )
-                Text(
-                    text = "取消",
-                    style = TextStyle(
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .heightIn(min = 40.dp, max = 120.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(CommentComposerFill)
+                        .border(1.dp, MainPalette.Hairline, RoundedCornerShape(14.dp))
+                        .padding(start = 12.dp, end = 8.dp, top = 10.dp, bottom = 10.dp),
+                ) {
+                    if (draft.isEmpty()) {
+                        Text(
+                            text = if (replying) "写下你的回复…" else "说说你的想法…",
+                            color = CommentHint,
+                            fontSize = 14.sp,
+                            modifier = Modifier.padding(end = 44.dp),
+                        )
+                    }
+                    BasicTextField(
+                        value = draft,
+                        onValueChange = { if (it.length <= 140) onDraftChange(it) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(end = 44.dp)
+                            .focusRequester(focusRequester)
+                            .onFocusChanged { onFocusChange(it.isFocused) },
+                        textStyle = TextStyle(
+                            color = CommentLabel,
+                            fontSize = 14.sp,
+                            lineHeight = 20.sp,
+                        ),
+                        cursorBrush = SolidColor(CommentAccent),
+                        maxLines = 5,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                        keyboardActions = KeyboardActions(
+                            onSend = { if (canSend) onSend() },
+                        ),
+                        enabled = !sending,
+                    )
+                    Text(
+                        text = "${draft.length}/140",
                         color = CommentHint,
-                        fontSize = 12.sp,
-                    ),
-                    modifier = Modifier
+                        fontSize = 10.sp,
+                        modifier = Modifier.align(Alignment.CenterEnd),
+                    )
+                }
+                Box(
+                    Modifier
+                        .widthIn(min = 56.dp)
+                        .height(40.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(
+                            if (canSend) CommentAccent else MainPalette.TrackOff,
+                        )
                         .clickable(
-                            enabled = !sending,
+                            enabled = canSend,
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
-                            onClick = onDismissReply,
+                            onClick = onSend,
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (sending) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            color = Color.White,
+                            strokeWidth = 2.dp,
                         )
-                        .padding(horizontal = 4.dp, vertical = 2.dp),
-                )
-            }
-            Spacer(Modifier.height(8.dp))
-        }
-        Row(
-            Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.Bottom,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Box(
-                Modifier
-                    .weight(1f)
-                    .heightIn(min = 40.dp, max = 120.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(CommentComposerFill)
-                    .border(1.dp, MainPalette.Hairline, RoundedCornerShape(14.dp))
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
-            ) {
-                if (draft.isEmpty()) {
-                    Text(
-                        text = if (replying) "写下你的回复…" else "说说你的想法…",
-                        color = CommentHint,
-                        fontSize = 14.sp,
-                    )
-                }
-                BasicTextField(
-                    value = draft,
-                    onValueChange = { if (it.length <= 140) onDraftChange(it) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .focusRequester(focusRequester)
-                        .onFocusChanged { onFocusChange(it.isFocused) },
-                    textStyle = TextStyle(
-                        color = CommentLabel,
-                        fontSize = 14.sp,
-                        lineHeight = 20.sp,
-                    ),
-                    cursorBrush = SolidColor(CommentAccent),
-                    maxLines = 5,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                    keyboardActions = KeyboardActions(
-                        onSend = { if (canSend) onSend() },
-                    ),
-                    enabled = !sending,
-                )
-            }
-            Box(
-                Modifier
-                    .widthIn(min = 56.dp)
-                    .height(40.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(
-                        if (canSend) CommentAccent else MainPalette.Placeholder,
-                    )
-                    .clickable(
-                        enabled = canSend,
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = onSend,
-                    ),
-                contentAlignment = Alignment.Center,
-            ) {
-                if (sending) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(16.dp),
-                        color = Color.White,
-                        strokeWidth = 2.dp,
-                    )
-                } else {
-                    Text(
-                        text = "发送",
-                        color = if (canSend) Color.White else CommentHint,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold,
-                    )
+                    } else {
+                        Text(
+                            text = "发送",
+                            color = if (canSend) Color.White else CommentHint,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
                 }
             }
         }
-        Text(
-            text = "${draft.length}/140",
-            color = CommentHint.copy(alpha = 0.8f),
-            fontSize = 10.sp,
-            modifier = Modifier
-                .align(Alignment.End)
-                .padding(top = 4.dp, end = 66.dp),
-        )
     }
 }
 

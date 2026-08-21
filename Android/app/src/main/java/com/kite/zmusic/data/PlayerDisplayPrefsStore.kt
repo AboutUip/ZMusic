@@ -21,6 +21,19 @@ enum class TitleAlignMode {
     }
 }
 
+/** 竖屏进度条上方预览歌词的水平对齐。 */
+enum class PreviewLyricAlign {
+    LEFT,
+    CENTER,
+    RIGHT,
+    ;
+
+    companion object {
+        fun fromOrdinal(v: Int): PreviewLyricAlign =
+            entries.getOrElse(v) { CENTER }
+    }
+}
+
 /** 黑胶盘面配色预设。 */
 enum class VinylColorStyle {
     /** 黑底浅纹（默认） */
@@ -470,6 +483,32 @@ data class PlayerDisplayPrefs(
      * 无译文的歌曲仍走原歌词。
      */
     val portraitLyricPreferTranslation: Boolean = false,
+    /** 竖屏：封面态进度条上方显示预览歌词 */
+    val portraitPreviewLyricEnabled: Boolean = false,
+    /** 预览歌词行数（含当前播放行）：1 .. 3 */
+    val portraitPreviewLyricCount: Int = PREVIEW_LYRIC_COUNT_DEFAULT,
+    /** 预览「播放中」颜色 ARGB */
+    val portraitPreviewLyricPlayingArgb: Int = LyricRoleStyle.DEFAULT_PLAYING_ARGB,
+    /** 预览「待播放」颜色 ARGB */
+    val portraitPreviewLyricUpcomingArgb: Int = LyricRoleStyle.DEFAULT_UNPLAYED_ARGB,
+    /**
+     * 预览精美动画：开启则切句动画与歌词页一致，并尊重逐字渲染；
+     * 关闭则无切句动画、强制整句显示。
+     */
+    val portraitPreviewLyricFancy: Boolean = false,
+    /** 预览歌词水平对齐 */
+    val portraitPreviewLyricAlign: PreviewLyricAlign = PreviewLyricAlign.CENTER,
+    /**
+     * 预览歌词垂直偏移（dp）：负值上移。
+     * 贴底默认 0；向下会叠进度条，故上限为 0，主要留给上移。
+     */
+    val portraitPreviewLyricOffsetYDp: Float = 0f,
+    /** 预览歌词行间距（dp） */
+    val portraitPreviewLyricLineSpacingDp: Float = PREVIEW_LYRIC_LINE_SPACING_DEFAULT,
+    /** 预览「播放中」字号（sp） */
+    val portraitPreviewLyricPlayingFontSp: Float = PREVIEW_LYRIC_PLAYING_FONT_DEFAULT,
+    /** 预览「待播放」字号（sp） */
+    val portraitPreviewLyricUpcomingFontSp: Float = PREVIEW_LYRIC_UPCOMING_FONT_DEFAULT,
 ) {
     fun activeCustomPreset(): VinylCustomPreset =
         vinylCustomPresets.getOrElse(vinylCustomPresetIndex.coerceIn(0, VINYL_CUSTOM_PRESET_COUNT - 1)) {
@@ -630,6 +669,30 @@ data class PlayerDisplayPrefs(
             portraitLyricAutoClearTop = portraitLyricAutoClearTop || clearNoneSelected,
             portraitLyricAutoClearTransport = portraitLyricAutoClearTransport || clearNoneSelected,
             portraitLyricAutoClearToolbar = portraitLyricAutoClearToolbar || clearNoneSelected,
+            portraitPreviewLyricCount = portraitPreviewLyricCount.coerceIn(
+                PREVIEW_LYRIC_COUNT_MIN,
+                PREVIEW_LYRIC_COUNT_MAX,
+            ),
+            portraitPreviewLyricOffsetYDp = portraitPreviewLyricOffsetYDp.finiteCoerceIn(
+                PREVIEW_LYRIC_OFFSET_Y_MIN,
+                PREVIEW_LYRIC_OFFSET_Y_MAX,
+                0f,
+            ),
+            portraitPreviewLyricLineSpacingDp = portraitPreviewLyricLineSpacingDp.finiteCoerceIn(
+                PREVIEW_LYRIC_LINE_SPACING_MIN,
+                PREVIEW_LYRIC_LINE_SPACING_MAX,
+                PREVIEW_LYRIC_LINE_SPACING_DEFAULT,
+            ),
+            portraitPreviewLyricPlayingFontSp = portraitPreviewLyricPlayingFontSp.finiteCoerceIn(
+                PREVIEW_LYRIC_FONT_MIN,
+                PREVIEW_LYRIC_FONT_MAX,
+                PREVIEW_LYRIC_PLAYING_FONT_DEFAULT,
+            ),
+            portraitPreviewLyricUpcomingFontSp = portraitPreviewLyricUpcomingFontSp.finiteCoerceIn(
+                PREVIEW_LYRIC_FONT_MIN,
+                PREVIEW_LYRIC_FONT_MAX,
+                PREVIEW_LYRIC_UPCOMING_FONT_DEFAULT,
+            ),
         )
     }
 
@@ -647,6 +710,19 @@ data class PlayerDisplayPrefs(
         /** 竖屏展示区域更大，已播/未播可到 10 */
         const val PORTRAIT_LYRIC_AROUND_MAX = 10
         const val PORTRAIT_LYRIC_AROUND_DEFAULT = 6
+        const val PREVIEW_LYRIC_COUNT_MIN = 1
+        const val PREVIEW_LYRIC_COUNT_MAX = 3
+        const val PREVIEW_LYRIC_COUNT_DEFAULT = 2
+        /** 上移空间加大；禁止下移以免叠进度条 */
+        const val PREVIEW_LYRIC_OFFSET_Y_MIN = -120f
+        const val PREVIEW_LYRIC_OFFSET_Y_MAX = 0f
+        const val PREVIEW_LYRIC_LINE_SPACING_MIN = 0f
+        const val PREVIEW_LYRIC_LINE_SPACING_MAX = 20f
+        const val PREVIEW_LYRIC_LINE_SPACING_DEFAULT = 4f
+        const val PREVIEW_LYRIC_FONT_MIN = 12f
+        const val PREVIEW_LYRIC_FONT_MAX = 28f
+        const val PREVIEW_LYRIC_PLAYING_FONT_DEFAULT = 16f
+        const val PREVIEW_LYRIC_UPCOMING_FONT_DEFAULT = 13f
         const val UI_MIN = 0.80f
         const val UI_MAX = 1.25f
         const val VINYL_OFFSET_MIN = -56f
@@ -924,6 +1000,45 @@ class PlayerDisplayPrefsStore(
                 KEY_PORTRAIT_LYRIC_PREFER_TRANSLATION,
                 false,
             ),
+            portraitPreviewLyricEnabled = prefs.safeBoolean(
+                KEY_PORTRAIT_PREVIEW_LYRIC_ENABLED,
+                false,
+            ),
+            portraitPreviewLyricCount = prefs.safeInt(
+                KEY_PORTRAIT_PREVIEW_LYRIC_COUNT,
+                PlayerDisplayPrefs.PREVIEW_LYRIC_COUNT_DEFAULT,
+            ),
+            portraitPreviewLyricPlayingArgb = prefs.safeInt(
+                KEY_PORTRAIT_PREVIEW_LYRIC_PLAYING_ARGB,
+                LyricRoleStyle.DEFAULT_PLAYING_ARGB,
+            ),
+            portraitPreviewLyricUpcomingArgb = prefs.safeInt(
+                KEY_PORTRAIT_PREVIEW_LYRIC_UPCOMING_ARGB,
+                LyricRoleStyle.DEFAULT_UNPLAYED_ARGB,
+            ),
+            portraitPreviewLyricFancy = prefs.safeBoolean(
+                KEY_PORTRAIT_PREVIEW_LYRIC_FANCY,
+                false,
+            ),
+            portraitPreviewLyricAlign = PreviewLyricAlign.fromOrdinal(
+                prefs.safeInt(KEY_PORTRAIT_PREVIEW_LYRIC_ALIGN, PreviewLyricAlign.CENTER.ordinal),
+            ),
+            portraitPreviewLyricOffsetYDp = prefs.safeFloat(
+                KEY_PORTRAIT_PREVIEW_LYRIC_OFFSET_Y,
+                0f,
+            ),
+            portraitPreviewLyricLineSpacingDp = prefs.safeFloat(
+                KEY_PORTRAIT_PREVIEW_LYRIC_LINE_SPACING,
+                PlayerDisplayPrefs.PREVIEW_LYRIC_LINE_SPACING_DEFAULT,
+            ),
+            portraitPreviewLyricPlayingFontSp = prefs.safeFloat(
+                KEY_PORTRAIT_PREVIEW_LYRIC_PLAYING_FONT,
+                PlayerDisplayPrefs.PREVIEW_LYRIC_PLAYING_FONT_DEFAULT,
+            ),
+            portraitPreviewLyricUpcomingFontSp = prefs.safeFloat(
+                KEY_PORTRAIT_PREVIEW_LYRIC_UPCOMING_FONT,
+                PlayerDisplayPrefs.PREVIEW_LYRIC_UPCOMING_FONT_DEFAULT,
+            ),
         )
     }
 
@@ -988,6 +1103,28 @@ class PlayerDisplayPrefsStore(
                     KEY_PORTRAIT_LYRIC_PREFER_TRANSLATION,
                     v.portraitLyricPreferTranslation,
                 )
+                .putBoolean(KEY_PORTRAIT_PREVIEW_LYRIC_ENABLED, v.portraitPreviewLyricEnabled)
+                .putInt(KEY_PORTRAIT_PREVIEW_LYRIC_COUNT, v.portraitPreviewLyricCount)
+                .putInt(KEY_PORTRAIT_PREVIEW_LYRIC_PLAYING_ARGB, v.portraitPreviewLyricPlayingArgb)
+                .putInt(
+                    KEY_PORTRAIT_PREVIEW_LYRIC_UPCOMING_ARGB,
+                    v.portraitPreviewLyricUpcomingArgb,
+                )
+                .putBoolean(KEY_PORTRAIT_PREVIEW_LYRIC_FANCY, v.portraitPreviewLyricFancy)
+                .putInt(KEY_PORTRAIT_PREVIEW_LYRIC_ALIGN, v.portraitPreviewLyricAlign.ordinal)
+                .putFloat(KEY_PORTRAIT_PREVIEW_LYRIC_OFFSET_Y, v.portraitPreviewLyricOffsetYDp)
+                .putFloat(
+                    KEY_PORTRAIT_PREVIEW_LYRIC_LINE_SPACING,
+                    v.portraitPreviewLyricLineSpacingDp,
+                )
+                .putFloat(
+                    KEY_PORTRAIT_PREVIEW_LYRIC_PLAYING_FONT,
+                    v.portraitPreviewLyricPlayingFontSp,
+                )
+                .putFloat(
+                    KEY_PORTRAIT_PREVIEW_LYRIC_UPCOMING_FONT,
+                    v.portraitPreviewLyricUpcomingFontSp,
+                )
                 .apply()
         }
     }
@@ -1051,6 +1188,21 @@ class PlayerDisplayPrefsStore(
             "portrait_lyric_auto_clear_toolbar"
         private const val KEY_PORTRAIT_LYRIC_PREFER_TRANSLATION =
             "portrait_lyric_prefer_translation"
+        private const val KEY_PORTRAIT_PREVIEW_LYRIC_ENABLED = "portrait_preview_lyric_enabled"
+        private const val KEY_PORTRAIT_PREVIEW_LYRIC_COUNT = "portrait_preview_lyric_count"
+        private const val KEY_PORTRAIT_PREVIEW_LYRIC_PLAYING_ARGB =
+            "portrait_preview_lyric_playing_argb"
+        private const val KEY_PORTRAIT_PREVIEW_LYRIC_UPCOMING_ARGB =
+            "portrait_preview_lyric_upcoming_argb"
+        private const val KEY_PORTRAIT_PREVIEW_LYRIC_FANCY = "portrait_preview_lyric_fancy"
+        private const val KEY_PORTRAIT_PREVIEW_LYRIC_ALIGN = "portrait_preview_lyric_align"
+        private const val KEY_PORTRAIT_PREVIEW_LYRIC_OFFSET_Y = "portrait_preview_lyric_offset_y_dp"
+        private const val KEY_PORTRAIT_PREVIEW_LYRIC_LINE_SPACING =
+            "portrait_preview_lyric_line_spacing_dp"
+        private const val KEY_PORTRAIT_PREVIEW_LYRIC_PLAYING_FONT =
+            "portrait_preview_lyric_playing_font_sp"
+        private const val KEY_PORTRAIT_PREVIEW_LYRIC_UPCOMING_FONT =
+            "portrait_preview_lyric_upcoming_font_sp"
     }
 }
 

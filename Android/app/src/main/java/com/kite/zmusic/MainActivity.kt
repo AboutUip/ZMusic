@@ -14,11 +14,17 @@ import com.kite.zmusic.navigation.ZMusicNavHost
 import com.kite.zmusic.ui.orientation.SessionRotationLockStore
 import com.kite.zmusic.ui.orientation.ZMusicOrientationHost
 import com.kite.zmusic.ui.theme.MainPalette
+import com.kite.zmusic.ui.theme.StartupTheme
 import com.kite.zmusic.ui.theme.ZMusicTheme
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // 1) 先按系统深浅盖住窗口，避免 XML/默认浅色闪一下
+        StartupTheme.applySystemCover(this)
+        // 2) 再读用户已存外观，覆盖窗口与 MainPalette，然后才进 loading / 业务
+        val app = application as ZMusicApplication
+        StartupTheme.applyUserAppearance(this, app.themeStore.current())
         // 尽早重套旋转锁：通知冷启动时系统可能已变成竖屏，不能等 Compose 再锁
         SessionRotationLockStore.applyTo(this)
         // 尽早应用已持久化的服务器地址，供后续 OkHttp 请求读取
@@ -27,6 +33,8 @@ class MainActivity : ComponentActivity() {
             Log.d("ZMusic", "NCM API base URL: ${NcmApiConfig.baseUrl}")
         }
         enableEdgeToEdge()
+        // edge-to-edge 可能改系统栏，按用户外观再刷一次
+        StartupTheme.applyUserAppearance(this, app.themeStore.current())
         consumeOpenPlayerIntent(intent)
         setContent {
             ZMusicTheme {

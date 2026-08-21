@@ -4,9 +4,11 @@ import android.app.Application
 import com.kite.zmusic.data.AlbumCollectionRepository
 import com.kite.zmusic.data.AlbumTracksCache
 import com.kite.zmusic.data.AudioQualityStore
+import com.kite.zmusic.data.AudioOutputStore
 import com.kite.zmusic.data.LyricOverlayStore
 import com.kite.zmusic.data.LyricRenderStore
 import com.kite.zmusic.data.PersistentPlaybackStore
+import com.kite.zmusic.data.PredictiveBackStore
 import com.kite.zmusic.data.ChromeGlassStore
 import com.kite.zmusic.data.ThemeStore
 import com.kite.zmusic.data.ChromeWallpaperStore
@@ -30,6 +32,7 @@ import com.kite.zmusic.data.TrackExportRepository
 import com.kite.zmusic.data.UserSpaceBackgroundStore
 import com.kite.zmusic.playback.MvPlayback
 import com.kite.zmusic.playback.PlaybackBridge
+import com.kite.zmusic.playback.AudioOutputController
 import com.kite.zmusic.ui.notice.IslandNoticeCenter
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
@@ -49,7 +52,10 @@ class AppContainer(app: Application) {
 
     val sessionRepository = SessionRepository(app)
     val audioQualityStore = AudioQualityStore(app)
+    val audioOutputStore = AudioOutputStore(app)
+    val audioOutputController = AudioOutputController(app, audioOutputStore)
     val persistentPlaybackStore = PersistentPlaybackStore(app)
+    val predictiveBackStore = PredictiveBackStore(app)
     val lyricRenderStore = LyricRenderStore(app)
     val lyricOverlayStore = LyricOverlayStore(app)
     val chromeGlassStore = ChromeGlassStore(app)

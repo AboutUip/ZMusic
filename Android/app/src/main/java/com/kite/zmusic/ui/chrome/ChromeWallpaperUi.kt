@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -102,24 +103,85 @@ fun ChromeWallpaperBackdrop(modifier: Modifier = Modifier) {
     }
 }
 
+internal object WallpaperBitmapCache {
+    private val lock = Any()
+    private val map = mutableMapOf<String, ImageBitmap>()
+
+    fun get(path: String): ImageBitmap? = synchronized(lock) { map[path] }
+
+    fun put(path: String, bitmap: ImageBitmap) {
+        if (path.isBlank()) return
+        synchronized(lock) { map[path] = bitmap }
+    }
+}
+
+internal suspend fun preloadWallpaperBitmap(path: String) {
+    if (path.isBlank() || WallpaperBitmapCache.get(path) != null) return
+    val decoded = withContext(Dispatchers.IO) {
+        runCatching {
+            BitmapFactory.decodeFile(path)?.asImageBitmap()
+        }.getOrNull()
+    }
+    if (decoded != null) WallpaperBitmapCache.put(path, decoded)
+}
+
 @Composable
 fun ChromeWallpaperLayer(
     frame: WallpaperFrame,
     modifier: Modifier = Modifier,
+    placeholder: Color = MainPalette.Page,
 ) {
     val scrim = wallpaperScrim()
+    val loaded = rememberWallpaperBitmap(frame.imagePath)
+    var held by remember { mutableStateOf<Pair<WallpaperFrame, ImageBitmap>?>(null) }
+    val ready = loaded?.let { frame to it }
+    val draw = wallpaperHoldUntilReady(ready, held)
+    SideEffect {
+        if (ready != null) held = ready
+    }
     Box(
         modifier
             .fillMaxSize()
             .clipToBounds()
-            .background(MainPalette.Page),
+            .then(
+                if (draw == null) {
+                    Modifier.background(placeholder)
+                } else {
+                    Modifier
+                },
+            ),
     ) {
-        WallpaperImage(
-            frame = frame,
-            modifier = Modifier.fillMaxSize(),
-        )
-        Box(Modifier.fillMaxSize().background(scrim))
+        if (draw != null) {
+            WallpaperCanvas(
+                bitmap = draw.second,
+                frame = draw.first,
+                modifier = Modifier.fillMaxSize(),
+            )
+            Box(Modifier.fillMaxSize().background(scrim))
+        }
     }
+}
+
+@Composable
+internal fun rememberWallpaperBitmap(path: String): ImageBitmap? {
+    if (path.isBlank()) return null
+    var bitmap by remember(path) { mutableStateOf(WallpaperBitmapCache.get(path)) }
+    LaunchedEffect(path) {
+        WallpaperBitmapCache.get(path)?.let {
+            bitmap = it
+            return@LaunchedEffect
+        }
+        val decoded = withContext(Dispatchers.IO) {
+            runCatching {
+                BitmapFactory.decodeFile(path)?.asImageBitmap()
+            }.getOrNull()
+        }
+        if (decoded != null) {
+            WallpaperBitmapCache.put(path, decoded)
+            bitmap = decoded
+        }
+    }
+    return bitmap
 }
 
 @Composable
@@ -131,19 +193,20 @@ fun WallpaperImage(
         Box(modifier.background(MainPalette.Page))
         return
     }
-    var bitmap by remember(frame.imagePath) { mutableStateOf<ImageBitmap?>(null) }
-    LaunchedEffect(frame.imagePath) {
-        bitmap = withContext(Dispatchers.IO) {
-            runCatching {
-                BitmapFactory.decodeFile(frame.imagePath)?.asImageBitmap()
-            }.getOrNull()
-        }
-    }
-    val bmp = bitmap
+    val bmp = rememberWallpaperBitmap(frame.imagePath)
     if (bmp == null) {
         Box(modifier.background(MainPalette.Page))
         return
     }
+    WallpaperCanvas(bitmap = bmp, frame = frame, modifier = modifier)
+}
+
+@Composable
+private fun WallpaperCanvas(
+    bitmap: ImageBitmap,
+    frame: WallpaperFrame,
+    modifier: Modifier = Modifier,
+) {
     val host = LocalWallpaperViewport.current
     var originInWindow by remember { mutableStateOf(Offset.Zero) }
     Canvas(
@@ -162,8 +225,8 @@ fun WallpaperImage(
         val place = wallpaperCanvasPlacement(
             viewW = viewW,
             viewH = viewH,
-            imgW = bmp.width,
-            imgH = bmp.height,
+            imgW = bitmap.width,
+            imgH = bitmap.height,
             scale = frame.scale,
             offsetX = frame.offsetX,
             offsetY = frame.offsetY,
@@ -171,9 +234,9 @@ fun WallpaperImage(
         val dx = if (host != null) host.originInWindow.x - originInWindow.x else 0f
         val dy = if (host != null) host.originInWindow.y - originInWindow.y else 0f
         drawImage(
-            image = bmp,
+            image = bitmap,
             srcOffset = IntOffset.Zero,
-            srcSize = IntSize(bmp.width, bmp.height),
+            srcSize = IntSize(bitmap.width, bitmap.height),
             dstOffset = IntOffset(place.x + dx.roundToInt(), place.y + dy.roundToInt()),
             dstSize = IntSize(place.w, place.h),
             filterQuality = FilterQuality.Medium,

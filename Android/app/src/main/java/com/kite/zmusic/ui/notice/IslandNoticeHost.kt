@@ -68,6 +68,9 @@ import com.kite.zmusic.ui.common.GlassAlertHostState
 import com.kite.zmusic.ui.common.GlassAlertOverlay
 import com.kite.zmusic.ui.common.LocalGlassActionSheetHost
 import com.kite.zmusic.ui.common.LocalGlassAlertHost
+import com.kite.zmusic.ui.common.LocalPredictiveBackClaimsState
+import com.kite.zmusic.ui.common.LocalPredictiveBackEnabled
+import com.kite.zmusic.ui.common.PredictiveBackClaimsState
 import com.kite.zmusic.ui.common.UrlImage
 import com.kite.zmusic.ui.main.LocalChromeGlassStyle
 import com.kite.zmusic.ui.main.LocalChromeHaze
@@ -113,6 +116,8 @@ fun IslandNoticeRoot(
     val islandHaze = remember { HazeState() }
     val app = LocalContext.current.applicationContext as ZMusicApplication
     val glassStyle by app.chromeGlassStore.style.collectAsStateWithLifecycle()
+    val predictiveBackOn by app.predictiveBackStore.enabled.collectAsStateWithLifecycle()
+    val predictiveBackClaims = remember { PredictiveBackClaimsState() }
     val landscape =
         LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     val alertHost = remember { GlassAlertHostState() }
@@ -124,6 +129,8 @@ fun IslandNoticeRoot(
         LocalGlassActionSheetHost provides actionSheetHost,
         LocalChromeGlassStyle provides glassStyle,
         LocalChromeHaze provides islandHaze,
+        LocalPredictiveBackEnabled provides predictiveBackOn,
+        LocalPredictiveBackClaimsState provides predictiveBackClaims,
     ) {
         Box(modifier.fillMaxSize()) {
             Box(

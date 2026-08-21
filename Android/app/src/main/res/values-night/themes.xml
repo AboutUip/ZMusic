@@ -1,11 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <!-- 主界面固定浅色，夜间也不走黑底，避免冷启动闪黑。 -->
-    <style name="Theme.ZMusic" parent="Theme.MaterialComponents.Light.NoActionBar">
-        <item name="android:windowBackground">@color/page_light</item>
-        <item name="android:navigationBarColor">@color/page_light</item>
+    <!-- 系统夜间：进程起来立刻用深色窗底，避免先闪浅色再切深色 -->
+    <style name="Theme.ZMusic" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="android:windowBackground">@color/page_dark</item>
+        <item name="android:navigationBarColor">@color/page_dark</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
-        <item name="android:windowLightStatusBar">true</item>
-        <item name="android:windowLightNavigationBar">true</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar" tools:targetApi="o_mr1">false</item>
         <item name="android:windowLayoutInDisplayCutoutMode" tools:targetApi="p">shortEdges</item>
     </style>
 </resources>

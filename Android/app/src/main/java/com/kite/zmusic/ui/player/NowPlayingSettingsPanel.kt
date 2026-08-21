@@ -3,6 +3,12 @@
 package com.kite.zmusic.ui.player
 
 import android.annotation.SuppressLint
+import android.graphics.Color as AndroidColor
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.spring
@@ -12,6 +18,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -41,6 +48,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -51,6 +59,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.StrokeCap
@@ -70,6 +79,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kite.zmusic.data.PlayerDisplayPrefs
+import com.kite.zmusic.data.PreviewLyricAlign
 import com.kite.zmusic.data.TitleAlignMode
 import com.kite.zmusic.data.VinylColorStyle
 import com.kite.zmusic.ui.main.MainControls
@@ -125,6 +135,7 @@ private enum class SettingsPreviewKey {
     VinylOffsetY,
     TransportOffsetY,
     LyricBackgroundTransparency,
+    PreviewLyric,
 }
 
 private const val SettingsPreviewFadeOutMs = 320
@@ -606,6 +617,8 @@ fun NowPlayingSettingsSheet(
     glassBlurRadius: Dp = 84.dp,
     /** 是否启用实时磨砂；关闭时用静态玻璃层（竖屏弹出更流畅）。 */
     enableRealtimeHaze: Boolean = true,
+    /** 横屏悬浮卡与曲谱同壳画 Hairline；竖屏底栏面板不要外描边。 */
+    showPanelBorder: Boolean = false,
     /** 竖屏内容：仅竖屏相关项，不含横屏氛围/黑胶/标题对齐等。 */
     portraitContent: Boolean = false,
     /** 竖屏：打开自定义背景编辑器 */
@@ -724,6 +737,13 @@ fun NowPlayingSettingsSheet(
                 .graphicsLayer { alpha = dim }
                 .background(MainPalette.SheetWash),
         )
+        if (showPanelBorder) {
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .border(1.dp, MainPalette.Hairline, panelShape),
+            )
+        }
 
         Column(
             Modifier
@@ -839,6 +859,164 @@ fun NowPlayingSettingsSheet(
                                     colors = switchColors,
                                     onCheckedChange = {
                                         onPrefsChange(prefs.copy(lyricTapAutoPlay = it))
+                                    },
+                                )
+                                SettingsSwitchRow(
+                                    title = "启用预览歌词",
+                                    subtitle = "封面态进度条上方显示当前与待播歌词",
+                                    checked = prefs.portraitPreviewLyricEnabled,
+                                    colors = switchColors,
+                                    onCheckedChange = {
+                                        onPrefsChange(prefs.copy(portraitPreviewLyricEnabled = it))
+                                    },
+                                )
+                            }
+                        }
+                        val previewOn = prefs.portraitPreviewLyricEnabled
+                        SettingsAlpha(rowAlpha(SettingsPreviewKey.PreviewLyric)) {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                SettingsSliderRow(
+                                    title = "预览歌词数",
+                                    valueLabel = prefs.portraitPreviewLyricCount.toString(),
+                                    value = prefs.portraitPreviewLyricCount.toFloat(),
+                                    valueRange = PlayerDisplayPrefs.PREVIEW_LYRIC_COUNT_MIN.toFloat()..
+                                        PlayerDisplayPrefs.PREVIEW_LYRIC_COUNT_MAX.toFloat(),
+                                    steps = PlayerDisplayPrefs.PREVIEW_LYRIC_COUNT_MAX -
+                                        PlayerDisplayPrefs.PREVIEW_LYRIC_COUNT_MIN - 1,
+                                    enabled = previewOn,
+                                    onValueChange = {
+                                        onPrefsChange(
+                                            prefs.copy(
+                                                portraitPreviewLyricCount = it.roundToInt()
+                                                    .coerceIn(
+                                                        PlayerDisplayPrefs.PREVIEW_LYRIC_COUNT_MIN,
+                                                        PlayerDisplayPrefs.PREVIEW_LYRIC_COUNT_MAX,
+                                                    ),
+                                            ),
+                                        )
+                                    },
+                                    onPreviewDragActiveChange = {
+                                        onPreviewDrag(SettingsPreviewKey.PreviewLyric, it)
+                                    },
+                                )
+                                SettingsSliderRow(
+                                    title = "播放中字号",
+                                    valueLabel = String.format(
+                                        "%.0f",
+                                        prefs.portraitPreviewLyricPlayingFontSp,
+                                    ),
+                                    value = prefs.portraitPreviewLyricPlayingFontSp,
+                                    valueRange = PlayerDisplayPrefs.PREVIEW_LYRIC_FONT_MIN..
+                                        PlayerDisplayPrefs.PREVIEW_LYRIC_FONT_MAX,
+                                    enabled = previewOn,
+                                    onValueChange = {
+                                        onPrefsChange(
+                                            prefs.copy(portraitPreviewLyricPlayingFontSp = it),
+                                        )
+                                    },
+                                    onPreviewDragActiveChange = {
+                                        onPreviewDrag(SettingsPreviewKey.PreviewLyric, it)
+                                    },
+                                )
+                                SettingsSliderRow(
+                                    title = "待播放字号",
+                                    valueLabel = String.format(
+                                        "%.0f",
+                                        prefs.portraitPreviewLyricUpcomingFontSp,
+                                    ),
+                                    value = prefs.portraitPreviewLyricUpcomingFontSp,
+                                    valueRange = PlayerDisplayPrefs.PREVIEW_LYRIC_FONT_MIN..
+                                        PlayerDisplayPrefs.PREVIEW_LYRIC_FONT_MAX,
+                                    enabled = previewOn,
+                                    onValueChange = {
+                                        onPrefsChange(
+                                            prefs.copy(portraitPreviewLyricUpcomingFontSp = it),
+                                        )
+                                    },
+                                    onPreviewDragActiveChange = {
+                                        onPreviewDrag(SettingsPreviewKey.PreviewLyric, it)
+                                    },
+                                )
+                                SettingsPreviewColorRow(
+                                    title = "播放中颜色",
+                                    argb = prefs.portraitPreviewLyricPlayingArgb,
+                                    enabled = previewOn,
+                                    onArgbChange = {
+                                        onPrefsChange(
+                                            prefs.copy(portraitPreviewLyricPlayingArgb = it),
+                                        )
+                                    },
+                                )
+                                SettingsPreviewColorRow(
+                                    title = "待播放歌词颜色",
+                                    argb = prefs.portraitPreviewLyricUpcomingArgb,
+                                    enabled = previewOn,
+                                    onArgbChange = {
+                                        onPrefsChange(
+                                            prefs.copy(portraitPreviewLyricUpcomingArgb = it),
+                                        )
+                                    },
+                                )
+                                SettingsSwitchRow(
+                                    title = "精美动画",
+                                    subtitle = "开启后切句动画与歌词页一致，并尊重逐字渲染",
+                                    checked = prefs.portraitPreviewLyricFancy,
+                                    colors = switchColors,
+                                    enabled = previewOn,
+                                    onCheckedChange = {
+                                        onPrefsChange(
+                                            prefs.copy(portraitPreviewLyricFancy = it),
+                                        )
+                                    },
+                                )
+                                SettingsPreviewAlignRow(
+                                    selected = prefs.portraitPreviewLyricAlign,
+                                    enabled = previewOn,
+                                    onSelect = {
+                                        onPrefsChange(
+                                            prefs.copy(portraitPreviewLyricAlign = it),
+                                        )
+                                    },
+                                    onPreviewActiveChange = {
+                                        onPreviewDrag(SettingsPreviewKey.PreviewLyric, it)
+                                    },
+                                )
+                                SettingsSliderRow(
+                                    title = "预览歌词垂直位置",
+                                    valueLabel = String.format(
+                                        "%+.0f",
+                                        prefs.portraitPreviewLyricOffsetYDp,
+                                    ),
+                                    value = prefs.portraitPreviewLyricOffsetYDp,
+                                    valueRange = PlayerDisplayPrefs.PREVIEW_LYRIC_OFFSET_Y_MIN..
+                                        PlayerDisplayPrefs.PREVIEW_LYRIC_OFFSET_Y_MAX,
+                                    enabled = previewOn,
+                                    onValueChange = {
+                                        onPrefsChange(
+                                            prefs.copy(portraitPreviewLyricOffsetYDp = it),
+                                        )
+                                    },
+                                    onPreviewDragActiveChange = {
+                                        onPreviewDrag(SettingsPreviewKey.PreviewLyric, it)
+                                    },
+                                )
+                                SettingsSliderRow(
+                                    title = "预览歌词行间距",
+                                    valueLabel = String.format(
+                                        "%.0f",
+                                        prefs.portraitPreviewLyricLineSpacingDp,
+                                    ),
+                                    value = prefs.portraitPreviewLyricLineSpacingDp,
+                                    valueRange = PlayerDisplayPrefs.PREVIEW_LYRIC_LINE_SPACING_MIN..
+                                        PlayerDisplayPrefs.PREVIEW_LYRIC_LINE_SPACING_MAX,
+                                    enabled = previewOn,
+                                    onValueChange = {
+                                        onPrefsChange(
+                                            prefs.copy(portraitPreviewLyricLineSpacingDp = it),
+                                        )
+                                    },
+                                    onPreviewDragActiveChange = {
+                                        onPreviewDrag(SettingsPreviewKey.PreviewLyric, it)
                                     },
                                 )
                             }
@@ -1890,6 +2068,247 @@ private fun SettingsAutoClearTargetsRow(
                 }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun SettingsPreviewAlignRow(
+    selected: PreviewLyricAlign,
+    onSelect: (PreviewLyricAlign) -> Unit,
+    enabled: Boolean = true,
+    onPreviewActiveChange: ((Boolean) -> Unit)? = null,
+) {
+    val chrome = LocalSettingsChrome.current
+    val modes = PreviewLyricAlign.entries
+    val labels = listOf("左侧", "居中", "右侧")
+    val enT by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (enabled) 1f else 0.40f,
+        animationSpec = tween(280, easing = FastOutSlowInEasing),
+        label = "previewAlignEn",
+    )
+    val onPreviewUpdated by rememberUpdatedState(onPreviewActiveChange)
+    val scope = rememberCoroutineScope()
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .graphicsLayer { alpha = enT }
+            .clip(RowShape)
+            .background(chrome.rowBg)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+    ) {
+        Text(
+            text = "歌词位置",
+            style = TextStyle(
+                color = chrome.label,
+                fontFamily = FontFamily.SansSerif,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 15.sp,
+            ),
+        )
+        Spacer(Modifier.height(8.dp))
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .height(36.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(MainPalette.TrackOff),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            modes.forEachIndexed { index, mode ->
+                val on = mode == selected
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(if (on) chrome.accent.copy(alpha = 0.22f) else Color.Transparent)
+                        .clickable(
+                            enabled = enabled,
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = {
+                                onSelect(mode)
+                                scope.launch {
+                                    onPreviewUpdated?.invoke(true)
+                                    kotlinx.coroutines.delay(700)
+                                    onPreviewUpdated?.invoke(false)
+                                }
+                            },
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = labels[index],
+                        style = TextStyle(
+                            color = if (on) chrome.accent else chrome.hint,
+                            fontFamily = FontFamily.SansSerif,
+                            fontWeight = if (on) FontWeight.SemiBold else FontWeight.Medium,
+                            fontSize = 13.sp,
+                        ),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsPreviewColorRow(
+    title: String,
+    argb: Int,
+    onArgbChange: (Int) -> Unit,
+    enabled: Boolean = true,
+) {
+    val chrome = LocalSettingsChrome.current
+    var expanded by remember { mutableStateOf(false) }
+    var local by remember { mutableIntStateOf(argb) }
+    LaunchedEffect(argb) {
+        if (argb != local) local = argb
+    }
+    LaunchedEffect(enabled) {
+        if (!enabled) expanded = false
+    }
+    var hue by remember { mutableFloatStateOf(0f) }
+    var sat by remember { mutableFloatStateOf(0f) }
+    var value by remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(local) {
+        val hsv = FloatArray(3)
+        AndroidColor.colorToHSV(local, hsv)
+        hue = hsv[0]
+        sat = hsv[1]
+        value = hsv[2]
+    }
+    val onChangeUpdated by rememberUpdatedState(onArgbChange)
+    fun publish(h: Float, s: Float, v: Float) {
+        val next = AndroidColor.HSVToColor(floatArrayOf(h, s, v))
+        if (next == local) return
+        local = next
+        onChangeUpdated(next)
+    }
+    val enT by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (enabled) 1f else 0.40f,
+        animationSpec = tween(280, easing = FastOutSlowInEasing),
+        label = "previewColorEn",
+    )
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .graphicsLayer { alpha = enT }
+            .clip(RowShape)
+            .background(chrome.rowBg)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+    ) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clickable(
+                    enabled = enabled,
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = { expanded = !expanded },
+                ),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = title,
+                style = TextStyle(
+                    color = chrome.label,
+                    fontFamily = FontFamily.SansSerif,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 15.sp,
+                ),
+                modifier = Modifier.weight(1f),
+            )
+            Box(
+                Modifier
+                    .size(28.dp)
+                    .clip(CircleShape)
+                    .background(Color(local))
+                    .border(1.dp, Color.White.copy(alpha = 0.35f), CircleShape),
+            )
+        }
+        AnimatedVisibility(
+            visible = expanded && enabled,
+            enter = fadeIn(tween(200)) + expandVertically(tween(240)),
+            exit = fadeOut(tween(160)) + shrinkVertically(tween(200)),
+        ) {
+            Column(
+                Modifier.padding(top = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                SettingsPreviewHueBar(
+                    hue = hue,
+                    onHueChange = {
+                        hue = it
+                        publish(it, sat, value)
+                    },
+                )
+                MainSlider(
+                    value = sat,
+                    onValueChange = {
+                        sat = it
+                        publish(hue, it, value)
+                    },
+                    valueRange = 0f..1f,
+                    enabled = enabled,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                MainSlider(
+                    value = value,
+                    onValueChange = {
+                        value = it
+                        publish(hue, sat, it)
+                    },
+                    valueRange = 0f..1f,
+                    enabled = enabled,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsPreviewHueBar(
+    hue: Float,
+    onHueChange: (Float) -> Unit,
+) {
+    val spectrum = remember {
+        List(7) { i ->
+            Color(AndroidColor.HSVToColor(floatArrayOf(i * 60f, 1f, 1f)))
+        }
+    }
+    val onHueUpdated by rememberUpdatedState(onHueChange)
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height(28.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(Brush.horizontalGradient(spectrum))
+            .pointerInput(Unit) {
+                detectHorizontalDragGestures { change, _ ->
+                    change.consume()
+                    val next = (change.position.x / size.width.toFloat()).coerceIn(0f, 1f) * 360f
+                    onHueUpdated(next)
+                }
+            }
+            .pointerInput(Unit) {
+                detectTapGestures { offset ->
+                    val next = (offset.x / size.width.toFloat()).coerceIn(0f, 1f) * 360f
+                    onHueUpdated(next)
+                }
+            },
+    ) {
+        val fraction = (hue / 360f).coerceIn(0f, 1f)
+        Canvas(Modifier.fillMaxSize()) {
+            val x = fraction * size.width
+            drawCircle(
+                color = Color.White,
+                radius = 7f,
+                center = Offset(x, size.height / 2f),
+                style = Stroke(width = 2.5f),
+            )
         }
     }
 }

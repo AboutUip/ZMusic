@@ -63,6 +63,7 @@ internal data class AppPermissionSnapshot(
     val backgroundRun: Boolean,
     val camera: Boolean,
     val overlay: Boolean,
+    val nearbyDevices: Boolean,
 ) {
     val subtitle: String
         get() {
@@ -71,10 +72,11 @@ internal data class AppPermissionSnapshot(
                 if (!backgroundRun) add("后台运行")
                 if (!camera) add("相机")
                 if (!overlay) add("悬浮窗")
+                if (!nearbyDevices) add("附近的设备")
             }
             return when {
-                missing.isEmpty() -> "通知、后台运行、相机、悬浮窗均已开启"
-                missing.size == 4 -> "通知、后台运行、相机、悬浮窗未开启"
+                missing.isEmpty() -> "通知、后台运行、相机、悬浮窗、附近的设备均已开启"
+                missing.size == 5 -> "通知、后台运行、相机、悬浮窗、附近的设备未开启"
                 else -> missing.joinToString("、") + "未开启"
             }
         }
@@ -85,6 +87,7 @@ internal data class AppPermissionSnapshot(
             backgroundRun = backgroundRunEnabled(context),
             camera = cameraGranted(context),
             overlay = overlayGranted(context),
+            nearbyDevices = nearbyDevicesGranted(context),
         )
     }
 }
@@ -122,6 +125,16 @@ internal fun PermissionSettingsPage(
             context.showIslandNotice("已开启相机")
         } else {
             context.showIslandNotice("需要相机权限才能扫码")
+        }
+    }
+    val nearbyLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        refresh()
+        if (granted) {
+            context.showIslandNotice("已开启附近的设备")
+        } else {
+            context.showIslandNotice("未开启时，蓝牙耳机可能只显示通用名称")
         }
     }
     val backgroundLauncher = rememberLauncherForActivityResult(
@@ -227,6 +240,25 @@ internal fun PermissionSettingsPage(
                     )
                 },
             )
+            PermissionRowDivider()
+            PermissionManageRow(
+                title = "附近的设备",
+                purpose = "识别耳机、音箱等音频输出设备名称",
+                granted = snapshot.nearbyDevices,
+                icon = ZIcons.Bluetooth,
+                tint = Color(0xFF0A84FF),
+                onClick = {
+                    handleNearbyDevicesClick(
+                        context = context,
+                        granted = snapshot.nearbyDevices,
+                        launcher = {
+                            if (Build.VERSION.SDK_INT >= 31) {
+                                nearbyLauncher.launch(Manifest.permission.BLUETOOTH_CONNECT)
+                            }
+                        },
+                    )
+                },
+            )
         }
     }
 }
@@ -318,6 +350,7 @@ private fun PermissionManageRow(
 private object RuntimePermissionAsk {
     var notifications: Boolean = false
     var camera: Boolean = false
+    var nearbyDevices: Boolean = false
 }
 
 private fun handleNotificationClick(
@@ -432,6 +465,38 @@ private fun cameraGranted(context: Context): Boolean =
         context,
         Manifest.permission.CAMERA,
     ) == PackageManager.PERMISSION_GRANTED
+
+private fun handleNearbyDevicesClick(
+    context: Context,
+    granted: Boolean,
+    launcher: () -> Unit,
+) {
+    if (granted) {
+        openAppDetailsSettings(context)
+        return
+    }
+    if (Build.VERSION.SDK_INT < 31) {
+        openAppDetailsSettings(context)
+        return
+    }
+    val activity = context.findActivity()
+    val canDialog = !RuntimePermissionAsk.nearbyDevices ||
+        activity?.shouldShowRequestPermissionRationale(Manifest.permission.BLUETOOTH_CONNECT) == true
+    if (canDialog) {
+        RuntimePermissionAsk.nearbyDevices = true
+        launcher()
+        return
+    }
+    openAppDetailsSettings(context)
+}
+
+internal fun nearbyDevicesGranted(context: Context): Boolean {
+    if (Build.VERSION.SDK_INT < 31) return true
+    return ContextCompat.checkSelfPermission(
+        context,
+        Manifest.permission.BLUETOOTH_CONNECT,
+    ) == PackageManager.PERMISSION_GRANTED
+}
 
 internal fun backgroundRunEnabled(context: Context): Boolean {
     val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager

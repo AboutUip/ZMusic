@@ -28,7 +28,13 @@ import androidx.compose.material.icons.rounded.EmojiEvents
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.HideImage
+import androidx.compose.material.icons.rounded.Bluetooth
 import androidx.compose.material.icons.rounded.Headset
+import androidx.compose.material.icons.rounded.Hearing
+import androidx.compose.material.icons.rounded.Speaker
+import androidx.compose.material.icons.rounded.Tv
+import androidx.compose.material.icons.rounded.Usb
+import androidx.compose.material.icons.rounded.Handshake
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Info
@@ -54,6 +60,7 @@ import androidx.compose.material.icons.rounded.Replay5
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Swipe
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material.icons.rounded.Timer
@@ -75,8 +82,14 @@ object ZIcons {
     val Profile: ImageVector get() = Icons.Rounded.Person
     val Search: ImageVector get() = Icons.Rounded.Search
     val Settings: ImageVector get() = Icons.Rounded.Settings
+    val Swipe: ImageVector get() = Icons.Rounded.Swipe
     val GraphicEq: ImageVector get() = Icons.Rounded.GraphicEq
     val Headset: ImageVector get() = Icons.Rounded.Headset
+    val Speaker: ImageVector get() = Icons.Rounded.Speaker
+    val Bluetooth: ImageVector get() = Icons.Rounded.Bluetooth
+    val Usb: ImageVector get() = Icons.Rounded.Usb
+    val Tv: ImageVector get() = Icons.Rounded.Tv
+    val Hearing: ImageVector get() = Icons.Rounded.Hearing
     val Security: ImageVector get() = Icons.Rounded.Security
     val Notifications: ImageVector get() = Icons.Rounded.Notifications
     val Camera: ImageVector get() = Icons.Rounded.PhotoCamera
@@ -95,6 +108,7 @@ object ZIcons {
     val Manage: ImageVector get() = Icons.Rounded.Checklist
     val Close: ImageVector get() = Icons.Rounded.Close
     val History: ImageVector get() = Icons.Rounded.History
+    val Handshake: ImageVector get() = Icons.Rounded.Handshake
     val Play: ImageVector get() = Icons.Rounded.PlayArrow
     val Pause: ImageVector get() = Icons.Rounded.Pause
     val PictureInPicture: ImageVector get() = Icons.Rounded.PictureInPictureAlt

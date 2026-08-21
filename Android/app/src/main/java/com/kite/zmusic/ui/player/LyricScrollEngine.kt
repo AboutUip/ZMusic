@@ -1,6 +1,7 @@
 package com.kite.zmusic.ui.player
 
 import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.scrollBy
@@ -104,10 +105,13 @@ internal suspend fun LazyListState.scrollLyricToCenteredIndex(
             animateScrollBy(delta, animationSpec = scrollSpec)
         }
         if (currentFollowGen() != followGen) return
-        // 真实 item 高度可能与 slot 提示不一致，补一次精修
+        // 真实 item 高度可能与 slot 提示不一致，轻柔补精修（勿瞬间 scrollBy，否则像入场结束位置突变）
         val fine = deltaToTarget()
-        if (fine != null && abs(fine) > 1.5f) {
-            scrollBy(fine)
+        if (fine != null && abs(fine) > 2.5f) {
+            animateScrollBy(
+                fine,
+                animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing),
+            )
         }
     } finally {
         // 等跟滚完全停稳再打开浏览检测，避免 isScrollInProgress 尾帧误进浏览态

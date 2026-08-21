@@ -38,7 +38,9 @@ class ZMusicApplication : Application() {
     val ncmAuthClient get() = container.ncmAuthClient
     val sessionRepository: SessionRepository get() = container.sessionRepository
     val audioQualityStore: AudioQualityStore get() = container.audioQualityStore
+    val audioOutputController get() = container.audioOutputController
     val persistentPlaybackStore: PersistentPlaybackStore get() = container.persistentPlaybackStore
+    val predictiveBackStore get() = container.predictiveBackStore
     val lyricRenderStore: LyricRenderStore get() = container.lyricRenderStore
     val lyricOverlayStore: LyricOverlayStore get() = container.lyricOverlayStore
     val chromeGlassStore: ChromeGlassStore get() = container.chromeGlassStore
@@ -72,11 +74,12 @@ class ZMusicApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         container = AppContainer(this)
-        val night = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK ==
+        // Application 阶段先按系统绑定，Activity 里再叠用户已存外观
+        val systemDark = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK ==
             Configuration.UI_MODE_NIGHT_YES
-        MainPalette.bind(
-            if (themeStore.current().resolveDark(night)) MainColors.Dark else MainColors.Light,
-        )
+        MainPalette.bind(if (systemDark) MainColors.Dark else MainColors.Light)
+        val resolvedDark = themeStore.current().resolveDark(systemDark)
+        MainPalette.bind(if (resolvedDark) MainColors.Dark else MainColors.Light)
         playbackBridge.musicWillPlay = { mvPlayback.stop() }
         queueSync = PlaybackQueueSync(
             likedPlaylistRepository = likedPlaylistRepository,
@@ -92,6 +95,8 @@ class ZMusicApplication : Application() {
             mvPlayback = mvPlayback,
         )
         lyricOverlayController.start()
+        // 有通知权限 + 有上次队列：冷启动即挂歌曲通知（暂停态），无需先点播放
+        playbackBridge.maybeWarmMediaNotificationOnColdStart()
     }
 
     fun isSourcePlaylistComplete(playlistId: Long): Boolean =

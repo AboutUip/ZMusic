@@ -67,6 +67,7 @@ class PlaybackService : MediaSessionService() {
             audioQualityStore = app.audioQualityStore,
             persistentPlaybackStore = app.persistentPlaybackStore,
             userClient = app.ncmUserClient,
+            audioOutputController = app.audioOutputController,
             onClearAndStopService = {
                 pauseAllPlayersAndStopSelf()
             },
@@ -112,6 +113,10 @@ class PlaybackService : MediaSessionService() {
         )
         notificationProvider.setSmallIcon(R.drawable.ic_notification_small)
         setMediaNotificationProvider(notificationProvider)
+        // 暂停 / 缓冲未开播时也保留通知（冷启动预热依赖此行为）
+        setShowNotificationForIdlePlayer(
+            MediaSessionService.SHOW_NOTIFICATION_FOR_IDLE_PLAYER_ALWAYS,
+        )
 
         serviceScope.launch {
             combine(

@@ -90,7 +90,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
@@ -212,58 +211,38 @@ internal fun StableCenterLyricText(
     var shownText by remember {
         mutableStateOf(if (instantAppear || freezeTransitions) text else "")
     }
-    var lastSpanMs by remember { mutableLongStateOf(lineSpanMs) }
     val enterAlpha = remember {
         Animatable(if (instantAppear || freezeTransitions) 1f else 0f)
     }
     val enterLift = remember { Animatable(0f) }
     val density = LocalDensity.current
-
-    LaunchedEffect(focus, text, animMs, lineSpanMs, instantAppear, freezeTransitions) {
+    // 入场时长仅在切句时采样；勿把 animMs/lineSpanMs 放进 key，
+    // 否则 lead 窗口切到真实行时会重启 Effect，把未走完的 lift 瞬间 snap 成位置突变。
+    LaunchedEffect(focus, text, instantAppear, freezeTransitions) {
         if (freezeTransitions) {
             shownFocus = focus
             shownText = text
-            lastSpanMs = lineSpanMs
             enterAlpha.snapTo(1f)
             enterLift.snapTo(0f)
+            return@LaunchedEffect
+        }
+        // 同句：入场进行中或已结束都不要打断
+        if (focus == shownFocus && shownText == text) {
             return@LaunchedEffect
         }
         val phaseMs = animMs.coerceIn(220, 420)
         val liftPx = with(density) { 10.dp.toPx() }
-        if (focus == shownFocus && shownText == text) {
-            enterAlpha.snapTo(1f)
-            enterLift.snapTo(0f)
-            lastSpanMs = lineSpanMs
-            return@LaunchedEffect
-        }
         // 选句退出后首次挂回：不要再播一遍翻页入场
         if (shownFocus < 0 && instantAppear) {
             shownFocus = focus
             shownText = text
-            lastSpanMs = lineSpanMs
             enterAlpha.snapTo(1f)
             enterLift.snapTo(0f)
             return@LaunchedEffect
         }
-        val skipExit = shownFocus < 0 || lastSpanMs < LyricSkipExitSpanMs
-
-        if (!skipExit && enterAlpha.value > 0.04f) {
-            coroutineScope {
-                launch {
-                    enterAlpha.animateTo(0f, tween(phaseMs, easing = LyricSofterEasing))
-                }
-                launch {
-                    enterLift.animateTo(
-                        -liftPx,
-                        tween(phaseMs, easing = LyricSofterEasing),
-                    )
-                }
-            }
-        }
-
+        // 切句只播入场：先等出场再入场会把耗时拉成两倍，相对提前量会明显滞后。
         shownFocus = focus
         shownText = text
-        lastSpanMs = lineSpanMs
         enterAlpha.snapTo(0f)
         enterLift.snapTo(liftPx)
         coroutineScope {

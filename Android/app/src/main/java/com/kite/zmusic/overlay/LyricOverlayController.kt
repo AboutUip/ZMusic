@@ -11,6 +11,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -30,6 +31,12 @@ class LyricOverlayController(
     private val window = LyricOverlayWindow(app, store, playback)
     private var startedActivities = 0
     private var collectJob: Job? = null
+    /**
+     * 冷启动窗口：Application.onCreate 时 Activity 尚未 onStart，
+     * startedActivities==0 会被误判为后台而闪一下悬浮窗。
+     * 在首个 Activity 启动前（或短超时确认无界面进程）按前台处理。
+     */
+    private var coldStartGuard = true
 
     fun start() {
         if (collectJob != null) return
@@ -46,15 +53,22 @@ class LyricOverlayController(
                 if (window.attached) window.applyAppearance(prefs)
             }
         }
+        // 不立刻按「无 Activity」去 show；等首帧 Activity 或超时后再裁决
         sync(
             enabled = store.current().enabled,
             hasQueue = playback.ui.value.hasQueue,
             mvActive = mvPlayback.ui.value.active,
         )
+        scope.launch {
+            delay(COLD_START_GUARD_MS)
+            if (!coldStartGuard) return@launch
+            coldStartGuard = false
+            resync()
+        }
     }
 
     private fun sync(enabled: Boolean, hasQueue: Boolean, mvActive: Boolean) {
-        val foreground = startedActivities > 0
+        val foreground = startedActivities > 0 || coldStartGuard
         val show = enabled &&
             !foreground &&
             hasQueue &&
@@ -66,6 +80,7 @@ class LyricOverlayController(
     private val activityCallbacks = object : Application.ActivityLifecycleCallbacks {
         override fun onActivityStarted(activity: Activity) {
             startedActivities++
+            if (coldStartGuard) coldStartGuard = false
             resync()
         }
 
@@ -87,5 +102,10 @@ class LyricOverlayController(
             hasQueue = playback.ui.value.hasQueue,
             mvActive = mvPlayback.ui.value.active,
         )
+    }
+
+    companion object {
+        /** 仅服务拉起进程、无 Activity 时，超时后允许按后台规则显示悬浮窗 */
+        private const val COLD_START_GUARD_MS = 400L
     }
 }
