@@ -3,16 +3,10 @@ package com.kite.zmusic.ui.player
 import android.Manifest
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
-import android.view.ViewGroup
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.camera.core.CameraSelector
-import androidx.camera.core.ImageAnalysis
-import androidx.camera.core.Preview
-import androidx.camera.lifecycle.ProcessCameraProvider
-import androidx.camera.view.PreviewView
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -64,28 +58,18 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.compose.LocalLifecycleOwner
-import com.google.zxing.BarcodeFormat
-import com.google.zxing.BinaryBitmap
-import com.google.zxing.DecodeHintType
-import com.google.zxing.MultiFormatReader
-import com.google.zxing.PlanarYUVLuminanceSource
-import com.google.zxing.common.HybridBinarizer
 import com.kite.zmusic.data.PlayerDisplayPrefs
 import com.kite.zmusic.data.PlayerDisplayPrefsCodec
 import com.kite.zmusic.data.lerpPlayerDisplayPrefs
+import com.kite.zmusic.ui.common.QrScannerOverlay
 import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.main.pageSheetHazeStyle
 import com.kite.zmusic.ui.notice.showIslandNotice
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeEffect
-import java.util.concurrent.Executors
-import java.util.concurrent.atomic.AtomicBoolean
-import kotlin.math.min
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -251,15 +235,19 @@ fun rememberPlayerDisplayTransferHost(
                 decorFitsSystemWindows = false,
             ),
         ) {
-            QrScannerFullscreen(
+            QrScannerOverlay(
+                title = "扫描配置二维码",
+                subtitle = "将二维码置于框内即可自动识别",
                 onDetected = { raw ->
                     PlayerDisplayPrefsCodec.decode(raw).fold(
                         onSuccess = { imported ->
                             scannerOpen = false
                             openPhase(TransferPhase.ImportConfirm(imported))
+                            true
                         },
                         onFailure = { e ->
                             toast(e.message?.takeIf { it.isNotBlank() } ?: "配置解析失败")
+                            false
                         },
                     )
                 },
@@ -629,195 +617,6 @@ private fun ImportApplyingContent(
                 fontSize = 12.sp,
             ),
         )
-    }
-}
-
-@Composable
-private fun QrScannerFullscreen(
-    onDetected: (String) -> Unit,
-    onOpenGallery: () -> Unit,
-    onClose: () -> Unit,
-) {
-    val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
-    val detected = remember { AtomicBoolean(false) }
-    val onDetectedState = rememberUpdatedState(onDetected)
-    val scanAlpha = remember { Animatable(0f) }
-
-    LaunchedEffect(Unit) {
-        scanAlpha.animateTo(1f, tween(380, easing = TransferCurve))
-    }
-    BackHandler { onClose() }
-
-    Box(
-        Modifier
-            .fillMaxSize()
-            .graphicsLayer { alpha = scanAlpha.value }
-            .background(Color.Black),
-    ) {
-        AndroidView(
-            factory = { ctx ->
-                val previewView = PreviewView(ctx).apply {
-                    layoutParams = ViewGroup.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                    )
-                    scaleType = PreviewView.ScaleType.FILL_CENTER
-                    implementationMode = PreviewView.ImplementationMode.COMPATIBLE
-                }
-                val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
-                val mainExecutor = ContextCompat.getMainExecutor(ctx)
-                val analysisExecutor = Executors.newSingleThreadExecutor()
-                cameraProviderFuture.addListener(
-                    {
-                        val cameraProvider = cameraProviderFuture.get()
-                        val preview = Preview.Builder().build().also {
-                            it.surfaceProvider = previewView.surfaceProvider
-                        }
-                        val analysis = ImageAnalysis.Builder()
-                            .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                            .build()
-                        analysis.setAnalyzer(analysisExecutor) { imageProxy ->
-                            if (detected.get()) {
-                                imageProxy.close()
-                                return@setAnalyzer
-                            }
-                            try {
-                                val width = imageProxy.width
-                                val height = imageProxy.height
-                                val yPlane = imageProxy.planes[0]
-                                val rowStride = yPlane.rowStride
-                                val yBuffer = yPlane.buffer
-                                val data = if (rowStride == width) {
-                                    ByteArray(yBuffer.remaining()).also { yBuffer.get(it) }
-                                } else {
-                                    ByteArray(width * height).also { out ->
-                                        var offset = 0
-                                        for (row in 0 until height) {
-                                            yBuffer.position(row * rowStride)
-                                            yBuffer.get(out, offset, width)
-                                            offset += width
-                                        }
-                                    }
-                                }
-                                val source = PlanarYUVLuminanceSource(
-                                    data,
-                                    width,
-                                    height,
-                                    0,
-                                    0,
-                                    width,
-                                    height,
-                                    false,
-                                )
-                                val binary = BinaryBitmap(HybridBinarizer(source))
-                                val result = runCatching {
-                                    MultiFormatReader().decode(
-                                        binary,
-                                        mapOf(
-                                            DecodeHintType.POSSIBLE_FORMATS to listOf(BarcodeFormat.QR_CODE),
-                                            DecodeHintType.TRY_HARDER to true,
-                                        ),
-                                    )
-                                }.getOrNull()
-                                if (result != null && detected.compareAndSet(false, true)) {
-                                    onDetectedState.value(result.text)
-                                }
-                            } catch (_: Throwable) {
-                            } finally {
-                                imageProxy.close()
-                            }
-                        }
-                        runCatching {
-                            cameraProvider.unbindAll()
-                            cameraProvider.bindToLifecycle(
-                                lifecycleOwner,
-                                CameraSelector.DEFAULT_BACK_CAMERA,
-                                preview,
-                                analysis,
-                            )
-                        }
-                    },
-                    mainExecutor,
-                )
-                previewView.tag = analysisExecutor
-                previewView
-            },
-            modifier = Modifier.fillMaxSize(),
-            onRelease = { view ->
-                (view.tag as? java.util.concurrent.ExecutorService)?.shutdown()
-                runCatching {
-                    ProcessCameraProvider.getInstance(context).get().unbindAll()
-                }
-            },
-        )
-
-        Canvas(Modifier.fillMaxSize()) {
-            val side = min(size.width, size.height) * 0.42f
-            val left = (size.width - side) / 2f
-            val top = (size.height - side) / 2f
-            val len = side * 0.18f
-            val c = TransferAccent.copy(alpha = 0.92f)
-            val sw = 4f
-            drawLine(c, Offset(left, top), Offset(left + len, top), sw, StrokeCap.Round)
-            drawLine(c, Offset(left, top), Offset(left, top + len), sw, StrokeCap.Round)
-            drawLine(c, Offset(left + side, top), Offset(left + side - len, top), sw, StrokeCap.Round)
-            drawLine(c, Offset(left + side, top), Offset(left + side, top + len), sw, StrokeCap.Round)
-            drawLine(c, Offset(left, top + side), Offset(left + len, top + side), sw, StrokeCap.Round)
-            drawLine(c, Offset(left, top + side), Offset(left, top + side - len), sw, StrokeCap.Round)
-            drawLine(c, Offset(left + side, top + side), Offset(left + side - len, top + side), sw, StrokeCap.Round)
-            drawLine(c, Offset(left + side, top + side), Offset(left + side, top + side - len), sw, StrokeCap.Round)
-        }
-
-        Column(
-            Modifier
-                .align(Alignment.TopCenter)
-                .padding(top = 28.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Text(
-                text = "扫描配置二维码",
-                color = Color.White,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Spacer(Modifier.height(6.dp))
-            Text(
-                text = "将二维码置于框内即可自动识别",
-                color = Color.White.copy(alpha = 0.7f),
-                fontSize = 12.sp,
-            )
-        }
-
-        Row(
-            Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 36.dp)
-                .fillMaxWidth()
-                .padding(horizontal = 28.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-        ) {
-            ScannerActionChip(label = "相册", onClick = onOpenGallery)
-            ScannerActionChip(label = "关闭", onClick = onClose)
-        }
-    }
-}
-
-@Composable
-private fun ScannerActionChip(label: String, onClick: () -> Unit) {
-    Box(
-        Modifier
-            .clip(RoundedCornerShape(22.dp))
-            .background(Color.White.copy(alpha = 0.16f))
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = onClick,
-            )
-            .padding(horizontal = 28.dp, vertical = 12.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(text = label, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
     }
 }
 

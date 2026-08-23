@@ -161,6 +161,8 @@ class PlaylistCoordinator(
     private var tickerJob: Job? = null
     private var noticeJob: Job? = null
     private var errorRetryJob: Job? = null
+    /** 本次装载是否开播；失败重试 / 跳过不可播时沿用，避免冷启动预热被打成自动播放。 */
+    private var loadPlayWhenReady = false
 
     /**
      * 音源短缓存：当前曲 + 邻曲常驻；切走后仍可作为「上一首」命中（不 remove-on-play）。
@@ -253,7 +255,11 @@ class PlaylistCoordinator(
             errorRetryJob = scope.launch {
                 delay(280)
                 if (idx == _ui.value.index && _ui.value.hasQueue) {
-                    loadAndPlayIndex(idx, isRetry = true)
+                    loadAndPlayIndex(
+                        idx,
+                        isRetry = true,
+                        resumePlayWhenReady = loadPlayWhenReady,
+                    )
                 }
             }
         }
@@ -1074,6 +1080,7 @@ class PlaylistCoordinator(
         recordShuffleHistory: Boolean = false,
         resumePlayWhenReady: Boolean = true,
     ) {
+        loadPlayWhenReady = resumePlayWhenReady
         if (!isRetry && idx != _ui.value.index && sleepTimer?.onLeavingTrack() == true) {
             return
         }
@@ -1262,7 +1269,11 @@ class PlaylistCoordinator(
             PlaybackMode.ORDER -> {
                 val ni = nextPlayableIndex(failedIndex, wrap = !radioActive)
                 if (ni != null) {
-                    loadAndPlayIndex(ni, recordShuffleHistory = false)
+                    loadAndPlayIndex(
+                        ni,
+                        recordShuffleHistory = false,
+                        resumePlayWhenReady = loadPlayWhenReady,
+                    )
                     if (radioActive) ensureRadioLookahead()
                 } else if (radioActive) {
                     pendingFmAdvance = true
@@ -1275,14 +1286,25 @@ class PlaylistCoordinator(
                 preparedShuffleNext = null
                 val ni = nextPlayableIndex(failedIndex)
                 if (ni != null) {
-                    loadAndPlayIndex(ni, recordShuffleHistory = false)
+                    loadAndPlayIndex(
+                        ni,
+                        recordShuffleHistory = false,
+                        resumePlayWhenReady = loadPlayWhenReady,
+                    )
                 } else {
                     _ui.update { it.copy(loadPending = false, isPlaying = false, playWhenReady = false, buffering = false) }
                 }
             }
             PlaybackMode.REPEAT_ONE -> {
-                if (retryCount <= MAX_RETRIES) loadAndPlayIndex(failedIndex, isRetry = true)
-                else _ui.update { it.copy(loadPending = false, isPlaying = false, playWhenReady = false, buffering = false) }
+                if (retryCount <= MAX_RETRIES) {
+                    loadAndPlayIndex(
+                        failedIndex,
+                        isRetry = true,
+                        resumePlayWhenReady = loadPlayWhenReady,
+                    )
+                } else {
+                    _ui.update { it.copy(loadPending = false, isPlaying = false, playWhenReady = false, buffering = false) }
+                }
             }
         }
     }

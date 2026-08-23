@@ -94,6 +94,8 @@ import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.main.wallpaperItemChrome
 import com.kite.zmusic.ui.notice.showIslandNotice
 import com.kite.zmusic.ui.player.WordLyricSettingsPage
+import com.kite.zmusic.ui.server.CommunityServerViewModel
+import com.kite.zmusic.ui.server.CommunityServerViewModelFactory
 import com.kite.zmusic.ui.server.ServerConfigViewModel
 import com.kite.zmusic.ui.server.ServerConfigViewModelFactory
 import kotlinx.coroutines.launch
@@ -119,10 +121,21 @@ fun SettingsScreen(
         key = "settings-server",
         factory = ServerConfigViewModelFactory(serverConfig),
     )
+    val communityStore = remember {
+        (context.applicationContext as ZMusicApplication).communityServerStore
+    }
+    val communityVm: CommunityServerViewModel = viewModel(
+        key = "settings-community-server",
+        factory = CommunityServerViewModelFactory(communityStore),
+    )
     var endpointLabel by remember {
         mutableStateOf(maskEndpoint(serverConfig.currentEndpoint()))
     }
+    var communityLabel by remember {
+        mutableStateOf(maskEndpoint(communityStore.current()))
+    }
     var editServer by remember { mutableStateOf(false) }
+    var editCommunity by remember { mutableStateOf(false) }
     var confirmLogout by remember { mutableStateOf(false) }
     val aboutVisible = remember { MutableTransitionState(false) }
     val changelogVisible = remember { MutableTransitionState(false) }
@@ -135,6 +148,8 @@ fun SettingsScreen(
     val realtimeCacheVisible = remember { MutableTransitionState(false) }
     val wordLyricVisible = remember { MutableTransitionState(false) }
     val predictiveBackVisible = remember { MutableTransitionState(false) }
+    val landscapeModeVisible = remember { MutableTransitionState(false) }
+    val testPlanVisible = remember { MutableTransitionState(false) }
     val glassVisible = remember { MutableTransitionState(false) }
     val appearanceVisible = remember { MutableTransitionState(false) }
     val wallpaperVisible = remember { MutableTransitionState(false) }
@@ -161,6 +176,12 @@ fun SettingsScreen(
         (context.applicationContext as ZMusicApplication).predictiveBackStore
     }
     val predictiveBack by predictiveBackStore.enabled.collectAsStateWithLifecycle()
+    val landscapeModeStore = remember {
+        (context.applicationContext as ZMusicApplication).landscapeModeStore
+    }
+    val landscapeMode by landscapeModeStore.enabled.collectAsStateWithLifecycle()
+    val appUpdateStore = remember { app.appUpdateStore }
+    val testPlan by appUpdateStore.testPlanFlow.collectAsStateWithLifecycle()
     val lyricRenderStore = remember {
         (context.applicationContext as ZMusicApplication).lyricRenderStore
     }
@@ -245,6 +266,23 @@ fun SettingsScreen(
                         onClick = {
                             vm.reloadFromStore()
                             editServer = true
+                        },
+                    )
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(start = 62.dp)
+                            .height(0.5.dp)
+                            .background(MainPalette.Hairline),
+                    )
+                    SettingsRow(
+                        title = "社区服务器",
+                        subtitle = communityLabel,
+                        icon = ZIcons.Handshake,
+                        tint = Color(0xFF6B5CE7),
+                        onClick = {
+                            communityVm.reloadFromStore()
+                            editCommunity = true
                         },
                     )
                 }
@@ -410,6 +448,20 @@ fun SettingsScreen(
                         tint = Color(0xFF3D7CFF),
                         onClick = { predictiveBackVisible.targetState = true },
                     )
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(start = 62.dp)
+                            .height(0.5.dp)
+                            .background(MainPalette.Hairline),
+                    )
+                    SettingsRow(
+                        title = "横屏模式",
+                        subtitle = landscapeModeSubtitle(landscapeMode),
+                        icon = ZIcons.ScreenRotation,
+                        tint = Color(0xFF4A8FA8),
+                        onClick = { landscapeModeVisible.targetState = true },
+                    )
                 }
                 Spacer(Modifier.height(22.dp))
                 SettingsGroup(
@@ -437,6 +489,20 @@ fun SettingsScreen(
                         icon = ZIcons.History,
                         tint = Color(0xFF2A9D8F),
                         onClick = { changelogVisible.targetState = true },
+                    )
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(start = 62.dp)
+                            .height(0.5.dp)
+                            .background(MainPalette.Hairline),
+                    )
+                    SettingsRow(
+                        title = "参与测试计划",
+                        subtitle = testPlanSubtitle(testPlan),
+                        icon = ZIcons.Science,
+                        tint = Color(0xFFC9A227),
+                        onClick = { testPlanVisible.targetState = true },
                     )
                     Box(
                         Modifier
@@ -742,6 +808,44 @@ fun SettingsScreen(
                 modifier = Modifier.fillMaxSize(),
             )
         }
+        SettingsDrillHost(
+            visibleState = landscapeModeVisible,
+            landscape = landscape,
+            title = "横屏模式",
+            onBack = { landscapeModeVisible.targetState = false },
+        ) {
+            LandscapeModeSettingsPage(
+                enabled = landscapeMode,
+                onEnabledChange = { next ->
+                    if (next == landscapeMode) return@LandscapeModeSettingsPage
+                    landscapeModeStore.setEnabled(next)
+                    context.showIslandNotice(
+                        if (next) "已开启横屏模式" else "已关闭横屏模式",
+                    )
+                },
+                contentBottomInset = contentBottomInset,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        SettingsDrillHost(
+            visibleState = testPlanVisible,
+            landscape = landscape,
+            title = "参与测试计划",
+            onBack = { testPlanVisible.targetState = false },
+        ) {
+            TestPlanSettingsPage(
+                enabled = testPlan,
+                onEnabledChange = { next ->
+                    if (next == testPlan) return@TestPlanSettingsPage
+                    appUpdateStore.testPlan = next
+                    context.showIslandNotice(
+                        if (next) "已开启测试计划" else "已关闭测试计划",
+                    )
+                },
+                contentBottomInset = contentBottomInset,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
     }
 
     if (editServer) {
@@ -794,6 +898,70 @@ fun SettingsScreen(
                     )
                 }
                 vm.statusHint?.let { hint ->
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = hint,
+                        style = TextStyle(
+                            color = MainPalette.Secondary,
+                            fontSize = 13.sp,
+                            textAlign = TextAlign.Center,
+                        ),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            },
+        )
+    }
+    if (editCommunity) {
+        GlassAlertDialog(
+            title = "社区服务器",
+            message = "仅用于社区登录提交，与音乐服务器分开。测试通过后才会保存。",
+            confirmLabel = "保存",
+            confirmEnabled = !communityVm.busy,
+            onConfirm = {
+                communityVm.saveAndConnect {
+                    communityLabel = maskEndpoint(communityStore.current())
+                    editCommunity = false
+                    context.showIslandNotice("社区服务器已更新")
+                }
+            },
+            onDismiss = { if (!communityVm.busy) editCommunity = false },
+            extraContent = {
+                GlassPromptField(
+                    value = communityVm.host,
+                    onValueChange = communityVm::onHostChange,
+                    placeholder = "主机 / IP",
+                    maxLength = 253,
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Uri,
+                        imeAction = ImeAction.Next,
+                    ),
+                )
+                Spacer(Modifier.height(8.dp))
+                GlassPromptField(
+                    value = communityVm.portText,
+                    onValueChange = communityVm::onPortChange,
+                    placeholder = "端口",
+                    maxLength = 5,
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Number,
+                        imeAction = ImeAction.Done,
+                    ),
+                )
+                communityVm.bannerError?.let { err ->
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = err,
+                        style = TextStyle(
+                            color = MainPalette.Accent,
+                            fontSize = 13.sp,
+                            lineHeight = 18.sp,
+                            textAlign = TextAlign.Center,
+                        ),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                communityVm.statusHint?.let { hint ->
                     Spacer(Modifier.height(8.dp))
                     Text(
                         text = hint,
@@ -887,11 +1055,12 @@ private fun SettingsDrillHost(
         enabled = visibleState.targetState && backEnabled,
         onBack = onBack,
     )
+    val covering = visibleState.currentState || visibleState.targetState
     AnimatedVisibility(
         visibleState = visibleState,
         modifier = Modifier
             .fillMaxSize()
-            .zIndex(1f)
+            .zIndex(if (covering) 4f else 0f)
             .predictiveBackLayer(backUi),
         enter = if (landscape) {
             LandscapeCoverEnter
@@ -904,7 +1073,15 @@ private fun SettingsDrillHost(
             slideOutHorizontally(DrillSlideSpec) { it } + fadeOut(DrillFadeSpec)
         },
     ) {
-        Box(Modifier.fillMaxSize()) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = {},
+                ),
+        ) {
             if (skipWallpaper) {
                 Box(Modifier.fillMaxSize().background(MainPalette.Page))
             } else {

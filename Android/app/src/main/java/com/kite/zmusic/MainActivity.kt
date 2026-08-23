@@ -58,6 +58,7 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         SessionRotationLockStore.applyTo(this)
+        (application as ZMusicApplication).appUpdateCoordinator.onHostResumed(this)
     }
 
     override fun onNewIntent(intent: android.content.Intent) {

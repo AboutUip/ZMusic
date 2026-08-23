@@ -89,10 +89,14 @@ internal data class GlassAlertSpec(
     val message: String?,
     val confirmLabel: String,
     val cancelLabel: String?,
+    val tertiaryLabel: String?,
     val confirmDestructive: Boolean,
     val confirmEnabled: Boolean,
+    val scrimDismiss: Boolean,
+    val backDismiss: Boolean,
     val onConfirm: () -> Unit,
     val onDismiss: () -> Unit,
+    val onTertiary: () -> Unit,
     val extraContent: (@Composable ColumnScope.() -> Unit)?,
 )
 
@@ -113,23 +117,32 @@ fun GlassAlertDialog(
     confirmDestructive: Boolean = false,
     confirmEnabled: Boolean = true,
     extraContent: (@Composable ColumnScope.() -> Unit)? = null,
+    tertiaryLabel: String? = null,
+    onTertiary: () -> Unit = {},
+    scrimDismiss: Boolean = true,
+    backDismiss: Boolean = true,
 ) {
     val host = LocalGlassAlertHost.current ?: return
     val onConfirmUpdated = rememberUpdatedState(onConfirm)
     val onDismissUpdated = rememberUpdatedState(onDismiss)
+    val onTertiaryUpdated = rememberUpdatedState(onTertiary)
     val extraUpdated = rememberUpdatedState(extraContent)
     fun currentSpec() = GlassAlertSpec(
         title = title,
         message = message,
         confirmLabel = confirmLabel,
         cancelLabel = cancelLabel,
+        tertiaryLabel = tertiaryLabel,
         confirmDestructive = confirmDestructive,
         confirmEnabled = confirmEnabled,
+        scrimDismiss = scrimDismiss,
+        backDismiss = backDismiss,
         onConfirm = { onConfirmUpdated.value() },
         onDismiss = { onDismissUpdated.value() },
+        onTertiary = { onTertiaryUpdated.value() },
         extraContent = extraUpdated.value,
     )
-    DisposableEffect(host, title, message, confirmLabel, cancelLabel, confirmDestructive) {
+    DisposableEffect(host, title, message, confirmLabel, cancelLabel, tertiaryLabel, confirmDestructive, scrimDismiss, backDismiss) {
         host.present(currentSpec())
         onDispose { host.hide() }
     }
@@ -155,7 +168,7 @@ internal fun GlassAlertOverlay(
     }
     if (spec == null) return
 
-    val backUi = rememberPredictiveBackUi(enabled = visible, onBack = spec.onDismiss)
+    val backUi = rememberPredictiveBackUi(enabled = visible && spec.backDismiss, onBack = spec.onDismiss)
 
     val reveal = remember { Animatable(0f) }
     LaunchedEffect(visible) {
@@ -181,7 +194,7 @@ internal fun GlassAlertOverlay(
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
-                    onClick = spec.onDismiss,
+                    onClick = { if (spec.scrimDismiss) spec.onDismiss() },
                 ),
         )
         GlassAlertCard(
@@ -272,29 +285,48 @@ private fun GlassAlertCard(
                 .height(0.5.dp)
                 .background(Color.Black.copy(alpha = 0.10f)),
         )
+        val tertiary = spec.tertiaryLabel
+        if (!tertiary.isNullOrBlank()) {
+            GlassAlertTextButton(
+                label = spec.confirmLabel,
+                color = MainPalette.Accent.copy(
+                    alpha = if (spec.confirmEnabled) 1f else 0.38f,
+                ),
+                enabled = spec.confirmEnabled,
+                bold = spec.confirmDestructive,
+                onClick = spec.onConfirm,
+            )
+            GlassAlertHairline()
+            val cancel = spec.cancelLabel
+            if (!cancel.isNullOrBlank()) {
+                GlassAlertTextButton(
+                    label = cancel,
+                    color = MainPalette.Ink,
+                    enabled = true,
+                    bold = false,
+                    onClick = spec.onDismiss,
+                )
+                GlassAlertHairline()
+            }
+            GlassAlertTextButton(
+                label = tertiary,
+                color = MainPalette.Secondary,
+                enabled = true,
+                bold = false,
+                onClick = spec.onTertiary,
+            )
+        } else {
         val cancel = spec.cancelLabel
         if (cancel.isNullOrBlank()) {
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .height(56.dp)
-                    .clickable(
-                        enabled = spec.confirmEnabled,
-                        onClick = spec.onConfirm,
-                    ),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    spec.confirmLabel,
-                    style = TextStyle(
-                        color = MainPalette.Accent.copy(
-                            alpha = if (spec.confirmEnabled) 1f else 0.38f,
-                        ),
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Medium,
-                    ),
-                )
-            }
+            GlassAlertTextButton(
+                label = spec.confirmLabel,
+                color = MainPalette.Accent.copy(
+                    alpha = if (spec.confirmEnabled) 1f else 0.38f,
+                ),
+                enabled = spec.confirmEnabled,
+                bold = spec.confirmDestructive,
+                onClick = spec.onConfirm,
+            )
         } else {
             Row(
                 Modifier
@@ -350,6 +382,43 @@ private fun GlassAlertCard(
                 }
             }
         }
+        }
+    }
+}
+
+@Composable
+private fun GlassAlertHairline() {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height(0.5.dp)
+            .background(Color.Black.copy(alpha = 0.10f)),
+    )
+}
+
+@Composable
+private fun GlassAlertTextButton(
+    label: String,
+    color: Color,
+    enabled: Boolean,
+    bold: Boolean,
+    onClick: () -> Unit,
+) {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height(56.dp)
+            .clickable(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            label,
+            style = TextStyle(
+                color = color,
+                fontSize = 18.sp,
+                fontWeight = if (bold) FontWeight.SemiBold else FontWeight.Medium,
+            ),
+        )
     }
 }
 

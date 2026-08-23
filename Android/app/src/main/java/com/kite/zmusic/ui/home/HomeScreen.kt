@@ -64,6 +64,8 @@ import com.kite.zmusic.ui.main.MainOverlay
 import com.kite.zmusic.ui.common.UrlImage
 import com.kite.zmusic.ui.common.UrlImageCache
 import com.kite.zmusic.ui.common.ZPullRefresh
+import com.kite.zmusic.ui.community.HomeCommunityScanButton
+import com.kite.zmusic.ui.community.rememberCommunityLoginOpener
 import com.kite.zmusic.ui.icons.ZIcons
 import com.kite.zmusic.ui.main.MainContentPadTop
 import com.kite.zmusic.ui.main.MainPageHeader
@@ -71,6 +73,7 @@ import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.main.mainContentPadH
 import com.kite.zmusic.ui.orientation.LocalSessionRotationLock
 import com.kite.zmusic.ui.orientation.SessionRotationLockStore
+import com.kite.zmusic.ui.orientation.rememberLandscapeModeEnabled
 import com.kite.zmusic.ui.orientation.rememberSystemAutoRotateEnabled
 import com.kite.zmusic.ui.player.NowPlayingRotationLockButton
 import kotlinx.coroutines.delay
@@ -100,6 +103,7 @@ fun HomeScreen(
         widthDp >= 600 -> 3
         else -> 3
     }
+    val openCommunityLogin = rememberCommunityLoginOpener()
 
     val onBanner: (HomeBanner) -> Unit = { b ->
         when (b.targetType) {
@@ -136,6 +140,7 @@ fun HomeScreen(
             onOpenOverlay = onOpenOverlay,
             onPlayTracks = onPlayTracks,
             onBanner = onBanner,
+            onScanCommunity = openCommunityLogin,
             modifier = modifier,
         )
         return
@@ -152,6 +157,7 @@ fun HomeScreen(
             trailing = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     HomeRotationControl(landscape = false)
+                    HomeCommunityScanButton(onClick = openCommunityLogin)
                     Box(
                         Modifier
                             .size(40.dp)
@@ -330,6 +336,7 @@ private fun HomeRotationControl(
     landscape: Boolean,
     modifier: Modifier = Modifier,
 ) {
+    if (!rememberLandscapeModeEnabled()) return
     val activity = LocalActivity.current
     val rotationLock = LocalSessionRotationLock.current
     val rotationLocked = SessionRotationLockStore.locked
@@ -882,6 +889,7 @@ private fun HomeLandscapeBody(
     onOpenOverlay: (MainOverlay) -> Unit,
     onPlayTracks: (List<TrackRow>, Int, Long?, String?) -> Unit,
     onBanner: (HomeBanner) -> Unit,
+    onScanCommunity: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     ZPullRefresh(
@@ -896,6 +904,7 @@ private fun HomeLandscapeBody(
             contentPadding = PaddingValues(top = 16.dp, bottom = contentBottomInset + 16.dp),
         ) {
             item(key = "head") {
+            val showRotation = rememberLandscapeModeEnabled()
             Box(
                 Modifier
                     .fillMaxWidth()
@@ -905,14 +914,19 @@ private fun HomeLandscapeBody(
                     onClick = { onOpenOverlay(MainOverlay.Search) },
                     modifier = Modifier
                         .align(Alignment.CenterStart)
-                        .padding(end = 48.dp)
+                        .then(
+                            Modifier.padding(end = if (showRotation) 96.dp else 48.dp),
+                        )
                         .widthIn(max = 420.dp)
                         .fillMaxWidth(),
                 )
-                HomeRotationControl(
-                    landscape = true,
-                    modifier = Modifier.align(Alignment.CenterEnd),
-                )
+                Row(
+                    Modifier.align(Alignment.CenterEnd),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    HomeRotationControl(landscape = true)
+                    HomeCommunityScanButton(onClick = onScanCommunity)
+                }
             }
             Spacer(Modifier.height(20.dp))
 

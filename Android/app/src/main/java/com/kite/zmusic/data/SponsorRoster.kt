@@ -7,15 +7,18 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 data class SponsorEntry(
+    val id: String = "",
     val time: String,
     val name: String,
     val amount: String,
-)
+) {
+    val listKey: String
+        get() = id.ifBlank { "$name|$time|$amount" }
+}
 
 /**
- * 赞助名单：assets/sponsors.json，进入页面时才读。
- * 字段 time / name / amount；amount 可以是数字或字符串，展示固定两位小数。
- * 数组从上到下就是列表顺序。
+ * 赞助名单字段：id / time / name / amount。
+ * 远程目录走 XAIOP；本地 JSON 解析仍保留给尚未删掉的 assets。
  */
 object SponsorRoster {
     private const val ASSET = "sponsors.json"
@@ -35,6 +38,7 @@ object SponsorRoster {
             val name = o.optString("name").trim()
             if (name.isEmpty()) continue
             out += SponsorEntry(
+                id = o.optString("id").trim(),
                 time = o.optString("time").trim(),
                 name = name,
                 amount = readAmount(o.opt("amount")),
@@ -54,6 +58,21 @@ object SponsorRoster {
             .trim()
         val n = plain.toDoubleOrNull()
         return if (n != null) formatYuan(n) else text
+    }
+
+    fun parseRemote(snapshot: Any?): CommunityCatalogPage<SponsorEntry> =
+        parseCatalogArray(snapshot, "sponsors", ::parseSponsor)
+
+    internal fun parseSponsor(raw: Any?): SponsorEntry? {
+        val o = raw as? Map<*, *> ?: return null
+        val name = catalogString(o["name"])
+        if (name.isEmpty()) return null
+        return SponsorEntry(
+            id = catalogString(o["id"]),
+            time = catalogString(o["time"]),
+            name = name,
+            amount = readAmount(o["amount"]),
+        )
     }
 
     internal fun formatYuan(value: Double): String =

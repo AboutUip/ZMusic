@@ -14,7 +14,9 @@ import com.google.zxing.BinaryBitmap
 import com.google.zxing.DecodeHintType
 import com.google.zxing.MultiFormatReader
 import com.google.zxing.RGBLuminanceSource
+import com.google.zxing.common.GlobalHistogramBinarizer
 import com.google.zxing.common.HybridBinarizer
+import kotlin.math.max
 import com.google.zxing.qrcode.QRCodeWriter
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import java.io.InputStream
@@ -42,19 +44,43 @@ object PlayerDisplayQr {
     }
 
     fun decodeBitmap(bitmap: Bitmap): String? = runCatching {
-        val w = bitmap.width
-        val h = bitmap.height
-        val pixels = IntArray(w * h)
-        bitmap.getPixels(pixels, 0, w, 0, 0, w, h)
-        val source = RGBLuminanceSource(w, h, pixels)
-        val binary = BinaryBitmap(HybridBinarizer(source))
-        val hints = mapOf(
-            DecodeHintType.CHARACTER_SET to "UTF-8",
-            DecodeHintType.TRY_HARDER to true,
-            DecodeHintType.POSSIBLE_FORMATS to listOf(BarcodeFormat.QR_CODE),
-        )
-        MultiFormatReader().decode(binary, hints).text
+        val scaled = scaleForDecode(bitmap)
+        try {
+            val w = scaled.width
+            val h = scaled.height
+            val pixels = IntArray(w * h)
+            scaled.getPixels(pixels, 0, w, 0, 0, w, h)
+            val source = RGBLuminanceSource(w, h, pixels)
+            val reader = MultiFormatReader().apply { setHints(DecodeHints) }
+            runCatching { reader.decodeWithState(BinaryBitmap(HybridBinarizer(source))).text }
+                .recoverCatching {
+                    reader.reset()
+                    reader.decodeWithState(BinaryBitmap(GlobalHistogramBinarizer(source))).text
+                }
+                .getOrNull()
+        } finally {
+            if (scaled !== bitmap && !scaled.isRecycled) scaled.recycle()
+        }
     }.getOrNull()
+
+    internal val DecodeHints: Map<DecodeHintType, Any> = mapOf(
+        DecodeHintType.CHARACTER_SET to "UTF-8",
+        DecodeHintType.TRY_HARDER to true,
+        DecodeHintType.POSSIBLE_FORMATS to listOf(BarcodeFormat.QR_CODE),
+        DecodeHintType.ALSO_INVERTED to true,
+    )
+
+    private fun scaleForDecode(bitmap: Bitmap): Bitmap {
+        val longest = max(bitmap.width, bitmap.height)
+        if (longest <= 1500) return bitmap
+        val scale = 1500f / longest
+        return Bitmap.createScaledBitmap(
+            bitmap,
+            (bitmap.width * scale).toInt().coerceAtLeast(1),
+            (bitmap.height * scale).toInt().coerceAtLeast(1),
+            true,
+        )
+    }
 
     fun decodeUri(context: Context, uri: Uri): String? {
         return runCatching {

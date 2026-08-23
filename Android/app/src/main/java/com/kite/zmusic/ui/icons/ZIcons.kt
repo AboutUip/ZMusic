@@ -26,7 +26,9 @@ import androidx.compose.material.icons.rounded.Checklist
 import androidx.compose.material.icons.rounded.Dns
 import androidx.compose.material.icons.rounded.EmojiEvents
 import androidx.compose.material.icons.rounded.Folder
+import androidx.compose.material.icons.rounded.GetApp
 import androidx.compose.material.icons.rounded.GraphicEq
+import androidx.compose.material.icons.rounded.Science
 import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.HideImage
 import androidx.compose.material.icons.rounded.Bluetooth
@@ -48,6 +50,7 @@ import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.PhotoCamera
+import androidx.compose.material.icons.rounded.QrCodeScanner
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.FormatAlignCenter
 import androidx.compose.material.icons.rounded.Forward5
@@ -58,6 +61,7 @@ import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Radio
 import androidx.compose.material.icons.rounded.Remove
 import androidx.compose.material.icons.rounded.Replay5
+import androidx.compose.material.icons.rounded.ScreenRotation
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.Settings
@@ -86,7 +90,10 @@ object ZIcons {
     val Search: ImageVector get() = Icons.Rounded.Search
     val Settings: ImageVector get() = Icons.Rounded.Settings
     val Swipe: ImageVector get() = Icons.Rounded.Swipe
+    val ScreenRotation: ImageVector get() = Icons.Rounded.ScreenRotation
     val GraphicEq: ImageVector get() = Icons.Rounded.GraphicEq
+    val Science: ImageVector get() = Icons.Rounded.Science
+    val GetApp: ImageVector get() = Icons.Rounded.GetApp
     val Headset: ImageVector get() = Icons.Rounded.Headset
     val Speaker: ImageVector get() = Icons.Rounded.Speaker
     val Bluetooth: ImageVector get() = Icons.Rounded.Bluetooth
@@ -96,6 +103,7 @@ object ZIcons {
     val Security: ImageVector get() = Icons.Rounded.Security
     val Notifications: ImageVector get() = Icons.Rounded.Notifications
     val Camera: ImageVector get() = Icons.Rounded.PhotoCamera
+    val QrScan: ImageVector get() = Icons.Rounded.QrCodeScanner
     val Battery: ImageVector get() = Icons.Rounded.BatteryChargingFull
     val BlurOn: ImageVector get() = Icons.Rounded.BlurOn
     val DarkMode: ImageVector get() = Icons.Rounded.DarkMode

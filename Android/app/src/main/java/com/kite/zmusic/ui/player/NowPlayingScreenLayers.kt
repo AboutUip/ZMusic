@@ -85,6 +85,7 @@ internal fun NowPlayingScreenLayers(
     onSeek: (Long) -> Unit,
     onDismiss: () -> Unit,
     onOpenArtist: (() -> Unit)?,
+    onOpenUser: (Long, String, String?) -> Unit = { _, _, _ -> },
     onPlayQueueIndex: (Int) -> Unit,
     onNeedQueueThrough: (Int) -> Unit,
     trackLiked: Boolean,
@@ -657,6 +658,7 @@ internal fun NowPlayingScreenLayers(
                     },
                     coverUrl = track.coverUrl,
                     hazeState = settingsHazeState,
+                    onOpenUser = onOpenUser,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()

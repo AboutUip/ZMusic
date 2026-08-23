@@ -85,6 +85,7 @@ import com.kite.zmusic.data.VinylColorStyle
 import com.kite.zmusic.ui.main.MainControls
 import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.main.pageSheetHazeStyle
+import com.kite.zmusic.ui.orientation.rememberLandscapeModeEnabled
 import com.kite.zmusic.ui.theme.MainSlider
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeEffect
@@ -336,6 +337,7 @@ fun NowPlayingRotationLockButton(
     chromeBackground: Boolean = true,
     tint: Color = IconTint,
 ) {
+    if (!rememberLandscapeModeEnabled()) return
     val icon: @Composable () -> Unit = {
         Canvas(Modifier.size(22.dp)) {
             val stroke = Stroke(
@@ -870,6 +872,15 @@ fun NowPlayingSettingsSheet(
                                         onPrefsChange(prefs.copy(portraitPreviewLyricEnabled = it))
                                     },
                                 )
+                                SettingsSwitchRow(
+                                    title = "播放页屏幕常亮",
+                                    subtitle = "仅竖屏播放页生效，停留时屏幕不自动熄灭",
+                                    checked = prefs.keepScreenOn,
+                                    colors = switchColors,
+                                    onCheckedChange = {
+                                        onPrefsChange(prefs.copy(keepScreenOn = it))
+                                    },
+                                )
                             }
                         }
                         val previewOn = prefs.portraitPreviewLyricEnabled
@@ -1233,6 +1244,13 @@ fun NowPlayingSettingsSheet(
                                 checked = prefs.activeHalo,
                                 colors = switchColors,
                                 onCheckedChange = { onPrefsChange(prefs.copy(activeHalo = it)) },
+                            )
+                            SettingsSwitchRow(
+                                title = "播放页屏幕常亮",
+                                subtitle = "仅横屏播放页生效，停留时屏幕不自动熄灭",
+                                checked = prefs.keepScreenOn,
+                                colors = switchColors,
+                                onCheckedChange = { onPrefsChange(prefs.copy(keepScreenOn = it)) },
                             )
                         }
                     }

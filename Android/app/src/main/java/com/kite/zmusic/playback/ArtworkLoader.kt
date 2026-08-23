@@ -2,13 +2,12 @@ package com.kite.zmusic.playback
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.util.LruCache
+import androidx.compose.ui.graphics.asAndroidBitmap
 import com.kite.zmusic.ui.common.UrlImageCache
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
-import okhttp3.Request
 import java.util.concurrent.TimeUnit
 
 /**
@@ -37,35 +36,25 @@ object ArtworkLoader {
                     UrlImageCache.isLocalMediaUri(key) -> UrlImageCache.readLocalBytes(context, key)
                     file.exists() -> file.readBytes()
                     else -> {
-                        val req = Request.Builder().url(key).get().build()
+                        val req = UrlImageCache.imageRequest(key)
                         client.newCall(req).execute().use { resp ->
                             if (!resp.isSuccessful) return@runCatching null
-                            val body = resp.body?.bytes() ?: return@runCatching null
-                            runCatching { file.writeBytes(body) }
-                            UrlImageCache.trimDisk(context)
-                            body
+                            resp.body?.bytes()
                         }
                     }
                 } ?: return@runCatching null
-
-                val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
-                val sample = calculateInSampleSize(opts.outWidth, opts.outHeight, maxEdge)
-                val decodeOpts = BitmapFactory.Options().apply { inSampleSize = sample }
-                BitmapFactory.decodeByteArray(bytes, 0, bytes.size, decodeOpts)?.also {
-                    memoryCache.put(key, it)
+                val bmp = UrlImageCache.decodeSampledBitmap(bytes, maxEdge)?.asAndroidBitmap()
+                if (bmp == null) {
+                    if (file.exists()) file.delete()
+                    return@runCatching null
                 }
+                if (!UrlImageCache.isLocalMediaUri(key)) {
+                    runCatching { file.writeBytes(bytes) }
+                    UrlImageCache.trimDisk(context)
+                }
+                memoryCache.put(key, bmp)
+                bmp
             }.getOrNull()
         }
-    }
-
-    private fun calculateInSampleSize(width: Int, height: Int, maxEdge: Int): Int {
-        var sample = 1
-        var w = width
-        var h = height
-        while (w / sample > maxEdge || h / sample > maxEdge) {
-            sample *= 2
-        }
-        return sample.coerceAtLeast(1)
     }
 }

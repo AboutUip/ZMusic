@@ -1,11 +1,16 @@
 package com.kite.zmusic.ui.common
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.Color
 import android.net.Uri
 import android.util.LruCache
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import com.caverock.androidsvg.PreserveAspectRatio
+import com.caverock.androidsvg.SVG
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -15,6 +20,7 @@ import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import java.io.ByteArrayInputStream
 import java.io.File
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
@@ -75,14 +81,18 @@ object UrlImageCache {
                         val req = imageRequest(key)
                         client.newCall(req).execute().use { resp ->
                             if (!resp.isSuccessful) return@runCatching
-                            val body = resp.body?.bytes() ?: return@runCatching
-                            runCatching { file.writeBytes(body) }
-                            trimDiskLocked(context)
-                            body
+                            resp.body?.bytes()
                         }
                     }
                 } ?: return@runCatching
-                val bmp = decodeSampledBitmap(bytes) ?: return@runCatching
+                val bmp = decodeSampledBitmap(bytes) ?: run {
+                    if (file.exists()) file.delete()
+                    return@runCatching
+                }
+                if (!isLocalMediaUri(key)) {
+                    runCatching { file.writeBytes(bytes) }
+                    trimDiskLocked(context)
+                }
                 memory.put(memoryKey(key, DECODE_MAX_PX), bmp)
             }
         }
@@ -131,17 +141,31 @@ object UrlImageCache {
         }
     }
 
-    /** 网易图床常校验 Referer，封面/背景统一带上。 */
-    fun imageRequest(url: String): Request =
-        Request.Builder()
+    /**
+     * 网易图床常校验 Referer。赞助商等第三方图不要带 `music.163.com`，
+     * 否则会被对方按盗链拒绝。
+     */
+    fun imageRequest(url: String): Request {
+        val builder = Request.Builder()
             .url(url)
             .header(
                 "User-Agent",
                 "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36",
             )
-            .header("Referer", "https://music.163.com/")
             .get()
-            .build()
+        if (needsNeteaseReferer(url)) {
+            builder.header("Referer", "https://music.163.com/")
+        }
+        return builder.build()
+    }
+
+    internal fun needsNeteaseReferer(url: String): Boolean {
+        val host = runCatching { Uri.parse(url).host }.getOrNull()?.lowercase() ?: return false
+        return host == "music.163.com" ||
+            host.endsWith(".music.163.com") ||
+            host.endsWith(".music.126.net") ||
+            host.endsWith("music.126.net")
+    }
 
     /** 缓存键：trim 后的完整 URL，严格一对一，禁止用曲目 id 顶替以免换封面后串图。 */
     fun normalizeKey(url: String?): String? =
@@ -160,6 +184,17 @@ object UrlImageCache {
     }
 
     fun decodeSampledBitmap(bytes: ByteArray, maxPx: Int = DECODE_MAX_PX): ImageBitmap? {
+        if (bytes.isEmpty()) return null
+        decodeRaster(bytes, maxPx)?.let { return it }
+        return decodeSvg(bytes, maxPx)
+    }
+
+    fun decodeSampledFile(path: String, maxPx: Int = DECODE_MAX_PX): ImageBitmap? {
+        val bytes = runCatching { File(path).readBytes() }.getOrNull() ?: return null
+        return decodeSampledBitmap(bytes, maxPx)
+    }
+
+    private fun decodeRaster(bytes: ByteArray, maxPx: Int): ImageBitmap? {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
         val w = bounds.outWidth
@@ -173,18 +208,38 @@ object UrlImageCache {
         return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)?.asImageBitmap()
     }
 
-    fun decodeSampledFile(path: String, maxPx: Int = DECODE_MAX_PX): ImageBitmap? {
-        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeFile(path, bounds)
-        val w = bounds.outWidth
-        val h = bounds.outHeight
-        if (w <= 0 || h <= 0) return null
-        var sample = 1
-        while (w / sample > maxPx || h / sample > maxPx) {
-            sample *= 2
+    /** 社区 logo 可能是 SVG；按内容识别，不看扩展名。 */
+    private fun decodeSvg(bytes: ByteArray, maxPx: Int): ImageBitmap? {
+        if (!looksLikeSvg(bytes)) return null
+        return runCatching {
+            val svg = SVG.getFromInputStream(ByteArrayInputStream(bytes))
+            svg.documentPreserveAspectRatio = PreserveAspectRatio.LETTERBOX
+            val size = maxPx.coerceAtLeast(1)
+            val picture = svg.renderToPicture(size, size)
+            val bw = picture.width.coerceAtLeast(1)
+            val bh = picture.height.coerceAtLeast(1)
+            val bmp = Bitmap.createBitmap(bw, bh, Bitmap.Config.ARGB_8888)
+            bmp.eraseColor(Color.TRANSPARENT)
+            Canvas(bmp).drawPicture(picture)
+            bmp.asImageBitmap()
+        }.getOrNull()
+    }
+
+    private fun looksLikeSvg(bytes: ByteArray): Boolean {
+        var offset = 0
+        if (bytes.size >= 3 &&
+            bytes[0] == 0xEF.toByte() &&
+            bytes[1] == 0xBB.toByte() &&
+            bytes[2] == 0xBF.toByte()
+        ) {
+            offset = 3
         }
-        val opts = BitmapFactory.Options().apply { inSampleSize = sample }
-        return BitmapFactory.decodeFile(path, opts)?.asImageBitmap()
+        val len = (bytes.size - offset).coerceAtMost(512).coerceAtLeast(0)
+        if (len <= 0) return false
+        val head = String(bytes, offset, len, Charsets.UTF_8).trimStart().lowercase()
+        if (head.startsWith("<svg")) return true
+        if (head.startsWith("<?xml") && head.contains("<svg")) return true
+        return false
     }
 
     private fun memoryKey(url: String, maxPx: Int): String = "$url|$maxPx"

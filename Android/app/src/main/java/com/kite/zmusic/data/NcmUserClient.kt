@@ -75,6 +75,52 @@ class NcmUserClient(
         )
     }
 
+    suspend fun userFolloweds(
+        uid: Long,
+        cookie: String,
+        limit: Int = 20,
+        offset: Int = 0,
+    ): JSONObject = withContext(Dispatchers.IO) {
+        get(
+            "/user/followeds",
+            mapOf(
+                "uid" to uid.toString(),
+                "limit" to limit.toString(),
+                "offset" to offset.toString(),
+                "cookie" to cookie,
+                "timestamp" to ts(),
+            ),
+        )
+    }
+
+    /** `t=1` 关注，其它值取消关注。 */
+    suspend fun userFollow(id: Long, follow: Boolean, cookie: String): JSONObject =
+        withContext(Dispatchers.IO) {
+            get(
+                "/follow",
+                mapOf(
+                    "id" to id.toString(),
+                    "t" to if (follow) "1" else "0",
+                    "cookie" to cookie,
+                    "timestamp" to ts(),
+                ),
+            )
+        }
+
+    /** `type=1` 近一周，`type=0` 全部。隐私关闭时可能为空。 */
+    suspend fun userRecord(uid: Long, cookie: String, type: Int): JSONObject =
+        withContext(Dispatchers.IO) {
+            get(
+                "/user/record",
+                mapOf(
+                    "uid" to uid.toString(),
+                    "type" to type.toString(),
+                    "cookie" to cookie,
+                    "timestamp" to ts(),
+                ),
+            )
+        }
+
     suspend fun userMedal(uid: Long, cookie: String): JSONObject = withContext(Dispatchers.IO) {
         get(
             "/user/medal",

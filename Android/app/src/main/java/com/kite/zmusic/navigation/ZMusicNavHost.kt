@@ -59,6 +59,7 @@ fun ZMusicNavHost(modifier: Modifier = Modifier) {
                     }
                 },
                 onFinished = { connected ->
+                    app.appUpdateCoordinator.markSplashFinished()
                     val dest = if (connected) Routes.MainPlaceholder else Routes.ServerConfig
                     navController.navigate(dest) {
                         popUpTo(Routes.Splash) { inclusive = true }

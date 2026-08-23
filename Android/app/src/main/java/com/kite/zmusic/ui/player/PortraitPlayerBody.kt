@@ -88,6 +88,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -436,26 +437,32 @@ internal fun PortraitPlayerBody(
                         }
                         // 叠在黑胶区底部、进度条上方：不占播放条高度，进出随封面 AnimatedContent
                         if (displayPrefs.portraitPreviewLyricEnabled) {
-                            PortraitPreviewLyrics(
-                                lines = lines,
-                                positionMs = seekPositionMs,
-                                durationMs = durationMs,
-                                count = displayPrefs.portraitPreviewLyricCount,
-                                playingArgb = displayPrefs.portraitPreviewLyricPlayingArgb,
-                                upcomingArgb = displayPrefs.portraitPreviewLyricUpcomingArgb,
-                                playingFontSp = displayPrefs.portraitPreviewLyricPlayingFontSp,
-                                upcomingFontSp = displayPrefs.portraitPreviewLyricUpcomingFontSp,
-                                fancy = displayPrefs.portraitPreviewLyricFancy,
-                                align = displayPrefs.portraitPreviewLyricAlign,
-                                offsetYDp = displayPrefs.portraitPreviewLyricOffsetYDp,
-                                lineSpacingDp = displayPrefs.portraitPreviewLyricLineSpacingDp,
-                                onOpenLyrics = onOpenLyrics,
-                                modifier = Modifier
+                            Box(
+                                Modifier
                                     .align(Alignment.BottomCenter)
                                     .fillMaxWidth()
                                     .padding(horizontal = 8.dp)
                                     .padding(bottom = 2.dp),
-                            )
+                            ) {
+                                key(track.id) {
+                                    PortraitPreviewLyrics(
+                                        lines = lines,
+                                        positionMs = positionMs,
+                                        durationMs = durationMs,
+                                        count = displayPrefs.portraitPreviewLyricCount,
+                                        playingArgb = displayPrefs.portraitPreviewLyricPlayingArgb,
+                                        upcomingArgb = displayPrefs.portraitPreviewLyricUpcomingArgb,
+                                        playingFontSp = displayPrefs.portraitPreviewLyricPlayingFontSp,
+                                        upcomingFontSp = displayPrefs.portraitPreviewLyricUpcomingFontSp,
+                                        fancy = displayPrefs.portraitPreviewLyricFancy,
+                                        align = displayPrefs.portraitPreviewLyricAlign,
+                                        offsetYDp = displayPrefs.portraitPreviewLyricOffsetYDp,
+                                        lineSpacingDp = displayPrefs.portraitPreviewLyricLineSpacingDp,
+                                        onOpenLyrics = onOpenLyrics,
+                                        modifier = Modifier.fillMaxWidth(),
+                                    )
+                                }
+                            }
                         }
                     }
                 } else {

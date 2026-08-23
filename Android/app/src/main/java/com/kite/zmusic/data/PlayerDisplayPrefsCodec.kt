@@ -60,6 +60,7 @@ object PlayerDisplayPrefsCodec {
         if (p.vinylSongPickEnabled) flags = flags or (1 shl 6)
         if (p.activeHalo) flags = flags or (1 shl 7)
         if (p.lyricTapAutoPlay) flags = flags or (1 shl 8)
+        if (p.keepScreenOn) flags = flags or (1 shl 9)
         out.writeInt(flags)
 
         out.writeFloat(p.fontScale)
@@ -163,6 +164,7 @@ object PlayerDisplayPrefsCodec {
             vinylSongPickEnabled = flag(6),
             activeHalo = flag(7),
             lyricTapAutoPlay = flag(8),
+            keepScreenOn = flag(9),
             titleAlign = titleAlign,
             titleOffsetYDp = titleOffsetYDp,
             titleNameStyle = titleNameStyle,
@@ -279,6 +281,7 @@ fun lerpPlayerDisplayPrefs(
         vinylSongPickEnabled = pick(from.vinylSongPickEnabled, to.vinylSongPickEnabled),
         activeHalo = pick(from.activeHalo, to.activeHalo),
         lyricTapAutoPlay = pick(from.lyricTapAutoPlay, to.lyricTapAutoPlay),
+        keepScreenOn = pick(from.keepScreenOn, to.keepScreenOn),
         titleAlign = pick(from.titleAlign, to.titleAlign),
         titleOffsetYDp = lf(from.titleOffsetYDp, to.titleOffsetYDp),
         titleNameStyle = lerpTitleLine(from.titleNameStyle, to.titleNameStyle, u),

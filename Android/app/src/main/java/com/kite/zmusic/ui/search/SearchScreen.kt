@@ -106,6 +106,7 @@ fun SearchScreen(
     onOpenAlbum: (Long, String) -> Unit,
     onOpenMv: (Long, String, String?, String?) -> Unit,
     onOpenArtist: (SearchArtistHit) -> Unit,
+    onOpenUser: (SearchUserHit) -> Unit,
     onHint: (String) -> Unit,
     isTop: Boolean = true,
     modifier: Modifier = Modifier,
@@ -256,7 +257,7 @@ fun SearchScreen(
                     onOpenPlaylist = onOpenPlaylist,
                     onOpenAlbum = onOpenAlbum,
                     onOpenMv = { mv -> onOpenMv(mv.id, mv.name, mv.coverUrl, mv.artist) },
-                    onOpenUser = { onHint("暂未支持查看用户") },
+                    onOpenUser = onOpenUser,
                     onOpenArtist = onOpenArtist,
                 )
             }

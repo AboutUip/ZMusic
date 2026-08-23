@@ -28,7 +28,7 @@ import com.kite.zmusic.data.karaokeWords
 /**
  * 竖屏进度条上方的预览歌词（叠在黑胶区底部）。
  * [fancy] 开启：切句动画与歌词页一致；若当前行带逐字词则按设置着色推进。
- * 关闭：无切句动画，强制整句。
+ * 关闭：无切句动画，强制整句。首次出现 / 切歌重建时直接亮起，不滚句。
  */
 @Composable
 internal fun PortraitPreviewLyrics(
@@ -135,7 +135,7 @@ internal fun PortraitPreviewLyrics(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                     freezeTransitions = !fancy,
-                    instantAppear = !fancy,
+                    instantAppear = true,
                     words = words,
                     positionMs = positionMs,
                     unplayedColor = karaokeUnplayed.takeIf { words.isNotEmpty() },

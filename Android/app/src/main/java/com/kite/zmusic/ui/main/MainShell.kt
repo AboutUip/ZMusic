@@ -1112,6 +1112,10 @@ fun MainShell(
                     pushOverlay(MainOverlay.Artist(id, name, cover))
                     closeFullPlayer()
                 },
+                onOpenUser = { id, name, cover ->
+                    pushOverlay(MainOverlay.User(id, name, cover))
+                    closeFullPlayer()
+                },
             )
         }
     }
@@ -1293,6 +1297,7 @@ private fun FullPlayerSlot(
     onDismiss: () -> Unit,
     onOpenSourcePlaylist: (Long, String, String?) -> Unit,
     onOpenArtist: (Long, String, String?) -> Unit,
+    onOpenUser: (Long, String, String?) -> Unit,
 ) {
     val st by playback.ui.collectAsStateWithLifecycle()
     if (st.currentTrack == null) return
@@ -1332,6 +1337,10 @@ private fun FullPlayerSlot(
                     onDismiss()
                 }
             }
+        },
+        onOpenUser = { id, name, cover ->
+            onOpenUser(id, name, cover)
+            onDismiss()
         },
     )
     }

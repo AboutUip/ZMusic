@@ -428,6 +428,11 @@ data class PlayerDisplayPrefs(
      * 关闭则仅跳转进度，不改变播放/暂停状态。
      */
     val lyricTapAutoPlay: Boolean = false,
+    /**
+     * 播放页屏幕常亮：停留在当前方向的全屏播放页时不自动熄屏。
+     * 竖屏 / 横屏各自一份偏好，互不影响。
+     */
+    val keepScreenOn: Boolean = false,
     /** 标题信息（歌名/制作人/歌单）水平对齐 */
     val titleAlign: TitleAlignMode = TitleAlignMode.VINYL,
     /** 标题垂直偏移（dp），负上正下；叠在默认上边距之上 */
@@ -938,6 +943,7 @@ class PlayerDisplayPrefsStore(
             vinylSongPickEnabled = prefs.safeBoolean(KEY_VINYL_SONG_PICK, false),
             activeHalo = prefs.safeBoolean(KEY_ACTIVE_HALO, false),
             lyricTapAutoPlay = prefs.safeBoolean(KEY_LYRIC_TAP_AUTO_PLAY, false),
+            keepScreenOn = prefs.safeBoolean(KEY_KEEP_SCREEN_ON, false),
             titleAlign = TitleAlignMode.fromOrdinal(
                 prefs.safeInt(KEY_TITLE_ALIGN, TitleAlignMode.VINYL.ordinal),
             ),
@@ -1074,6 +1080,7 @@ class PlayerDisplayPrefsStore(
                 .putBoolean(KEY_VINYL_SONG_PICK, v.vinylSongPickEnabled)
                 .putBoolean(KEY_ACTIVE_HALO, v.activeHalo)
                 .putBoolean(KEY_LYRIC_TAP_AUTO_PLAY, v.lyricTapAutoPlay)
+                .putBoolean(KEY_KEEP_SCREEN_ON, v.keepScreenOn)
                 .putInt(KEY_TITLE_ALIGN, v.titleAlign.ordinal)
                 .putFloat(KEY_TITLE_OFFSET_Y, v.titleOffsetYDp)
                 .putString(KEY_TITLE_NAME_STYLE, encodeTitleLineStyle(v.titleNameStyle))
@@ -1163,6 +1170,7 @@ class PlayerDisplayPrefsStore(
         private const val KEY_VINYL_SONG_PICK = "vinyl_song_pick_enabled"
         private const val KEY_ACTIVE_HALO = "active_halo"
         private const val KEY_LYRIC_TAP_AUTO_PLAY = "lyric_tap_auto_play"
+        private const val KEY_KEEP_SCREEN_ON = "keep_screen_on"
         private const val KEY_TITLE_ALIGN = "title_align"
         private const val KEY_TITLE_OFFSET_Y = "title_offset_y_dp"
         private const val KEY_TITLE_NAME_STYLE = "title_name_style"

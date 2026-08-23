@@ -8,6 +8,7 @@ import com.kite.zmusic.data.AudioOutputStore
 import com.kite.zmusic.data.LyricOverlayStore
 import com.kite.zmusic.data.LyricRenderStore
 import com.kite.zmusic.data.PersistentPlaybackStore
+import com.kite.zmusic.data.LandscapeModeStore
 import com.kite.zmusic.data.PredictiveBackStore
 import com.kite.zmusic.data.ChromeGlassStore
 import com.kite.zmusic.data.ThemeStore
@@ -31,10 +32,24 @@ import com.kite.zmusic.data.SessionWarmup
 import com.kite.zmusic.data.ArtistRepository
 import com.kite.zmusic.data.CatalogRepository
 import com.kite.zmusic.data.CommentsRepository
+import com.kite.zmusic.data.CommunityLoginRepository
+import com.kite.zmusic.data.CommunityServerStore
+import com.kite.zmusic.data.ChangelogRepository
+import com.kite.zmusic.data.CommunityXaiopClient
+import com.kite.zmusic.data.AppUpdateCatalog
+import com.kite.zmusic.data.AppUpdateCoordinator
+import com.kite.zmusic.data.AppUpdateStore
+import com.kite.zmusic.data.ApkDownloader
+import com.kite.zmusic.data.DiskAppUpdateFiles
+import com.kite.zmusic.data.PartnerRepository
+import com.kite.zmusic.data.SponsorRepository
 import com.kite.zmusic.data.SearchRepository
 import com.kite.zmusic.data.SongRepository
 import com.kite.zmusic.data.TrackExportRepository
+import com.kite.zmusic.data.UserRepository
 import com.kite.zmusic.data.UserSpaceBackgroundStore
+import com.kite.zmusic.data.xaiop.OkHttpXaiop
+import com.kite.zmusic.playback.DeviceLinkMonitor
 import com.kite.zmusic.playback.MvPlayback
 import com.kite.zmusic.playback.PlaybackBridge
 import com.kite.zmusic.playback.AudioOutputController
@@ -54,13 +69,22 @@ class AppContainer(app: Application) {
 
     val ncmUserClient = NcmUserClient(httpClient)
     val ncmAuthClient = NcmAuthClient(httpClient)
+    val xaiop = OkHttpXaiop(httpClient)
 
     val sessionRepository = SessionRepository(app)
+    val communityServerStore = CommunityServerStore(app)
+    val communityLoginRepository = CommunityLoginRepository(
+        sessionRepository,
+        ncmAuthClient,
+        ncmUserClient,
+        communityServerStore,
+    )
     val audioQualityStore = AudioQualityStore(app)
     val audioOutputStore = AudioOutputStore(app)
     val audioOutputController = AudioOutputController(app, audioOutputStore)
     val persistentPlaybackStore = PersistentPlaybackStore(app)
     val predictiveBackStore = PredictiveBackStore(app)
+    val landscapeModeStore = LandscapeModeStore(app)
     val lyricRenderStore = LyricRenderStore(app)
     val lyricOverlayStore = LyricOverlayStore(app)
     val chromeGlassStore = ChromeGlassStore(app)
@@ -96,6 +120,26 @@ class AppContainer(app: Application) {
         onUserId = { uid -> playlistCollectionRepository.setSelfUserId(uid) },
     )
     val islandNoticeCenter = IslandNoticeCenter()
+    private val communityXaiop = CommunityXaiopClient(
+        xaiop,
+        communityServerStore,
+        islandNoticeCenter,
+    )
+    val changelogRepository = ChangelogRepository(communityXaiop)
+    val sponsorRepository = SponsorRepository(communityXaiop)
+    val partnerRepository = PartnerRepository(communityXaiop)
+    val appUpdateStore = AppUpdateStore(app)
+    val appUpdateCoordinator = AppUpdateCoordinator(
+        context = app,
+        catalog = AppUpdateCatalog(communityXaiop),
+        prefs = appUpdateStore,
+        downloader = ApkDownloader(httpClient),
+        files = DiskAppUpdateFiles(java.io.File(app.filesDir, "updates")),
+        notices = islandNoticeCenter,
+        playbackBridge = playbackBridge,
+        localVersion = BuildConfig.VERSION_NAME,
+    )
+    val deviceLinkMonitor = DeviceLinkMonitor(app, audioOutputController, islandNoticeCenter)
     val trackExportRepository = TrackExportRepository(app, audioQualityStore, ncmUserClient)
     val downloadAccelIndex = DownloadAccelIndex(app, trackExportRepository, downloadAccelStore)
     val realtimeCache = RealtimeCacheController(
@@ -118,6 +162,7 @@ class AppContainer(app: Application) {
     val commentsRepository = CommentsRepository(ncmUserClient, ncmAuthClient)
     val searchRepository = SearchRepository(ncmUserClient)
     val artistRepository = ArtistRepository(ncmUserClient, ncmAuthClient)
+    val userRepository = UserRepository(ncmUserClient, ncmAuthClient)
     val networkMode = NetworkModeController(
         app,
         homeFeedRepository,

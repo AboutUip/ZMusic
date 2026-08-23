@@ -64,6 +64,7 @@ internal data class AppPermissionSnapshot(
     val camera: Boolean,
     val overlay: Boolean,
     val nearbyDevices: Boolean,
+    val installPackages: Boolean,
 ) {
     val subtitle: String
         get() {
@@ -73,10 +74,11 @@ internal data class AppPermissionSnapshot(
                 if (!camera) add("相机")
                 if (!overlay) add("悬浮窗")
                 if (!nearbyDevices) add("附近的设备")
+                if (!installPackages) add("安装应用")
             }
             return when {
-                missing.isEmpty() -> "通知、后台运行、相机、悬浮窗、附近的设备均已开启"
-                missing.size == 5 -> "通知、后台运行、相机、悬浮窗、附近的设备未开启"
+                missing.isEmpty() -> "通知、后台运行、相机、悬浮窗、附近的设备、安装应用均已开启"
+                missing.size == 6 -> "通知、后台运行、相机、悬浮窗、附近的设备、安装应用未开启"
                 else -> missing.joinToString("、") + "未开启"
             }
         }
@@ -88,6 +90,7 @@ internal data class AppPermissionSnapshot(
             camera = cameraGranted(context),
             overlay = overlayGranted(context),
             nearbyDevices = nearbyDevicesGranted(context),
+            installPackages = installPackagesGranted(context),
         )
     }
 }
@@ -155,6 +158,16 @@ internal fun PermissionSettingsPage(
             context.showIslandNotice("已开启悬浮窗")
         } else {
             context.showIslandNotice("未开启悬浮窗时，无法在应用外显示歌词")
+        }
+    }
+    val installLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) {
+        refresh()
+        if (installPackagesGranted(context)) {
+            context.showIslandNotice("已允许安装应用")
+        } else {
+            context.showIslandNotice("未允许时，无法安装 ZMusic 更新")
         }
     }
 
@@ -256,6 +269,21 @@ internal fun PermissionSettingsPage(
                                 nearbyLauncher.launch(Manifest.permission.BLUETOOTH_CONNECT)
                             }
                         },
+                    )
+                },
+            )
+            PermissionRowDivider()
+            PermissionManageRow(
+                title = "安装应用",
+                purpose = "用于安装 ZMusic 更新",
+                granted = snapshot.installPackages,
+                icon = ZIcons.GetApp,
+                tint = Color(0xFF2A9D8F),
+                onClick = {
+                    handleInstallPackagesClick(
+                        context = context,
+                        granted = snapshot.installPackages,
+                        launch = { installLauncher.launch(it) },
                     )
                 },
             )
@@ -443,11 +471,41 @@ private fun handleOverlayClick(
 internal fun overlayGranted(context: Context): Boolean =
     Settings.canDrawOverlays(context)
 
+internal fun installPackagesGranted(context: Context): Boolean =
+    context.packageManager.canRequestPackageInstalls()
+
 private fun overlayPermissionIntent(pkg: String): Intent =
     Intent(
         Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
         Uri.fromParts("package", pkg, null),
     )
+
+private fun installPackagesIntent(pkg: String): Intent =
+    Intent(
+        Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+        Uri.fromParts("package", pkg, null),
+    )
+
+private fun handleInstallPackagesClick(
+    context: Context,
+    granted: Boolean,
+    launch: (Intent) -> Unit,
+) {
+    val intent = installPackagesIntent(context.packageName)
+    if (granted) {
+        if (canStart(context, intent)) {
+            launch(intent)
+        } else {
+            openAppDetailsSettings(context)
+        }
+        return
+    }
+    if (canStart(context, intent)) {
+        launch(intent)
+        return
+    }
+    openAppDetailsSettings(context)
+}
 
 internal fun notificationsEnabled(context: Context): Boolean {
     if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return false

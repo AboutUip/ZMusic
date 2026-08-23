@@ -49,6 +49,9 @@ internal object NcmLibraryParse {
             follows = nonNegLong(profile, "follows"),
             followeds = nonNegLong(profile, "followeds"),
             expertTags = tags,
+            followed = profile.optBoolean("followed", false),
+            artistId = profile.optLong("artistId", 0L).takeIf { it > 0L }
+                ?: json.optJSONObject("identify")?.optLong("artistId", 0L) ?: 0L,
         )
     }
 
@@ -192,8 +195,10 @@ internal object NcmLibraryParse {
     fun followedUsers(json: JSONObject, pageSize: Int = 30): Pair<List<FollowedUser>, Boolean> {
         if (NcmJson.apiCode(json) != 200) return emptyList<FollowedUser>() to false
         val arr = json.optJSONArray("follow")
+            ?: json.optJSONArray("followeds")
             ?: json.optJSONArray("userprofiles")
             ?: json.optJSONObject("data")?.optJSONArray("follow")
+            ?: json.optJSONObject("data")?.optJSONArray("followeds")
             ?: json.optJSONObject("data")?.optJSONArray("userprofiles")
             ?: JSONArray()
         val list = buildList {
@@ -226,6 +231,28 @@ internal object NcmLibraryParse {
             else -> list.size >= pageSize
         }
         return list to hasMore
+    }
+
+    fun listenRecord(json: JSONObject): List<UserListenHit> {
+        if (NcmJson.apiCode(json) != 200) return emptyList()
+        val arr = json.optJSONArray("weekData")
+            ?: json.optJSONArray("allData")
+            ?: json.optJSONObject("data")?.optJSONArray("weekData")
+            ?: json.optJSONObject("data")?.optJSONArray("allData")
+            ?: return emptyList()
+        return buildList {
+            for (i in 0 until arr.length()) {
+                val o = arr.optJSONObject(i) ?: continue
+                val song = o.optJSONObject("song") ?: continue
+                val track = trackFromSongObject(song) ?: continue
+                add(
+                    UserListenHit(
+                        track = track,
+                        playCount = o.optInt("playCount", 0).coerceAtLeast(0),
+                    ),
+                )
+            }
+        }
     }
 
     fun likeIdsCount(json: JSONObject): Int = tryLikeIdsInOrder(json)?.size ?: 0

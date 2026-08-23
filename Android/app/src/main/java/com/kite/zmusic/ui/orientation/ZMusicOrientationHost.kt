@@ -73,11 +73,17 @@ fun ZMusicOrientationHost(
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     val rotationLock = rememberSessionRotationLock()
     val systemAutoRotate = rememberSystemAutoRotateEnabled()
+    val landscapeModeEnabled = rememberLandscapeModeEnabled()
     var prevSystemAutoRotate by remember { mutableStateOf<Boolean?>(null) }
     LaunchedEffect(systemAutoRotate) {
         val was = prevSystemAutoRotate
         prevSystemAutoRotate = systemAutoRotate
         if (was == false && systemAutoRotate) {
+            rotationLock.setLocked(activity, false)
+        }
+    }
+    LaunchedEffect(landscapeModeEnabled) {
+        if (!landscapeModeEnabled) {
             rotationLock.setLocked(activity, false)
         }
     }

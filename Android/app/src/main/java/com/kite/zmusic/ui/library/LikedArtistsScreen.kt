@@ -72,7 +72,6 @@ import com.kite.zmusic.ui.common.ZPullRefresh
 import com.kite.zmusic.ui.chrome.chromePage
 import com.kite.zmusic.ui.icons.ZIcons
 import com.kite.zmusic.ui.main.MainPalette
-import com.kite.zmusic.ui.notice.showIslandNotice
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -85,6 +84,7 @@ fun LikedArtistsScreen(
     onBack: () -> Unit,
     onSearch: (users: Boolean) -> Unit,
     onOpenArtist: (Long, String, String?) -> Unit,
+    onOpenUser: (Long, String, String?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val vm = rememberLikedArtistsViewModel(sessionRepository)
@@ -95,7 +95,6 @@ fun LikedArtistsScreen(
     val ui by vm.ui.collectAsStateWithLifecycle()
     val pager = rememberPagerState(initialPage = 0, pageCount = { 2 })
     val scope = rememberCoroutineScope()
-    val context = LocalContext.current
     var moreArtist by remember { mutableStateOf<LikedArtist?>(null) }
     var confirmUnfollow by remember { mutableStateOf<LikedArtist?>(null) }
 
@@ -139,7 +138,7 @@ fun LikedArtistsScreen(
                     onRetry = { vm.loadUsers(force = true) },
                     onLoadMore = vm::loadMoreUsers,
                     onOpenUser = { user ->
-                        context.showIslandNotice("暂未支持查看用户", user.avatarUrl)
+                        onOpenUser(user.id, user.name, user.avatarUrl)
                     },
                 )
             }
@@ -455,6 +454,7 @@ fun LikedArtistsSearchScreen(
     contentBottomInset: Dp,
     onBack: () -> Unit,
     onOpenArtist: (Long, String, String?) -> Unit,
+    onOpenUser: (Long, String, String?) -> Unit = { _, _, _ -> },
     searchUsers: Boolean = false,
     isTop: Boolean = true,
     modifier: Modifier = Modifier,
@@ -467,7 +467,6 @@ fun LikedArtistsSearchScreen(
     val focus = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
     val searchFocus = remember { FocusRequester() }
-    val context = LocalContext.current
     var moreArtist by remember { mutableStateOf<LikedArtist?>(null) }
     var confirmUnfollow by remember { mutableStateOf<LikedArtist?>(null) }
 
@@ -614,7 +613,7 @@ fun LikedArtistsSearchScreen(
                                 coverUrl = user.avatarUrl,
                                 subtitle = user.signature.orEmpty(),
                                 onClick = {
-                                    context.showIslandNotice("暂未支持查看用户", user.avatarUrl)
+                                    onOpenUser(user.id, user.name, user.avatarUrl)
                                 },
                             )
                         }

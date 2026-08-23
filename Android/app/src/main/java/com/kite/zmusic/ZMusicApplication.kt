@@ -37,10 +37,13 @@ class ZMusicApplication : Application() {
     val ncmUserClient: NcmUserClient get() = container.ncmUserClient
     val ncmAuthClient get() = container.ncmAuthClient
     val sessionRepository: SessionRepository get() = container.sessionRepository
+    val communityServerStore get() = container.communityServerStore
+    val communityLoginRepository get() = container.communityLoginRepository
     val audioQualityStore: AudioQualityStore get() = container.audioQualityStore
     val audioOutputController get() = container.audioOutputController
     val persistentPlaybackStore: PersistentPlaybackStore get() = container.persistentPlaybackStore
     val predictiveBackStore get() = container.predictiveBackStore
+    val landscapeModeStore get() = container.landscapeModeStore
     val lyricRenderStore: LyricRenderStore get() = container.lyricRenderStore
     val lyricOverlayStore: LyricOverlayStore get() = container.lyricOverlayStore
     val chromeGlassStore: ChromeGlassStore get() = container.chromeGlassStore
@@ -71,7 +74,10 @@ class ZMusicApplication : Application() {
     val commentsRepository get() = container.commentsRepository
     val searchRepository get() = container.searchRepository
     val artistRepository get() = container.artistRepository
+    val userRepository get() = container.userRepository
     val networkMode get() = container.networkMode
+    val appUpdateStore get() = container.appUpdateStore
+    val appUpdateCoordinator get() = container.appUpdateCoordinator
 
     private lateinit var queueSync: PlaybackQueueSync
     private lateinit var lyricOverlayController: LyricOverlayController
@@ -80,6 +86,7 @@ class ZMusicApplication : Application() {
         super.onCreate()
         container = AppContainer(this)
         container.networkMode.start()
+        container.deviceLinkMonitor.start()
         container.trackExportRepository.onLibraryChanged = {
             container.downloadAccelIndex.notifyLibraryChanged()
         }
@@ -108,6 +115,7 @@ class ZMusicApplication : Application() {
         lyricOverlayController.start()
         // 有通知权限 + 有上次队列：冷启动即挂歌曲通知（暂停态），无需先点播放
         playbackBridge.maybeWarmMediaNotificationOnColdStart()
+        container.appUpdateCoordinator.start()
     }
 
     fun isSourcePlaylistComplete(playlistId: Long): Boolean =

@@ -133,6 +133,7 @@ import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
@@ -196,6 +197,7 @@ fun NowPlayingScreen(
     onCyclePlaybackMode: () -> Unit,
     onOpenSourcePlaylist: (() -> Unit)? = null,
     onOpenArtist: (() -> Unit)? = null,
+    onOpenUser: (Long, String, String?) -> Unit = { _, _, _ -> },
     onPlayQueueIndex: (Int) -> Unit = {},
     /** 竖屏评论打开时挂起曲末自动下一首 */
     onHoldAutoAdvanceChange: (Boolean) -> Unit = {},
@@ -259,6 +261,21 @@ fun NowPlayingScreen(
         onDispose {
             flushDisplayPrefs()
             flushPortraitDisplayPrefs()
+        }
+    }
+    val keepScreenOn = if (isLandscape) {
+        displayPrefs.keepScreenOn
+    } else {
+        portraitDisplayPrefs.keepScreenOn
+    }
+    val playerView = LocalView.current
+    DisposableEffect(keepScreenOn, playerView) {
+        val previous = playerView.keepScreenOn
+        if (keepScreenOn) {
+            playerView.keepScreenOn = true
+        }
+        onDispose {
+            playerView.keepScreenOn = previous
         }
     }
 
@@ -1012,6 +1029,7 @@ fun NowPlayingScreen(
         onSeek = onSeek,
         onDismiss = onDismiss,
         onOpenArtist = onOpenArtist,
+        onOpenUser = onOpenUser,
         onPlayQueueIndex = onPlayQueueIndex,
         onNeedQueueThrough = ::needQueueThrough,
         trackLiked = trackLiked,

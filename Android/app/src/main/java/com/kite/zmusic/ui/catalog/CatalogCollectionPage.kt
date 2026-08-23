@@ -169,6 +169,7 @@ internal fun CatalogCollectionPage(
         MainOverlay.Search, MainOverlay.Settings, is MainOverlay.PlaylistSearch, is MainOverlay.Mv,
         is MainOverlay.Artist, is MainOverlay.ArtistAlbums, is MainOverlay.ArtistMvs,
         MainOverlay.LikedArtists, is MainOverlay.LikedArtistsSearch, MainOverlay.CachedSongs,
+        is MainOverlay.User, is MainOverlay.UserRelations,
         -> Unit
         MainOverlay.Daily -> {
             LaunchedEffect(Unit) { vm.loadDaily() }
@@ -279,6 +280,17 @@ internal fun CatalogCollectionPage(
                 manageBridge = manageBridge,
                 onOpenArtist = { id, name, cover ->
                     onPushOverlay(MainOverlay.Artist(id, name, cover))
+                },
+                onOpenCreator = ui.creatorId.takeIf { it > 0L }?.let { uid ->
+                    {
+                        onPushOverlay(
+                            MainOverlay.User(
+                                uid,
+                                ui.creatorName ?: "用户",
+                                ui.creatorAvatarUrl,
+                            ),
+                        )
+                    }
                 },
             )
         }

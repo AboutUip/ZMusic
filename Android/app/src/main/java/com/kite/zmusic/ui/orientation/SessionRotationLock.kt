@@ -19,6 +19,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.kite.zmusic.ZMusicApplication
 
 /**
  * 主动竖→横时同步钉住蒙版（不延后改方向）。
@@ -158,6 +160,16 @@ fun rememberSessionRotationLock(): SessionRotationLock {
         onDispose { }
     }
     return facade
+}
+
+/**
+ * 设置「横屏模式」：关则不画旋转按钮，系统自动旋转仍可进横屏。
+ */
+@Composable
+fun rememberLandscapeModeEnabled(): Boolean {
+    val app = LocalContext.current.applicationContext as? ZMusicApplication ?: return true
+    val enabled by app.landscapeModeStore.enabled.collectAsStateWithLifecycle()
+    return enabled
 }
 
 /**

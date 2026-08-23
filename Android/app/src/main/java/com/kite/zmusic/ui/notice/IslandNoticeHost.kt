@@ -66,6 +66,7 @@ import com.kite.zmusic.ui.common.GlassActionSheetHostState
 import com.kite.zmusic.ui.common.GlassActionSheetOverlay
 import com.kite.zmusic.ui.common.GlassAlertHostState
 import com.kite.zmusic.ui.common.GlassAlertOverlay
+import com.kite.zmusic.ui.update.AppUpdateHost
 import com.kite.zmusic.ui.common.LocalGlassActionSheetHost
 import com.kite.zmusic.ui.common.LocalGlassAlertHost
 import com.kite.zmusic.ui.common.LocalPredictiveBackClaimsState
@@ -173,6 +174,7 @@ fun IslandNoticeRoot(
                 landscape = landscape,
                 modifier = Modifier.zIndex(800f),
             )
+            AppUpdateHost()
         }
     }
 }
@@ -332,16 +334,41 @@ private fun IslandNoticeHost(
         }
 
         while (isActive) {
-            var shown = center.awaitNext()
-            appear(shown)
-            while (isActive) {
-                val next = center.awaitNextOrTimeout(dwellMs(shown))
-                if (next == null) {
-                    dismiss()
-                    break
+            when (val work = center.awaitWork()) {
+                is IslandWork.Sticky -> {
+                    var shown = work.notice
+                    if (!mounted) {
+                        appear(shown)
+                    } else {
+                        notice = shown
+                    }
+                    while (isActive) {
+                        val next = center.awaitStickyChange(shown)
+                        if (next == null) {
+                            dismiss()
+                            break
+                        }
+                        notice = next
+                        shown = next
+                    }
                 }
-                replace(next)
-                shown = next
+                is IslandWork.Queued -> {
+                    var shown = work.notice
+                    appear(shown)
+                    while (isActive) {
+                        when (val next = center.awaitQueuedOrStickyOrTimeout(dwellMs(shown))) {
+                            null -> {
+                                dismiss()
+                                break
+                            }
+                            is IslandWork.Sticky -> break
+                            is IslandWork.Queued -> {
+                                replace(next.notice)
+                                shown = next.notice
+                            }
+                        }
+                    }
+                }
             }
         }
     }

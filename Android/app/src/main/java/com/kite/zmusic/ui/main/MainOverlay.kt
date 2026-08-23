@@ -50,6 +50,16 @@ sealed class MainOverlay {
     ) : MainOverlay()
     data object LikedArtists : MainOverlay()
     data class LikedArtistsSearch(val users: Boolean = false) : MainOverlay()
+    data class User(
+        val id: Long,
+        val name: String,
+        val avatarUrl: String? = null,
+    ) : MainOverlay()
+    data class UserRelations(
+        val userId: Long,
+        val name: String,
+        val fans: Boolean,
+    ) : MainOverlay()
 
     fun stackKey(): String = when (this) {
         Daily -> "daily"
@@ -68,5 +78,7 @@ sealed class MainOverlay {
         is ArtistMvs -> "artist-mvs-$artistId"
         LikedArtists -> "liked-artists"
         is LikedArtistsSearch -> if (users) "liked-artists-search-users" else "liked-artists-search-artists"
+        is User -> "user-$id"
+        is UserRelations -> if (fans) "user-fans-$userId" else "user-follows-$userId"
     }
 }

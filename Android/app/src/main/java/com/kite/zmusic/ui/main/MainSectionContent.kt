@@ -4,6 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -24,6 +25,8 @@ import com.kite.zmusic.ZMusicApplication
 import com.kite.zmusic.data.NetworkPhase
 import com.kite.zmusic.data.SessionRepository
 import com.kite.zmusic.data.TrackRow
+import com.kite.zmusic.ui.community.HomeCommunityScanButton
+import com.kite.zmusic.ui.community.rememberCommunityLoginOpener
 import com.kite.zmusic.ui.features.FeaturesScreen
 import com.kite.zmusic.ui.home.HomeScreen
 import com.kite.zmusic.ui.icons.ZIcons
@@ -106,6 +109,7 @@ private fun OfflineSectionPage(
     modifier: Modifier = Modifier,
 ) {
     val padH = mainContentPadH(isLandscape)
+    val openCommunityLogin = rememberCommunityLoginOpener()
     Column(modifier.fillMaxSize()) {
         if (!isLandscape) {
             val headerMod = Modifier
@@ -118,23 +122,26 @@ private fun OfflineSectionPage(
                     showLogo = true,
                     modifier = headerMod,
                     trailing = {
-                        Box(
-                            Modifier
-                                .size(40.dp)
-                                .clip(CircleShape)
-                                .clickable(
-                                    interactionSource = remember { MutableInteractionSource() },
-                                    indication = null,
-                                    onClick = { onOpenOverlay(MainOverlay.Settings) },
-                                ),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Icon(
-                                imageVector = ZIcons.Settings,
-                                contentDescription = "设置",
-                                tint = MainPalette.Ink,
-                                modifier = Modifier.size(22.dp),
-                            )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            HomeCommunityScanButton(onClick = openCommunityLogin)
+                            Box(
+                                Modifier
+                                    .size(40.dp)
+                                    .clip(CircleShape)
+                                    .clickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null,
+                                        onClick = { onOpenOverlay(MainOverlay.Settings) },
+                                    ),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    imageVector = ZIcons.Settings,
+                                    contentDescription = "设置",
+                                    tint = MainPalette.Ink,
+                                    modifier = Modifier.size(22.dp),
+                                )
+                            }
                         }
                     },
                 )

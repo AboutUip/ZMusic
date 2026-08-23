@@ -51,6 +51,8 @@ import com.kite.zmusic.ui.search.SearchScreen
 import com.kite.zmusic.ui.search.SearchViewModel
 import com.kite.zmusic.ui.search.SearchViewModelFactory
 import com.kite.zmusic.ui.settings.SettingsScreen
+import com.kite.zmusic.ui.user.UserRelationsScreen
+import com.kite.zmusic.ui.user.UserScreen
 import kotlinx.coroutines.delay
 
 private val OverlaySlideSpec = tween<IntOffset>(durationMillis = 320, easing = FastOutSlowInEasing)
@@ -212,6 +214,13 @@ private fun CatalogOverlayPage(
                             onHint("暂时无法打开这位歌手")
                         }
                     },
+                    onOpenUser = { hit ->
+                        if (hit.id > 0L) {
+                            onPushOverlay(MainOverlay.User(hit.id, hit.name, hit.avatarUrl))
+                        } else {
+                            onHint("暂时无法打开这位用户")
+                        }
+                    },
                     onHint = onHint,
                 )
             }
@@ -320,6 +329,9 @@ private fun CatalogOverlayPage(
                 onOpenArtist = { id, name, cover ->
                     onPushOverlay(MainOverlay.Artist(id, name, cover))
                 },
+                onOpenUser = { id, name, cover ->
+                    onPushOverlay(MainOverlay.User(id, name, cover))
+                },
             )
         }
         is MainOverlay.LikedArtistsSearch -> {
@@ -331,6 +343,41 @@ private fun CatalogOverlayPage(
                 onBack = onBack,
                 onOpenArtist = { id, name, cover ->
                     onPushOverlay(MainOverlay.Artist(id, name, cover))
+                },
+                onOpenUser = { id, name, cover ->
+                    onPushOverlay(MainOverlay.User(id, name, cover))
+                },
+            )
+        }
+        is MainOverlay.User -> {
+            UserScreen(
+                overlay = overlay,
+                sessionRepository = sessionRepository,
+                contentBottomInset = contentBottomInset,
+                onBack = onBack,
+                onOpenPlaylist = onOpenPlaylist,
+                onOpenArtist = { id, name, cover ->
+                    onPushOverlay(MainOverlay.Artist(id, name, cover))
+                },
+                onOpenRelations = { fans ->
+                    onPushOverlay(
+                        MainOverlay.UserRelations(overlay.id, overlay.name, fans),
+                    )
+                },
+                onPlayTracks = onPlayTracks,
+                playingTrackId = playingTrackId,
+                playingSourceId = playingSourceId,
+                isPlaying = isPlaying,
+            )
+        }
+        is MainOverlay.UserRelations -> {
+            UserRelationsScreen(
+                overlay = overlay,
+                sessionRepository = sessionRepository,
+                contentBottomInset = contentBottomInset,
+                onBack = onBack,
+                onOpenUser = { person ->
+                    onPushOverlay(MainOverlay.User(person.id, person.name, person.avatarUrl))
                 },
             )
         }

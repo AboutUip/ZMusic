@@ -6,17 +6,20 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 
 data class PartnerEntry(
+    val id: String = "",
     val name: String,
     val logo: String,
     val url: String,
     val bio: String,
     val content: String,
-)
+) {
+    val listKey: String
+        get() = id.ifBlank { name }
+}
 
 /**
- * 赞助商：assets/partners.json，进入页面时才读。
- * 字段 name / logo / url / bio / content；logo 与 url 均为 http(s) 地址。
- * bio 为简介，content 为赞助内容。数组从上到下就是列表顺序。
+ * 赞助商（社区 vendors）：id / name / logo / url / bio / content。
+ * 远程目录走 XAIOP；本地 JSON 解析仍保留给尚未删掉的 assets。
  */
 object PartnerRoster {
     private const val ASSET = "partners.json"
@@ -36,6 +39,7 @@ object PartnerRoster {
             val name = o.optString("name").trim()
             if (name.isEmpty()) continue
             out += PartnerEntry(
+                id = o.optString("id").trim(),
                 name = name,
                 logo = o.optString("logo").trim(),
                 url = o.optString("url").trim().ifEmpty { o.optString("website").trim() },
@@ -60,6 +64,23 @@ object PartnerRoster {
             if (trimmed.isNotEmpty()) return trimmed
         }
         return ""
+    }
+
+    fun parseRemote(snapshot: Any?): CommunityCatalogPage<PartnerEntry> =
+        parseCatalogArray(snapshot, "vendors", ::parseVendor)
+
+    internal fun parseVendor(raw: Any?): PartnerEntry? {
+        val o = raw as? Map<*, *> ?: return null
+        val name = catalogString(o["name"])
+        if (name.isEmpty()) return null
+        return PartnerEntry(
+            id = catalogString(o["id"]),
+            name = name,
+            logo = catalogString(o["logo"]),
+            url = catalogString(o["url"]),
+            bio = catalogString(o["bio"]),
+            content = catalogString(o["content"]),
+        )
     }
 
     internal fun browseUrl(raw: String): String? {

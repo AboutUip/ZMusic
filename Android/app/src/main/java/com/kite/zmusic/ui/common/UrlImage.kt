@@ -67,7 +67,9 @@ fun rememberUrlImageBitmap(
                 val file = UrlImageCache.diskFile(context, urlKey)
                 if (!file.exists()) return@runCatching null
                 val bytes = file.readBytes()
-                UrlImageCache.decodeSampledBitmap(bytes, maxPx)
+                val bmp = UrlImageCache.decodeSampledBitmap(bytes, maxPx)
+                if (bmp == null) file.delete()
+                bmp
             }.getOrNull()
         }
         if (fromDisk != null) {
@@ -81,10 +83,11 @@ fun rememberUrlImageBitmap(
                 UrlImageClient.newCall(req).execute().use { resp ->
                     if (!resp.isSuccessful) return@use null
                     val bytes = resp.body?.bytes() ?: return@use null
+                    val bmp = UrlImageCache.decodeSampledBitmap(bytes, maxPx) ?: return@use null
                     val file = UrlImageCache.diskFile(context, urlKey)
                     runCatching { file.writeBytes(bytes) }
                     UrlImageCache.trimDisk(context)
-                    UrlImageCache.decodeSampledBitmap(bytes, maxPx)
+                    bmp
                 }
             }.getOrNull()
         }

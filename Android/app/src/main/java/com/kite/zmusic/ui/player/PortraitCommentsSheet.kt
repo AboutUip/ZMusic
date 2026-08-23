@@ -230,6 +230,7 @@ fun PortraitCommentsSheet(
     modifier: Modifier = Modifier,
     coverUrl: String? = null,
     hazeState: HazeState? = null,
+    onOpenUser: (Long, String, String?) -> Unit = { _, _, _ -> },
 ) {
     val t = openProgress.coerceIn(0f, 1f)
     val fullscreen = sheetFrac >= 0.97f
@@ -832,6 +833,7 @@ fun PortraitCommentsSheet(
                                 },
                                 onPatchComment = ::patchComment,
                                 onHint = { hint(it) },
+                                onOpenUser = onOpenUser,
                                 onConsumePendingTopReply = {
                                     pendingFloorTop = pendingFloorTop - item.commentId
                                 },
@@ -1173,6 +1175,7 @@ private fun CommentRow(
     onFloorCache: (List<SongComment>, Boolean) -> Unit,
     onPatchComment: (Long, (SongComment) -> SongComment) -> Unit,
     onHint: (String) -> Unit,
+    onOpenUser: (Long, String, String?) -> Unit = { _, _, _ -> },
     onConsumePendingTopReply: () -> Unit,
     onReplyClick: () -> Unit,
 ) {
@@ -1407,7 +1410,24 @@ private fun CommentRow(
                                     Modifier
                                 },
                             )
-                            .background(CommentAvatarBg),
+                            .background(CommentAvatarBg)
+                            .then(
+                                if (comment.userId > 0L) {
+                                    Modifier.clickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null,
+                                        onClick = {
+                                            onOpenUser(
+                                                comment.userId,
+                                                comment.nickname,
+                                                comment.avatarUrl,
+                                            )
+                                        },
+                                    )
+                                } else {
+                                    Modifier
+                                },
+                            ),
                     ) {
                         UrlImage(
                             url = comment.avatarUrl,
@@ -1445,7 +1465,25 @@ private fun CommentRow(
                             ),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f, fill = false),
+                            modifier = Modifier
+                                .weight(1f, fill = false)
+                                .then(
+                                    if (comment.userId > 0L) {
+                                        Modifier.clickable(
+                                            interactionSource = remember { MutableInteractionSource() },
+                                            indication = null,
+                                            onClick = {
+                                                onOpenUser(
+                                                    comment.userId,
+                                                    comment.nickname,
+                                                    comment.avatarUrl,
+                                                )
+                                            },
+                                        )
+                                    } else {
+                                        Modifier
+                                    },
+                                ),
                         )
                         Spacer(Modifier.width(8.dp))
                         Text(

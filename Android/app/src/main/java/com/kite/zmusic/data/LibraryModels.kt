@@ -24,6 +24,10 @@ data class UserProfileBrief(
     val medalCount: Int? = null,
     /** `/user/subcount` 收藏歌手数，与 `follows` 合计为资料上的「关注」。 */
     val artistFollows: Long = 0L,
+    /** 当前登录账号是否已关注该用户。 */
+    val followed: Boolean = false,
+    /** 该账号绑定的歌手 id，没有则为 0。 */
+    val artistId: Long = 0L,
 )
 
 enum class VipKind {
@@ -44,6 +48,12 @@ data class FollowedUser(
     val name: String,
     val avatarUrl: String?,
     val signature: String?,
+)
+
+/** 用户听歌排行里的一条。 */
+data class UserListenHit(
+    val track: TrackRow,
+    val playCount: Int,
 )
 
 data class PlaylistSummary(
