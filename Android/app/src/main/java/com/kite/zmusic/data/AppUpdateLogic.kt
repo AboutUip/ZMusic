@@ -74,6 +74,20 @@ object AppUpdateLogic {
         return "正在下载 $version"
     }
 
+    fun downloadFailMessage(err: Throwable): String {
+        val raw = generateSequence(err) { it.cause }
+            .mapNotNull { it.message?.trim()?.takeIf { msg -> msg.isNotEmpty() } }
+            .firstOrNull()
+            .orEmpty()
+        return when {
+            raw.contains("ApkDownloadForbidden", ignoreCase = true) ->
+                "安装包无法从对象存储直接下载"
+            raw.contains("sha256", ignoreCase = true) -> "更新包校验失败"
+            raw.contains("size mismatch", ignoreCase = true) -> "更新包大小不符"
+            else -> "更新下载失败"
+        }
+    }
+
     fun dialogTitle(version: String): String =
         "ZMusic新版本v${ChangelogRoster.normalizeVersion(version)}"
 

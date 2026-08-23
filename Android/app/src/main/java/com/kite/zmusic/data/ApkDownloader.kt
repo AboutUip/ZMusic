@@ -72,7 +72,6 @@ class ApkDownloader(
         val request = Request.Builder()
             .url(url)
             .get()
-            .header("Accept", "application/vnd.android.package-archive")
             .apply {
                 if (existing in 1 until expectedSize) {
                     header("Range", "bytes=$existing-")
@@ -82,7 +81,7 @@ class ApkDownloader(
         http.newCall(request).execute().use { response ->
             coroutineContext.ensureActive()
             if (isJsonFailure(response)) {
-                error("apk unavailable")
+                error(httpFailMessage(response.code, response.body?.string().orEmpty()))
             }
             when (response.code) {
                 200 -> {
@@ -145,6 +144,20 @@ class ApkDownloader(
                 return type.contains("json", ignoreCase = true)
             }
             return true
+        }
+
+        internal fun httpFailMessage(code: Int, body: String): String {
+            val named = jsonStringField(body, "Code")
+            if (!named.isNullOrBlank()) return named
+            val msg = jsonStringField(body, "Message")
+            if (!msg.isNullOrBlank()) return msg.take(120)
+            return "apk http $code"
+        }
+
+        private fun jsonStringField(body: String, key: String): String? {
+            val match = Regex("\"${Regex.escape(key)}\"\\s*:\\s*\"((?:\\\\.|[^\"\\\\])*)\"")
+                .find(body)
+            return match?.groupValues?.get(1)?.takeIf { it.isNotBlank() }
         }
 
         internal fun sha256Hex(file: File): String {

@@ -133,7 +133,13 @@ class AppContainer(app: Application) {
         context = app,
         catalog = AppUpdateCatalog(communityXaiop),
         prefs = appUpdateStore,
-        downloader = ApkDownloader(httpClient),
+        downloader = ApkDownloader(
+            httpClient.newBuilder()
+                .readTimeout(0, TimeUnit.MILLISECONDS)
+                .writeTimeout(0, TimeUnit.MILLISECONDS)
+                .callTimeout(0, TimeUnit.MILLISECONDS)
+                .build(),
+        ),
         files = DiskAppUpdateFiles(java.io.File(app.filesDir, "updates")),
         notices = islandNoticeCenter,
         playbackBridge = playbackBridge,

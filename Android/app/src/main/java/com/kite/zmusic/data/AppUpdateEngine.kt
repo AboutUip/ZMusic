@@ -70,19 +70,29 @@ class AppUpdateEngine(
     }
 
     suspend fun startUpdate() {
+        val offer = beginUpdate() ?: return
+        runUpdate(offer)
+    }
+
+    /** 立刻收起弹窗，避免失败后同一点击又打在新弹窗上。 */
+    fun beginUpdate(): AppUpdateOffer? {
         val offer = when (val s = _ui.value) {
             is AppUpdateUiState.Prompt -> s.offer
-            is AppUpdateUiState.ReadyToInstall -> return
-            is AppUpdateUiState.Downloading -> return
-            AppUpdateUiState.Idle -> pending ?: return
+            is AppUpdateUiState.ReadyToInstall -> return null
+            is AppUpdateUiState.Downloading -> return null
+            AppUpdateUiState.Idle -> pending ?: return null
         }
+        pending = offer
+        _ui.value = AppUpdateUiState.Downloading(offer, 0L, offer.apk.sizeBytes)
+        onSticky(AppUpdateLogic.progressMessage(offer.version, 0L, offer.apk.sizeBytes))
+        return offer
+    }
+
+    suspend fun runUpdate(offer: AppUpdateOffer) {
         mutex.withLock {
-            if (_ui.value is AppUpdateUiState.Downloading) return
             if (_ui.value is AppUpdateUiState.ReadyToInstall) return
             onKeepAlive()
             val dest = files.apkFile(offer.version)
-            _ui.value = AppUpdateUiState.Downloading(offer, 0L, offer.apk.sizeBytes)
-            onSticky(AppUpdateLogic.progressMessage(offer.version, 0L, offer.apk.sizeBytes))
             var lastPct = -1
             val result = downloader.download(
                 url = offer.apk.url,
@@ -106,12 +116,11 @@ class AppUpdateEngine(
                         needsPermission = !hasInstallPermission(),
                     )
                 },
-                onFailure = {
+                onFailure = { err ->
                     files.deleteApk(offer.version)
                     onSticky(null)
-                    onToast("更新下载失败")
-                    pending = offer
-                    _ui.value = AppUpdateUiState.Prompt(offer)
+                    onToast(AppUpdateLogic.downloadFailMessage(err))
+                    _ui.value = AppUpdateUiState.Idle
                 },
             )
         }

@@ -76,10 +76,11 @@ class AppUpdateCoordinator(
     }
 
     fun startUpdate() {
+        val offer = engine.beginUpdate() ?: return
         scope.launch {
             try {
                 wakeLock?.acquire(WakeLockMs)
-                engine.startUpdate()
+                engine.runUpdate(offer)
             } finally {
                 runCatching { if (wakeLock?.isHeld == true) wakeLock.release() }
             }
