@@ -265,11 +265,11 @@ internal class PluginSession(
 
     private fun themeGet(ctx: QuickJSContext): Any {
         if (ended || !hostApiAllowed() || !themeCapabilityOk()) {
-            return ctx.parseJSON("{}")
+            return ctx.parse("{}")
         }
         val map = PluginTextThemeBridge.getHexMap()
         val json = PluginJson.stringify(map)
-        return ctx.parseJSON(json)
+        return ctx.parse(json)
     }
 
     private fun setState(next: PluginJsState) {
