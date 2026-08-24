@@ -92,7 +92,7 @@ import com.kite.zmusic.ui.library.LikedArtistsScreen
 import com.kite.zmusic.ui.library.LikedArtistsSearchScreen
 import com.kite.zmusic.ui.main.LandscapeCoverEnter
 import com.kite.zmusic.ui.main.LandscapeCoverExit
-import com.kite.zmusic.ui.main.MainPalette
+import com.kite.zmusic.ui.theme.TextTheme
 import com.kite.zmusic.ui.mv.MvPlayerScreen
 import com.kite.zmusic.ui.search.SearchScreen
 import com.kite.zmusic.ui.search.SearchViewModel
@@ -134,7 +134,7 @@ internal fun CatalogTopBar(
             Icon(
                 imageVector = ZIcons.Back,
                 contentDescription = "返回",
-                tint = MainPalette.Ink,
+                tint = TextTheme.CatalogTitle,
                 modifier = Modifier.size(22.dp),
             )
         }
@@ -144,7 +144,7 @@ internal fun CatalogTopBar(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             style = TextStyle(
-                color = MainPalette.Ink,
+                color = TextTheme.CatalogTitle,
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
             ),
@@ -163,7 +163,7 @@ internal fun CatalogTopBar(
             ) {
                 Text(
                     text = if (allSelected) "取消全选" else "全选",
-                    color = MainPalette.Accent,
+                    color = TextTheme.CatalogAction,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold,
                 )
@@ -184,7 +184,7 @@ internal fun CatalogTopBar(
                 Icon(
                     imageVector = ZIcons.Manage,
                     contentDescription = "管理",
-                    tint = MainPalette.Ink,
+                    tint = TextTheme.CatalogTitle,
                     modifier = Modifier.size(22.dp),
                 )
             }
@@ -204,7 +204,7 @@ internal fun CatalogTopBar(
                 Icon(
                     imageVector = ZIcons.Search,
                     contentDescription = "搜索歌单内歌曲",
-                    tint = MainPalette.Ink,
+                    tint = TextTheme.CatalogTitle,
                     modifier = Modifier.size(22.dp),
                 )
             }
@@ -225,12 +225,12 @@ internal fun CatalogTopBar(
                     Icon(
                         imageVector = extraIcon,
                         contentDescription = extraLabel,
-                        tint = MainPalette.Accent,
+                        tint = TextTheme.CatalogAction,
                         modifier = Modifier.size(18.dp),
                     )
                     Spacer(Modifier.width(4.dp))
                 }
-                Text(extraLabel, color = MainPalette.Accent, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                Text(extraLabel, color = TextTheme.CatalogAction, fontSize = 13.sp, fontWeight = FontWeight.Medium)
             }
         }
     }

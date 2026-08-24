@@ -20,6 +20,8 @@ zxing = "3.5.3"
 camerax = "1.4.1"
 androidsvg = "1.4"
 xaiop = "0.15.1"
+quickjs = "3.2.3"
+eddsa = "0.3.0"
 
 [libraries]
 junit = { group = "junit", name = "junit", version.ref = "junit" }
@@ -56,6 +58,8 @@ androidx-camera-lifecycle = { group = "androidx.camera", name = "camera-lifecycl
 androidx-camera-view = { group = "androidx.camera", name = "camera-view", version.ref = "camerax" }
 xaiop = { group = "io.github.aboutuip", name = "xaiop", version.ref = "xaiop" }
 androidsvg = { group = "com.caverock", name = "androidsvg-aar", version.ref = "androidsvg" }
+quickjs-android = { group = "wang.harlon.quickjs", name = "wrapper-android", version.ref = "quickjs" }
+eddsa = { group = "net.i2p.crypto", name = "eddsa", version.ref = "eddsa" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

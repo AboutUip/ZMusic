@@ -46,6 +46,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kite.zmusic.ui.main.MainPalette
+import com.kite.zmusic.ui.theme.TextTheme
 import com.kite.zmusic.ui.main.dialogLiquidGlass
 import com.kyant.backdrop.Backdrop
 import kotlinx.coroutines.delay
@@ -280,7 +281,7 @@ internal fun GlassActionSheetOverlay(
                                 overflow = TextOverflow.Ellipsis,
                                 style = TextStyle(
                                     color = if (action.destructive) {
-                                        MainPalette.Accent
+                                        TextTheme.Destructive
                                     } else {
                                         MainPalette.Ink
                                     },
@@ -305,7 +306,7 @@ internal fun GlassActionSheetOverlay(
                                 action.label,
                                 style = TextStyle(
                                     color = if (action.destructive) {
-                                        MainPalette.Accent
+                                        TextTheme.Destructive
                                     } else {
                                         MainPalette.Ink
                                     },

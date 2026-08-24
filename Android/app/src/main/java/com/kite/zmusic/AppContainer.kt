@@ -53,6 +53,10 @@ import com.kite.zmusic.playback.DeviceLinkMonitor
 import com.kite.zmusic.playback.MvPlayback
 import com.kite.zmusic.playback.PlaybackBridge
 import com.kite.zmusic.playback.AudioOutputController
+import com.kite.zmusic.plugin.PluginDebugDrop
+import com.kite.zmusic.plugin.PluginDebugProbe
+import com.kite.zmusic.plugin.PluginDebugStore
+import com.kite.zmusic.plugin.PluginEngine
 import com.kite.zmusic.ui.notice.IslandNoticeCenter
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
@@ -73,11 +77,13 @@ class AppContainer(app: Application) {
 
     val sessionRepository = SessionRepository(app)
     val communityServerStore = CommunityServerStore(app)
+    val workshopAuthStore = com.kite.zmusic.workshop.WorkshopAuthStore(app)
     val communityLoginRepository = CommunityLoginRepository(
         sessionRepository,
         ncmAuthClient,
         ncmUserClient,
         communityServerStore,
+        workshopAuthStore,
     )
     val audioQualityStore = AudioQualityStore(app)
     val audioOutputStore = AudioOutputStore(app)
@@ -174,5 +180,45 @@ class AppContainer(app: Application) {
         homeFeedRepository,
         libraryHomeRepository,
         likedPlaylistRepository,
+    )
+    val pluginDebugStore = PluginDebugStore(app)
+    val pluginEngine = PluginEngine(
+        filesDir = app.filesDir,
+        debugStore = pluginDebugStore,
+        appVersionName = BuildConfig.VERSION_NAME,
+        debugDropDir = app.getExternalFilesDir(null)?.let(PluginDebugDrop::dir),
+        showNotice = { message, coverUrl -> islandNoticeCenter.show(message, coverUrl) },
+        bundledDebugProbe = {
+            PluginDebugProbe.copyFromAssets(
+                app.assets,
+                java.io.File(app.cacheDir, "plugin-engine/probe.zpp"),
+            )
+        },
+    )
+    private val workshopHttp = httpClient.newBuilder()
+        .readTimeout(0, TimeUnit.MILLISECONDS)
+        .writeTimeout(0, TimeUnit.MILLISECONDS)
+        .callTimeout(0, TimeUnit.MILLISECONDS)
+        .followRedirects(false)
+        .followSslRedirects(false)
+        .build()
+    val workshopClient = com.kite.zmusic.workshop.WorkshopClient(
+        http = workshopHttp,
+        xaiop = xaiop,
+        community = communityServerStore,
+        auth = workshopAuthStore,
+    )
+    val workshopDownloader = com.kite.zmusic.workshop.WorkshopDownloader(
+        http = workshopHttp,
+        client = workshopClient,
+        auth = workshopAuthStore,
+    )
+    val workshopRepository = com.kite.zmusic.workshop.WorkshopRepository(
+        client = workshopClient,
+        downloader = workshopDownloader,
+        pluginEngine = pluginEngine,
+        auth = workshopAuthStore,
+        notices = islandNoticeCenter,
+        cacheDir = java.io.File(app.cacheDir, "workshop"),
     )
 }

@@ -51,6 +51,7 @@ import com.kite.zmusic.ui.search.SearchScreen
 import com.kite.zmusic.ui.search.SearchViewModel
 import com.kite.zmusic.ui.search.SearchViewModelFactory
 import com.kite.zmusic.ui.settings.SettingsScreen
+import com.kite.zmusic.ui.workshop.CreativeWorkshopScreen
 import com.kite.zmusic.ui.user.UserRelationsScreen
 import com.kite.zmusic.ui.user.UserScreen
 import kotlinx.coroutines.delay
@@ -230,6 +231,12 @@ private fun CatalogOverlayPage(
                 contentBottomInset = contentBottomInset,
                 onBack = onBack,
                 onLogout = onLogout,
+            )
+        }
+        MainOverlay.CreativeWorkshop -> {
+            CreativeWorkshopScreen(
+                contentBottomInset = contentBottomInset,
+                onBack = onBack,
             )
         }
         is MainOverlay.PlaylistSearch -> {

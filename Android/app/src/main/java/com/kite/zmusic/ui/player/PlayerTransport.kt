@@ -170,6 +170,7 @@ import com.kite.zmusic.ui.common.UrlImage
 import com.kite.zmusic.ui.common.rememberNetworkOnline
 import com.kite.zmusic.ui.icons.ZIcons
 import com.kite.zmusic.ui.notice.showIslandNotice
+import com.kite.zmusic.ui.theme.TextTheme
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeStyle
 import dev.chrisbanes.haze.HazeTint
@@ -254,9 +255,9 @@ internal fun PlayerTransport(
         label = "playPulse",
     )
     val iconTint = if (controlsLocked) {
-        Color(0xFF7A8796)
+        TextTheme.PlayerTransportLocked
     } else {
-        Color(0xFFB8C5D4)
+        TextTheme.PlayerTransport
     }
     val playSize = when {
         landscapeDense -> 36.dp
@@ -283,12 +284,7 @@ internal fun PlayerTransport(
     val portraitAlignPad = trackCapRadius
     val portraitBottomBandHeight = 36.dp
     val timeStyle = TextStyle(
-        color = if (portraitSlim) {
-            // 竖屏进度/总时长：提高对比，避免压在背景上发灰看不清
-            Color(0xFFE8EEF5).copy(alpha = 0.92f)
-        } else {
-            LyricDim.copy(alpha = 0.7f)
-        },
+        color = TextTheme.PlayerTime.copy(alpha = if (portraitSlim) 0.92f else 0.7f),
         fontFamily = FontFamily.Monospace,
         fontSize = if (landscapeDense) 11.sp else if (portraitSlim) 11.sp else 10.sp,
         letterSpacing = 0.3.sp,

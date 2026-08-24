@@ -61,6 +61,7 @@ import dev.chrisbanes.haze.hazeEffect
 
 internal typealias MainPalette = com.kite.zmusic.ui.theme.MainPalette
 internal typealias MainControls = com.kite.zmusic.ui.theme.MainControls
+internal typealias TextTheme = com.kite.zmusic.ui.theme.TextTheme
 
 internal val FloatingDockHeight = 64.dp
 internal val FloatingDockCompactHeight = 52.dp
@@ -270,7 +271,7 @@ internal fun MainPageHeader(
         Text(
             text = title,
             style = TextStyle(
-                color = MainPalette.Ink,
+                color = TextTheme.PageHeader,
                 fontSize = if (landscape) 26.sp else 28.sp,
                 fontWeight = FontWeight.Bold,
                 letterSpacing = (-0.4).sp,

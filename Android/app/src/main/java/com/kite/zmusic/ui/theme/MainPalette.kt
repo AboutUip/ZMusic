@@ -85,6 +85,7 @@ object MainPalette {
 
     fun bind(colors: MainColors) {
         if (active != colors) active = colors
+        TextTheme.bindDefaults(colors)
     }
 
     val snapshot: MainColors get() = active
@@ -92,9 +93,13 @@ object MainPalette {
 
     val Page: Color get() = active.page
     val Surface: Color get() = active.surface
-    val Ink: Color get() = active.ink
-    val Secondary: Color get() = active.secondary
-    val Hint: Color get() = active.hint
+    /** 正文主色；转发 [TextTheme.Title]，便于插件 `text.title` 覆盖全 App。 */
+    val Ink: Color get() = TextTheme.Title
+    /** 辅文；转发 [TextTheme.Subtitle]。 */
+    val Secondary: Color get() = TextTheme.Subtitle
+    /** 弱提示字色；转发 [TextTheme.Hint]。 */
+    val Hint: Color get() = TextTheme.Hint
+    /** 面色/控件强调（非文本 token）。文本强调用 [TextTheme.Accent]。 */
     val Accent: Color get() = active.accent
     val Hairline: Color get() = active.hairline
     val DockGlass: Color get() = active.dockGlass

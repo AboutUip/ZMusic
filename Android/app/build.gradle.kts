@@ -51,8 +51,8 @@ android {
         applicationId = "com.kite.zmusic"
         minSdk = 29
         targetSdk = 36
-        versionCode = 6
-        versionName = "1.2.3"
+        versionCode = 7
+        versionName = "1.3.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -102,6 +102,7 @@ android {
                     "**/libandroidx.graphics.path.so",
                     "**/libimage_processing_util_jni.so",
                     "**/libsurface_util_jni.so",
+                    "**/libquickjs-android-wrapper.so",
                 ),
             )
         }
@@ -114,12 +115,38 @@ android {
         compose = true
         buildConfig = true
     }
+    sourceSets.getByName("main").assets.srcDir(layout.buildDirectory.dir("generated/pluginProbe"))
 }
 
 kotlin {
     compilerOptions {
         jvmTarget.set(JvmTarget.JVM_17)
     }
+}
+
+val packPluginProbe = tasks.register<Zip>("packPluginProbe") {
+    group = "plugin"
+    description = "Pack src/main/plugin-probe into assets as probe.zpp"
+    val probeDir = file("src/main/plugin-probe")
+    archiveFileName.set("probe.zpp")
+    destinationDirectory.set(layout.buildDirectory.dir("generated/pluginProbe/plugin-engine"))
+    from(probeDir) {
+        include("*")
+    }
+    doFirst {
+        val files = probeDir.listFiles()?.filter { it.isFile }.orEmpty()
+        if (files.isEmpty()) {
+            throw GradleException("missing plugin-probe files at ${probeDir.canonicalPath}")
+        }
+    }
+}
+
+tasks.named("preBuild") {
+    dependsOn(packPluginProbe)
+}
+
+tasks.matching { it.name.startsWith("merge") && it.name.endsWith("Assets") }.configureEach {
+    dependsOn(packPluginProbe)
 }
 
 dependencies {
@@ -154,6 +181,8 @@ dependencies {
     implementation(libs.security.crypto)
     implementation(libs.xaiop)
     implementation(libs.androidsvg)
+    implementation(libs.quickjs.android)
+    implementation(libs.eddsa)
 
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.session)

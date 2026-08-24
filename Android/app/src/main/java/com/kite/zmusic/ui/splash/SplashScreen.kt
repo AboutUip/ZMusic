@@ -4,6 +4,7 @@ import android.app.Activity
 import android.provider.Settings
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -42,11 +44,15 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.pow
+import com.kite.zmusic.plugin.PluginSplashCopy
 import com.kite.zmusic.ui.theme.MainPalette
 
 private val Page get() = MainPalette.Page
@@ -85,11 +91,13 @@ private data class Pose(
  *
  * [checkReady] 与动画并行；动画播到定格后若探测未完，停在定格等待，再淡出。
  * [onFinished] 的参数为探测是否成功。
+ * 定格后若仍有插件未就绪，在画面下方转圈提示，不加遮罩。
  */
 @Composable
 fun SplashScreen(
     checkReady: suspend () -> Boolean,
     onFinished: (connected: Boolean) -> Unit,
+    pluginWaitNames: StateFlow<List<String>>? = null,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -104,6 +112,9 @@ fun SplashScreen(
     val density = LocalDensity.current
     val checkReadyState = rememberUpdatedState(checkReady)
     val onFinishedState = rememberUpdatedState(onFinished)
+
+    val emptyPluginWait = remember { MutableStateFlow(emptyList<String>()) }
+    val pendingPlugins by (pluginWaitNames ?: emptyPluginWait).collectAsStateWithLifecycle()
 
     SplashLightSystemBars()
 
@@ -173,6 +184,42 @@ fun SplashScreen(
                     Text(
                         text = "把歌开大一点",
                         style = taglineStyle,
+                    )
+                }
+            }
+        }
+        if (tMs >= FadeAt && pendingPlugins.isNotEmpty()) {
+            Column(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 56.dp, start = 32.dp, end = 32.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                CircularProgressIndicator(
+                    color = Bloom,
+                    strokeWidth = 2.dp,
+                    modifier = Modifier.size(22.dp),
+                )
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    text = PluginSplashCopy.LOADING,
+                    style = TextStyle(
+                        color = InkSecondary,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                    ),
+                )
+                val names = PluginSplashCopy.namesLine(pendingPlugins)
+                if (names.isNotEmpty()) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = names,
+                        style = TextStyle(
+                            color = InkSecondary.copy(alpha = 0.85f),
+                            fontSize = 12.sp,
+                        ),
+                        textAlign = TextAlign.Center,
                     )
                 }
             }

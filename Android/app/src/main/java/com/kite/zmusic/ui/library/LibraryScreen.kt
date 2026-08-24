@@ -121,6 +121,7 @@ import com.kite.zmusic.ui.common.rememberUrlImageBitmap
 import com.kite.zmusic.ui.icons.ZIcons
 import com.kite.zmusic.ui.notice.showIslandNotice
 import com.kite.zmusic.ui.main.MainPalette
+import com.kite.zmusic.ui.theme.TextTheme
 import com.kite.zmusic.ui.main.mainContentPadH
 import com.kite.zmusic.ui.main.wallpaperItemChrome
 import kotlinx.coroutines.CoroutineScope
@@ -1284,7 +1285,7 @@ private fun ProfileSpaceHint(
             fontSize = 10.sp,
             fontWeight = FontWeight.Normal,
             letterSpacing = 0.8.sp,
-            color = if (onPhoto) Color.White.copy(alpha = 0.52f) else MainPalette.Hint,
+            color = if (onPhoto) TextTheme.OnPhotoMeta else MainPalette.Hint,
             shadow = if (onPhoto) {
                 Shadow(color = Color.Black.copy(alpha = 0.55f), offset = Offset(0f, 1f), blurRadius = 8f)
             } else {
@@ -1298,7 +1299,7 @@ private fun ProfileSpaceHint(
 }
 
 private fun identityTitleStyle(onPhoto: Boolean) = TextStyle(
-    color = if (onPhoto) Color.White else MainPalette.Ink,
+    color = if (onPhoto) TextTheme.OnPhotoTitle else MainPalette.Ink,
     fontWeight = FontWeight.Bold,
     fontSize = 22.sp,
     shadow = if (onPhoto) {
@@ -1309,7 +1310,7 @@ private fun identityTitleStyle(onPhoto: Boolean) = TextStyle(
 )
 
 private fun identityCaptionStyle(onPhoto: Boolean) = TextStyle(
-    color = if (onPhoto) Color.White.copy(alpha = 0.88f) else MainPalette.Secondary,
+    color = if (onPhoto) TextTheme.OnPhotoSubtitle else MainPalette.Secondary,
     fontSize = 13.sp,
     lineHeight = 16.sp,
     shadow = if (onPhoto) {
@@ -1320,7 +1321,7 @@ private fun identityCaptionStyle(onPhoto: Boolean) = TextStyle(
 )
 
 private fun identityTagStyle(onPhoto: Boolean) = TextStyle(
-    color = if (onPhoto) Color.White.copy(alpha = 0.62f) else MainPalette.Hint,
+    color = if (onPhoto) TextTheme.OnPhotoMeta else MainPalette.Hint,
     fontSize = 12.sp,
     letterSpacing = 0.2.sp,
     lineHeight = 16.sp,
@@ -1332,7 +1333,7 @@ private fun identityTagStyle(onPhoto: Boolean) = TextStyle(
 )
 
 private fun identityStatStyle(onPhoto: Boolean) = TextStyle(
-    color = if (onPhoto) Color.White.copy(alpha = 0.92f) else MainPalette.Ink,
+    color = if (onPhoto) TextTheme.OnPhotoTitle.copy(alpha = 0.92f) else MainPalette.Ink,
     fontSize = 13.sp,
     fontWeight = FontWeight.SemiBold,
     letterSpacing = 0.2.sp,

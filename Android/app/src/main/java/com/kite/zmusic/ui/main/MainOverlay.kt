@@ -5,6 +5,7 @@ sealed class MainOverlay {
     data object Fm : MainOverlay()
     data object Charts : MainOverlay()
     data object CachedSongs : MainOverlay()
+    data object CreativeWorkshop : MainOverlay()
     data object Search : MainOverlay()
     data object Settings : MainOverlay()
     data class Playlist(
@@ -66,6 +67,7 @@ sealed class MainOverlay {
         Fm -> "fm"
         Charts -> "charts"
         CachedSongs -> "cached-songs"
+        CreativeWorkshop -> "creative-workshop"
         Search -> "search"
         Settings -> "settings"
         is Playlist -> "playlist-$id"

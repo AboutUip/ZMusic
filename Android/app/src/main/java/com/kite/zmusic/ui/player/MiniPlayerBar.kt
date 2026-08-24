@@ -45,6 +45,7 @@ import com.kite.zmusic.ui.common.UrlImage
 import com.kite.zmusic.ui.common.UrlImageCache
 import com.kite.zmusic.ui.icons.ZIcons
 import com.kite.zmusic.ui.main.MainPalette
+import com.kite.zmusic.ui.theme.TextTheme
 import com.kite.zmusic.ui.main.mainLiquidGlass
 import com.kyant.backdrop.Backdrop
 import kotlinx.coroutines.flow.Flow
@@ -120,7 +121,7 @@ fun MiniPlayerBar(
                     Text(
                         text = track.name,
                         style = TextStyle(
-                            color = MainPalette.Ink,
+                            color = TextTheme.MiniPlayerTitle,
                             fontWeight = FontWeight.SemiBold,
                             fontSize = 13.sp,
                         ),
@@ -130,7 +131,7 @@ fun MiniPlayerBar(
                     Text(
                         text = track.artists,
                         style = TextStyle(
-                            color = MainPalette.Secondary,
+                            color = TextTheme.MiniPlayerSubtitle,
                             fontSize = 11.sp,
                         ),
                         maxLines = 1,
@@ -161,7 +162,7 @@ fun MiniPlayerBar(
             Icon(
                 imageVector = if (isPlaying) ZIcons.Pause else ZIcons.Play,
                 contentDescription = if (isPlaying) "暂停" else "播放",
-                tint = MainPalette.Ink,
+                tint = TextTheme.MiniPlayerIcon,
                 modifier = Modifier.size(22.dp),
             )
         }

@@ -1,5 +1,6 @@
 package com.kite.zmusic.data
 
+import com.kite.zmusic.workshop.WorkshopAuthStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -17,6 +18,7 @@ class CommunityLoginRepository(
     private val authClient: NcmAuthClient,
     private val userClient: NcmUserClient,
     private val communityServerStore: CommunityServerStore,
+    private val workshopAuthStore: WorkshopAuthStore,
     private val client: CommunityLoginClient = CommunityLoginClient(),
 ) {
     suspend fun preview(sid: String): CommunityLoginPreview {
@@ -59,7 +61,14 @@ class CommunityLoginRepository(
         var firstForbidden: CommunitySubmitAck? = null
         for (attempt in 0..3) {
             val ack = client.submitAllow(url, assertion)
-            if (ack.ok) return ack
+            if (ack.ok) {
+                val token = ack.appToken
+                if (!token.isNullOrBlank()) {
+                    val uidText = ack.uid?.takeIf { it.isNotBlank() } ?: preview.uid.toString()
+                    workshopAuthStore.save(token, uidText)
+                }
+                return ack
+            }
             if (ack.status == "forbidden") {
                 firstForbidden = ack
                 if (attempt < 3) delay(400L * (attempt + 1))

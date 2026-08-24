@@ -10,6 +10,7 @@ import androidx.compose.material.icons.rounded.AlignHorizontalCenter
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.BatteryChargingFull
 import androidx.compose.material.icons.rounded.BlurOn
+import androidx.compose.material.icons.rounded.BugReport
 import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.LibraryAdd
@@ -25,7 +26,10 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Checklist
 import androidx.compose.material.icons.rounded.Dns
 import androidx.compose.material.icons.rounded.EmojiEvents
+import androidx.compose.material.icons.rounded.Extension
 import androidx.compose.material.icons.rounded.Folder
+import androidx.compose.material.icons.rounded.Fullscreen
+import androidx.compose.material.icons.rounded.FullscreenExit
 import androidx.compose.material.icons.rounded.GetApp
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.Science
@@ -35,6 +39,7 @@ import androidx.compose.material.icons.rounded.Bluetooth
 import androidx.compose.material.icons.rounded.Headset
 import androidx.compose.material.icons.rounded.Hearing
 import androidx.compose.material.icons.rounded.Speaker
+import androidx.compose.material.icons.rounded.Storefront
 import androidx.compose.material.icons.rounded.Tv
 import androidx.compose.material.icons.rounded.Usb
 import androidx.compose.material.icons.rounded.Handshake
@@ -54,8 +59,6 @@ import androidx.compose.material.icons.rounded.QrCodeScanner
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.FormatAlignCenter
 import androidx.compose.material.icons.rounded.Forward5
-import androidx.compose.material.icons.rounded.Fullscreen
-import androidx.compose.material.icons.rounded.FullscreenExit
 import androidx.compose.material.icons.rounded.PictureInPictureAlt
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Radio
@@ -93,6 +96,7 @@ object ZIcons {
     val ScreenRotation: ImageVector get() = Icons.Rounded.ScreenRotation
     val GraphicEq: ImageVector get() = Icons.Rounded.GraphicEq
     val Science: ImageVector get() = Icons.Rounded.Science
+    val BugReport: ImageVector get() = Icons.Rounded.BugReport
     val GetApp: ImageVector get() = Icons.Rounded.GetApp
     val Headset: ImageVector get() = Icons.Rounded.Headset
     val Speaker: ImageVector get() = Icons.Rounded.Speaker
@@ -159,6 +163,8 @@ object ZIcons {
     val RelatedMv: ImageVector get() = Icons.Rounded.VideoLibrary
     val Fullscreen: ImageVector get() = Icons.Rounded.Fullscreen
     val FullscreenExit: ImageVector get() = Icons.Rounded.FullscreenExit
+    val Extension: ImageVector get() = Icons.Rounded.Extension
+    val Workshop: ImageVector get() = Icons.Rounded.Storefront
 
     fun dock(destination: MainDestination): ImageVector = when (destination) {
         MainDestination.Home -> Home

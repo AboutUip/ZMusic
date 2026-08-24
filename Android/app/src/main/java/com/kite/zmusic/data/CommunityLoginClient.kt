@@ -12,6 +12,8 @@ import java.util.concurrent.TimeUnit
 data class CommunitySubmitAck(
     val ok: Boolean,
     val status: String,
+    val appToken: String? = null,
+    val uid: String? = null,
 )
 
 class CommunityLoginClient(
@@ -47,16 +49,24 @@ class CommunityLoginClient(
             val json = runCatching { JSONObject(text) }.getOrElse {
                 error("提交失败")
             }
-            val body = json.optJSONObject("data") ?: json
+            val bodyObj = json.optJSONObject("data") ?: json
+            val ok = jsonOk(bodyObj) || jsonOk(json)
+            val status = firstStatus(bodyObj, json)
+            val token = firstString(bodyObj, json, "app_token")
+                ?.takeIf { it.matches(TOKEN_RE) }
+            val uid = firstString(bodyObj, json, "uid")
             CommunitySubmitAck(
-                ok = jsonOk(body) || jsonOk(json),
-                status = firstStatus(body, json),
+                ok = ok,
+                status = status,
+                appToken = if (ok) token else null,
+                uid = if (ok) uid else null,
             )
         }
     }
 
     companion object {
         private val JSON_TYPE = "application/json; charset=utf-8".toMediaType()
+        private val TOKEN_RE = Regex("^[A-Za-z0-9_-]{16,128}$")
 
         private fun jsonOk(obj: JSONObject): Boolean = when (val value = obj.opt("ok")) {
             is Boolean -> value
@@ -71,6 +81,14 @@ class CommunityLoginClient(
                 if (status.isNotEmpty() && status != "null") return status
             }
             return ""
+        }
+
+        private fun firstString(a: JSONObject, b: JSONObject, key: String): String? {
+            for (obj in listOf(a, b)) {
+                val v = obj.optString(key, "").trim()
+                if (v.isNotEmpty() && v != "null") return v
+            }
+            return null
         }
     }
 }

@@ -48,16 +48,19 @@ fun ZMusicNavHost(modifier: Modifier = Modifier) {
             SplashScreen(
                 checkReady = {
                     serverConfigRepository.applyToRuntime()
-                    if (!appContext.isNetworkOnline()) {
+                    val connected = if (!appContext.isNetworkOnline()) {
                         true
                     } else {
-                        val connected = NcmConnectivityClient().checkReachable().isSuccess
-                        if (connected) {
+                        val ok = NcmConnectivityClient().checkReachable().isSuccess
+                        if (ok) {
                             runCatching { app.sessionWarmup.prefetch() }
                         }
-                        connected
+                        ok
                     }
+                    app.pluginEngine.awaitReady()
+                    connected
                 },
+                pluginWaitNames = app.pluginEngine.splashPendingNames,
                 onFinished = { connected ->
                     app.appUpdateCoordinator.markSplashFinished()
                     val dest = if (connected) Routes.MainPlaceholder else Routes.ServerConfig

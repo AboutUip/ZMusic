@@ -94,6 +94,7 @@ ZMusic/
 | [`docs/ANDROID-ISLAND-NOTICE.md`](./docs/ANDROID-ISLAND-NOTICE.md) | 应用内灵动岛通知设计 |
 | [`docs/WINDOWS.md`](./docs/WINDOWS.md) | Windows 架构与已实现能力 |
 | [`docs/WINDOWS-DISTRIBUTION.md`](./docs/WINDOWS-DISTRIBUTION.md) | Windows 安装包分发 |
+| [`docs/plugin-engine/`](./docs/plugin-engine) | 插件作者规范（`.zpp`、Xuan API） |
 | [`docs/netease-new/`](./docs/netease-new) | 网易云兼容 API 接口文档 |
 
 细节一律以 [`docs/`](./docs) 为准。

@@ -212,7 +212,7 @@ private fun DockItem(
     val progress = compactProgress().coerceIn(0f, 1f)
     val proximity = (1f - abs(selection - index)).coerceIn(0f, 1f)
     val selected = proximity > 0.5f
-    val tint = lerp(MainPalette.Secondary, MainPalette.Ink, proximity)
+    val tint = lerp(TextTheme.DockInactive, TextTheme.DockActive, proximity)
     val labelH = lerp(14.dp, 0.dp, progress)
     Column(
         modifier.semantics {

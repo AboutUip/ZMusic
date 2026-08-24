@@ -210,7 +210,10 @@ fun rememberCommunityLoginOpener(): () -> Unit {
                             onSuccess = { ack ->
                                 when {
                                     ack.ok -> {
-                                        toast("已授权")
+                                        toast(
+                                            if (!ack.appToken.isNullOrBlank()) "已确认，创意工坊可用"
+                                            else "已授权",
+                                        )
                                         phase = CommunityLoginPhase.Hidden
                                     }
                                     ack.status == "forbidden" ->

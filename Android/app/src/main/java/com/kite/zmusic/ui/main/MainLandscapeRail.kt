@@ -87,7 +87,7 @@ fun LandscapeNavRail(
                 Text(
                     text = "ZMusic",
                     style = TextStyle(
-                        color = MainPalette.Ink,
+                        color = TextTheme.PageHeader,
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
                         letterSpacing = (-0.3).sp,
@@ -109,7 +109,7 @@ fun LandscapeNavRail(
                         Icon(
                             imageVector = ZIcons.dock(dest),
                             contentDescription = null,
-                            tint = if (on) MainPalette.Accent else MainPalette.Secondary,
+                            tint = if (on) TextTheme.DockActive else TextTheme.DockInactive,
                             modifier = Modifier.size(20.dp),
                         )
                     }
@@ -128,7 +128,7 @@ fun LandscapeNavRail(
                     Icon(
                         imageVector = ZIcons.Settings,
                         contentDescription = null,
-                        tint = if (settingsSelected) MainPalette.Accent else MainPalette.Secondary,
+                        tint = if (settingsSelected) TextTheme.DockActive else TextTheme.DockInactive,
                         modifier = Modifier.size(20.dp),
                     )
                 }
@@ -170,7 +170,7 @@ private fun RailItem(
         Text(
             text = label,
             style = TextStyle(
-                color = if (selected) MainPalette.Accent else MainPalette.Ink,
+                color = if (selected) TextTheme.DockActive else TextTheme.DockInactive,
                 fontSize = 14.sp,
                 fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
             ),

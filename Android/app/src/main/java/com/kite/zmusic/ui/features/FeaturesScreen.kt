@@ -82,6 +82,15 @@ fun FeaturesScreen(
         ) {
             onOpenOverlay(MainOverlay.CachedSongs)
         },
+        FeatureItem(
+            title = "创意工坊",
+            subtitle = "社区插件与本机模块",
+            color = Color(0xFF5E5CE6),
+            icon = ZIcons.Workshop,
+            availableOffline = true,
+        ) {
+            onOpenOverlay(MainOverlay.CreativeWorkshop)
+        },
     )
 
     Column(

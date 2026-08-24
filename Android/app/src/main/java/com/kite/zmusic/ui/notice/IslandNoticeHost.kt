@@ -66,6 +66,7 @@ import com.kite.zmusic.ui.common.GlassActionSheetHostState
 import com.kite.zmusic.ui.common.GlassActionSheetOverlay
 import com.kite.zmusic.ui.common.GlassAlertHostState
 import com.kite.zmusic.ui.common.GlassAlertOverlay
+import com.kite.zmusic.ui.plugin.PluginFaultHost
 import com.kite.zmusic.ui.update.AppUpdateHost
 import com.kite.zmusic.ui.common.LocalGlassActionSheetHost
 import com.kite.zmusic.ui.common.LocalGlassAlertHost
@@ -75,7 +76,7 @@ import com.kite.zmusic.ui.common.PredictiveBackClaimsState
 import com.kite.zmusic.ui.common.UrlImage
 import com.kite.zmusic.ui.main.LocalChromeGlassStyle
 import com.kite.zmusic.ui.main.LocalChromeHaze
-import com.kite.zmusic.ui.main.MainPalette
+import com.kite.zmusic.ui.theme.TextTheme
 import com.kite.zmusic.ui.main.islandLiquidGlass
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
@@ -174,6 +175,7 @@ fun IslandNoticeRoot(
                 landscape = landscape,
                 modifier = Modifier.zIndex(800f),
             )
+            PluginFaultHost()
             AppUpdateHost()
         }
     }
@@ -559,7 +561,7 @@ private fun IslandMarqueeText(
 }
 
 private fun islandTextStyle(landscape: Boolean) = TextStyle(
-    color = MainPalette.Ink,
+    color = TextTheme.Island,
     fontSize = if (landscape) 12.5.sp else 13.5.sp,
     fontWeight = FontWeight.SemiBold,
     letterSpacing = (-0.15).sp,

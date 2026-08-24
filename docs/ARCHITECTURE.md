@@ -31,6 +31,7 @@ Application = 启动装配（AppContainer + PlaybackQueueSync）
 | repository | 调共享 client + `Ncm*Parse` | Compose 类型 |
 | playback | 队列、起播、URL、歌词 | 依赖 `ui/` 包 |
 | `NcmUserClient` | 薄 HTTP 门面 | 被 UI 直接 new |
+| `plugin` | 注册 `.zpp`、QuickJS / `Xuan`、哨兵与调试门控 | 进入 `playback/`、把 JS 句柄交给 UI |
 
 单文件目标：新代码 / 拆出文件尽量小于 500 行。
 
@@ -147,6 +148,7 @@ Compose 取依赖：`LocalContext.current.applicationContext as ZMusicApplicatio
 
 ## 12. 后续（本阶段不做）
 
+- 插件管理 / 选文件 UI、验签、宿主 http 与播放 API、打包器（引擎核心见 [`plugin-engine/`](./plugin-engine) 与 [`plugin-engine/internal/`](./plugin-engine/internal)）
 - Gradle `:feature-*` / Hilt
 - R8 minify
 - 缓存 TTL / 版本策略

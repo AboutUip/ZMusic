@@ -76,6 +76,7 @@ import com.kite.zmusic.ZMusicApplication
 import com.kite.zmusic.data.AppAppearance
 import com.kite.zmusic.data.ChromeGlassStyle
 import com.kite.zmusic.data.ServerConfigRepository
+import com.kite.zmusic.plugin.PluginEngineVersion
 import com.kite.zmusic.ui.common.GlassAlertDialog
 import com.kite.zmusic.ui.common.GlassPromptField
 import com.kite.zmusic.ui.icons.ZIcons
@@ -150,6 +151,7 @@ fun SettingsScreen(
     val predictiveBackVisible = remember { MutableTransitionState(false) }
     val landscapeModeVisible = remember { MutableTransitionState(false) }
     val testPlanVisible = remember { MutableTransitionState(false) }
+    val pluginEngineDebugVisible = remember { MutableTransitionState(false) }
     val glassVisible = remember { MutableTransitionState(false) }
     val appearanceVisible = remember { MutableTransitionState(false) }
     val wallpaperVisible = remember { MutableTransitionState(false) }
@@ -182,6 +184,8 @@ fun SettingsScreen(
     val landscapeMode by landscapeModeStore.enabled.collectAsStateWithLifecycle()
     val appUpdateStore = remember { app.appUpdateStore }
     val testPlan by appUpdateStore.testPlanFlow.collectAsStateWithLifecycle()
+    val pluginDebugStore = remember { app.pluginDebugStore }
+    val pluginEngineDebug by pluginDebugStore.enabled.collectAsStateWithLifecycle()
     val lyricRenderStore = remember {
         (context.applicationContext as ZMusicApplication).lyricRenderStore
     }
@@ -503,6 +507,20 @@ fun SettingsScreen(
                         icon = ZIcons.Science,
                         tint = Color(0xFFC9A227),
                         onClick = { testPlanVisible.targetState = true },
+                    )
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(start = 62.dp)
+                            .height(0.5.dp)
+                            .background(MainPalette.Hairline),
+                    )
+                    SettingsRow(
+                        title = "插件引擎调试",
+                        subtitle = pluginEngineDebugSubtitle(pluginEngineDebug),
+                        icon = ZIcons.BugReport,
+                        tint = Color(0xFF7B6B9E),
+                        onClick = { pluginEngineDebugVisible.targetState = true },
                     )
                     Box(
                         Modifier
@@ -840,6 +858,25 @@ fun SettingsScreen(
                     appUpdateStore.testPlan = next
                     context.showIslandNotice(
                         if (next) "已开启测试计划" else "已关闭测试计划",
+                    )
+                },
+                contentBottomInset = contentBottomInset,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        SettingsDrillHost(
+            visibleState = pluginEngineDebugVisible,
+            landscape = landscape,
+            title = "插件引擎调试",
+            onBack = { pluginEngineDebugVisible.targetState = false },
+        ) {
+            PluginEngineDebugSettingsPage(
+                enabled = pluginEngineDebug,
+                onEnabledChange = { next ->
+                    if (next == pluginEngineDebug) return@PluginEngineDebugSettingsPage
+                    pluginDebugStore.setEnabled(next)
+                    context.showIslandNotice(
+                        if (next) "已开启" else "已关闭",
                     )
                 },
                 contentBottomInset = contentBottomInset,
@@ -1187,6 +1224,7 @@ private fun AboutPage(
         AboutMetaCard(
             rows = listOf(
                 "版本" to version,
+                "插件引擎" to PluginEngineVersion.DISPLAY,
                 "开发者" to "小萱baibai",
                 "开源协议" to "GNU GPL-2.0",
             ),

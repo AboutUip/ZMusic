@@ -175,7 +175,8 @@ fun MainShell(
         }
         if (phase == NetworkPhase.Offline &&
             next !is MainOverlay.CachedSongs &&
-            next !is MainOverlay.Settings
+            next !is MainOverlay.Settings &&
+            next !is MainOverlay.CreativeWorkshop
         ) {
             return
         }

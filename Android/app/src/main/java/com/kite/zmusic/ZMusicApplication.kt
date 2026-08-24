@@ -22,6 +22,7 @@ import com.kite.zmusic.data.SessionRepository
 import com.kite.zmusic.data.SessionWarmup
 import com.kite.zmusic.data.TrackExportRepository
 import com.kite.zmusic.data.UserSpaceBackgroundStore
+import com.kite.zmusic.data.NetworkPhase
 import com.kite.zmusic.overlay.LyricOverlayController
 import com.kite.zmusic.playback.MvPlayback
 import com.kite.zmusic.playback.PlaybackBridge
@@ -29,6 +30,12 @@ import com.kite.zmusic.playback.PlaybackQueueSync
 import com.kite.zmusic.ui.notice.IslandNoticeCenter
 import com.kite.zmusic.ui.theme.MainColors
 import com.kite.zmusic.ui.theme.MainPalette
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 
 class ZMusicApplication : Application() {
     lateinit var container: AppContainer
@@ -78,9 +85,14 @@ class ZMusicApplication : Application() {
     val networkMode get() = container.networkMode
     val appUpdateStore get() = container.appUpdateStore
     val appUpdateCoordinator get() = container.appUpdateCoordinator
+    val pluginEngine get() = container.pluginEngine
+    val pluginDebugStore get() = container.pluginDebugStore
+    val workshopAuthStore get() = container.workshopAuthStore
+    val workshopRepository get() = container.workshopRepository
 
     private lateinit var queueSync: PlaybackQueueSync
     private lateinit var lyricOverlayController: LyricOverlayController
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     override fun onCreate() {
         super.onCreate()
@@ -116,6 +128,16 @@ class ZMusicApplication : Application() {
         // 有通知权限 + 有上次队列：冷启动即挂歌曲通知（暂停态），无需先点播放
         playbackBridge.maybeWarmMediaNotificationOnColdStart()
         container.appUpdateCoordinator.start()
+        val offline = container.networkMode.state.value.phase == NetworkPhase.Offline
+        container.pluginEngine.start(offline = offline)
+        appScope.launch {
+            container.networkMode.state
+                .map { it.phase == NetworkPhase.Offline }
+                .distinctUntilChanged()
+                .collect { isOffline ->
+                    container.pluginEngine.setOffline(isOffline)
+                }
+        }
     }
 
     fun isSourcePlaylistComplete(playlistId: Long): Boolean =

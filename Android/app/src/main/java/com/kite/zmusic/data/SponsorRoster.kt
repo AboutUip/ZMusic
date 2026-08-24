@@ -1,9 +1,5 @@
 package com.kite.zmusic.data
 
-import android.content.Context
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import org.json.JSONArray
 import org.json.JSONObject
 
 data class SponsorEntry(
@@ -18,35 +14,9 @@ data class SponsorEntry(
 
 /**
  * 赞助名单字段：id / time / name / amount。
- * 远程目录走 XAIOP；本地 JSON 解析仍保留给尚未删掉的 assets。
+ * 远程目录走 XAIOP。
  */
 object SponsorRoster {
-    private const val ASSET = "sponsors.json"
-
-    suspend fun load(context: Context): List<SponsorEntry> = withContext(Dispatchers.IO) {
-        runCatching {
-            val raw = context.assets.open(ASSET).bufferedReader().use { it.readText() }
-            parse(raw)
-        }.getOrDefault(emptyList())
-    }
-
-    internal fun parse(raw: String): List<SponsorEntry> {
-        val arr = JSONArray(raw.trim().ifBlank { "[]" })
-        val out = ArrayList<SponsorEntry>(arr.length())
-        for (i in 0 until arr.length()) {
-            val o = arr.optJSONObject(i) ?: continue
-            val name = o.optString("name").trim()
-            if (name.isEmpty()) continue
-            out += SponsorEntry(
-                id = o.optString("id").trim(),
-                time = o.optString("time").trim(),
-                name = name,
-                amount = readAmount(o.opt("amount")),
-            )
-        }
-        return out
-    }
-
     private fun readAmount(value: Any?): String {
         if (value == null || value == JSONObject.NULL) return ""
         if (value is Number) return formatYuan(value.toDouble())
