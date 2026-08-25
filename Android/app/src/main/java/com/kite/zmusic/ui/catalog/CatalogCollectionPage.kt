@@ -171,6 +171,7 @@ internal fun CatalogCollectionPage(
         is MainOverlay.Artist, is MainOverlay.ArtistAlbums, is MainOverlay.ArtistMvs,
         MainOverlay.LikedArtists, is MainOverlay.LikedArtistsSearch, MainOverlay.CachedSongs,
         is MainOverlay.User, is MainOverlay.UserRelations,
+        is MainOverlay.PluginPage,
         -> Unit
         MainOverlay.Daily -> {
             LaunchedEffect(Unit) { vm.loadDaily() }

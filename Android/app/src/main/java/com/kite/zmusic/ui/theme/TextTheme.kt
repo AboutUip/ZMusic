@@ -3,10 +3,11 @@ package com.kite.zmusic.ui.theme
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.graphics.Color
 
 /**
- * 插件可覆盖的细粒度文本色。默认来自 [MainColors]；舞台 / onPhoto 默认固定。
+ * 插件可覆盖的宿主色 token。默认来自 [MainColors]；舞台 / onPhoto / 玻璃公式另有默认。
  * 契约见 docs/plugin-engine/THEME.md。
  */
 object TextThemeKeys {
@@ -33,6 +34,29 @@ object TextThemeKeys {
     const val ON_PHOTO_SUBTITLE = "text.onPhoto.subtitle"
     const val ON_PHOTO_META = "text.onPhoto.meta"
 
+    const val FACE_PAGE = "face.page"
+    const val FACE_SURFACE = "face.surface"
+    const val FACE_ACCENT = "face.accent"
+    const val FACE_HAIRLINE = "face.hairline"
+    const val FACE_CARD = "face.card"
+    const val FACE_PLACEHOLDER = "face.placeholder"
+    const val FACE_TRACK_OFF = "face.trackOff"
+
+    const val CHROME_DOCK_GLASS = "chrome.dockGlass"
+    const val CHROME_DOCK_STROKE = "chrome.dockStroke"
+    const val CHROME_SHEET_TINT = "chrome.sheetTint"
+    const val CHROME_SHEET_WASH = "chrome.sheetWash"
+    const val CHROME_GLASS_FILL = "chrome.glassFill"
+
+    const val CONTROL_THUMB = "control.thumb"
+
+    const val PLAYER_STAGE = "player.stage"
+    const val PLAYER_PROGRESS_THUMB = "player.progress.thumb"
+    const val PLAYER_PROGRESS_ACTIVE = "player.progress.active"
+    const val PLAYER_PROGRESS_OFF = "player.progress.off"
+    const val PLAYER_PLAY_FILL = "player.playFill"
+    const val PLAYER_PLAY_ICON = "player.playIcon"
+
     val ALL: Set<String> = setOf(
         TITLE, BODY, SUBTITLE, META, HINT, ACCENT, DESTRUCTIVE,
         DOCK_ACTIVE, DOCK_INACTIVE,
@@ -41,58 +65,28 @@ object TextThemeKeys {
         ISLAND,
         PLAYER_TRANSPORT, PLAYER_TRANSPORT_LOCKED, PLAYER_TIME,
         ON_PHOTO_TITLE, ON_PHOTO_SUBTITLE, ON_PHOTO_META,
+        FACE_PAGE, FACE_SURFACE, FACE_ACCENT, FACE_HAIRLINE,
+        FACE_CARD, FACE_PLACEHOLDER, FACE_TRACK_OFF,
+        CHROME_DOCK_GLASS, CHROME_DOCK_STROKE, CHROME_SHEET_TINT,
+        CHROME_SHEET_WASH, CHROME_GLASS_FILL,
+        CONTROL_THUMB,
+        PLAYER_STAGE, PLAYER_PROGRESS_THUMB, PLAYER_PROGRESS_ACTIVE,
+        PLAYER_PROGRESS_OFF, PLAYER_PLAY_FILL, PLAYER_PLAY_ICON,
     )
+
+    /** `accent` → `text.accent`；已带族前缀的全名原样匹配。 */
+    fun normalize(raw: String): String? {
+        val s = raw.trim()
+        if (s.isEmpty()) return null
+        if (s in ALL) return s
+        val asText = "text.$s"
+        return asText.takeIf { it in ALL }
+    }
 }
 
-data class TextThemeTokens(
-    val title: Color,
-    val body: Color,
-    val subtitle: Color,
-    val meta: Color,
-    val hint: Color,
-    val accent: Color,
-    val destructive: Color,
-    val dockActive: Color,
-    val dockInactive: Color,
-    val pageHeader: Color,
-    val catalogTitle: Color,
-    val catalogAction: Color,
-    val miniPlayerTitle: Color,
-    val miniPlayerSubtitle: Color,
-    val miniPlayerIcon: Color,
-    val island: Color,
-    val playerTransport: Color,
-    val playerTransportLocked: Color,
-    val playerTime: Color,
-    val onPhotoTitle: Color,
-    val onPhotoSubtitle: Color,
-    val onPhotoMeta: Color,
-) {
-    fun colorOf(key: String): Color = when (key) {
-        TextThemeKeys.TITLE -> title
-        TextThemeKeys.BODY -> body
-        TextThemeKeys.SUBTITLE -> subtitle
-        TextThemeKeys.META -> meta
-        TextThemeKeys.HINT -> hint
-        TextThemeKeys.ACCENT -> accent
-        TextThemeKeys.DESTRUCTIVE -> destructive
-        TextThemeKeys.DOCK_ACTIVE -> dockActive
-        TextThemeKeys.DOCK_INACTIVE -> dockInactive
-        TextThemeKeys.PAGE_HEADER -> pageHeader
-        TextThemeKeys.CATALOG_TITLE -> catalogTitle
-        TextThemeKeys.CATALOG_ACTION -> catalogAction
-        TextThemeKeys.MINI_PLAYER_TITLE -> miniPlayerTitle
-        TextThemeKeys.MINI_PLAYER_SUBTITLE -> miniPlayerSubtitle
-        TextThemeKeys.MINI_PLAYER_ICON -> miniPlayerIcon
-        TextThemeKeys.ISLAND -> island
-        TextThemeKeys.PLAYER_TRANSPORT -> playerTransport
-        TextThemeKeys.PLAYER_TRANSPORT_LOCKED -> playerTransportLocked
-        TextThemeKeys.PLAYER_TIME -> playerTime
-        TextThemeKeys.ON_PHOTO_TITLE -> onPhotoTitle
-        TextThemeKeys.ON_PHOTO_SUBTITLE -> onPhotoSubtitle
-        TextThemeKeys.ON_PHOTO_META -> onPhotoMeta
-        else -> title
-    }
+internal data class ThemePalette(private val colors: Map<String, Color>) {
+    fun colorOf(key: String): Color =
+        colors[key] ?: error("missing theme default: $key")
 
     fun asHexMap(): Map<String, String> =
         TextThemeKeys.ALL.associateWith { colorToHex(colorOf(it)) }
@@ -101,46 +95,77 @@ data class TextThemeTokens(
         private val PlayerTransportDefault = Color(0xFFB8C5D4)
         private val PlayerTransportLockedDefault = Color(0xFF7A8796)
         private val PlayerTimeDefault = Color(0xFFE8EEF5)
+        private val PlayerStageDefault = Color(0xFF05070C)
+        private val PlayerProgressThumbDefault = Color(0xFFE8EEF5)
+        private val PlayerProgressActiveDefault = Color(0xFFD5DEE8).copy(alpha = 0.9f)
+        private val PlayerProgressOffDefault = Color.White.copy(alpha = 0.14f)
+        private val PlayerPlayFillDefault = Color.White.copy(alpha = 0.12f)
+        private val PlayerPlayIconDefault = Color(0xFFF5F7FA)
 
-        fun from(colors: MainColors): TextThemeTokens = TextThemeTokens(
-            title = colors.ink,
-            body = colors.ink,
-            subtitle = colors.secondary,
-            meta = colors.secondary,
-            hint = colors.hint,
-            accent = colors.accent,
-            destructive = colors.accent,
-            dockActive = colors.ink,
-            dockInactive = colors.secondary,
-            pageHeader = colors.ink,
-            catalogTitle = colors.ink,
-            catalogAction = colors.accent,
-            miniPlayerTitle = colors.ink,
-            miniPlayerSubtitle = colors.secondary,
-            miniPlayerIcon = colors.ink,
-            island = colors.ink,
-            playerTransport = PlayerTransportDefault,
-            playerTransportLocked = PlayerTransportLockedDefault,
-            playerTime = PlayerTimeDefault,
-            onPhotoTitle = Color.White,
-            onPhotoSubtitle = Color.White.copy(alpha = 0.88f),
-            onPhotoMeta = Color.White.copy(alpha = 0.62f),
-        )
+        fun from(colors: MainColors): ThemePalette {
+            val m = LinkedHashMap<String, Color>(TextThemeKeys.ALL.size)
+            m[TextThemeKeys.TITLE] = colors.ink
+            m[TextThemeKeys.BODY] = colors.ink
+            m[TextThemeKeys.SUBTITLE] = colors.secondary
+            m[TextThemeKeys.META] = colors.secondary
+            m[TextThemeKeys.HINT] = colors.hint
+            m[TextThemeKeys.ACCENT] = colors.accent
+            m[TextThemeKeys.DESTRUCTIVE] = colors.accent
+            m[TextThemeKeys.DOCK_ACTIVE] = colors.ink
+            m[TextThemeKeys.DOCK_INACTIVE] = colors.secondary
+            m[TextThemeKeys.PAGE_HEADER] = colors.ink
+            m[TextThemeKeys.CATALOG_TITLE] = colors.ink
+            m[TextThemeKeys.CATALOG_ACTION] = colors.accent
+            m[TextThemeKeys.MINI_PLAYER_TITLE] = colors.ink
+            m[TextThemeKeys.MINI_PLAYER_SUBTITLE] = colors.secondary
+            m[TextThemeKeys.MINI_PLAYER_ICON] = colors.ink
+            m[TextThemeKeys.ISLAND] = colors.ink
+            m[TextThemeKeys.PLAYER_TRANSPORT] = PlayerTransportDefault
+            m[TextThemeKeys.PLAYER_TRANSPORT_LOCKED] = PlayerTransportLockedDefault
+            m[TextThemeKeys.PLAYER_TIME] = PlayerTimeDefault
+            m[TextThemeKeys.ON_PHOTO_TITLE] = Color.White
+            m[TextThemeKeys.ON_PHOTO_SUBTITLE] = Color.White.copy(alpha = 0.88f)
+            m[TextThemeKeys.ON_PHOTO_META] = Color.White.copy(alpha = 0.62f)
+            m[TextThemeKeys.FACE_PAGE] = colors.page
+            m[TextThemeKeys.FACE_SURFACE] = colors.surface
+            m[TextThemeKeys.FACE_ACCENT] = colors.accent
+            m[TextThemeKeys.FACE_HAIRLINE] = colors.hairline
+            m[TextThemeKeys.FACE_CARD] = colors.card
+            m[TextThemeKeys.FACE_PLACEHOLDER] = colors.placeholder
+            m[TextThemeKeys.FACE_TRACK_OFF] = colors.trackOff
+            m[TextThemeKeys.CHROME_DOCK_GLASS] = colors.dockGlass
+            m[TextThemeKeys.CHROME_DOCK_STROKE] = colors.dockStroke
+            m[TextThemeKeys.CHROME_SHEET_TINT] = colors.sheetTint
+            m[TextThemeKeys.CHROME_SHEET_WASH] = colors.sheetWash
+            m[TextThemeKeys.CHROME_GLASS_FILL] = colors.glassFill(0.62f)
+            m[TextThemeKeys.CONTROL_THUMB] = Color.White
+            m[TextThemeKeys.PLAYER_STAGE] = PlayerStageDefault
+            m[TextThemeKeys.PLAYER_PROGRESS_THUMB] = PlayerProgressThumbDefault
+            m[TextThemeKeys.PLAYER_PROGRESS_ACTIVE] = PlayerProgressActiveDefault
+            m[TextThemeKeys.PLAYER_PROGRESS_OFF] = PlayerProgressOffDefault
+            m[TextThemeKeys.PLAYER_PLAY_FILL] = PlayerPlayFillDefault
+            m[TextThemeKeys.PLAYER_PLAY_ICON] = PlayerPlayIconDefault
+            check(m.keys == TextThemeKeys.ALL) {
+                "theme defaults missing ${TextThemeKeys.ALL - m.keys}"
+            }
+            return ThemePalette(m)
+        }
     }
 }
 
 /**
- * 宿主文本主题。Compose 读取 getter 会订阅 overlay / 默认变更。
+ * 宿主主题。Compose 读取 getter 会订阅 overlay / 默认变更。
+ * 面色走 [MainPalette] 同名 getter，以便全 App 已有调用点自动覆盖。
  */
 object TextTheme {
-    private var defaults by mutableStateOf(TextThemeTokens.from(MainColors.Light))
+    private var defaults by mutableStateOf(ThemePalette.from(MainColors.Light))
     private var overlay by mutableStateOf<Map<String, Color>>(emptyMap())
     private var ownerId by mutableStateOf<String?>(null)
 
     val ownerPluginId: String? get() = ownerId
 
     fun bindDefaults(colors: MainColors) {
-        val next = TextThemeTokens.from(colors)
+        val next = ThemePalette.from(colors)
         if (defaults != next) defaults = next
     }
 
@@ -153,6 +178,7 @@ object TextTheme {
         if (colors.keys.any { it !in TextThemeKeys.ALL }) return false
         overlay = overlay + colors
         ownerId = pluginId
+        Snapshot.sendApplyNotifications()
         return true
     }
 
@@ -161,12 +187,13 @@ object TextTheme {
         if (ownerId != pluginId) return false
         overlay = emptyMap()
         ownerId = null
+        Snapshot.sendApplyNotifications()
         return true
     }
 
     /** 单元测试复位全局状态。 */
     internal fun resetForTests() {
-        defaults = TextThemeTokens.from(MainColors.Light)
+        defaults = ThemePalette.from(MainColors.Light)
         overlay = emptyMap()
         ownerId = null
     }
@@ -177,8 +204,15 @@ object TextTheme {
         return base
     }
 
-    private fun resolve(key: String): Color =
+    internal fun overlayOf(key: String): Color? = overlay[key]
+
+    fun resolve(key: String): Color =
         overlay[key] ?: defaults.colorOf(key)
+
+    fun namedColor(raw: String): Color? {
+        val key = TextThemeKeys.normalize(raw) ?: return null
+        return resolve(key)
+    }
 
     val Title: Color get() = resolve(TextThemeKeys.TITLE)
     val Body: Color get() = resolve(TextThemeKeys.BODY)
@@ -202,6 +236,13 @@ object TextTheme {
     val OnPhotoTitle: Color get() = resolve(TextThemeKeys.ON_PHOTO_TITLE)
     val OnPhotoSubtitle: Color get() = resolve(TextThemeKeys.ON_PHOTO_SUBTITLE)
     val OnPhotoMeta: Color get() = resolve(TextThemeKeys.ON_PHOTO_META)
+    val ControlThumb: Color get() = resolve(TextThemeKeys.CONTROL_THUMB)
+    val PlayerStage: Color get() = resolve(TextThemeKeys.PLAYER_STAGE)
+    val PlayerProgressThumb: Color get() = resolve(TextThemeKeys.PLAYER_PROGRESS_THUMB)
+    val PlayerProgressActive: Color get() = resolve(TextThemeKeys.PLAYER_PROGRESS_ACTIVE)
+    val PlayerProgressOff: Color get() = resolve(TextThemeKeys.PLAYER_PROGRESS_OFF)
+    val PlayerPlayFill: Color get() = resolve(TextThemeKeys.PLAYER_PLAY_FILL)
+    val PlayerPlayIcon: Color get() = resolve(TextThemeKeys.PLAYER_PLAY_ICON)
 }
 
 internal fun parseThemeColor(raw: String): Color? {

@@ -71,6 +71,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kite.zmusic.R
 import com.kite.zmusic.ZMusicApplication
+import com.kite.zmusic.plugin.PluginSurfaces
+import com.kite.zmusic.plugin.PluginUiTarget
 import com.kite.zmusic.data.ChartSummary
 import com.kite.zmusic.data.NcmHomeParse
 import com.kite.zmusic.data.SessionRepository
@@ -88,6 +90,7 @@ import com.kite.zmusic.ui.common.ZPullRefresh
 import com.kite.zmusic.ui.icons.ZIcons
 import com.kite.zmusic.ui.library.LikedArtistsScreen
 import com.kite.zmusic.ui.library.LikedArtistsSearchScreen
+import com.kite.zmusic.ui.plugin.pluginSurface
 import com.kite.zmusic.ui.main.LandscapeCoverEnter
 import com.kite.zmusic.ui.main.LandscapeCoverExit
 import com.kite.zmusic.ui.chrome.chromePage
@@ -492,7 +495,15 @@ private fun CollectionHeader(
             Modifier
                 .size(coverSize)
                 .clip(RoundedCornerShape(if (state.isAlbum) 10.dp else 12.dp))
-                .background(MainPalette.Placeholder),
+                .background(MainPalette.Placeholder)
+                .pluginSurface(
+                    surface = if (state.isAlbum) PluginSurfaces.ALBUM_COVER else PluginSurfaces.PLAYLIST_COVER,
+                    target = if (state.isAlbum) {
+                        PluginUiTarget.album(state.albumId, state.title, state.coverUrl, state.subtitle)
+                    } else {
+                        PluginUiTarget.playlist(state.playlistId, state.title, state.coverUrl, state.subtitle)
+                    },
+                ),
         ) {
             UrlImage(
                 url = state.coverUrl
@@ -786,7 +797,11 @@ internal fun CatalogTrackRow(
                 contentDescription = null,
                 modifier = Modifier
                     .size(48.dp)
-                    .clip(RoundedCornerShape(8.dp)),
+                    .clip(RoundedCornerShape(8.dp))
+                    .pluginSurface(
+                        PluginSurfaces.TRACK_COVER,
+                        PluginUiTarget.track(track),
+                    ),
                 contentScale = ContentScale.Crop,
             )
             Spacer(Modifier.width(12.dp))

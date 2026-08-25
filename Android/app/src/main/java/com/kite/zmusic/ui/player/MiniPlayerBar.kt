@@ -33,7 +33,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -41,12 +40,15 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kite.zmusic.data.TrackRow
+import com.kite.zmusic.plugin.PluginSurfaces
+import com.kite.zmusic.plugin.PluginUiTarget
 import com.kite.zmusic.ui.common.UrlImage
 import com.kite.zmusic.ui.common.UrlImageCache
 import com.kite.zmusic.ui.icons.ZIcons
 import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.theme.TextTheme
 import com.kite.zmusic.ui.main.mainLiquidGlass
+import com.kite.zmusic.ui.plugin.pluginSurface
 import com.kyant.backdrop.Backdrop
 import kotlinx.coroutines.flow.Flow
 
@@ -82,6 +84,7 @@ fun MiniPlayerBar(
                 .size(44.dp)
                 .clip(RoundedCornerShape(10.dp))
                 .background(MainPalette.Placeholder)
+                .pluginSurface(PluginSurfaces.MINIPLAYER_COVER, PluginUiTarget.track(track))
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
@@ -226,7 +229,7 @@ private fun MiniPlayerProgress(
             .height(2.dp)
             .clip(RoundedCornerShape(1.dp)),
         color = MainPalette.Accent,
-        trackColor = Color(0x14000000),
+        trackColor = MainPalette.Hairline,
         gapSize = 0.dp,
         drawStopIndicator = {},
     )

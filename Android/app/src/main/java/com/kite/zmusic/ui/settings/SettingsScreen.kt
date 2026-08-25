@@ -186,6 +186,10 @@ fun SettingsScreen(
     val testPlan by appUpdateStore.testPlanFlow.collectAsStateWithLifecycle()
     val pluginDebugStore = remember { app.pluginDebugStore }
     val pluginEngineDebug by pluginDebugStore.enabled.collectAsStateWithLifecycle()
+    val pluginSlots by app.pluginEngine.ui.slots.collectAsStateWithLifecycle()
+    val pluginSettingRows = remember(pluginSlots) {
+        pluginSlots.filter { it.slot == com.kite.zmusic.plugin.PluginUiTree.SLOT_SETTINGS }
+    }
     val lyricRenderStore = remember {
         (context.applicationContext as ZMusicApplication).lyricRenderStore
     }
@@ -466,6 +470,36 @@ fun SettingsScreen(
                         tint = Color(0xFF4A8FA8),
                         onClick = { landscapeModeVisible.targetState = true },
                     )
+                }
+                if (pluginSettingRows.isNotEmpty()) {
+                    Spacer(Modifier.height(22.dp))
+                    SettingsGroup(
+                        title = "插件",
+                        reveal = reveal.value,
+                        delay = 0.24f,
+                    ) {
+                        pluginSettingRows.forEachIndexed { index, entry ->
+                            if (index > 0) {
+                                Box(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .padding(start = 62.dp)
+                                        .height(0.5.dp)
+                                        .background(MainPalette.Hairline),
+                                )
+                            }
+                            SettingsRow(
+                                title = entry.title,
+                                subtitle = entry.subtitle?.takeIf { it.isNotBlank() } ?: entry.pluginName,
+                                icon = com.kite.zmusic.ui.plugin.pluginUiIcon(entry.icon),
+                                tint = entry.accent?.let { com.kite.zmusic.ui.theme.parseThemeColor(it) }
+                                    ?: Color(0xFF5E5CE6),
+                                onClick = {
+                                    app.pluginEngine.ui.activateSlot(entry.pluginId, entry.slot, entry.id)
+                                },
+                            )
+                        }
+                    }
                 }
                 Spacer(Modifier.height(22.dp))
                 SettingsGroup(

@@ -20,7 +20,7 @@
 
 ## 关于页与设置
 
-设置 → 关于：在现有版本信息中增加插件引擎可读版本（`0.0.2`）。
+设置 → 关于：在现有版本信息中增加插件引擎可读版本（`0.1.0`）。
 
 设置中增加「插件引擎调试」开关。产品默认关闭；当前测试构建必须默认开启，发行前改回关闭。行样式、开关页结构与现有设置（例如「参与测试计划」）一致，不另起视觉。
 
@@ -28,7 +28,7 @@
 
 产品路径不是扫描某个文件夹「发现」插件。后续用户可能从不同入口拿到 `.zpp`：引擎把资源解压到应用私有目录，再 **注册**。同一 `id` 更大的 `version` 覆盖安装。新装默认禁用；是否启用与调试开关无关。
 
-**调试例外：** 调试开关开启时，启动必定安装并运行内置探针 `dev.zmusic.probe`（源码 `Android/app/src/main/plugin-probe/`，编译时打成 `.zpp`）；再从应用外部目录收取 `.zpp` 并注册、启用、覆盖同 id（含相同版本，可覆盖内置探针）。关闭调试则不看该目录，也不运行该探针。无效包只跳过该文件。
+**调试例外：** 调试开关开启时，启动从应用外部目录收取 `.zpp` 并注册、启用（含相同版本可覆盖同 id）；**最后**安装并运行内置探针 `dev.zmusic.probe`（源码 `Android/app/src/main/plugin-probe/`，编译时打成 `.zpp`）。投放目录里同 id 的包 **不会** 覆盖内置探针。关闭调试则不看该目录，也不运行该探针。无效包只跳过该文件。
 
 ```
 Android/data/com.kite.zmusic/files/plugin-drop/*.zpp
@@ -42,7 +42,7 @@ adb push other.zpp /sdcard/Android/data/com.kite.zmusic/files/plugin-drop/other.
 
 目录在应用至少冷启动过一次之后才会出现。
 
-当前探针只做引擎基础准备。后续会改成原生调试插件，用于展示和调整相关数据。
+调试开关开启时，内置探针 `dev.zmusic.probe` 提供调优页。宿主把它作为 Dock / 横屏侧栏的一页来切换。关闭调试则不运行探针，也不显示该入口。投放目录里的同 id **不能**覆盖内置包。
 
 私有目录（相对 `context.filesDir`）：
 
@@ -52,24 +52,27 @@ plugin-engine/
   registry.json       已注册记录
   sentinel/<id>       入口执行期间的崩溃哨兵
   fault-log/<id>      弹窗用日志快照
+  store/<id>.json     插件持久键值
   staging/            解压中转
 ```
 
 测试在调试开关开启时仍可 **显式** `registerFromZpp` + `setEnabled`。不要做选文件 UI。
 
-## 范围（首期）
+## 范围（`0.1.0`）
 
-做：注册与解压校验、按引擎版本决定能否加载、对已启用插件执行入口并注入 [RUNTIME.md](../RUNTIME.md)、进程崩溃哨兵、启动等待、调试开关与日志门控、内部调试 API 的开关门控、关于页引擎版本、灵动岛通知（`Xuan.notice.show`，未 `Running` 拒绝）、同步延迟（`Xuan.delay`，单次 1～60000 ms，仅 `Running`）、文本主题（能力 `theme` → `Xuan.theme`，见 [THEME.md](./THEME.md)）、插件错误/崩溃弹窗（附日志快照）。
+做：注册与解压校验、按引擎版本决定能否加载、对已启用插件执行入口并注入 [RUNTIME.md](../RUNTIME.md)、进程崩溃哨兵（含 hook / timer / http 回调期间）、启动等待、调试开关与日志门控、内部调试 API 的开关门控、关于页引擎版本、灵动岛通知、同步延迟、非阻塞定时器、全局钩子总线（见 [HOOK.md](./HOOK.md)）、包内 CommonJS `require` 与读资源（见 [PACK.md](./PACK.md)）、主题（`Xuan.theme` 不再按清单门闩，见 [THEME.md](./THEME.md)）、播放快照与控制（见 [PLAYER.md](./PLAYER.md)）、出站 HTTP（见 [HTTP.md](./HTTP.md)）、持久键值（见 [STORE.md](./STORE.md)）、宿主绘制的槽位、组件树页面、弹窗与 sheet、宿主表面操作槽（见 [UI.md](./UI.md)）、相册 / 分享 / 剪贴板（见 [DEVICE.md](./DEVICE.md)）、插件错误/崩溃弹窗（附日志快照）。未知 `capabilities` 字符串忽略，不挡加载。
 
-不做：插件管理 / 选文件 UI、未签名确认弹窗、验签、调用超时、默认把调试日志写进文件、http / 播放 / 读包内资源、`require`/`import`、打包器本体、声明式 `theme.json`。
+不做：插件管理 / 选文件 UI、未签名确认弹窗、验签、调用超时、默认把调试日志写进文件、改队列 / 搜索 / 下载、HTML 或 WebView 插件壳、声明式 `theme.json`、`import`。社区插件不能往 Dock 加标签。
 
-打包器预定位置：仓库 `Distribution/Plugin/`（尚未建立）。命令见 [TOOLKIT.md](../TOOLKIT.md)。
+打包器：`Distribution/Plugin/zmusic_plugin.py`，命令见 [TOOLKIT.md](../TOOLKIT.md)。
+
+**调试探针：** 调试开关开启时加载 APK 内 `dev.zmusic.probe`（源码 `plugin-probe/`）。宿主把调优页编进 Dock / 侧栏，与三页主模块切换。投放目录同 id 不能覆盖。这不是插件槽位 API。关闭调试则不显示、不运行探针。
 
 ## 版本
 
 引擎与 `Xuan.*.versionNumber` 均以 **可读字符串为源**，整数由 [VERSIONING.md](../VERSIONING.md) 换算，禁止另存一份可能不一致的数字。
 
-- 引擎可读：`0.0.2`
+- 引擎可读：`0.1.0`
 - `Xuan.zmusic.version`：客户端 `versionName`（例如 `1.2.3`）
 - 禁止把 Android `versionCode` 暴露给插件或用于换算
 
@@ -79,13 +82,14 @@ plugin-engine/
 
 - 进程内 QuickJS；一插件一 Context；无启用插件时不必在冷启动加载本地库。
 - 每插件内部串行。插件之间默认不限制并发；可保留限制接口，默认关闭。
+- `hook` / `timer` / `http` / 界面结果回调必须投到该插件线程，禁止在 UI 或播放线程进 Context。相册写入与分享在主线程，下载在 OkHttp 线程，完成后再 post 回插件线程。
 - 禁止实现调用超时（`Xuan.delay` 是插件主动同步等待，不是宿主给其它 API 加超时）。
 - 禁止把 JS 引擎句柄交给 UI 或播放层。
-- 宿主 API 集中做状态门控（`hostApiAllowed`：仅 `Running`）。未 `Running` 则拒绝该次调用，不结束插件。禁止在各个 API 里复制判断。
+- 宿主 API 集中做状态门控（`hostApiAllowed`：仅 `Running`）。未 `Running` 则拒绝该次调用，不结束插件。禁止在各个 API 里复制判断。禁止再用 `capabilities` 挡住已实现的 API。
 - `Xuan` 不因调试开关关闭而停用。
 - `signatures` 原样保留，不验签。
 
-入口评测结束仍停留在 `Initializing` 的插件不算就绪（启动页继续等）。入口结束却从未注册状态的插件视为本次失败，不阻塞其它插件。成功注册 `Running` 即就绪，入口可以继续跑（例如 `delay`），不再挡住启动页。
+入口评测结束仍停留在 `Initializing` 的插件不算就绪（启动页继续等）。入口结束却从未注册状态的插件视为本次失败，不阻塞其它插件。成功注册 `Running` 即就绪，入口可以返回或继续跑（例如 `delay`），不再挡住启动页；Context 必须留下，直到会话结束。
 
 非法 `register`：调用失败（返回失败，不抛死脚本），不结束插件。
 
@@ -93,7 +97,7 @@ plugin-engine/
 
 新装默认禁用。是否启用插件与调试开关无关。
 
-引擎侧状态与脚本状态分开：用户禁用、崩溃隔离、引擎不兼容、`capabilities` 含未知项。后两项表示不能跑，不是用户关掉。隔离保留文件。已知可选能力见 [../VERSIONING.md](../VERSIONING.md)（当前：`theme`）。
+引擎侧状态与脚本状态分开：用户禁用、崩溃隔离、引擎不兼容。后一项表示不能跑，不是用户关掉。隔离保留文件。`capabilities` 未知名忽略，不因此拒绝加载。展示用能力名见 [../VERSIONING.md](../VERSIONING.md)。
 
 ## 故障
 
@@ -104,7 +108,7 @@ plugin-engine/
 | 进程崩溃（哨兵仍在） | 不可控。隔离该 id，下次不执行，直至隔离解除。弹窗告知，附上次能留下的日志 |
 | 非法 `register` / 未 `Running` 调宿主 API | 调用失败，不结束插件。不弹窗 |
 
-执行某插件入口前写入哨兵 id；成功 `Running` 或入口评测正常结束（含本次 `Error`）必须清除。应用程序升级不清除隔离；引擎版本整数增加可以清除。用户禁用不因升级自动打开。
+执行某插件入口前写入哨兵 id；成功 `Running` 后入口评测若已结束可清入口哨兵，但 **hook / timer 回调期间必须重新标记**，回调返回后清除。应用程序升级不清除隔离；引擎版本整数增加可以清除。用户禁用不因升级自动打开。
 
 弹窗走现有玻璃确认框，一次一条，关掉后再下一条。文案带插件 `name`。日志快照始终采集（`console` 与引擎失败原因），与调试开关无关；logcat 仍仅在调试开启时输出。快照写在 `plugin-engine/fault-log/<id>`，只为弹窗在崩溃后还能读到，不是完整调试日志落盘。崩溃不得因此打开调试开关。
 
@@ -118,4 +122,4 @@ plugin-engine/
 
 ## 结构
 
-解包、登记、Context 生命周期、API 注入、调试门控分开。不要进入播放链路。挂在应用级容器上。Android 包名 `com.kite.zmusic.plugin`。
+解包、登记、Context 生命周期、API 注入、调试门控、钩子总线分开。播放控制只通过 `PlaybackBridge` 已有入口，不改播放事件语义。挂在应用级容器上。Android 包名 `com.kite.zmusic.plugin`。实现备忘：[HOOK.md](./HOOK.md)、[TIMER.md](./TIMER.md)、[PACK.md](./PACK.md)、[THEME.md](./THEME.md)、[PLAYER.md](./PLAYER.md)、[HTTP.md](./HTTP.md)、[STORE.md](./STORE.md)、[UI.md](./UI.md)、[DEVICE.md](./DEVICE.md)、[SURFACES.md](./SURFACES.md)。

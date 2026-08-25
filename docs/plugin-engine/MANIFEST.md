@@ -18,19 +18,19 @@
 | `description` | 否 | 字符串 | 列表用短描述；长文放在 `README.md` |
 | `author` | 否 | 字符串 | 显示用。未签名时仅表示自称 |
 | `homepage` | 否 | 字符串 | `http://` 或 `https://` |
-| `capabilities` | 否 | 字符串数组 | 省略、`[]`，或仅含 [VERSIONING.md](./VERSIONING.md) 已知能力（当前：`theme`）。未知字符串则整包无效 |
+| `capabilities` | 否 | 字符串数组 | 展示用。省略或 `[]` 均可。元素须为字符串；空串忽略。已知名见 [VERSIONING.md](./VERSIONING.md)（`theme` / `player` / `http` / `store` / `ui` / `media` / `share` / `clipboard`）。**未知字符串忽略，不使包无效**。不作为 `Xuan` 调用门闩 |
 | `signatures` | 否 | 数组 | 保留。见 [SIGNING.md](./SIGNING.md) |
 
 禁止使用 `official` 等字段自称官方。标注由社区或宿主给出，不写在包内。
 
 ## 加载条件
 
-设当前引擎版本整数为 `E`（`0.0.2` 时 `E = 2`）。包可被加载当且仅当：
+设当前引擎版本整数为 `E`（`0.1.0` 时 `E = 100`）。包可被加载当且仅当：
 
 1. `zpp === 1`
 2. `engine.min ≤ E`
 3. 若存在 `engine.max`，则 `E ≤ engine.max`
-4. `capabilities` 省略、为空数组，或每一项均为已知能力名（见 [VERSIONING.md](./VERSIONING.md)）
+4. `capabilities` 省略、为空数组，或为字符串数组（未知名忽略；含非字符串则清单无效）
 5. `entry` 指向的文件存在且扩展名为 `.js`
 6. 存在 `plugin.png` 或 `plugin.svg`
 7. 包内全部文件扩展名均在 [PACKAGE.md](./PACKAGE.md) 白名单中

@@ -1,6 +1,7 @@
 package com.kite.zmusic.ui.catalog
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -19,6 +20,8 @@ import com.kite.zmusic.ui.common.GlassActionSheet
 import com.kite.zmusic.ui.common.GlassAlertDialog
 import com.kite.zmusic.ui.common.GlassSheetAction
 import com.kite.zmusic.ui.notice.showIslandNotice
+import com.kite.zmusic.plugin.PluginSurfaces
+import com.kite.zmusic.plugin.PluginUiTarget
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
@@ -46,6 +49,16 @@ internal fun TrackOverflowMenu(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val playlists by app.playlistCollectionRepository.playlists.collectAsStateWithLifecycle()
+    val pluginActions by app.pluginEngine.ui.actions.collectAsStateWithLifecycle()
+    val overflowPlugin = remember(pluginActions, current.id) {
+        pluginActions.filter { it.surface == PluginSurfaces.TRACK_OVERFLOW }.take(8)
+    }
+    val trackTarget = remember(current.id, current.coverUrl, current.name, current.artists) {
+        PluginUiTarget.track(current)
+    }
+    LaunchedEffect(current.id) {
+        app.pluginEngine.emitUiMenu(PluginSurfaces.TRACK_OVERFLOW, trackTarget)
+    }
     when {
         confirmRemove -> {
             GlassAlertDialog(
@@ -169,6 +182,22 @@ internal fun TrackOverflowMenu(
                         add(
                             GlassSheetAction("删除", destructive = true) {
                                 confirmRemove = true
+                            },
+                        )
+                    }
+                    overflowPlugin.forEach { action ->
+                        add(
+                            GlassSheetAction(
+                                label = action.title,
+                                destructive = action.destructive,
+                            ) {
+                                app.pluginEngine.ui.activateAction(
+                                    action.pluginId,
+                                    action.surface,
+                                    action.id,
+                                    trackTarget.toMap(),
+                                )
+                                onDismiss()
                             },
                         )
                     }

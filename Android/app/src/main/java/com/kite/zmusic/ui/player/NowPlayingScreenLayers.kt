@@ -35,7 +35,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.snapshots.SnapshotStateSet
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.LayoutCoordinates
@@ -57,6 +56,7 @@ import com.kite.zmusic.data.PlayerDisplayPrefs
 import com.kite.zmusic.data.TrackRow
 import com.kite.zmusic.playback.PlaybackUiState
 import com.kite.zmusic.ui.notice.showIslandNotice
+import com.kite.zmusic.ui.theme.TextTheme
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 import kotlinx.coroutines.CoroutineScope
@@ -227,7 +227,7 @@ internal fun NowPlayingScreenLayers(
                 Box(
                     Modifier
                         .fillMaxSize()
-                        .background(Color(0xFF05070C)),
+                        .background(TextTheme.PlayerStage),
                 )
                 GeminiOrbsBackdrop(
                     modifier = Modifier

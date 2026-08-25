@@ -42,7 +42,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -59,7 +58,7 @@ private val Page get() = MainPalette.Surface
 private val PageSoft get() = MainPalette.Page
 private val Ink get() = MainPalette.Ink
 private val InkSecondary get() = MainPalette.Secondary
-private val CloudRed = Color(0xFFEC4141)
+private val CloudRed get() = MainPalette.Accent
 private val Hairline get() = MainPalette.Hairline
 
 private enum class LandscapeStep {

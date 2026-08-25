@@ -2,10 +2,10 @@ package com.kite.zmusic.plugin
 
 /**
  * 引擎可读版本是唯一源。整数按 [docs/plugin-engine/VERSIONING.md] 换算，禁止另存一份数字。
- * 展示为 `0.0.2`，没有 `v`、不补零。换算时每段仍按两位对齐，避免 `0.1.12` 与 `0.11.2` 冲突。
+ * 展示为 `0.1.0`，没有 `v`、不补零。换算时每段仍按两位对齐，避免 `0.1.12` 与 `0.11.2` 冲突。
  */
 object PluginEngineVersion {
-    const val DISPLAY = "0.0.2"
+    const val DISPLAY = "0.1.0"
 
     private val ENGINE_DISPLAY = Regex("""^(\d{1,2})\.(\d{1,2})\.(\d{1,2})$""")
 

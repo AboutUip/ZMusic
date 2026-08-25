@@ -66,7 +66,10 @@ import com.kite.zmusic.ui.common.GlassActionSheetHostState
 import com.kite.zmusic.ui.common.GlassActionSheetOverlay
 import com.kite.zmusic.ui.common.GlassAlertHostState
 import com.kite.zmusic.ui.common.GlassAlertOverlay
+import com.kite.zmusic.ui.plugin.PluginAlertHost
+import com.kite.zmusic.ui.plugin.PluginContextMenuHost
 import com.kite.zmusic.ui.plugin.PluginFaultHost
+import com.kite.zmusic.ui.plugin.PluginSheetHost
 import com.kite.zmusic.ui.update.AppUpdateHost
 import com.kite.zmusic.ui.common.LocalGlassActionSheetHost
 import com.kite.zmusic.ui.common.LocalGlassAlertHost
@@ -176,6 +179,9 @@ fun IslandNoticeRoot(
                 modifier = Modifier.zIndex(800f),
             )
             PluginFaultHost()
+            PluginAlertHost()
+            PluginSheetHost()
+            PluginContextMenuHost()
             AppUpdateHost()
         }
     }

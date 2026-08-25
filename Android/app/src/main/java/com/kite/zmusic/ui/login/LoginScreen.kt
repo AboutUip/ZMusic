@@ -15,7 +15,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalConfiguration
@@ -25,6 +24,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kite.zmusic.ZMusicApplication
 import com.kite.zmusic.data.SessionRepository
 import com.kite.zmusic.ui.notice.showIslandNotice
+import com.kite.zmusic.ui.theme.MainPalette
 
 internal enum class LoginMethod {
     Qr,
@@ -124,7 +124,7 @@ fun LoginScreen(
             ) {
                 CircularProgressIndicator(
                     modifier = Modifier.size(40.dp),
-                    color = Color(0xFFEC4141),
+                    color = MainPalette.Accent,
                     strokeWidth = 2.dp,
                 )
             }

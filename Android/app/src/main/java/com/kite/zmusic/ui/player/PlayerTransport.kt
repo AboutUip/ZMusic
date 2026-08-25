@@ -291,9 +291,9 @@ internal fun PlayerTransport(
         fontWeight = if (portraitSlim) FontWeight.Medium else FontWeight.Normal,
     )
     val sliderColors = SliderDefaults.colors(
-        thumbColor = Color(0xFFE8EEF5),
-        activeTrackColor = Color(0xFFD5DEE8).copy(alpha = 0.9f),
-        inactiveTrackColor = Color.White.copy(alpha = 0.14f),
+        thumbColor = TextTheme.PlayerProgressThumb,
+        activeTrackColor = TextTheme.PlayerProgressActive,
+        inactiveTrackColor = TextTheme.PlayerProgressOff,
     )
 
     // 横屏：全宽简约条 — 左：模式+传输+喜欢；右：当前时间 | 进度 | 总时长（同一水平线）
@@ -330,7 +330,7 @@ internal fun PlayerTransport(
                     }
                     .size(playSize)
                     .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.12f))
+                    .background(TextTheme.PlayerPlayFill)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
@@ -342,7 +342,7 @@ internal fun PlayerTransport(
                     playing = isPlaying,
                     buffering = buffering,
                     size = 16.dp,
-                    tint = Color(0xFFF5F7FA),
+                    tint = TextTheme.PlayerPlayIcon,
                 )
             }
             Box(
@@ -535,7 +535,7 @@ internal fun PlayerTransport(
                         }
                         .size(playSize)
                         .clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.12f))
+                        .background(TextTheme.PlayerPlayFill)
                         .clickable(onClick = onTogglePlay),
                     contentAlignment = Alignment.Center,
                 ) {
@@ -543,7 +543,7 @@ internal fun PlayerTransport(
                         playing = isPlaying,
                         buffering = buffering,
                         size = transportIconSize,
-                        tint = Color(0xFFF5F7FA),
+                        tint = TextTheme.PlayerPlayIcon,
                     )
                 }
                 Box(

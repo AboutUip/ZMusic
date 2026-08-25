@@ -79,6 +79,7 @@ import androidx.compose.ui.unit.sp
 import com.kite.zmusic.data.PlayerBackgroundPreset
 import com.kite.zmusic.data.PlayerDisplayPrefs
 import com.kite.zmusic.data.TrackRow
+import com.kite.zmusic.ui.theme.TextTheme
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -191,7 +192,7 @@ fun PlayerCustomBackgroundLayer(
             .graphicsLayer { alpha = t },
     ) {
         // Fit 留白处保持不透明，避免透出下层主界面
-        Box(Modifier.fillMaxSize().background(Color(0xFF05070C)))
+        Box(Modifier.fillMaxSize().background(TextTheme.PlayerStage))
         if (preset != null && preset.hasImage && t > 0.001f) {
             LocalPathImage(
                 path = preset.imagePath,

@@ -11,7 +11,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.SideEffect
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
@@ -24,34 +23,34 @@ import kotlinx.coroutines.flow.MutableStateFlow
 /** 不跟系统字体大小走；略小于设计 sp，避免界面发撑。 */
 private const val AppFontScale = 0.8f
 
-private fun zMusicColorScheme(colors: MainColors) =
-    if (colors.isDark) {
+private fun zMusicColorScheme(dark: Boolean) =
+    if (dark) {
         darkColorScheme(
-            primary = colors.accent,
-            onPrimary = Color.White,
-            secondary = colors.secondary,
-            onSecondary = Color.White,
-            background = colors.page,
-            onBackground = colors.ink,
-            surface = colors.page,
-            onSurface = colors.ink,
-            surfaceVariant = colors.surface,
-            onSurfaceVariant = colors.secondary,
-            outline = colors.hairline,
+            primary = MainPalette.Accent,
+            onPrimary = TextTheme.ControlThumb,
+            secondary = MainPalette.Secondary,
+            onSecondary = TextTheme.ControlThumb,
+            background = MainPalette.Page,
+            onBackground = MainPalette.Ink,
+            surface = MainPalette.Page,
+            onSurface = MainPalette.Ink,
+            surfaceVariant = MainPalette.Surface,
+            onSurfaceVariant = MainPalette.Secondary,
+            outline = MainPalette.Hairline,
         )
     } else {
         lightColorScheme(
-            primary = colors.accent,
-            onPrimary = Color.White,
-            secondary = colors.secondary,
-            onSecondary = Color.White,
-            background = colors.page,
-            onBackground = colors.ink,
-            surface = colors.page,
-            onSurface = colors.ink,
-            surfaceVariant = colors.surface,
-            onSurfaceVariant = colors.secondary,
-            outline = colors.hairline,
+            primary = MainPalette.Accent,
+            onPrimary = TextTheme.ControlThumb,
+            secondary = MainPalette.Secondary,
+            onSecondary = TextTheme.ControlThumb,
+            background = MainPalette.Page,
+            onBackground = MainPalette.Ink,
+            surface = MainPalette.Page,
+            onSurface = MainPalette.Ink,
+            surfaceVariant = MainPalette.Surface,
+            onSurfaceVariant = MainPalette.Secondary,
+            outline = MainPalette.Hairline,
         )
     }
 
@@ -83,7 +82,7 @@ fun ZMusicTheme(content: @Composable () -> Unit) {
         ),
     ) {
         MaterialTheme(
-            colorScheme = zMusicColorScheme(colors),
+            colorScheme = zMusicColorScheme(MainPalette.isDark),
             content = content,
         )
     }

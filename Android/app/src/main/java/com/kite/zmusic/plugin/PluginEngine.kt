@@ -3,6 +3,7 @@ package com.kite.zmusic.plugin
 import com.kite.zmusic.BuildConfig
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executors
 import java.util.concurrent.Semaphore
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -13,8 +14,9 @@ import kotlinx.coroutines.flow.asStateFlow
  * 插件引擎。产品路径是 [registerFromZpp] / [installWorkshopZpp] **注册**，不扫描目录发现插件。
  * 解压位置：`filesDir/plugin-engine/installed/<id>/`。
  *
- * 调试例外：开关开启时，启动必定装入内置探针 [PluginDebugProbe]，再从 [debugDropDir]
- * 收取 `.zpp`（可覆盖探针）。关闭调试则不看投放目录，也不运行探针。
+ * 调试例外：开关开启时，启动从 [debugDropDir] 收取 `.zpp`（其它 id 可覆盖同包），
+ * 再装入内置探针 [PluginDebugProbe]。投放目录中的 `dev.zmusic.probe` 会被忽略，
+ * 探针始终以 APK 内 `plugin-probe/` 为准。关闭调试则不看投放目录，也不运行探针。
  *
  * 离线：不启动任何插件会话；恢复在线后再按启用位加载。
  *
@@ -25,17 +27,52 @@ import kotlinx.coroutines.flow.asStateFlow
  */
 class PluginEngine(
     filesDir: File,
-    private val debugStore: PluginDebugStore,
+    private val debugEnabled: () -> Boolean,
     private val appVersionName: String = BuildConfig.VERSION_NAME,
     private val debugDropDir: File? = null,
     private val showNotice: (message: String, coverUrl: String?) -> Unit = { _, _ -> },
     private val bundledDebugProbe: () -> File? = { null },
+    host: PluginHostBindings = PluginHostBindings(),
 ) {
+    constructor(
+        filesDir: File,
+        debugStore: PluginDebugStore,
+        appVersionName: String = BuildConfig.VERSION_NAME,
+        debugDropDir: File? = null,
+        showNotice: (message: String, coverUrl: String?) -> Unit = { _, _ -> },
+        bundledDebugProbe: () -> File? = { null },
+        host: PluginHostBindings = PluginHostBindings(),
+    ) : this(
+        filesDir = filesDir,
+        debugEnabled = { debugStore.current() },
+        appVersionName = appVersionName,
+        debugDropDir = debugDropDir,
+        showNotice = showNotice,
+        bundledDebugProbe = bundledDebugProbe,
+        host = host,
+    )
     private val paths = PluginPaths.fromFilesDir(filesDir)
     private val registryStore = PluginRegistryStore(paths.registryFile)
     private val sentinel = PluginCrashSentinel(paths)
     private val journal = PluginFaultJournal(paths.faultLogDir)
     private val faultCenter = PluginFaultCenter()
+    private val hookRegistry = PluginHookRegistry()
+    private val kvStore = PluginKvStore(paths.storeDir)
+    val ui = PluginUiBridge()
+    private val player: PluginPlayerController = host.player
+    private val http: PluginHttpClient? = host.httpClient?.let { PluginHttpClient(it) }
+    private val device: PluginDeviceHost = host.device
+    private val timerScheduler = Executors.newSingleThreadScheduledExecutor { r ->
+        Thread(r, "zmusic-plugin-timer").apply { isDaemon = true }
+    }
+    @Volatile
+    private var hostFacts: PluginHostFacts = PluginHostFacts(
+        online = true,
+        dark = false,
+        loggedIn = false,
+    )
+    @Volatile
+    private var playback: PluginPlaybackSnapshot = PluginPlaybackSnapshot.EMPTY
     private val lock = Any()
     private var records: List<PluginRecord> = emptyList()
     private val sessions = ConcurrentHashMap<String, PluginSession>()
@@ -48,6 +85,111 @@ class PluginEngine(
     val modulesRevision: StateFlow<Int> = _modulesRevision.asStateFlow()
 
     fun dismissFault() = faultCenter.dismiss()
+
+    /**
+     * 更新宿主快照并投递对应钩子。离线变化应在 [setOffline] 停会话之前调用。
+     */
+    fun setHostFacts(next: PluginHostFacts) {
+        val prev = hostFacts
+        if (prev == next) return
+        hostFacts = next
+        if (prev.online && !next.online) {
+            broadcastHook(PluginHookEvents.APP_OFFLINE, emptyList(), wait = true)
+        } else if (!prev.online && next.online) {
+            broadcastHook(PluginHookEvents.APP_ONLINE, emptyList(), wait = false)
+        }
+        if (prev.dark != next.dark) {
+            broadcastHook(
+                PluginHookEvents.APP_APPEARANCE,
+                listOf(mapOf("dark" to next.dark)),
+                wait = false,
+            )
+        }
+        if (prev.loggedIn != next.loggedIn) {
+            broadcastHook(
+                PluginHookEvents.USER_SESSION,
+                listOf(mapOf("loggedIn" to next.loggedIn)),
+                wait = false,
+            )
+        }
+        if (prev.foreground != next.foreground) {
+            broadcastHook(
+                if (next.foreground) PluginHookEvents.APP_FOREGROUND else PluginHookEvents.APP_BACKGROUND,
+                emptyList(),
+                wait = false,
+            )
+        }
+    }
+
+    fun hostFacts(): PluginHostFacts = hostFacts
+
+    fun playbackSnapshot(): PluginPlaybackSnapshot = playback
+
+    /**
+     * 更新播放快照。进度变化只写入缓存；曲目 / 播放意图 / 队列 / 喜欢变化才投钩子。
+     */
+    fun setPlaybackSnapshot(next: PluginPlaybackSnapshot) {
+        val prev = playback
+        playback = next
+        if (prev.trackId != next.trackId) {
+            broadcastHook(PluginHookEvents.PLAYER_TRACK, listOf(next.trackArg()), wait = false)
+        }
+        if (prev.playing != next.playing) {
+            broadcastHook(PluginHookEvents.PLAYER_STATE, listOf(next.stateMap()), wait = false)
+        }
+        if (prev.queueIndex != next.queueIndex ||
+            prev.queueLength != next.queueLength ||
+            prev.queueIds != next.queueIds
+        ) {
+            broadcastHook(PluginHookEvents.PLAYER_QUEUE, listOf(next.queueMap()), wait = false)
+        }
+        if (prev.liked != next.liked) {
+            broadcastHook(PluginHookEvents.PLAYER_LIKED, listOf(next.likedMap()), wait = false)
+        }
+    }
+
+    internal fun broadcastHook(
+        name: String,
+        args: List<Any?>,
+        wait: Boolean = false,
+    ): Boolean {
+        val refs = hookRegistry.listeners(name)
+        for (ref in refs) {
+            sessions[ref.pluginId]?.deliverHook(ref.event, ref.listenerId, args, wait)
+        }
+        return true
+    }
+
+    fun emitUiGesture(type: String, surface: String, target: PluginUiTarget) {
+        val name = when (type) {
+            "press" -> PluginHookEvents.UI_PRESS
+            "longPress" -> PluginHookEvents.UI_LONG_PRESS
+            "menu" -> PluginHookEvents.UI_MENU
+            else -> return
+        }
+        val payload = mapOf(
+            "type" to type,
+            "surface" to surface,
+            "target" to target.toMap(),
+        )
+        broadcastHook(name, listOf(payload), wait = false)
+    }
+
+    fun handleSurfaceLongPress(
+        surface: String,
+        target: PluginUiTarget,
+        hostDefaultLabel: String? = null,
+        onHostDefault: (() -> Unit)? = null,
+    ) {
+        emitUiGesture("longPress", surface, target)
+        if (!ui.presentSurfaceMenu(surface, target, hostDefaultLabel, onHostDefault)) {
+            onHostDefault?.invoke()
+        }
+    }
+
+    fun emitUiMenu(surface: String, target: PluginUiTarget) {
+        emitUiGesture("menu", surface, target)
+    }
 
     private var started = false
     private var offline = false
@@ -71,9 +213,9 @@ class PluginEngine(
                     lastEngineNumber = PluginEngineVersion.number,
                     plugins = snap.plugins.map { it.copy(quarantined = false) },
                 )
-                PluginLog.d(debugStore.current(), "引擎版本上升，已解除隔离")
+                PluginLog.d(debugEnabled(), "引擎版本上升，已解除隔离")
             }
-            val debug = debugStore.current()
+            val debug = debugEnabled()
             val dirty = sentinel.dirtyIds()
             if (dirty.isNotEmpty()) {
                 snap = snap.copy(
@@ -100,8 +242,8 @@ class PluginEngine(
             snap = snap.copy(lastEngineNumber = PluginEngineVersion.number)
             records = snap.plugins
             if (debug) {
-                ingestBundledProbeLocked()
                 ingestDebugDropLocked()
+                ingestBundledProbeLocked()
             }
             registryStore.save(
                 PluginRegistrySnapshot(
@@ -139,14 +281,14 @@ class PluginEngine(
             this.offline = offline
             if (!started) return
             if (offline) {
-                PluginLog.d(debugStore.current(), "进入离线，停止全部插件")
+                PluginLog.d(debugEnabled(), "进入离线，停止全部插件")
                 toStop = sessions.values.toList()
                 sessions.clear()
                 awaiting.clear()
                 refreshSplashLocked()
                 maybeCompleteReadyLocked()
             } else {
-                PluginLog.d(debugStore.current(), "恢复在线，加载已启用插件")
+                PluginLog.d(debugEnabled(), "恢复在线，加载已启用插件")
                 relaunchEligibleLocked()
                 return
             }
@@ -182,6 +324,12 @@ class PluginEngine(
 
     fun hostApiAllowed(pluginId: String): Boolean =
         sessions[pluginId]?.hostApiAllowed() == true
+
+    fun resolvePackFile(pluginId: String, relative: String): File? {
+        val src = relative.trim()
+        if (src.startsWith("http://") || src.startsWith("https://")) return null
+        return PluginPackFiles.resolve(paths.installedDir(pluginId), src)?.takeIf { it.isFile }
+    }
 
     fun ping(): String {
         requireDebug()
@@ -246,7 +394,7 @@ class PluginEngine(
             if (enabled) {
                 if (!offline &&
                     next.canRun(PluginEngineVersion.number) &&
-                    PluginDebugProbe.shouldLaunch(next.id, debugStore.current()) &&
+                    PluginDebugProbe.shouldLaunch(next.id, debugEnabled()) &&
                     sessions[id] == null
                 ) {
                     launchSessionLocked(next, null)
@@ -279,6 +427,9 @@ class PluginEngine(
             paths.installedDir(id).deleteRecursively()
             sentinel.clear(id)
             journal.clear(id)
+            kvStore.erase(id)
+            ui.dropPlugin(id)
+            http?.cancel(id)
             session
         }
         running?.stop()
@@ -301,7 +452,7 @@ class PluginEngine(
 
     private fun eligibleToRunLocked(): List<PluginRecord> {
         if (offline) return emptyList()
-        val debug = debugStore.current()
+        val debug = debugEnabled()
         return records.filter {
             it.canRun(PluginEngineVersion.number) &&
                 PluginDebugProbe.shouldLaunch(it.id, debug) &&
@@ -324,10 +475,21 @@ class PluginEngine(
         val session = PluginSession(
             record = rec,
             extractDir = paths.installedDir(rec.id),
-            debug = { debugStore.current() },
+            debug = { debugEnabled() },
             appVersionName = appVersionName,
             showNotice = showNotice,
             journal = journal,
+            hooks = hookRegistry,
+            hostFacts = { hostFacts },
+            playback = { playback },
+            player = player,
+            http = http,
+            device = device,
+            store = kvStore,
+            ui = ui,
+            faultBusy = { faultCenter.current.value != null },
+            broadcastHook = { name, args -> broadcastHook(name, args, wait = false) },
+            timerScheduler = timerScheduler,
             onState = { state ->
                 if (state == PluginJsState.Running) {
                     sentinel.clear(rec.id)
@@ -348,8 +510,15 @@ class PluginEngine(
                     )
                 }
             },
-            onSessionEnded = { id -> PluginTextThemeBridge.clearIfOwner(id) },
+            onSessionEnded = { id ->
+                hookRegistry.dropPlugin(id)
+                PluginTextThemeBridge.clearIfOwner(id)
+                ui.dropPlugin(id)
+                http?.cancel(id)
+                device.cancel(id)
+            },
         )
+        ui.bind(rec.id) { event -> session.deliverUiEvent(event) }
         sessions[rec.id] = session
         session.start(sentinel, gate)
     }
@@ -397,6 +566,10 @@ class PluginEngine(
         }
         PluginLog.d(true, "调试投放 ${packages.size} 个 .zpp: ${dir.absolutePath}")
         for (zpp in packages) {
+            if (ZppUnpacker.peekId(zpp) == PluginDebugProbe.ID) {
+                PluginLog.d(true, "投放忽略内置探针 ${zpp.name}，以 APK 为准")
+                continue
+            }
             val result = installLocked(
                 zpp = zpp,
                 replaceExisting = true,
@@ -428,14 +601,14 @@ class PluginEngine(
         when (val unpacked = ZppUnpacker.unpack(zpp, staging)) {
             is UnpackResult.Invalid -> {
                 staging.deleteRecursively()
-                PluginLog.w(debugStore.current(), "跳过无效包: ${unpacked.reason}")
+                PluginLog.w(debugEnabled(), "跳过无效包: ${unpacked.reason}")
                 return PluginRegisterResult.Skipped(unpacked.reason)
             }
             is UnpackResult.Ok -> {
                 val manifest = unpacked.manifest
                 if (!manifest.compatibleWith(PluginEngineVersion.number)) {
                     staging.deleteRecursively()
-                    PluginLog.w(debugStore.current(), "跳过不兼容引擎的包 ${manifest.id}")
+                    PluginLog.w(debugEnabled(), "跳过不兼容引擎的包 ${manifest.id}")
                     return PluginRegisterResult.Skipped("引擎版本不兼容")
                 }
                 val existing = records.find { it.id == manifest.id }
@@ -484,6 +657,6 @@ class PluginEngine(
     }
 
     private fun requireDebug() {
-        if (!debugStore.current()) throw PluginDebugApiDeniedException()
+        if (!debugEnabled()) throw PluginDebugApiDeniedException()
     }
 }

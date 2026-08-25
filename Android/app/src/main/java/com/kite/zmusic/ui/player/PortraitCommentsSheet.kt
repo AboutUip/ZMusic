@@ -110,6 +110,7 @@ import com.kite.zmusic.ui.common.UrlImage
 import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.main.pageSheetHazeStyle
 import com.kite.zmusic.ui.notice.showIslandNotice
+import com.kite.zmusic.ui.theme.TextTheme
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeEffect
 import kotlin.math.hypot
@@ -171,7 +172,7 @@ fun NowPlayingCommentsIconButton(
             ),
         contentAlignment = Alignment.Center,
     ) {
-        TransportCommentsIcon(size = 16.dp, tint = Color(0xFFE8EEF5).copy(alpha = 0.92f))
+        TransportCommentsIcon(size = 16.dp, tint = TextTheme.PlayerTime.copy(alpha = 0.92f))
     }
 }
 

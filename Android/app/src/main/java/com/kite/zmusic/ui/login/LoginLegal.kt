@@ -62,7 +62,7 @@ private val Page get() = MainPalette.Surface
 private val Ink get() = MainPalette.Ink
 private val InkSecondary get() = MainPalette.Secondary
 private val InkHint get() = MainPalette.Hint
-private val CloudRed = Color(0xFFEC4141)
+private val CloudRed get() = MainPalette.Accent
 
 private data class LegalSection(
     val heading: String,

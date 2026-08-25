@@ -22,6 +22,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -37,6 +38,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.kite.zmusic.ZMusicApplication
+import com.kite.zmusic.plugin.PluginUiTree
 import com.kite.zmusic.ui.icons.ZIcons
 import com.kite.zmusic.ui.main.MainContentPadTop
 import com.kite.zmusic.ui.main.MainOverlay
@@ -45,6 +49,8 @@ import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.main.mainContentPadH
 import com.kite.zmusic.ui.main.wallpaperItemChrome
 import com.kite.zmusic.ui.notice.showIslandNotice
+import com.kite.zmusic.ui.plugin.pluginUiIcon
+import com.kite.zmusic.ui.theme.parseThemeColor
 
 @Composable
 fun FeaturesScreen(
@@ -56,6 +62,11 @@ fun FeaturesScreen(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    val app = context.applicationContext as ZMusicApplication
+    val pluginSlots by app.pluginEngine.ui.slots.collectAsStateWithLifecycle()
+    val pluginCards = remember(pluginSlots) {
+        pluginSlots.filter { it.slot == PluginUiTree.SLOT_FEATURES }
+    }
     val landscape =
         LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     val padH = mainContentPadH(landscape)
@@ -132,6 +143,26 @@ fun FeaturesScreen(
                 offline = offline,
                 onOfflineBlocked = { context.showIslandNotice("当前无网络") },
             )
+            if (pluginCards.isNotEmpty()) {
+                Spacer(Modifier.height(if (landscape) 22.dp else 26.dp))
+                FeatureSectionTitle("插件")
+                Spacer(Modifier.height(10.dp))
+                FeatureCardGrid(
+                    items = pluginCards.map { entry ->
+                        FeatureItem(
+                            title = entry.title,
+                            subtitle = entry.subtitle?.takeIf { it.isNotBlank() } ?: entry.pluginName,
+                            color = entry.accent?.let { parseThemeColor(it) } ?: Color(0xFF5E5CE6),
+                            icon = pluginUiIcon(entry.icon),
+                            availableOffline = true,
+                        ) {
+                            app.pluginEngine.ui.activateSlot(entry.pluginId, entry.slot, entry.id)
+                        }
+                    },
+                    offline = offline,
+                    onOfflineBlocked = { context.showIslandNotice("当前无网络") },
+                )
+            }
         }
     }
 }

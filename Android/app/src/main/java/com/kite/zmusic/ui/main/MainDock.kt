@@ -25,12 +25,14 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
 import androidx.compose.ui.input.pointer.pointerInput
@@ -50,14 +52,16 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.unit.sp
+import com.kite.zmusic.plugin.PluginDebugProbe
 import com.kite.zmusic.ui.icons.ZIcons
+import com.kite.zmusic.ui.theme.TextTheme
 import com.kyant.backdrop.Backdrop
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
  * Apple 式悬浮 Dock。
- * 按住横滑 1:1 跟手切页；滑过约四分之一格即切换，划得够远可一次到个人。
+ * 按住横滑 1:1 跟手切页；滑过约四分之一格即切换。调试开启时可滑到「调优」。
  */
 @Composable
 fun FloatingTabDock(
@@ -69,18 +73,29 @@ fun FloatingTabDock(
     backdrop: Backdrop,
     modifier: Modifier = Modifier,
     landscape: Boolean = false,
+    showProbeTab: Boolean = false,
+    onOpenProbe: () -> Unit = {},
 ) {
     val density = LocalDensity.current
     val expandedHpx = with(density) { FloatingDockHeight.roundToPx() }
     val compactHpx = with(density) { FloatingDockCompactHeight.roundToPx() }
     val shape = RoundedCornerShape(percent = 50)
     val wellShape = RoundedCornerShape(percent = 50)
-    val tabCount = MainDestination.entries.size
+    val destCount = MainDestination.entries.size
+    val tabCount = destCount + if (showProbeTab) 1 else 0
     val lastIndex = tabCount - 1
 
     Row(
         modifier
-            .widthIn(min = if (landscape) 280.dp else 248.dp, max = if (landscape) 360.dp else 320.dp)
+            .widthIn(
+                min = if (landscape) 280.dp else 248.dp,
+                max = when {
+                    landscape && showProbeTab -> 400.dp
+                    landscape -> 360.dp
+                    showProbeTab -> 360.dp
+                    else -> 320.dp
+                },
+            )
             .mainLiquidGlass(backdrop, shape)
             .layout { measurable, constraints ->
                 val p = compactProgress().coerceIn(0f, 1f)
@@ -101,12 +116,15 @@ fun FloatingTabDock(
                 pagerState = pagerState,
                 tabCount = tabCount,
                 lastIndex = lastIndex,
+                destCount = destCount,
+                showProbeTab = showProbeTab,
                 itemW = itemW,
                 itemWpx = itemWpx,
                 compactProgress = compactProgress,
                 backdrop = backdrop,
                 wellShape = wellShape,
                 onDestination = onDestination,
+                onOpenProbe = onOpenProbe,
                 onDragByTabs = onDragByTabs,
                 onDragSettled = onDragSettled,
             )
@@ -119,16 +137,21 @@ private fun DockSelectionLayer(
     pagerState: PagerState,
     tabCount: Int,
     lastIndex: Int,
+    destCount: Int,
+    showProbeTab: Boolean,
     itemW: Dp,
     itemWpx: Float,
     compactProgress: () -> Float,
     backdrop: Backdrop,
     wellShape: RoundedCornerShape,
     onDestination: (MainDestination) -> Unit,
+    onOpenProbe: () -> Unit,
     onDragByTabs: (Float) -> Unit,
     onDragSettled: (Float, Int) -> Unit,
 ) {
     val haptic = LocalHapticFeedback.current
+    val onOpenProbeState = rememberUpdatedState(onOpenProbe)
+    val onDestinationState = rememberUpdatedState(onDestination)
     val selection = (pagerState.currentPage + pagerState.currentPageOffsetFraction)
         .coerceIn(0f, lastIndex.toFloat())
     var hapticTick by remember { mutableIntStateOf(selection.roundToInt()) }
@@ -150,9 +173,20 @@ private fun DockSelectionLayer(
     Row(Modifier.fillMaxSize()) {
         MainDestination.entries.forEachIndexed { index, dest ->
             DockItem(
-                destination = dest,
+                label = dest.titleZh,
+                icon = ZIcons.dock(dest),
                 selection = selection,
                 index = index,
+                compactProgress = compactProgress,
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+            )
+        }
+        if (showProbeTab) {
+            DockItem(
+                label = PluginDebugProbe.DOCK_LABEL,
+                icon = ZIcons.BugReport,
+                selection = selection,
+                index = destCount,
                 compactProgress = compactProgress,
                 modifier = Modifier.weight(1f).fillMaxHeight(),
             )
@@ -161,7 +195,7 @@ private fun DockSelectionLayer(
     Box(
         Modifier
             .fillMaxSize()
-            .pointerInput(tabCount) {
+            .pointerInput(tabCount, showProbeTab) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
                     val startPage = pagerState.currentPage
@@ -182,7 +216,11 @@ private fun DockSelectionLayer(
                                     .toInt()
                                     .coerceIn(0, lastIndex)
                                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                onDestination(MainDestination.entries[index])
+                                if (index >= destCount) {
+                                    onOpenProbeState.value()
+                                } else {
+                                    onDestinationState.value(MainDestination.entries[index])
+                                }
                             }
                         }
                         return@awaitEachGesture
@@ -203,7 +241,8 @@ private fun DockSelectionLayer(
 
 @Composable
 private fun DockItem(
-    destination: MainDestination,
+    label: String,
+    icon: ImageVector,
     selection: Float,
     index: Int,
     compactProgress: () -> Float,
@@ -217,21 +256,21 @@ private fun DockItem(
     Column(
         modifier.semantics {
             role = Role.Tab
-            contentDescription = destination.titleZh
+            contentDescription = label
             this.selected = selected
         },
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
         Icon(
-            imageVector = ZIcons.dock(destination),
+            imageVector = icon,
             contentDescription = null,
             tint = tint,
             modifier = Modifier.size(22.dp),
         )
         if (progress < 0.92f) {
             Text(
-                text = destination.titleZh,
+                text = label,
                 style = TextStyle(
                     color = tint,
                     fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,

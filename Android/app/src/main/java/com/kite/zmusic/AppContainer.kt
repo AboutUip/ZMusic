@@ -194,6 +194,23 @@ class AppContainer(app: Application) {
                 java.io.File(app.cacheDir, "plugin-engine/probe.zpp"),
             )
         },
+        host = com.kite.zmusic.plugin.PluginHostBindings(
+            player = com.kite.zmusic.plugin.PluginAndroidPlayer(
+                mainHandler = android.os.Handler(android.os.Looper.getMainLooper()),
+                playback = playbackBridge,
+                likedRepo = likedPlaylistRepository,
+                session = sessionRepository,
+                songs = songRepository,
+                online = {
+                    networkMode.state.value.phase != com.kite.zmusic.data.NetworkPhase.Offline
+                },
+                ioScope = kotlinx.coroutines.CoroutineScope(
+                    kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO,
+                ),
+            ),
+            httpClient = httpClient,
+            device = com.kite.zmusic.plugin.PluginAndroidDevice(app, httpClient),
+        ),
     )
     private val workshopHttp = httpClient.newBuilder()
         .readTimeout(0, TimeUnit.MILLISECONDS)

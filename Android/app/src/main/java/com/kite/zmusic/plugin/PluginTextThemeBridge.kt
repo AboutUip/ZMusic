@@ -7,7 +7,8 @@ import com.kite.zmusic.ui.theme.parseThemeColor
 import com.whl.quickjs.wrapper.JSObject
 
 /**
- * 插件 → [TextTheme] 桥。参数校验失败返回 null / false，不部分写入。
+ * 插件 → [com.kite.zmusic.ui.theme.TextTheme] 桥。覆盖文本 / 面色 / 铬 / 控件 / 舞台。
+ * 参数校验失败返回 null / false，不部分写入。
  */
 object PluginTextThemeBridge {
     fun set(pluginId: String, partial: Any?): Boolean {
@@ -28,10 +29,7 @@ object PluginTextThemeBridge {
     private fun parsePartial(raw: Any?): Map<String, Color>? {
         val map: Map<*, *> = when (raw) {
             null -> return null
-            is JSObject -> {
-                val json = runCatching { raw.stringify() }.getOrNull() ?: return null
-                PluginJson.parseObject(json) ?: return null
-            }
+            is JSObject -> jsObjectToMap(raw) ?: return null
             is Map<*, *> -> raw
             else -> return null
         }
@@ -45,5 +43,11 @@ object PluginTextThemeBridge {
             out[key] = color
         }
         return out
+    }
+
+    private fun jsObjectToMap(obj: JSObject): Map<*, *>? {
+        runCatching { obj.toMap() }.getOrNull()?.let { return it }
+        val json = runCatching { obj.stringify() }.getOrNull() ?: return null
+        return PluginJson.parseObject(json)
     }
 }

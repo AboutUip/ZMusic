@@ -38,9 +38,9 @@ object MainControls {
 
     @Composable
     fun switchColors(): SwitchColors = SwitchDefaults.colors(
-        checkedThumbColor = Color.White,
+        checkedThumbColor = TextTheme.ControlThumb,
         checkedTrackColor = MainPalette.Accent,
-        uncheckedThumbColor = Color.White,
+        uncheckedThumbColor = TextTheme.ControlThumb,
         uncheckedTrackColor = MainPalette.TrackOff,
         uncheckedBorderColor = Color.Transparent,
         checkedBorderColor = Color.Transparent,

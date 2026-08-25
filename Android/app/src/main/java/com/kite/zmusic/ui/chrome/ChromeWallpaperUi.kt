@@ -71,6 +71,7 @@ fun chromeWallpaperSurface(
         is MainOverlay.LikedArtistsSearch,
         is MainOverlay.User,
         is MainOverlay.UserRelations,
+        is MainOverlay.PluginPage,
         -> ChromeWallpaperSurface.Artist
     }
 }

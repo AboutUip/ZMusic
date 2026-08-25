@@ -40,12 +40,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kite.zmusic.R
+import com.kite.zmusic.plugin.PluginDebugProbe
 import com.kite.zmusic.ui.icons.ZIcons
 
 internal val LandscapeRailWidth = 208.dp
 
 /**
- * 横屏桌面式侧栏：Logo + 主导航 + 设置。实底，不走悬浮 Dock。
+ * 横屏桌面式侧栏：Logo + 主导航（调试开启时含「调优」）+ 设置。实底，不走悬浮 Dock。
  */
 @Composable
 fun LandscapeNavRail(
@@ -54,6 +55,9 @@ fun LandscapeNavRail(
     onDestination: (MainDestination) -> Unit,
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
+    showProbeTab: Boolean = false,
+    probeSelected: Boolean = false,
+    onOpenProbe: () -> Unit = {},
 ) {
     val insets = WindowInsets.displayCutout.only(WindowInsetsSides.Start)
         .union(WindowInsets.navigationBars.only(WindowInsetsSides.Bottom))
@@ -100,7 +104,7 @@ fun LandscapeNavRail(
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 MainDestination.entries.forEach { dest ->
-                    val on = !settingsSelected && dest == selected
+                    val on = !settingsSelected && !probeSelected && dest == selected
                     RailItem(
                         label = dest.titleZh,
                         selected = on,
@@ -114,6 +118,20 @@ fun LandscapeNavRail(
                         )
                     }
                 }
+                if (showProbeTab) {
+                    RailItem(
+                        label = PluginDebugProbe.DOCK_LABEL,
+                        selected = probeSelected,
+                        onClick = onOpenProbe,
+                    ) {
+                        Icon(
+                            imageVector = ZIcons.BugReport,
+                            contentDescription = null,
+                            tint = if (probeSelected) TextTheme.DockActive else TextTheme.DockInactive,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                }
             }
             Spacer(Modifier.weight(1f))
             Column(
@@ -122,13 +140,17 @@ fun LandscapeNavRail(
             ) {
                 RailItem(
                     label = "设置",
-                    selected = settingsSelected,
+                    selected = settingsSelected && !probeSelected,
                     onClick = onOpenSettings,
                 ) {
                     Icon(
                         imageVector = ZIcons.Settings,
                         contentDescription = null,
-                        tint = if (settingsSelected) TextTheme.DockActive else TextTheme.DockInactive,
+                        tint = if (settingsSelected && !probeSelected) {
+                            TextTheme.DockActive
+                        } else {
+                            TextTheme.DockInactive
+                        },
                         modifier = Modifier.size(20.dp),
                     )
                 }

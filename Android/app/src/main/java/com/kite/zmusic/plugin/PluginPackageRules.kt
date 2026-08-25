@@ -11,9 +11,36 @@ internal object PluginPackageRules {
     )
 
     fun entryPathOk(entry: String): Boolean {
-        if (entry.isEmpty() || entry.startsWith('/') || entry.contains('\\')) return false
-        if (entry.split('/').any { it == ".." || it.isEmpty() }) return false
-        return entry.endsWith(".js") && extensionOf(entry) == "js"
+        val rel = normalizeRel(entry) ?: return false
+        return rel.endsWith(".js") && extensionOf(rel) == "js"
+    }
+
+    /**
+     * 包内相对路径：去空白、去掉前导 `./`，禁止 `..` / 绝对路径 / 反斜杠。
+     */
+    fun normalizeRel(path: String): String? {
+        var p = path.trim()
+        while (p.startsWith("./")) {
+            p = p.removePrefix("./")
+        }
+        if (p.isEmpty() || p.startsWith('/') || p.contains('\\') || p.contains('\u0000')) {
+            return null
+        }
+        if (p.endsWith('/')) return null
+        val parts = p.split('/')
+        if (parts.any { it == ".." || it.isEmpty() }) return null
+        return p
+    }
+
+    fun requirePathOk(path: String): Boolean {
+        val rel = normalizeRel(path) ?: return false
+        return rel.endsWith(".js") && extensionOf(rel) == "js"
+    }
+
+    fun packFilePathOk(path: String): Boolean {
+        val rel = normalizeRel(path) ?: return false
+        val ext = extensionOf(rel) ?: return false
+        return ext in ALLOWED_EXTENSIONS
     }
 
     /**

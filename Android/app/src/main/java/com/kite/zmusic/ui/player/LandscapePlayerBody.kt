@@ -146,6 +146,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kite.zmusic.ZMusicApplication
+import com.kite.zmusic.plugin.PluginSurfaces
+import com.kite.zmusic.plugin.PluginUiTarget
 import com.kite.zmusic.data.LrcLine
 import com.kite.zmusic.data.LrcParser
 import com.kite.zmusic.data.LyricRoleStyle
@@ -1452,6 +1454,8 @@ internal fun LandscapePlayerBody(
                     !lyricSelectOpen &&
                     !lyricStyleEditorOpen &&
                     !titleStyleEditorOpen
+                val pluginEngine =
+                    (LocalContext.current.applicationContext as ZMusicApplication).pluginEngine
                 // Entering：无叠层，主盘清晰居中；Stacking 起叠层盘在蒙版上接替，主盘隐藏
                 val hideMainForPickTarget = when {
                     pickRevealMainUnderHandoff -> false
@@ -1493,14 +1497,20 @@ internal fun LandscapePlayerBody(
                                 }
                                 .size(disc)
                                 .then(
-                                    if (canLongPressPick) {
-                                        // 不 consume down：单击交回空白手势；长按选歌
-                                        Modifier.vinylLightTapGestures(
-                                            onLongPress = { openVinylSongPick() },
-                                        )
-                                    } else {
-                                        Modifier
-                                    },
+                                    Modifier.vinylLightTapGestures(
+                                        onLongPress = {
+                                            pluginEngine.handleSurfaceLongPress(
+                                                PluginSurfaces.PLAYER_COVER,
+                                                PluginUiTarget.track(track),
+                                                hostDefaultLabel = if (canLongPressPick) "选择歌曲" else null,
+                                                onHostDefault = if (canLongPressPick) {
+                                                    { openVinylSongPick() }
+                                                } else {
+                                                    null
+                                                },
+                                            )
+                                        },
+                                    ),
                                 ),
                         )
                     }

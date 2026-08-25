@@ -58,7 +58,7 @@ import com.kite.zmusic.ui.theme.MainPalette
 private val Page get() = MainPalette.Page
 private val Ink get() = MainPalette.Ink
 private val InkSecondary = Color(0xFF6B7A82)
-private val Bloom = Color(0xFFEC4141)
+private val Bloom get() = MainPalette.Accent
 private val MoteA = Color(0xFFC45B5B)
 private val MoteB = Color(0xFF8A9AA3)
 

@@ -62,6 +62,27 @@ internal object ZppUnpacker {
         return validateExtracted(destDir)
     }
 
+    /** 只读清单 `id`，不解压。失败返回 null。 */
+    fun peekId(zpp: File): String? {
+        if (!zpp.isFile) return null
+        return runCatching {
+            ZipFile(zpp).use { zip ->
+                val names = zip.entries().toList()
+                    .map { it.name }
+                    .filterNot { it.startsWith("__MACOSX/") }
+                if (names.isEmpty()) return@use null
+                val prefix = wrappingPrefix(names).orEmpty()
+                val jsonName = names.firstOrNull { name ->
+                    val rel = if (prefix.isEmpty()) name.trimStart('/') else name.removePrefix(prefix)
+                    rel == "plugin.json"
+                } ?: return@use null
+                val entry = zip.getEntry(jsonName) ?: return@use null
+                val text = zip.getInputStream(entry).bufferedReader(Charsets.UTF_8).use { it.readText() }
+                PluginManifestParser.parse(text)?.id
+            }
+        }.getOrNull()
+    }
+
     fun validateExtracted(root: File): UnpackResult {
         val jsonFile = File(root, "plugin.json")
         if (!jsonFile.isFile) return UnpackResult.Invalid("缺少 plugin.json")

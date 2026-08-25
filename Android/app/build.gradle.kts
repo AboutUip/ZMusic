@@ -116,6 +116,12 @@ android {
         buildConfig = true
     }
     sourceSets.getByName("main").assets.srcDir(layout.buildDirectory.dir("generated/pluginProbe"))
+    sourceSets.getByName("test").java.srcDir("src/testShared/java")
+    sourceSets.getByName("androidTest").java.srcDir("src/testShared/java")
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+        animationsDisabled = true
+    }
 }
 
 kotlin {
@@ -193,6 +199,8 @@ dependencies {
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
     androidTestImplementation(libs.ext.junit)
     androidTestImplementation(libs.espresso.core)
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test:rules:1.6.1")
     debugImplementation(libs.compose.ui.tooling)
 }
 

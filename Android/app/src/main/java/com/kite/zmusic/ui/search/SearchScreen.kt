@@ -92,6 +92,9 @@ import com.kite.zmusic.ui.chrome.chromePage
 import com.kite.zmusic.ui.icons.ZIcons
 import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.notice.showIslandNotice
+import com.kite.zmusic.plugin.PluginSurfaces
+import com.kite.zmusic.plugin.PluginUiTarget
+import com.kite.zmusic.ui.plugin.pluginSurface
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -948,7 +951,8 @@ private fun SearchSongRow(
                 contentDescription = null,
                 modifier = Modifier
                     .size(48.dp)
-                    .clip(RoundedCornerShape(8.dp)),
+                    .clip(RoundedCornerShape(8.dp))
+                    .pluginSurface(PluginSurfaces.TRACK_COVER, PluginUiTarget.track(track)),
                 contentScale = ContentScale.Crop,
             )
             Spacer(Modifier.width(12.dp))
@@ -1025,7 +1029,8 @@ private fun SearchPlaylistRow(
                 contentDescription = null,
                 modifier = Modifier
                     .size(52.dp)
-                    .clip(RoundedCornerShape(8.dp)),
+                    .clip(RoundedCornerShape(8.dp))
+                    .pluginSurface(PluginSurfaces.PLAYLIST_COVER, PluginUiTarget.playlist(hit)),
                 contentScale = ContentScale.Crop,
             )
             Spacer(Modifier.width(12.dp))
@@ -1100,7 +1105,8 @@ private fun SearchAlbumRow(
             contentDescription = album.name,
             modifier = Modifier
                 .size(72.dp)
-                .clip(RoundedCornerShape(8.dp)),
+                .clip(RoundedCornerShape(8.dp))
+                .pluginSurface(PluginSurfaces.ALBUM_COVER, PluginUiTarget.album(album)),
             contentScale = ContentScale.Crop,
         )
         Spacer(Modifier.width(12.dp))
@@ -1155,7 +1161,8 @@ private fun SearchMvRow(
             modifier = Modifier
                 .width(96.dp)
                 .aspectRatio(16f / 9f)
-                .clip(RoundedCornerShape(8.dp)),
+                .clip(RoundedCornerShape(8.dp))
+                .pluginSurface(PluginSurfaces.MV_COVER, PluginUiTarget.mv(mv)),
             contentScale = ContentScale.Crop,
         )
         Spacer(Modifier.width(12.dp))
@@ -1208,7 +1215,8 @@ private fun SearchArtistRow(
             contentDescription = null,
             modifier = Modifier
                 .size(48.dp)
-                .clip(CircleShape),
+                .clip(CircleShape)
+                .pluginSurface(PluginSurfaces.ARTIST_COVER, PluginUiTarget.artist(hit)),
             contentScale = ContentScale.Crop,
         )
         Spacer(Modifier.width(12.dp))
@@ -1247,7 +1255,8 @@ private fun SearchUserRow(
             contentDescription = null,
             modifier = Modifier
                 .size(48.dp)
-                .clip(CircleShape),
+                .clip(CircleShape)
+                .pluginSurface(PluginSurfaces.USER_AVATAR, PluginUiTarget.user(hit)),
             contentScale = ContentScale.Crop,
         )
         Spacer(Modifier.width(12.dp))

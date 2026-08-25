@@ -388,6 +388,15 @@ private fun CatalogOverlayPage(
                 },
             )
         }
+        is MainOverlay.PluginPage -> {
+            com.kite.zmusic.ui.plugin.PluginPageScreen(
+                pluginId = overlay.pluginId,
+                pageName = overlay.pageName,
+                instance = overlay.instance,
+                contentBottomInset = contentBottomInset,
+                onBack = onBack,
+            )
+        }
         else -> CatalogCollectionPage(
             overlay = overlay,
             sessionRepository = sessionRepository,

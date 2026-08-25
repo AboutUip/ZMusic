@@ -57,7 +57,7 @@ Compose 取依赖：`LocalContext.current.applicationContext as ZMusicApplicatio
 | `ui/notice` | 应用内灵动岛。**所有软件内提示走这里**，见 [`ANDROID-ISLAND-NOTICE.md`](./ANDROID-ISLAND-NOTICE.md) |
 | `ui/lyricoverlay` | 通知栏歌词悬浮窗 Compose（仅应用外展示） |
 | `ui/common` | `UrlImage`、`GlassAlertDialog`（与岛同窗液体玻璃，不用系统 Dialog） |
-| `ui/theme` | `MainPalette` 与 Material 主题 |
+| `ui/theme` | `MainPalette` / `TextTheme`（插件 `Xuan.theme` overlay）与 Material 主题 |
 | `ui/orientation` | 横竖屏过渡蒙版 |
 
 点播前请求 `POST_NOTIFICATIONS`（拒绝仍可播，灵动岛提示后台可能受限）。

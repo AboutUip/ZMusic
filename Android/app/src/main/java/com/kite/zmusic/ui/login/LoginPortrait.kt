@@ -84,10 +84,15 @@ import com.kite.zmusic.R
 import com.kite.zmusic.ui.common.GlassAlertDialog
 import com.kite.zmusic.ui.theme.MainPalette
 
-/** 网易云品牌红（官方视觉规范常用值）。 */
-private val CloudRed = Color(0xFFEC4141)
-private val CloudRedPressed = Color(0xFFD63535)
-private val CloudRedDisabled = Color(0xFFF3B4B4)
+/** 登录主色；跟随 [MainPalette.Accent]。 */
+private val CloudRed get() = MainPalette.Accent
+private val CloudRedPressed get() = Color(
+    red = (MainPalette.Accent.red * 0.84f).coerceIn(0f, 1f),
+    green = (MainPalette.Accent.green * 0.83f).coerceIn(0f, 1f),
+    blue = (MainPalette.Accent.blue * 0.83f).coerceIn(0f, 1f),
+    alpha = 1f,
+)
+private val CloudRedDisabled get() = MainPalette.Accent.copy(alpha = 0.42f)
 private val Ink get() = MainPalette.Ink
 private val InkSecondary get() = MainPalette.Secondary
 private val InkHint get() = MainPalette.Hint

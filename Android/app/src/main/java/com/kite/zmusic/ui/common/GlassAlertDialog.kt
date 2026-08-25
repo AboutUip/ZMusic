@@ -430,11 +430,14 @@ fun GlassPromptField(
     modifier: Modifier = Modifier,
     maxLength: Int = 40,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    singleLine: Boolean = true,
+    minLines: Int = 1,
 ) {
     BasicTextField(
         value = value,
         onValueChange = { onValueChange(it.take(maxLength)) },
-        singleLine = true,
+        singleLine = singleLine,
+        minLines = if (singleLine) 1 else minLines.coerceAtLeast(2),
         keyboardOptions = keyboardOptions,
         textStyle = TextStyle(
             color = MainPalette.Ink,

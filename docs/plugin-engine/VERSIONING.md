@@ -28,24 +28,34 @@
 |---|---|---|
 | `0.0.1` | `000001` | `1` |
 | `0.0.2` | `000002` | `2` |
+| `0.1.0` | `000100` | `100` |
 | `0.1.2` | `000102` | `102` |
 | `1.22.3` | `012203` | `12203` |
 
-当前引擎：`0.0.2`，整数 `2`。
+当前引擎：`0.1.0`，整数 `100`。
 
 超大更新时后两段归零；大更新时第三段归零。
 
 **向后兼容：** 引擎升级不得撤销已对插件开放的能力。未设置 `engine.max` 的包在新引擎上仍可加载。`engine.max` 表示作者主动排除更高引擎，宿主必须遵守。
 
-`plugin.json` 的 `capabilities` 用于声明可选能力。新增可选 API 时记入 `capabilities`，不必仅靠提升引擎版本区分。
+`plugin.json` 的 `capabilities` 给工坊 / 用户看「这个包装了什么」，**不是**运行时门锁。已实现的 `Xuan` API 对 `Running` 插件均可调用，不必先声明。
 
-### 本引擎已知能力
+核心 API（`hook` / `timer` / `require` / `pack` / 通知 / 延迟等）不写进 `capabilities`。只有真正可选、且值得在商店里标出来的能力才登记。
+
+### 本引擎已知能力（展示用）
 
 | 名称 | 说明 |
 |---|---|
-| `theme` | 文本主题：`Xuan.theme`，见 [THEME.md](./THEME.md) |
+| `theme` | 宿主主题：`Xuan.theme`，见 [THEME.md](./THEME.md) |
+| `player` | 播放快照与控制：`Xuan.player`，见 [PLAYER.md](./PLAYER.md) |
+| `http` | 出站网络：`Xuan.http`，见 [HTTP.md](./HTTP.md) |
+| `store` | 持久键值：`Xuan.store`，见 [STORE.md](./STORE.md) |
+| `ui` | 槽位、组件树页面、弹窗与 sheet：`Xuan.ui`，见 [UI.md](./UI.md) |
+| `media` | 保存图片到相册：`Xuan.media`，见 [DEVICE.md](./DEVICE.md) |
+| `share` | 系统分享：`Xuan.share`，见 [DEVICE.md](./DEVICE.md) |
+| `clipboard` | 剪贴板：`Xuan.clipboard`，见 [DEVICE.md](./DEVICE.md) |
 
-字段可省略或 `[]`。若写出，每一项必须是上表名称；未知字符串则整包无法加载。
+字段可省略或 `[]`。写出时：空串去掉；**未知名忽略**，整包仍有效（便于旧客户端不认识的新名字）。非字符串项则清单无效。
 
 ## 插件版本（两段）
 

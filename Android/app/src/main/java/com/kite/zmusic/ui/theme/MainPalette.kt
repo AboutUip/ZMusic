@@ -7,11 +7,12 @@ import androidx.compose.ui.graphics.Color
 
 /**
  * 应用色板。浅色保持原网易云灰底白卡；深色按流媒体常见分层：
- * 画布近黑而非 #000（Spotify #121212 / Pocket Casts #1A1A1A），卡片略抬亮，
- * 品牌红 [Accent] 不变。Compose 读取下列 getter 会订阅切换。
+ * 画布近黑而非 #000（Spotify #121212 / Pocket Casts #1A1A1A），卡片略抬亮。
+ * Compose 读取下列 getter 会订阅浅深切换与插件 overlay。
  *
- * 跟外观走的界面（首页、设置、歌单、「更多」）只用这里的色，滑条/开关走
- * [MainControls]。播放页封面编辑器、桌面歌词浮层是永远压在暗底上的另一套语言。
+ * 跟外观走的界面只用这里的 getter；滑条/开关走 [MainControls]。
+ * 插件 `Xuan.theme` 改 getter，不改 [snapshot] 里的宿主默认。
+ * 歌词用户样式、桌面歌词浮层、黑胶用户配色是另一套语言。
  */
 data class MainColors(
     val page: Color,
@@ -84,33 +85,44 @@ object MainPalette {
     private var active by mutableStateOf(MainColors.Light)
 
     fun bind(colors: MainColors) {
-        if (active != colors) active = colors
+        if (active == colors) return
+        active = colors
         TextTheme.bindDefaults(colors)
     }
 
     val snapshot: MainColors get() = active
     val isDark: Boolean get() = active.isDark
 
-    val Page: Color get() = active.page
-    val Surface: Color get() = active.surface
+    val Page: Color get() = TextTheme.resolve(TextThemeKeys.FACE_PAGE)
+    val Surface: Color get() = TextTheme.resolve(TextThemeKeys.FACE_SURFACE)
     /** 正文主色；转发 [TextTheme.Title]，便于插件 `text.title` 覆盖全 App。 */
     val Ink: Color get() = TextTheme.Title
     /** 辅文；转发 [TextTheme.Subtitle]。 */
     val Secondary: Color get() = TextTheme.Subtitle
     /** 弱提示字色；转发 [TextTheme.Hint]。 */
     val Hint: Color get() = TextTheme.Hint
-    /** 面色/控件强调（非文本 token）。文本强调用 [TextTheme.Accent]。 */
-    val Accent: Color get() = active.accent
-    val Hairline: Color get() = active.hairline
-    val DockGlass: Color get() = active.dockGlass
-    val DockStroke: Color get() = active.dockStroke
-    val Card: Color get() = active.card
-    val SheetTint: Color get() = active.sheetTint
-    val SheetWash: Color get() = active.sheetWash
+    /** 面色/控件强调。文本强调用 [TextTheme.Accent]。 */
+    val Accent: Color get() = TextTheme.resolve(TextThemeKeys.FACE_ACCENT)
+    val Hairline: Color get() = TextTheme.resolve(TextThemeKeys.FACE_HAIRLINE)
+    val DockGlass: Color get() = TextTheme.resolve(TextThemeKeys.CHROME_DOCK_GLASS)
+    val DockStroke: Color get() = TextTheme.resolve(TextThemeKeys.CHROME_DOCK_STROKE)
+    val Card: Color get() = TextTheme.resolve(TextThemeKeys.FACE_CARD)
+    val SheetTint: Color get() = TextTheme.resolve(TextThemeKeys.CHROME_SHEET_TINT)
+    val SheetWash: Color get() = TextTheme.resolve(TextThemeKeys.CHROME_SHEET_WASH)
     /** 封面/头像未加载底。不要再写 `0xFFEDEDED`。 */
-    val Placeholder: Color get() = active.placeholder
+    val Placeholder: Color get() = TextTheme.resolve(TextThemeKeys.FACE_PLACEHOLDER)
     /** 滑条未激活段、开关关闭槽、分段选择器底槽。不要再写 `0xFFE5E5EA`。 */
-    val TrackOff: Color get() = active.trackOff
+    val TrackOff: Color get() = TextTheme.resolve(TextThemeKeys.FACE_TRACK_OFF)
 
-    fun glassFill(lightAlpha: Float): Color = active.glassFill(lightAlpha)
+    /**
+     * 玻璃白膜。未覆盖 [TextThemeKeys.CHROME_GLASS_FILL] 时按 [lightAlpha] 走宿主公式；
+     * 覆盖后所有调用返回该色（透明度写进 hex）。
+     */
+    fun glassFill(lightAlpha: Float): Color =
+        TextTheme.overlayOf(TextThemeKeys.CHROME_GLASS_FILL) ?: active.glassFill(lightAlpha)
+
+    internal fun resetForTests() {
+        active = MainColors.Light
+        TextTheme.resetForTests()
+    }
 }

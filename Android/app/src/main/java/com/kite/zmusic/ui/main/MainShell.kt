@@ -84,6 +84,7 @@ import com.kite.zmusic.data.SessionRepository
 import com.kite.zmusic.data.TrackRow
 import com.kite.zmusic.playback.MvPlayback
 import com.kite.zmusic.playback.PlaybackViewModel
+import com.kite.zmusic.plugin.PluginDebugProbe
 import com.kite.zmusic.ui.artist.resolveTrackArtists
 import com.kite.zmusic.ui.chrome.ChromeWallpaperLayer
 import com.kite.zmusic.ui.chrome.LocalChromeWallpaperFrame
@@ -108,6 +109,8 @@ import com.kite.zmusic.ui.library.spaceChromeLeave
 import com.kite.zmusic.ui.mv.MvPlayerScreen
 import com.kite.zmusic.ui.player.MiniPlayerBar
 import com.kite.zmusic.ui.player.NowPlayingScreen
+import com.kite.zmusic.ui.plugin.PluginPageChrome
+import com.kite.zmusic.ui.plugin.PluginPageScreen
 import com.kite.zmusic.ui.notice.showIslandNotice
 import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
@@ -165,6 +168,12 @@ fun MainShell(
     val overlay = overlayStack.lastOrNull()
     val context = LocalContext.current
     val app = context.applicationContext as ZMusicApplication
+    val pluginDebug by app.pluginDebugStore.enabled.collectAsStateWithLifecycle()
+    val pluginPages by app.pluginEngine.ui.pages.collectAsStateWithLifecycle()
+    val probeReady = pluginPages[PluginDebugProbe.ID]?.containsKey(PluginDebugProbe.PAGE) == true
+    val showProbeTab = pluginDebug && probeReady
+    val probeNavigate = remember { mutableStateOf({}) }
+    val probeLeave = remember { mutableStateOf({}) }
     val net by app.networkMode.state.collectAsStateWithLifecycle()
     fun pushOverlay(next: MainOverlay) {
         val phase = net.phase
@@ -176,7 +185,8 @@ fun MainShell(
         if (phase == NetworkPhase.Offline &&
             next !is MainOverlay.CachedSongs &&
             next !is MainOverlay.Settings &&
-            next !is MainOverlay.CreativeWorkshop
+            next !is MainOverlay.CreativeWorkshop &&
+            next !is MainOverlay.PluginPage
         ) {
             return
         }
@@ -191,6 +201,71 @@ fun MainShell(
     }
     fun popOverlay() {
         overlayStack = overlayStack.dropLast(1)
+    }
+    LaunchedEffect(pluginDebug) {
+        if (!pluginDebug) {
+            overlayStack = overlayStack.filterNot {
+                it is MainOverlay.PluginPage && it.pluginId == PluginDebugProbe.ID
+            }
+            probeLeave.value()
+        }
+    }
+    val onPluginUiCommand = rememberUpdatedState<(com.kite.zmusic.plugin.PluginUiCommand) -> Unit> { cmd ->
+        when (cmd) {
+            is com.kite.zmusic.plugin.PluginUiCommand.OpenPage -> {
+                if (cmd.pluginId == PluginDebugProbe.ID) {
+                    probeNavigate.value()
+                } else {
+                    val next = MainOverlay.PluginPage(cmd.pluginId, cmd.pageName, cmd.instance)
+                    val depth = overlayStack.count {
+                        it is MainOverlay.PluginPage && it.pluginId == cmd.pluginId
+                    }
+                    if (depth < com.kite.zmusic.plugin.PluginUiBridge.MAX_STACK &&
+                        overlayStack.none { it.stackKey() == next.stackKey() }
+                    ) {
+                        pushOverlay(next)
+                    }
+                }
+            }
+            is com.kite.zmusic.plugin.PluginUiCommand.ClosePlugin -> {
+                overlayStack = overlayStack.filterNot {
+                    it is MainOverlay.PluginPage && it.pluginId == cmd.pluginId
+                }
+                if (cmd.pluginId == PluginDebugProbe.ID) probeLeave.value()
+            }
+            is com.kite.zmusic.plugin.PluginUiCommand.ClosePage ->
+                overlayStack = overlayStack.filterNot {
+                    it is MainOverlay.PluginPage &&
+                        it.pluginId == cmd.pluginId &&
+                        it.pageName == cmd.pageName
+                }
+            is com.kite.zmusic.plugin.PluginUiCommand.Back -> {
+                val top = overlayStack.lastOrNull() as? MainOverlay.PluginPage
+                if (top?.pluginId == cmd.pluginId) popOverlay()
+            }
+        }
+    }
+    LaunchedEffect(app.pluginEngine.ui) {
+        app.pluginEngine.ui.consumePendingOpen()?.let { frame ->
+            onPluginUiCommand.value(
+                com.kite.zmusic.plugin.PluginUiCommand.OpenPage(
+                    frame.pluginId,
+                    frame.pageName,
+                    frame.instance,
+                ),
+            )
+        }
+        app.pluginEngine.ui.commands.collect { cmd ->
+            onPluginUiCommand.value(cmd)
+        }
+    }
+    LaunchedEffect(overlayStack) {
+        app.pluginEngine.ui.syncOpenStack(
+            overlayStack.mapNotNull { overlay ->
+                val page = overlay as? MainOverlay.PluginPage ?: return@mapNotNull null
+                com.kite.zmusic.plugin.PluginOpenFrame(page.pluginId, page.pageName, page.instance)
+            },
+        )
     }
 
     val landscape =
@@ -431,9 +506,11 @@ fun MainShell(
         }
     }
 
+    val pagerCount = MainPagerDestinations.size + if (showProbeTab) 1 else 0
+    val probePageIndex = MainPagerDestinations.size
     val pagerState = rememberPagerState(
         initialPage = 0,
-        pageCount = { MainPagerDestinations.size },
+        pageCount = { pagerCount },
     )
     var landscapePage by rememberSaveable { mutableIntStateOf(0) }
     LaunchedEffect(landscape) {
@@ -472,6 +549,47 @@ fun MainShell(
                     ),
                 )
             }
+        }
+    }
+
+    fun goToProbe() {
+        if (!showProbeTab) {
+            context.showIslandNotice("探针未就绪")
+            return
+        }
+        if (landscape) {
+            landscapePage = probePageIndex
+            return
+        }
+        expandDock()
+        if (pagerState.targetPage != probePageIndex) {
+            scope.launch {
+                pagerState.animateScrollToPage(
+                    probePageIndex,
+                    animationSpec = spring(
+                        dampingRatio = 0.92f,
+                        stiffness = 520f,
+                    ),
+                )
+            }
+        }
+    }
+
+    fun leaveProbeIfCurrent() {
+        if (landscape) {
+            if (landscapePage >= probePageIndex) landscapePage = 0
+        } else if (pagerState.currentPage >= probePageIndex) {
+            scope.launch { pagerState.scrollToPage(0) }
+        }
+    }
+    probeNavigate.value = { goToProbe() }
+    probeLeave.value = { leaveProbeIfCurrent() }
+    LaunchedEffect(showProbeTab, pagerCount) {
+        if (pagerState.currentPage >= pagerCount) {
+            pagerState.scrollToPage((pagerCount - 1).coerceAtLeast(0))
+        }
+        if (landscapePage >= pagerCount) {
+            landscapePage = (pagerCount - 1).coerceAtLeast(0)
         }
     }
 
@@ -518,7 +636,7 @@ fun MainShell(
 
     fun settleDockPager(velocityTabsPerSec: Float, startPage: Int) {
         expandDock()
-        val last = MainPagerDestinations.lastIndex
+        val last = (pagerCount - 1).coerceAtLeast(0)
         val origin = startPage.coerceIn(0, last)
         val pos = (pagerState.currentPage + pagerState.currentPageOffsetFraction)
             .coerceIn(0f, last.toFloat())
@@ -589,9 +707,11 @@ fun MainShell(
         animationSpec = tween(320, easing = FastOutSlowInEasing),
         label = "dockReveal",
     )
-    val currentDest = MainPagerDestinations.getOrElse(
-        if (landscape) landscapePage else pagerState.currentPage,
-    ) { MainDestination.Home }
+    val currentPagerPage = if (landscape) landscapePage else pagerState.currentPage
+    val probeSelected = showProbeTab && currentPagerPage == probePageIndex
+    val currentDest = MainPagerDestinations.getOrElse(currentPagerPage) {
+        MainDestination.Home
+    }
     val wallpaper by app.chromeWallpaperStore.state.collectAsStateWithLifecycle()
     val wallpaperFrame = wallpaper.frame(
         chromeWallpaperSurface(
@@ -776,7 +896,10 @@ fun MainShell(
                                 MainDestination.Home
                             },
                             settingsSelected = overlay is MainOverlay.Settings,
+                            showProbeTab = showProbeTab,
+                            probeSelected = probeSelected,
                             onDestination = ::goToFromRail,
+                            onOpenProbe = ::goToProbe,
                             onOpenSettings = {
                                 if (overlay is MainOverlay.Settings) {
                                     popOverlay()
@@ -818,19 +941,40 @@ fun MainShell(
             if (landscape) {
                 LandscapeCoverPages(
                     currentIndex = landscapePage,
+                    pageCount = pagerCount,
                     clipLayer = userSpaceProgress < 0.02f,
                     modifier = Modifier
                         .fillMaxSize()
                         .chromePage(),
                 ) { index ->
-                    val dest = MainPagerDestinations[index]
-                    PagerDestinationPane(
-                        destination = dest,
-                        currentDestination = currentDest,
-                        wallpaper = wallpaper,
-                        landscape = true,
-                    ) {
-                        sectionContent(dest)
+                    if (showProbeTab && index == probePageIndex) {
+                        PagerDestinationPane(
+                            destination = MainDestination.Home,
+                            currentDestination = currentDest,
+                            wallpaper = wallpaper,
+                            landscape = true,
+                        ) {
+                            PluginPageScreen(
+                                pluginId = PluginDebugProbe.ID,
+                                pageName = PluginDebugProbe.PAGE,
+                                instance = "_",
+                                contentBottomInset = chromeInset,
+                                onBack = {},
+                                chrome = PluginPageChrome.Destination,
+                                selected = landscapePage == probePageIndex,
+                                landscape = true,
+                            )
+                        }
+                    } else {
+                        val dest = MainPagerDestinations[index]
+                        PagerDestinationPane(
+                            destination = dest,
+                            currentDestination = currentDest,
+                            wallpaper = wallpaper,
+                            landscape = true,
+                        ) {
+                            sectionContent(dest)
+                        }
                     }
                 }
             } else {
@@ -843,14 +987,34 @@ fun MainShell(
                     beyondViewportPageCount = 1,
                     userScrollEnabled = !showFullPlayer && !overlayOpen && !spaceOpen,
                 ) { page ->
-                    val dest = MainPagerDestinations[page]
-                    PagerDestinationPane(
-                        destination = dest,
-                        currentDestination = currentDest,
-                        wallpaper = wallpaper,
-                        landscape = false,
-                    ) {
-                        sectionContent(dest)
+                    if (showProbeTab && page == probePageIndex) {
+                        PagerDestinationPane(
+                            destination = MainDestination.Home,
+                            currentDestination = currentDest,
+                            wallpaper = wallpaper,
+                            landscape = false,
+                        ) {
+                            PluginPageScreen(
+                                pluginId = PluginDebugProbe.ID,
+                                pageName = PluginDebugProbe.PAGE,
+                                instance = "_",
+                                contentBottomInset = chromeInset,
+                                onBack = {},
+                                chrome = PluginPageChrome.Destination,
+                                selected = pagerState.currentPage == probePageIndex,
+                                landscape = false,
+                            )
+                        }
+                    } else {
+                        val dest = MainPagerDestinations[page]
+                        PagerDestinationPane(
+                            destination = dest,
+                            currentDestination = currentDest,
+                            wallpaper = wallpaper,
+                            landscape = false,
+                        ) {
+                            sectionContent(dest)
+                        }
                     }
                 }
             }
@@ -1019,6 +1183,8 @@ fun MainShell(
                             },
                             landscape = landscape,
                             backdrop = backdrop,
+                            showProbeTab = showProbeTab,
+                            onOpenProbe = ::goToProbe,
                         )
                     }
                 }
@@ -1352,10 +1518,11 @@ private fun LandscapeCoverPages(
     currentIndex: Int,
     modifier: Modifier = Modifier,
     clipLayer: Boolean = true,
+    pageCount: Int = MainPagerDestinations.size,
     page: @Composable (Int) -> Unit,
 ) {
     Box(modifier) {
-        MainPagerDestinations.indices.forEach { index ->
+        (0 until pageCount).forEach { index ->
             val visible = remember { MutableTransitionState(index == currentIndex) }
             visible.targetState = index == currentIndex
             androidx.compose.animation.AnimatedVisibility(

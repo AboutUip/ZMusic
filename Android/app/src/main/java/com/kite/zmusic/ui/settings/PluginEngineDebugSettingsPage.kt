@@ -44,7 +44,7 @@ fun PluginEngineDebugSettingsPage(
     ) {
         Spacer(Modifier.height(8.dp))
         Text(
-            text = "仅在排查插件问题时打开。下次冷启动后生效。",
+            text = "仅在排查插件问题时打开。下次冷启动后生效；开启后 Dock 会出现「调优」。",
             style = TextStyle(
                 color = MainPalette.Secondary,
                 fontSize = 13.sp,

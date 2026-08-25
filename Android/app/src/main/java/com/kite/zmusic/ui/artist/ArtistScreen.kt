@@ -68,6 +68,9 @@ import com.kite.zmusic.ui.common.ZPullRefresh
 import com.kite.zmusic.ui.chrome.chromePage
 import com.kite.zmusic.ui.icons.ZIcons
 import com.kite.zmusic.ui.main.MainPalette
+import com.kite.zmusic.plugin.PluginSurfaces
+import com.kite.zmusic.plugin.PluginUiTarget
+import com.kite.zmusic.ui.plugin.pluginSurface
 
 private const val HotPreviewCount = 5
 private const val AlbumPreviewCount = 8
@@ -363,7 +366,11 @@ private fun ArtistHeader(
             Modifier
                 .size(96.dp)
                 .clip(CircleShape)
-                .background(MainPalette.Placeholder),
+                .background(MainPalette.Placeholder)
+                .pluginSurface(
+                    PluginSurfaces.ARTIST_COVER,
+                    PluginUiTarget.artist(ui.id, ui.name, ui.coverUrl),
+                ),
         ) {
             UrlImage(
                 url = ui.coverUrl,
@@ -554,7 +561,8 @@ private fun ArtistAlbumStrip(
                     contentDescription = album.name,
                     modifier = Modifier
                         .size(112.dp)
-                        .clip(RoundedCornerShape(8.dp)),
+                        .clip(RoundedCornerShape(8.dp))
+                        .pluginSurface(PluginSurfaces.ALBUM_COVER, PluginUiTarget.album(album)),
                     contentScale = ContentScale.Crop,
                 )
                 Spacer(Modifier.height(6.dp))
@@ -605,7 +613,8 @@ private fun ArtistMvStrip(
                         .fillMaxWidth()
                         .aspectRatio(16f / 9f)
                         .clip(RoundedCornerShape(8.dp))
-                        .background(MainPalette.Placeholder),
+                        .background(MainPalette.Placeholder)
+                        .pluginSurface(PluginSurfaces.MV_COVER, PluginUiTarget.mv(mv)),
                 ) {
                     UrlImage(
                         url = mv.coverUrl,
@@ -667,7 +676,11 @@ private fun ArtistSimilarStrip(
                     contentDescription = artist.name,
                     modifier = Modifier
                         .size(72.dp)
-                        .clip(CircleShape),
+                        .clip(CircleShape)
+                        .pluginSurface(
+                            PluginSurfaces.ARTIST_COVER,
+                            PluginUiTarget.artist(artist.id, artist.name, artist.coverUrl),
+                        ),
                     contentScale = ContentScale.Crop,
                 )
                 Spacer(Modifier.height(6.dp))

@@ -35,7 +35,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -55,7 +54,7 @@ private val Page get() = MainPalette.Surface
 private val Ink get() = MainPalette.Ink
 private val InkSecondary get() = MainPalette.Secondary
 private val InkHint get() = MainPalette.Hint
-private val CloudRed = Color(0xFFEC4141)
+private val CloudRed get() = MainPalette.Accent
 
 /**
  * 竖屏：整页滑入注册。横屏请把 [RegisterFlowContent] 放进右侧栏，避免带动左侧品牌区。

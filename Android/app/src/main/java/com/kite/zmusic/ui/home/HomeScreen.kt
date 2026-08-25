@@ -76,6 +76,9 @@ import com.kite.zmusic.ui.orientation.SessionRotationLockStore
 import com.kite.zmusic.ui.orientation.rememberLandscapeModeEnabled
 import com.kite.zmusic.ui.orientation.rememberSystemAutoRotateEnabled
 import com.kite.zmusic.ui.player.NowPlayingRotationLockButton
+import com.kite.zmusic.plugin.PluginSurfaces
+import com.kite.zmusic.plugin.PluginUiTarget
+import com.kite.zmusic.ui.plugin.pluginSurface
 import kotlinx.coroutines.delay
 import java.util.Calendar
 
@@ -279,7 +282,14 @@ fun HomeScreen(
                     item(key = "newsongs") {
                         val items = remember(ui.newSongs) {
                             ui.newSongs.map {
-                                CoverStripItem(it.id, it.name, it.coverUrl, it.artists)
+                                CoverStripItem(
+                                    it.id,
+                                    it.name,
+                                    it.coverUrl,
+                                    it.artists,
+                                    PluginSurfaces.TRACK_COVER,
+                                    PluginUiTarget.track(it),
+                                )
                             }
                         }
                         Spacer(Modifier.height(22.dp))
@@ -310,7 +320,14 @@ fun HomeScreen(
                     item(key = "dailyPlaylists") {
                         val items = remember(ui.dailyPlaylists) {
                             ui.dailyPlaylists.map {
-                                CoverStripItem(it.id, it.name, it.coverUrl, null)
+                                CoverStripItem(
+                                    it.id,
+                                    it.name,
+                                    it.coverUrl,
+                                    null,
+                                    PluginSurfaces.PLAYLIST_COVER,
+                                    PluginUiTarget.playlist(it),
+                                )
                             }
                         }
                         Spacer(Modifier.height(22.dp))
@@ -454,7 +471,8 @@ private fun HomeBannerPager(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
                         onClick = { onBanner(b) },
-                    ),
+                    )
+                    .pluginSurface(PluginSurfaces.HOME_BANNER, PluginUiTarget.banner(b)),
             ) {
                 UrlImage(
                     url = b.picUrl,
@@ -594,7 +612,8 @@ private fun DailySongStrip(
                     contentDescription = t.name,
                     modifier = Modifier
                         .size(72.dp)
-                        .clip(RoundedCornerShape(8.dp)),
+                        .clip(RoundedCornerShape(8.dp))
+                        .pluginSurface(PluginSurfaces.TRACK_COVER, PluginUiTarget.track(t)),
                     contentScale = ContentScale.Crop,
                     maxPx = UrlImageCache.THUMB_MAX_PX,
                 )
@@ -677,6 +696,8 @@ private data class CoverStripItem(
     val title: String,
     val coverUrl: String?,
     val subtitle: String?,
+    val surface: String,
+    val target: PluginUiTarget,
 )
 
 @Composable
@@ -704,7 +725,8 @@ private fun CoverStrip(
                     contentDescription = item.title,
                     modifier = Modifier
                         .size(cardWidth)
-                        .clip(RoundedCornerShape(8.dp)),
+                        .clip(RoundedCornerShape(8.dp))
+                        .pluginSurface(item.surface, item.target),
                     contentScale = ContentScale.Crop,
                     maxPx = UrlImageCache.THUMB_MAX_PX,
                 )
@@ -787,7 +809,9 @@ private fun MvTeaser(
             UrlImage(
                 url = mv.coverUrl,
                 contentDescription = mv.name,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .pluginSurface(PluginSurfaces.MV_COVER, PluginUiTarget.mv(mv)),
                 contentScale = ContentScale.Crop,
                 maxPx = UrlImageCache.THUMB_MAX_PX,
             )
@@ -847,7 +871,8 @@ private fun PlaylistTile(
                 .fillMaxWidth()
                 .aspectRatio(1f)
                 .clip(RoundedCornerShape(8.dp))
-                .background(MainPalette.Placeholder),
+                .background(MainPalette.Placeholder)
+                .pluginSurface(PluginSurfaces.PLAYLIST_COVER, PluginUiTarget.playlist(pl)),
         ) {
             UrlImage(
                 url = pl.coverUrl,
@@ -1122,7 +1147,8 @@ private fun LandscapeDailyPanel(
                     contentDescription = t.name,
                     modifier = Modifier
                         .size(40.dp)
-                        .clip(RoundedCornerShape(6.dp)),
+                        .clip(RoundedCornerShape(6.dp))
+                        .pluginSurface(PluginSurfaces.TRACK_COVER, PluginUiTarget.track(t)),
                     contentScale = ContentScale.Crop,
                     maxPx = UrlImageCache.THUMB_MAX_PX,
                 )

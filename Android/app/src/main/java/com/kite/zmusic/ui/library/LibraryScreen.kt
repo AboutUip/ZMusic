@@ -134,7 +134,7 @@ private fun profileBlankBrush() = Brush.verticalGradient(
 )
 private val VipGold = Color(0xFFFFD789)
 private val SvipPlate = Color(0xFF1A120C)
-private val VipPlate = Color(0xFFEC4141)
+private val VipPlate get() = MainPalette.Accent
 internal val ProfileAvatarBadgeHang = 0.dp
 
 private enum class LibraryCollectionKind { Playlist, Album }

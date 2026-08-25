@@ -8,11 +8,13 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 
+import com.kite.zmusic.ui.theme.MainPalette
+
 private val VinylInk = Color(0xFF1A1A1C)
 private val VinylMid = Color(0xFF2A2A2E)
 private val VinylEdge = Color(0xFF121214)
 private val VinylGroove = Color(0xFF000000)
-private val VinylLabel = Color(0xFFEC4141)
+private val VinylLabel get() = MainPalette.Accent
 
 /** 封面未到位时的黑胶占位，锁住方格，避免歌名先挤进封面再跳回来。 */
 @Composable

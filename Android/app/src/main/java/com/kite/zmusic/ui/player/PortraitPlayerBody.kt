@@ -147,6 +147,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kite.zmusic.ZMusicApplication
+import com.kite.zmusic.plugin.PluginSurfaces
+import com.kite.zmusic.plugin.PluginUiTarget
 import com.kite.zmusic.data.LrcLine
 import com.kite.zmusic.data.LrcParser
 import com.kite.zmusic.data.LyricRoleStyle
@@ -333,6 +335,7 @@ internal fun PortraitPlayerBody(
         onCollapseLyrics()
     }
     val context = LocalContext.current
+    val pluginEngine = (context.applicationContext as ZMusicApplication).pluginEngine
     LaunchedEffect(hiding) {
         if (hiding) {
             context.showIslandNotice("已进入清屏沉浸模式")
@@ -399,7 +402,15 @@ internal fun PortraitPlayerBody(
                             .fillMaxWidth()
                             .fillMaxHeight()
                             // 整页可点进歌词（含黑胶左右空白）；勿用 clickable，以免 down 即 consume 挡住下滑退出
-                            .vinylLightTapGestures(onTap = onOpenLyrics),
+                            .vinylLightTapGestures(
+                                onTap = onOpenLyrics,
+                                onLongPress = {
+                                    pluginEngine.handleSurfaceLongPress(
+                                        PluginSurfaces.PLAYER_COVER,
+                                        PluginUiTarget.track(track),
+                                    )
+                                },
+                            ),
                         contentAlignment = Alignment.Center,
                     ) {
                         BoxWithConstraints(Modifier.fillMaxWidth()) {

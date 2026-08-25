@@ -61,6 +61,11 @@ sealed class MainOverlay {
         val name: String,
         val fans: Boolean,
     ) : MainOverlay()
+    data class PluginPage(
+        val pluginId: String,
+        val pageName: String,
+        val instance: String,
+    ) : MainOverlay()
 
     fun stackKey(): String = when (this) {
         Daily -> "daily"
@@ -82,5 +87,6 @@ sealed class MainOverlay {
         is LikedArtistsSearch -> if (users) "liked-artists-search-users" else "liked-artists-search-artists"
         is User -> "user-$id"
         is UserRelations -> if (fans) "user-fans-$userId" else "user-follows-$userId"
+        is PluginPage -> "plugin-page-$pluginId-$pageName-$instance"
     }
 }

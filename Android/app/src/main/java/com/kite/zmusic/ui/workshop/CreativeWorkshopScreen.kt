@@ -915,6 +915,7 @@ private fun WorkshopModulesTab(contentBottomInset: Dp) {
     val repo = app.workshopRepository
     val context = LocalContext.current
     val modulesRevision by repo.modulesRevision().collectAsStateWithLifecycle()
+    val pluginPages by app.pluginEngine.ui.pages.collectAsStateWithLifecycle()
     var modules by remember { mutableStateOf(listModulesOrdered(repo)) }
     var moreTarget by remember { mutableStateOf<PluginRecord?>(null) }
     var confirmDelete by remember { mutableStateOf<PluginRecord?>(null) }
@@ -966,12 +967,22 @@ private fun WorkshopModulesTab(contentBottomInset: Dp) {
             message = rec.id,
             onDismiss = { moreTarget = null },
             contentKey = "workshop-module-${rec.id}",
-            actions = listOf(
-                GlassSheetAction("删除", destructive = true) {
-                    confirmDelete = rec
-                    moreTarget = null
-                },
-            ),
+            actions = buildList {
+                if (!pluginPages[rec.id].isNullOrEmpty()) {
+                    add(
+                        GlassSheetAction("打开页面") {
+                            app.pluginEngine.ui.openPreferred(rec.id)
+                            moreTarget = null
+                        },
+                    )
+                }
+                add(
+                    GlassSheetAction("删除", destructive = true) {
+                        confirmDelete = rec
+                        moreTarget = null
+                    },
+                )
+            },
         )
     }
     confirmDelete?.let { rec ->

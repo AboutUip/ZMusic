@@ -93,6 +93,9 @@ import com.kite.zmusic.ui.main.LandscapeCoverEnter
 import com.kite.zmusic.ui.main.LandscapeCoverExit
 import com.kite.zmusic.ui.chrome.chromePage
 import com.kite.zmusic.ui.main.MainPalette
+import com.kite.zmusic.plugin.PluginSurfaces
+import com.kite.zmusic.plugin.PluginUiTarget
+import com.kite.zmusic.ui.plugin.pluginSurface
 import com.kite.zmusic.ui.mv.MvPlayerScreen
 import com.kite.zmusic.ui.search.SearchScreen
 import com.kite.zmusic.ui.search.SearchViewModel
@@ -196,7 +199,8 @@ private fun ChartTile(
                 .fillMaxWidth()
                 .aspectRatio(1f)
                 .clip(RoundedCornerShape(8.dp))
-                .background(MainPalette.Placeholder),
+                .background(MainPalette.Placeholder)
+                .pluginSurface(PluginSurfaces.CHART_COVER, PluginUiTarget.chart(chart)),
         ) {
             UrlImage(
                 url = chart.coverUrl,

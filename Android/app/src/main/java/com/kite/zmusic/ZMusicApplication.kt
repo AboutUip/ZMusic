@@ -27,12 +27,15 @@ import com.kite.zmusic.overlay.LyricOverlayController
 import com.kite.zmusic.playback.MvPlayback
 import com.kite.zmusic.playback.PlaybackBridge
 import com.kite.zmusic.playback.PlaybackQueueSync
+import com.kite.zmusic.plugin.PluginHostFacts
+import com.kite.zmusic.plugin.PluginPlaybackSnapshot
 import com.kite.zmusic.ui.notice.IslandNoticeCenter
 import com.kite.zmusic.ui.theme.MainColors
 import com.kite.zmusic.ui.theme.MainPalette
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -129,15 +132,60 @@ class ZMusicApplication : Application() {
         playbackBridge.maybeWarmMediaNotificationOnColdStart()
         container.appUpdateCoordinator.start()
         val offline = container.networkMode.state.value.phase == NetworkPhase.Offline
+        container.pluginEngine.setHostFacts(currentPluginHostFacts())
         container.pluginEngine.start(offline = offline)
+        registerActivityLifecycleCallbacks(PluginForegroundCallbacks())
         appScope.launch {
             container.networkMode.state
                 .map { it.phase == NetworkPhase.Offline }
                 .distinctUntilChanged()
                 .collect { isOffline ->
-                    container.pluginEngine.setOffline(isOffline)
+                    if (isOffline) {
+                        container.pluginEngine.setHostFacts(currentPluginHostFacts().copy(online = false))
+                        container.pluginEngine.setOffline(true)
+                    } else {
+                        container.pluginEngine.setHostFacts(currentPluginHostFacts().copy(online = true))
+                        container.pluginEngine.setOffline(false)
+                    }
                 }
         }
+        appScope.launch {
+            combine(
+                container.themeStore.appearance,
+                container.sessionRepository.session,
+            ) { _, _ -> currentPluginHostFacts() }
+                .distinctUntilChanged()
+                .collect { facts ->
+                    container.pluginEngine.setHostFacts(facts)
+                }
+        }
+        appScope.launch {
+            combine(
+                playbackBridge.ui,
+                likedPlaylistRepository.snapshot,
+            ) { ui, _ ->
+                val liked = ui.currentTrack?.let { likedPlaylistRepository.isLiked(it.id) }
+                PluginPlaybackSnapshot.from(ui, liked)
+            }.collect { snap ->
+                container.pluginEngine.setPlaybackSnapshot(snap)
+            }
+        }
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        container.pluginEngine.setHostFacts(currentPluginHostFacts())
+    }
+
+    private fun currentPluginHostFacts(): PluginHostFacts {
+        val systemDark = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK ==
+            Configuration.UI_MODE_NIGHT_YES
+        return PluginHostFacts(
+            online = container.networkMode.state.value.phase != NetworkPhase.Offline,
+            dark = themeStore.current().resolveDark(systemDark),
+            loggedIn = sessionRepository.session.value != null,
+            foreground = pluginEngine.hostFacts().foreground,
+        )
     }
 
     fun isSourcePlaylistComplete(playlistId: Long): Boolean =
@@ -145,5 +193,32 @@ class ZMusicApplication : Application() {
 
     fun hydrateSourcePlaylist(playlistId: Long, minCount: Int) {
         queueSync.hydrateSourcePlaylist(playlistId, minCount)
+    }
+
+    private inner class PluginForegroundCallbacks : ActivityLifecycleCallbacks {
+        private var started = 0
+
+        override fun onActivityCreated(activity: android.app.Activity, savedInstanceState: android.os.Bundle?) = Unit
+
+        override fun onActivityStarted(activity: android.app.Activity) {
+            if (started++ == 0) {
+                pluginEngine.setHostFacts(currentPluginHostFacts().copy(foreground = true))
+            }
+        }
+
+        override fun onActivityResumed(activity: android.app.Activity) = Unit
+
+        override fun onActivityPaused(activity: android.app.Activity) = Unit
+
+        override fun onActivityStopped(activity: android.app.Activity) {
+            if (--started <= 0) {
+                started = 0
+                pluginEngine.setHostFacts(currentPluginHostFacts().copy(foreground = false))
+            }
+        }
+
+        override fun onActivitySaveInstanceState(activity: android.app.Activity, outState: android.os.Bundle) = Unit
+
+        override fun onActivityDestroyed(activity: android.app.Activity) = Unit
     }
 }
