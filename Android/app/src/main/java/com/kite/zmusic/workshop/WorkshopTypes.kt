@@ -30,6 +30,7 @@ data class WorkshopPluginDetail(
     val sha256: String,
     val signature: WorkshopSignature,
     val myRating: Int?,
+    val packageUrl: String = "",
 )
 
 data class WorkshopComment(

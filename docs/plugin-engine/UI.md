@@ -4,7 +4,7 @@
 
 由宿主用现有界面绘制。不是 HTML / WebView，也不能把 JS 跑在 UI 线程。插件提交 JSON 描述的槽位与组件树；点击与改值在宿主处理，事件回到 **本插件线程**。
 
-失败返回 `false` 或 `null`，不抛异常、不结束插件。会话结束时摘掉该插件全部槽位、页面、弹窗与 sheet。
+失败返回 `false` 或 `null`，不抛异常、不结束插件。会话结束时摘掉该插件全部槽位、页面、弹窗与 sheet，以及它作为 owner 的陈列 overlay。
 
 ## 槽位（入口）
 
@@ -91,6 +91,86 @@ Xuan.ui.action.on("album.cover", function(ev) {
   }
 });
 ```
+
+## 陈列（宿主列表布置）
+
+改 **具名陈列区** 的流式布置与封面壳。不是个人页专用 API，也不是整页组件树；同一区一套食谱，不能按条目用 JS 决定形状。不要写进 `Xuan.theme` 或 `Xuan.ui.action`。
+
+数据、点进详情、溢出菜单、分区标题、新建、歌单/专辑切换、空态仍由宿主负责。
+
+| 区名 | 位置 |
+|---|---|
+| `library.liked` | 「我喜欢的音乐」 |
+| `library.created` | 「创建的歌单」 |
+| `library.collected.playlists` | 收藏的歌单 |
+| `library.collected.albums` | 收藏的专辑 |
+
+未知区名使 `set` / 带区名的 `clear` 失败。
+
+宿主默认：三个歌单区为 `list` + `row` + `round`（`columns` 预存 `3`，改成 `grid` 时与专辑同列数）；专辑区为 `grid` + `tile` + `round` + `columns: 3`。`gap` 默认 `12`。
+
+`list` + `tile`：封面 96dp，不是全宽 1:1。`grid` + `row`：格内迷你条，封面约 40dp。
+
+### 所有权
+
+- 按区一份 overlay。后一次成功的 `set` 成为该区 owner，并与现有值 **按字段合并**。
+- `clear(region?)` 仅 **该区当前 owner** 可清；省略 `region` 时清本插件作为 owner 的全部区。
+- 会话结束（禁用、卸载、`Error`、离线停会话、引擎 stop）时，宿主自动清该插件所拥有的区。
+
+### `Xuan.ui.collection.set(region, spec)`
+
+`spec` 非空。未知字段、空对象、非法值使 **整次失败**，不部分写入。返回 `true` / `false`。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `flow` | `string` | `list` / `grid` |
+| `columns` | `number` | 1～4 的整数。`grid` 时用；未写则保留该区已有值（歌单区默认 3） |
+| `item` | `string` | `row` / `tile` |
+| `cover` | `string` | `round` / `circle` / `vinyl` |
+| `vinyl` | `object` | 黑胶食谱。省略 `cover` 时视为 `vinyl`。`cover` 已写且不是 `vinyl` 时不得带本字段 |
+| `gap` | `number` | 8～24 的整数，单位 dp |
+
+`columns` / `gap` 须是整数（`3` 或 `3.0` 可以，`3.5` 不行）。
+
+`vinyl`：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `style` | `string` | 必填。`black` / `gold` / `white` / `custom` |
+| `base` | `string` | 仅 `custom`：盘色 `#RRGGBB` / `#AARRGGBB` |
+| `groove` | `string` | 仅 `custom`：纹路色。`custom` 必须同时给 `base` 与 `groove`；非 `custom` 不得带这两项 |
+
+黑胶由宿主绘制（黑 / 金 / 白 / 自定义盘色），插件不能交路径或位图当盘面。
+
+```javascript
+Xuan.ui.collection.set("library.created", {
+  flow: "grid",
+  columns: 3,
+  item: "tile",
+  cover: "vinyl",
+  vinyl: { style: "black" }
+});
+
+Xuan.ui.collection.set("library.created", {
+  vinyl: { style: "custom", base: "#1A120C", groove: "#E8D5A3" }
+});
+```
+
+### 其它
+
+| 调用 | 说明 |
+|---|---|
+| `collection.clear(region?)` | 清 overlay。省略则清本插件所有区。非 owner / 未知区名 / 该区无 overlay 则失败 |
+| `collection.get()` | 全部已知区的当前生效对象（默认 ∪ overlay）。未 `Running` 时 `{}` |
+
+`get()` 每区含 `flow`、`columns`、`item`、`cover`、`gap`。`vinyl` **仅当** `cover` 为 `vinyl` 时出现。
+
+下列调用 **失败**：
+
+- 尚未 `Running`
+- 未知区名、未知字段、空对象
+- `cover` 非 `vinyl` 却带 `vinyl`
+- `custom` 缺色，或非 `custom` 却带 `base` / `groove`
 
 ## 页面（组件树）
 

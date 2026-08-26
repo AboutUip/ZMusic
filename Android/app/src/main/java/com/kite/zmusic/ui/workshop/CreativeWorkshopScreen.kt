@@ -1,7 +1,11 @@
 package com.kite.zmusic.ui.workshop
 
+import android.content.Context
 import android.content.res.Configuration
+import android.net.Uri
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.MutableTransitionState
@@ -100,9 +104,12 @@ import com.kite.zmusic.ui.theme.MainControls
 import com.kite.zmusic.workshop.WorkshopApiError
 import com.kite.zmusic.workshop.WorkshopPluginCard
 import com.kite.zmusic.workshop.WorkshopPluginDetail
+import java.io.File
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private val WorkshopTabs = listOf("浏览社区", "模块")
 private val DrillSlideSpec = tween<IntOffset>(durationMillis = 320, easing = FastOutSlowInEasing)
@@ -914,11 +921,13 @@ private fun WorkshopModulesTab(contentBottomInset: Dp) {
     val app = LocalContext.current.applicationContext as ZMusicApplication
     val repo = app.workshopRepository
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val modulesRevision by repo.modulesRevision().collectAsStateWithLifecycle()
     val pluginPages by app.pluginEngine.ui.pages.collectAsStateWithLifecycle()
     var modules by remember { mutableStateOf(listModulesOrdered(repo)) }
     var moreTarget by remember { mutableStateOf<PluginRecord?>(null) }
     var confirmDelete by remember { mutableStateOf<PluginRecord?>(null) }
+    var installing by remember { mutableStateOf(false) }
     val switchColors = MainControls.switchColors()
 
     fun refresh() {
@@ -927,37 +936,65 @@ private fun WorkshopModulesTab(contentBottomInset: Dp) {
 
     LaunchedEffect(modulesRevision) { refresh() }
 
-    if (modules.isEmpty()) {
-        WorkshopEmptyHint("还没有本机模块", contentBottomInset)
-    } else {
-        LazyColumn(
-            contentPadding = PaddingValues(
-                start = 16.dp,
-                end = 16.dp,
-                top = 8.dp,
-                bottom = contentBottomInset + 16.dp,
-            ),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-            modifier = Modifier.fillMaxSize(),
-        ) {
-            items(modules, key = { it.id }) { rec ->
-                val probe = rec.id == PluginDebugProbe.ID
-                ModuleRow(
-                    record = rec,
-                    readOnly = probe,
-                    switchColors = switchColors,
-                    onEnabled = { enabled ->
-                        if (probe) return@ModuleRow
-                        repo.setModuleEnabled(rec.id, enabled)
+    val pickZpp = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri == null || installing) return@rememberLauncherForActivityResult
+        installing = true
+        scope.launch {
+            try {
+                val copied = withContext(Dispatchers.IO) { copyPickedZpp(context, uri) }
+                if (copied == null) {
+                    context.showIslandNotice("无法读取所选文件")
+                } else {
+                    try {
+                        repo.installFromLocalZpp(copied)
                         refresh()
-                    },
-                    onMore = if (probe) {
-                        null
-                    } else {
-                        { moreTarget = rec }
-                    },
-                )
+                    } finally {
+                        copied.delete()
+                    }
+                }
+            } finally {
+                installing = false
             }
+        }
+    }
+
+    LazyColumn(
+        contentPadding = PaddingValues(
+            start = 16.dp,
+            end = 16.dp,
+            top = 8.dp,
+            bottom = contentBottomInset + 16.dp,
+        ),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+        modifier = Modifier.fillMaxSize(),
+    ) {
+        item(key = "local-install") {
+            InstallLocalZppRow(
+                busy = installing,
+                onClick = {
+                    if (!installing) pickZpp.launch(arrayOf("*/*"))
+                },
+            )
+        }
+        items(modules, key = { it.id }) { rec ->
+            val probe = rec.id == PluginDebugProbe.ID
+            ModuleRow(
+                record = rec,
+                readOnly = probe,
+                switchColors = switchColors,
+                onEnabled = { enabled ->
+                    if (probe) return@ModuleRow
+                    repo.setModuleEnabled(rec.id, enabled)
+                    refresh()
+                },
+                onMore = if (probe) {
+                    null
+                } else {
+                    { moreTarget = rec }
+                },
+            )
         }
     }
 
@@ -1020,6 +1057,81 @@ private fun listModulesOrdered(repo: com.kite.zmusic.workshop.WorkshopRepository
         .filter { it.id != PluginDebugProbe.ID }
         .sortedBy { it.name.lowercase() }
     return listOf(probe) + others
+}
+
+private fun copyPickedZpp(context: Context, uri: Uri): File? {
+    val dest = File(context.cacheDir, "workshop-local-${System.nanoTime()}.zpp")
+    return runCatching {
+        context.contentResolver.openInputStream(uri)?.use { input ->
+            dest.outputStream().use { output -> input.copyTo(output) }
+        } ?: run {
+            dest.delete()
+            return null
+        }
+        dest
+    }.getOrElse {
+        dest.delete()
+        null
+    }
+}
+
+@Composable
+private fun InstallLocalZppRow(
+    busy: Boolean,
+    onClick: () -> Unit,
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .wallpaperItemChrome(RoundedCornerShape(16.dp))
+            .clickable(
+                enabled = !busy,
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick,
+            )
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(MainPalette.Accent.copy(alpha = if (busy) 0.12f else 0.18f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (busy) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    color = MainPalette.Accent,
+                    strokeWidth = 2.dp,
+                )
+            } else {
+                Icon(
+                    imageVector = ZIcons.Add,
+                    contentDescription = null,
+                    tint = MainPalette.Accent,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                if (busy) "正在安装…" else "从本地安装 ZPP 插件",
+                style = TextStyle(
+                    color = MainPalette.Ink,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold,
+                ),
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                "选择本机 .zpp 包，安装后默认不启用",
+                style = TextStyle(color = MainPalette.Secondary, fontSize = 12.sp),
+            )
+        }
+    }
 }
 
 @Composable

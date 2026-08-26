@@ -63,28 +63,47 @@ class WorkshopRepository(
                     return@withContext Result.failure(err)
                 }
                 notices.setSticky("正在安装 ${detail.card.name}…")
-                when (val result = pluginEngine.installWorkshopZpp(file)) {
-                    is PluginRegisterResult.Installed -> {
-                        finishedOk = true
-                        notices.clearSticky()
-                        notices.show("已安装「${result.record.name}」，默认未启用")
-                        Result.success(result.record)
-                    }
-                    is PluginRegisterResult.Replaced -> {
-                        finishedOk = true
-                        notices.clearSticky()
-                        notices.show("已更新「${result.record.name}」")
-                        Result.success(result.record)
-                    }
-                    is PluginRegisterResult.Skipped -> {
-                        notices.clearSticky()
-                        notices.show(result.reason)
-                        Result.failure(IllegalStateException(result.reason))
-                    }
-                }
+                val installed = applyInstallResult(pluginEngine.installWorkshopZpp(file))
+                finishedOk = installed.isSuccess
+                installed
             } finally {
                 dest.delete()
                 if (!finishedOk) notices.clearSticky()
+            }
+        }
+
+    /**
+     * 模块页：从本机 `.zpp` 注册。新装默认不启用。不能覆盖内置探针。
+     */
+    suspend fun installFromLocalZpp(zpp: File): Result<PluginRecord> =
+        withContext(Dispatchers.IO) {
+            var finishedOk = false
+            try {
+                notices.setSticky("正在安装…")
+                val installed = applyInstallResult(pluginEngine.installWorkshopZpp(zpp))
+                finishedOk = installed.isSuccess
+                installed
+            } finally {
+                if (!finishedOk) notices.clearSticky()
+            }
+        }
+
+    private fun applyInstallResult(result: PluginRegisterResult): Result<PluginRecord> =
+        when (result) {
+            is PluginRegisterResult.Installed -> {
+                notices.clearSticky()
+                notices.show("已安装「${result.record.name}」，默认未启用")
+                Result.success(result.record)
+            }
+            is PluginRegisterResult.Replaced -> {
+                notices.clearSticky()
+                notices.show("已更新「${result.record.name}」")
+                Result.success(result.record)
+            }
+            is PluginRegisterResult.Skipped -> {
+                notices.clearSticky()
+                notices.show(result.reason)
+                Result.failure(IllegalStateException(result.reason))
             }
         }
 

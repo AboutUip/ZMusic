@@ -27,6 +27,7 @@ internal object PluginJson {
             is Boolean -> append(value)
             is Int -> append(value)
             is Long -> append(value)
+            is Float -> append(value)
             is Double -> append(value)
             is String -> writeString(value)
             is Map<*, *> -> {

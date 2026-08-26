@@ -18,7 +18,7 @@
 | `description` | 否 | 字符串 | 列表用短描述；长文放在 `README.md` |
 | `author` | 否 | 字符串 | 显示用。未签名时仅表示自称 |
 | `homepage` | 否 | 字符串 | `http://` 或 `https://` |
-| `capabilities` | 否 | 字符串数组 | 展示用。省略或 `[]` 均可。元素须为字符串；空串忽略。已知名见 [VERSIONING.md](./VERSIONING.md)（`theme` / `player` / `http` / `store` / `ui` / `media` / `share` / `clipboard`）。**未知字符串忽略，不使包无效**。不作为 `Xuan` 调用门闩 |
+| `capabilities` | 否 | 字符串数组 | 展示用。省略或 `[]` 均可。元素须为字符串；空串忽略。已知名见 [VERSIONING.md](./VERSIONING.md)（`theme` / `look` / `player` / `http` / `store` / `ui` / `media` / `share` / `clipboard`）。**未知字符串忽略，不使包无效**。不作为 `Xuan` 调用门闩 |
 | `signatures` | 否 | 数组 | 保留。见 [SIGNING.md](./SIGNING.md) |
 
 禁止使用 `official` 等字段自称官方。标注由社区或宿主给出，不写在包内。

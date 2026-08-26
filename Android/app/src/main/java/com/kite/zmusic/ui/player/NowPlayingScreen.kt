@@ -158,6 +158,7 @@ import com.kite.zmusic.data.TitleAlignMode
 import com.kite.zmusic.data.TitleLineStyle
 import com.kite.zmusic.data.TrackRow
 import com.kite.zmusic.data.VinylColorStyle
+import com.kite.zmusic.plugin.PluginLookPresent
 import com.kite.zmusic.playback.PlaybackNotice
 import com.kite.zmusic.playback.PlaybackUiState
 import com.kite.zmusic.playback.PlaybackMode
@@ -380,11 +381,12 @@ fun NowPlayingScreen(
         (if (isLandscape) 120.dp else 112.dp).toPx()
     }
     // Animatable：连点开关会取消上一跳，从当前强度反向；时长按剩余路程缩放，打断可预测
+    val rainOn = PluginLookPresent.atmosphereRain(displayPrefs.rainNightEnabled)
     val rainProgress = remember {
-        Animatable(if (displayPrefs.rainNightEnabled) 1f else 0f)
+        Animatable(if (rainOn) 1f else 0f)
     }
-    LaunchedEffect(displayPrefs.rainNightEnabled) {
-        val target = if (displayPrefs.rainNightEnabled) 1f else 0f
+    LaunchedEffect(rainOn) {
+        val target = if (rainOn) 1f else 0f
         val distance = kotlin.math.abs(target - rainProgress.value).coerceIn(0f, 1f)
         val durationMs = (1_100f * distance).toInt().coerceIn(280, 1_100)
         rainProgress.animateTo(
@@ -988,7 +990,7 @@ fun NowPlayingScreen(
     }
 
     val portraitCustomBg = if (!isLandscape) {
-        portraitDisplayPrefs.resolvedCustomBackground()
+        PluginLookPresent.playerBackground() ?: portraitDisplayPrefs.resolvedCustomBackground()
     } else {
         null
     }

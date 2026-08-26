@@ -10,7 +10,7 @@
 |---|---|---|
 | 插件引擎 | **注册**已解压的包并运行已启用插件的 `entry`，注入 `Xuan` | 不扫描目录发现插件。不依赖设置开关才运行插件 |
 | 插件引擎调试 | 设置开关。**产品默认关闭**；**当前测试期必须为开启**（便于 adb 查引擎），**发行前把默认改回关闭**。须用户亲自打开或关闭。关闭则引擎 **不打日志**；开启则日志走可被 adb 看到的通道（logcat，tag `ZMusic.PluginEngine`），引擎可能更慢。默认 **不写文件**；只有另行指定输出位置才写文件。崩溃不得改此开关 | 不是装包按钮。不决定插件跑不跑。不是崩溃后的自动行为 |
-| 从界面挑选 `.zpp` | 公开给用户之前不做 | 开发期没有用户来点这个按钮；UI 之后会变，首期不在这里验收装包 |
+| 从界面挑选 `.zpp` | 创意工坊「模块」页「从本地安装 ZPP 插件」：系统选文件 → 复制到缓存 → `installWorkshopZpp`。新装默认禁用 | 不扫描目录发现。不能覆盖内置探针。不是调试开关 |
 
 场景：运行中的插件把进程带崩。需要查引擎时，由 **用户在设置里自己打开** 调试，再用 adb 连设备看日志。崩溃 **不得** 自动打开该开关：自动打开只会让插件多一个可乘之机、拖慢引擎，普通用户得不到任何好处。打开是专业用户 / 开发者的主动选择。
 
@@ -26,7 +26,7 @@
 
 ## `.zpp` 怎么进来
 
-产品路径不是扫描某个文件夹「发现」插件。后续用户可能从不同入口拿到 `.zpp`：引擎把资源解压到应用私有目录，再 **注册**。同一 `id` 更大的 `version` 覆盖安装。新装默认禁用；是否启用与调试开关无关。
+产品路径不是扫描某个文件夹「发现」插件。用户从创意工坊社区下载，或在「模块」页从本机挑选 `.zpp`：引擎把资源解压到应用私有目录，再 **注册**。同一 `id` 更大的 `version` 覆盖安装。新装默认禁用；是否启用与调试开关无关。本机安装不能覆盖内置探针 `dev.zmusic.probe`。
 
 **调试例外：** 调试开关开启时，启动从应用外部目录收取 `.zpp` 并注册、启用（含相同版本可覆盖同 id）；**最后**安装并运行内置探针 `dev.zmusic.probe`（源码 `Android/app/src/main/plugin-probe/`，编译时打成 `.zpp`）。投放目录里同 id 的包 **不会** 覆盖内置探针。关闭调试则不看该目录，也不运行该探针。无效包只跳过该文件。
 
@@ -56,13 +56,13 @@ plugin-engine/
   staging/            解压中转
 ```
 
-测试在调试开关开启时仍可 **显式** `registerFromZpp` + `setEnabled`。不要做选文件 UI。
+测试在调试开关开启时仍可 **显式** `registerFromZpp` + `setEnabled`。产品选文件走 `installWorkshopZpp`，不要求调试。
 
 ## 范围（`0.1.0`）
 
-做：注册与解压校验、按引擎版本决定能否加载、对已启用插件执行入口并注入 [RUNTIME.md](../RUNTIME.md)、进程崩溃哨兵（含 hook / timer / http 回调期间）、启动等待、调试开关与日志门控、内部调试 API 的开关门控、关于页引擎版本、灵动岛通知、同步延迟、非阻塞定时器、全局钩子总线（见 [HOOK.md](./HOOK.md)）、包内 CommonJS `require` 与读资源（见 [PACK.md](./PACK.md)）、主题（`Xuan.theme` 不再按清单门闩，见 [THEME.md](./THEME.md)）、播放快照与控制（见 [PLAYER.md](./PLAYER.md)）、出站 HTTP（见 [HTTP.md](./HTTP.md)）、持久键值（见 [STORE.md](./STORE.md)）、宿主绘制的槽位、组件树页面、弹窗与 sheet、宿主表面操作槽（见 [UI.md](./UI.md)）、相册 / 分享 / 剪贴板（见 [DEVICE.md](./DEVICE.md)）、插件错误/崩溃弹窗（附日志快照）。未知 `capabilities` 字符串忽略，不挡加载。
+做：注册与解压校验、按引擎版本决定能否加载、对已启用插件执行入口并注入 [RUNTIME.md](../RUNTIME.md)、进程崩溃哨兵（含 hook / timer / http 回调期间）、启动等待、调试开关与日志门控、内部调试 API 的开关门控、关于页引擎版本、灵动岛通知、同步延迟、非阻塞定时器、全局钩子总线（见 [HOOK.md](./HOOK.md)）、包内 CommonJS `require` 与读资源（见 [PACK.md](./PACK.md)）、主题（`Xuan.theme` 不再按清单门闩，见 [THEME.md](./THEME.md)）、外观 overlay（`Xuan.look`，见 [LOOK.md](./LOOK.md)）、播放快照与控制（见 [PLAYER.md](./PLAYER.md)）、出站 HTTP（见 [HTTP.md](./HTTP.md)）、持久键值（见 [STORE.md](./STORE.md)）、宿主绘制的槽位、组件树页面、弹窗与 sheet、宿主表面操作槽与陈列布置（见 [UI.md](./UI.md)）、相册 / 分享 / 剪贴板（见 [DEVICE.md](./DEVICE.md)）、插件错误/崩溃弹窗（附日志快照）、创意工坊模块页从本机安装 `.zpp`。未知 `capabilities` 字符串忽略，不挡加载。
 
-不做：插件管理 / 选文件 UI、未签名确认弹窗、验签、调用超时、默认把调试日志写进文件、改队列 / 搜索 / 下载、HTML 或 WebView 插件壳、声明式 `theme.json`、`import`。社区插件不能往 Dock 加标签。
+不做：未签名确认弹窗、验签、调用超时、默认把调试日志写进文件、改队列 / 搜索 / 下载、HTML 或 WebView 插件壳、声明式 `theme.json`、`import`。社区插件不能往 Dock 加标签。
 
 打包器：`Distribution/Plugin/zmusic_plugin.py`，命令见 [TOOLKIT.md](../TOOLKIT.md)。
 
@@ -122,4 +122,4 @@ plugin-engine/
 
 ## 结构
 
-解包、登记、Context 生命周期、API 注入、调试门控、钩子总线分开。播放控制只通过 `PlaybackBridge` 已有入口，不改播放事件语义。挂在应用级容器上。Android 包名 `com.kite.zmusic.plugin`。实现备忘：[HOOK.md](./HOOK.md)、[TIMER.md](./TIMER.md)、[PACK.md](./PACK.md)、[THEME.md](./THEME.md)、[PLAYER.md](./PLAYER.md)、[HTTP.md](./HTTP.md)、[STORE.md](./STORE.md)、[UI.md](./UI.md)、[DEVICE.md](./DEVICE.md)、[SURFACES.md](./SURFACES.md)。
+解包、登记、Context 生命周期、API 注入、调试门控、钩子总线分开。播放控制只通过 `PlaybackBridge` 已有入口，不改播放事件语义。挂在应用级容器上。Android 包名 `com.kite.zmusic.plugin`。实现备忘：[HOOK.md](./HOOK.md)、[TIMER.md](./TIMER.md)、[PACK.md](./PACK.md)、[THEME.md](./THEME.md)、[LOOK.md](./LOOK.md)、[PLAYER.md](./PLAYER.md)、[HTTP.md](./HTTP.md)、[STORE.md](./STORE.md)、[UI.md](./UI.md)、[DEVICE.md](./DEVICE.md)、[SURFACES.md](./SURFACES.md)。

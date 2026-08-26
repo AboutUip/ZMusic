@@ -197,6 +197,10 @@ internal class PluginSession(
         theme.setProperty("set", JSCallFunction { args -> themeSet(args) })
         theme.setProperty("clear", JSCallFunction { themeClear() })
         theme.setProperty("get", JSCallFunction { themeGet(ctx) })
+        val look = ctx.createNewJSObject()
+        look.setProperty("set", JSCallFunction { args -> lookSet(args) })
+        look.setProperty("clear", JSCallFunction { args -> lookClear(args) })
+        look.setProperty("get", JSCallFunction { lookGet(ctx) })
         val hook = ctx.createNewJSObject()
         hook.setProperty("add", JSCallFunction { args -> hookAdd(args) })
         hook.setProperty("remove", JSCallFunction { args -> hookRemove(args) })
@@ -249,9 +253,14 @@ internal class PluginSession(
         actionObj.setProperty("remove", JSCallFunction { args -> actionRemove(args) })
         actionObj.setProperty("clear", JSCallFunction { actionClear() })
         actionObj.setProperty("on", JSCallFunction { args -> actionOn(args) })
+        val collectionObj = ctx.createNewJSObject()
+        collectionObj.setProperty("set", JSCallFunction { args -> collectionSet(args) })
+        collectionObj.setProperty("clear", JSCallFunction { args -> collectionClear(args) })
+        collectionObj.setProperty("get", JSCallFunction { collectionGet(ctx) })
         uiObj.setProperty("page", pageObj)
         uiObj.setProperty("slot", slotObj)
         uiObj.setProperty("action", actionObj)
+        uiObj.setProperty("collection", collectionObj)
         val mediaObj = ctx.createNewJSObject()
         mediaObj.setProperty("saveImage", JSCallFunction { args -> mediaSaveImage(args) })
         val shareObj = ctx.createNewJSObject()
@@ -264,6 +273,7 @@ internal class PluginSession(
         xuan.setProperty("runtime", runtime)
         xuan.setProperty("notice", notice)
         xuan.setProperty("theme", theme)
+        xuan.setProperty("look", look)
         xuan.setProperty("hook", hook)
         xuan.setProperty("timer", timer)
         xuan.setProperty("pack", pack)
@@ -280,6 +290,7 @@ internal class PluginSession(
         clipboardObj.release()
         shareObj.release()
         mediaObj.release()
+        collectionObj.release()
         actionObj.release()
         slotObj.release()
         pageObj.release()
@@ -290,6 +301,7 @@ internal class PluginSession(
         pack.release()
         timer.release()
         hook.release()
+        look.release()
         theme.release()
         notice.release()
         states.release()
@@ -304,6 +316,7 @@ internal class PluginSession(
             Object.freeze(Xuan.runtime.State);
             Object.freeze(Xuan.notice);
             Object.freeze(Xuan.theme);
+            Object.freeze(Xuan.look);
             Object.freeze(Xuan.hook);
             Object.freeze(Xuan.timer);
             Object.freeze(Xuan.pack);
@@ -313,6 +326,7 @@ internal class PluginSession(
             Object.freeze(Xuan.ui.page);
             Object.freeze(Xuan.ui.slot);
             Object.freeze(Xuan.ui.action);
+            Object.freeze(Xuan.ui.collection);
             Object.freeze(Xuan.ui);
             Object.freeze(Xuan.media);
             Object.freeze(Xuan.share);
@@ -430,6 +444,54 @@ internal class PluginSession(
         }
         val map = PluginTextThemeBridge.getHexMap()
         val json = PluginJson.stringify(map)
+        return ctx.parse(json)
+    }
+
+    private fun lookSet(args: Array<out Any?>): Any {
+        if (ended || !hostApiAllowed()) {
+            rejectHost("look.set")
+            return java.lang.Boolean.FALSE
+        }
+        val region = (args.getOrNull(0) as? String)?.trim()?.takeIf { it.isNotEmpty() }
+            ?: return failLookSet()
+        val patch = when (val copied = PluginJsonable.copy(args.getOrNull(1))) {
+            PluginJsonCopy.Fail -> return failLookSet()
+            is PluginJsonCopy.Ok -> PluginLookParams.parse(region, copied.value, extractDir)
+                ?: return failLookSet()
+        }
+        val ok = PluginLookPresent.set(record.id, region, patch)
+        if (!ok) return failLookSet()
+        return java.lang.Boolean.TRUE
+    }
+
+    private fun failLookSet(): Any {
+        journal.append(record.id, "Xuan.look.set 失败: 参数非法")
+        PluginLog.w(debug(), "插件 ${record.id} look.set 失败: 参数非法")
+        return java.lang.Boolean.FALSE
+    }
+
+    private fun lookClear(args: Array<out Any?>): Any {
+        if (ended || !hostApiAllowed()) {
+            rejectHost("look.clear")
+            return java.lang.Boolean.FALSE
+        }
+        val region = when {
+            args.isEmpty() || args[0] == null -> null
+            args[0] is String -> {
+                val s = (args[0] as String).trim()
+                if (s.isEmpty()) return java.lang.Boolean.FALSE
+                s
+            }
+            else -> return java.lang.Boolean.FALSE
+        }
+        return box(PluginLookPresent.clear(record.id, region))
+    }
+
+    private fun lookGet(ctx: QuickJSContext): Any {
+        if (ended || !hostApiAllowed()) {
+            return ctx.parse("{}")
+        }
+        val json = PluginJson.stringify(PluginLookPresent.effectiveMap())
         return ctx.parse(json)
     }
 
@@ -954,6 +1016,53 @@ internal class PluginSession(
         return java.lang.Boolean.TRUE
     }
 
+    private fun collectionSet(args: Array<out Any?>): Any {
+        if (ended || !hostApiAllowed()) {
+            rejectHost("ui.collection.set")
+            return java.lang.Boolean.FALSE
+        }
+        val region = (args.getOrNull(0) as? String)?.trim()?.takeIf { it.isNotEmpty() }
+            ?: return failCollectionSet()
+        val partial = when (val copied = PluginJsonable.copy(args.getOrNull(1))) {
+            PluginJsonCopy.Fail -> return failCollectionSet()
+            is PluginJsonCopy.Ok -> PluginCollectionParams.parsePartial(copied.value) ?: return failCollectionSet()
+        }
+        val ok = PluginCollectionPresent.set(record.id, region, partial)
+        if (!ok) return failCollectionSet()
+        return java.lang.Boolean.TRUE
+    }
+
+    private fun failCollectionSet(): Any {
+        journal.append(record.id, "Xuan.ui.collection.set 失败: 参数非法")
+        PluginLog.w(debug(), "插件 ${record.id} ui.collection.set 失败: 参数非法")
+        return java.lang.Boolean.FALSE
+    }
+
+    private fun collectionClear(args: Array<out Any?>): Any {
+        if (ended || !hostApiAllowed()) {
+            rejectHost("ui.collection.clear")
+            return java.lang.Boolean.FALSE
+        }
+        val region = when {
+            args.isEmpty() || args[0] == null -> null
+            args[0] is String -> {
+                val s = (args[0] as String).trim()
+                if (s.isEmpty()) return java.lang.Boolean.FALSE
+                s
+            }
+            else -> return java.lang.Boolean.FALSE
+        }
+        return box(PluginCollectionPresent.clear(record.id, region))
+    }
+
+    private fun collectionGet(ctx: QuickJSContext): Any {
+        if (ended || !hostApiAllowed()) {
+            return ctx.parse("{}")
+        }
+        val json = PluginJson.stringify(PluginCollectionPresent.effectiveMap())
+        return ctx.parse(json)
+    }
+
     private fun mediaSaveImage(args: Array<out Any?>): Any {
         if (ended || !hostApiAllowed()) return java.lang.Boolean.FALSE
         val opts = when (val copied = PluginJsonable.copy(args.getOrNull(0))) {
@@ -1157,6 +1266,8 @@ internal class PluginSession(
             http?.cancel(record.id)
             device.cancel(record.id)
             PluginTextThemeBridge.clearIfOwner(record.id)
+            PluginCollectionPresent.clearIfOwner(record.id)
+            PluginLookPresent.clearIfOwner(record.id)
             destroyContext()
         }
     }

@@ -72,6 +72,11 @@ data class PlayerBackgroundPreset(
     /** 相对铺满缩放 */
     val scale: Float = 1f,
     val locked: Boolean = false,
+    /**
+     * 插件 overlay：`scale` 1 先铺满再缩放；offset 与主壳壁纸相同（裁切对齐，不露出底色）。
+     * 用户预设：Fit 后缩放。不写入偏好。
+     */
+    val coverFill: Boolean = false,
 ) {
     val hasImage: Boolean get() = imagePath.isNotBlank()
     val isUsable: Boolean get() = locked && hasImage
@@ -794,6 +799,8 @@ private fun PlayerBackgroundPreset.sanitized(): PlayerBackgroundPreset = copy(
         1f,
     ),
     locked = locked && imagePath.isNotBlank(),
+    // 插件 overlay 不走偏好；用户槽位不得把 Crop 铺满写进去
+    coverFill = false,
 )
 
 private fun sanitizeBackgroundPresets(

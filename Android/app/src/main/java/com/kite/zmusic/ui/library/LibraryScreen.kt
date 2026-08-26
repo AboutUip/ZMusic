@@ -105,6 +105,8 @@ import com.kite.zmusic.ZMusicApplication
 import com.kite.zmusic.data.ChromeWallpaperSurface
 import com.kite.zmusic.data.CollectedAlbum
 import com.kite.zmusic.data.PlaylistSummary
+import com.kite.zmusic.plugin.PluginCollections
+import com.kite.zmusic.plugin.PluginLookPresent
 import com.kite.zmusic.data.SessionRepository
 import com.kite.zmusic.data.UserProfileBrief
 import com.kite.zmusic.data.VipKind
@@ -554,9 +556,10 @@ fun LibraryScreen(
     var collectionKind by remember { mutableStateOf(LibraryCollectionKind.Playlist) }
     val uid = ui.profile?.userId ?: 0L
     var customBgPath by remember(uid) { mutableStateOf(app.userSpaceBackgroundStore.pathFor(uid)) }
-    val wallpaper by app.chromeWallpaperStore.state.collectAsStateWithLifecycle()
+    val wallpaperStored by app.chromeWallpaperStore.state.collectAsStateWithLifecycle()
+    val wallpaper = PluginLookPresent.wallpaper(wallpaperStored)
     val profileChrome = wallpaper.frame(ChromeWallpaperSurface.Profile, isLandscape) != null
-    val heroBgPath = if (profileChrome) null else customBgPath
+    val heroBgPath = if (profileChrome) null else (PluginLookPresent.profilePath() ?: customBgPath)
 
     fun openPlaylist(pl: PlaylistSummary) {
         onOpenOverlay(
@@ -1694,6 +1697,7 @@ private fun LibraryPlaylistBody(
     val pager = remember(scope) { CollectionPagerState(scope, collectionKind.ordinal.toFloat()) }
 
     PlaylistSectionColumn(
+        region = PluginCollections.LIBRARY_LIKED,
         title = "我喜欢的音乐",
         playlists = liked,
         emptyText = "还没有喜欢的音乐",
@@ -1701,6 +1705,7 @@ private fun LibraryPlaylistBody(
         onMorePlaylist = onMorePlaylist,
     )
     PlaylistSectionColumn(
+        region = PluginCollections.LIBRARY_CREATED,
         title = "创建的歌单",
         playlists = created,
         emptyText = "还没有创建的歌单",
@@ -1739,15 +1744,18 @@ private fun LibraryPlaylistBody(
                         ),
                         modifier = Modifier.padding(start = 4.dp, bottom = 8.dp),
                     )
-                    collected.forEach { pl ->
-                        Box(Modifier.padding(vertical = 6.dp)) {
-                            PlaylistRow(
-                                pl = pl,
-                                onClick = { onOpenPlaylist(pl) },
+                    LibraryCollectionItems(
+                        region = PluginCollections.LIBRARY_COLLECTED_PLAYLISTS,
+                        entries = collected.map { pl ->
+                            LibraryCollectionEntry(
+                                title = pl.name,
+                                subtitle = "${pl.trackCount} 首 · 播放 ${formatPlayCount(pl.playCount)}",
+                                coverUrl = pl.resolvedCoverUrl(),
+                                onOpen = { onOpenPlaylist(pl) },
                                 onMore = { onMorePlaylist(pl) },
                             )
-                        }
-                    }
+                        },
+                    )
                 }
             }
         },
@@ -1973,32 +1981,21 @@ private fun CollectedAlbumPane(
                         modifier = Modifier.padding(start = 4.dp, bottom = 8.dp),
                     )
                 }
-                val cols = 3
-                val rows = (albums.size + cols - 1) / cols
-                Column(
-                    Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(14.dp),
-                ) {
-                    repeat(rows) { row ->
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        ) {
-                            repeat(cols) { col ->
-                                val i = row * cols + col
-                                if (i < albums.size) {
-                                    CollectedAlbumTile(
-                                        album = albums[i],
-                                        onOpen = { onOpen(albums[i]) },
-                                        modifier = Modifier.weight(1f),
-                                    )
-                                } else {
-                                    Spacer(Modifier.weight(1f))
-                                }
-                            }
-                        }
-                    }
-                }
+                LibraryCollectionItems(
+                    region = PluginCollections.LIBRARY_COLLECTED_ALBUMS,
+                    entries = albums.map { album ->
+                        val sub = buildList {
+                            album.yearLabel?.let { add(it) }
+                            if (album.size > 0) add("${album.size}首")
+                        }.joinToString(" · ")
+                        LibraryCollectionEntry(
+                            title = album.name,
+                            subtitle = sub,
+                            coverUrl = album.coverUrl,
+                            onOpen = { onOpen(album) },
+                        )
+                    },
+                )
                 if (loadingMore) {
                     Box(
                         Modifier
@@ -2021,56 +2018,8 @@ private fun CollectedAlbumPane(
 }
 
 @Composable
-private fun CollectedAlbumTile(
-    album: CollectedAlbum,
-    onOpen: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val sub = buildList {
-        album.yearLabel?.let { add(it) }
-        if (album.size > 0) add("${album.size}首")
-    }.joinToString(" · ")
-    Column(
-        modifier.clickable(
-            interactionSource = remember { MutableInteractionSource() },
-            indication = null,
-            onClick = onOpen,
-        ),
-    ) {
-        UrlImage(
-            url = album.coverUrl,
-            contentDescription = album.name,
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(1f)
-                .clip(RoundedCornerShape(8.dp)),
-            contentScale = ContentScale.Crop,
-            maxPx = UrlImageCache.THUMB_MAX_PX,
-        )
-        Spacer(Modifier.height(6.dp))
-        Text(
-            text = album.name,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            style = TextStyle(
-                color = MainPalette.Ink,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Medium,
-            ),
-        )
-        if (sub.isNotEmpty()) {
-            Text(
-                text = sub,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                style = TextStyle(color = MainPalette.Secondary, fontSize = 10.sp),
-            )
-        }
-    }
-}
-
-@Composable
 private fun PlaylistSectionColumn(
+    region: String,
     title: String,
     playlists: List<PlaylistSummary>,
     emptyText: String,
@@ -2106,95 +2055,18 @@ private fun PlaylistSectionColumn(
     if (playlists.isEmpty()) {
         LibrarySectionEmpty(emptyText)
     } else {
-        playlists.forEach { pl ->
-            Box(Modifier.padding(vertical = 6.dp)) {
-                PlaylistRow(
-                    pl = pl,
-                    onClick = { onOpenPlaylist(pl) },
+        LibraryCollectionItems(
+            region = region,
+            entries = playlists.map { pl ->
+                LibraryCollectionEntry(
+                    title = pl.name,
+                    subtitle = "${pl.trackCount} 首 · 播放 ${formatPlayCount(pl.playCount)}",
+                    coverUrl = pl.resolvedCoverUrl(),
+                    onOpen = { onOpenPlaylist(pl) },
                     onMore = if (pl.isHeartPlaylist) null else ({ onMorePlaylist(pl) }),
                 )
-            }
-        }
-    }
-}
-
-@Composable
-private fun PlaylistRow(
-    pl: PlaylistSummary,
-    onClick: () -> Unit,
-    onMore: (() -> Unit)? = null,
-) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .wallpaperItemChrome(RoundedCornerShape(14.dp))
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Row(
-            Modifier
-                .weight(1f)
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = onClick,
-                ),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                Modifier
-                    .size(54.dp)
-                    .clip(RoundedCornerShape(8.dp)),
-            ) {
-                UrlImage(
-                    url = pl.resolvedCoverUrl(),
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop,
-                    maxPx = UrlImageCache.THUMB_MAX_PX,
-                )
-            }
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    text = pl.name,
-                    style = TextStyle(
-                        color = MainPalette.Ink,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 14.sp,
-                    ),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = "${pl.trackCount} 首 · 播放 ${formatPlayCount(pl.playCount)}",
-                    style = TextStyle(
-                        color = MainPalette.Secondary,
-                        fontSize = 12.sp,
-                    ),
-                )
-            }
-        }
-        if (onMore != null) {
-            Box(
-                Modifier
-                    .size(36.dp)
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = onMore,
-                    ),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = ZIcons.More,
-                    contentDescription = "更多",
-                    tint = MainPalette.Hint,
-                    modifier = Modifier.size(20.dp),
-                )
-            }
-        }
+            },
+        )
     }
 }
 

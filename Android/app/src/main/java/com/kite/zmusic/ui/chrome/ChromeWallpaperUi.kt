@@ -228,6 +228,7 @@ private fun WallpaperCanvas(
             scale = frame.scale,
             offsetX = frame.offsetX,
             offsetY = frame.offsetY,
+            coverBaseline = frame.coverBaseline,
         ) ?: return@Canvas
         val dx = if (host != null) host.originInWindow.x - originInWindow.x else 0f
         val dy = if (host != null) host.originInWindow.y - originInWindow.y else 0f
@@ -250,8 +251,38 @@ internal data class WallpaperCanvasPlace(
 )
 
 /**
- * 画布铺法：[scale] 1 表示整张图刚好放进视口（contain），可小于 1 留边，
- * 也可大于铺满再放大。[offsetX]/[offsetY] 0 对齐图的左/上边，1 对齐右/下边。
+ * 插件壁纸：[coverBaseline] 时 `scale` 1 = 用户选图默认（铺满再略放大）。
+ * 插件播放页：[coverFill] 时 `scale` 1 = 刚好铺满（无 1.5 倍）。
+ * 用户设置帧：相对 contain，1 = 整张图刚好进视口。
+ */
+internal fun wallpaperDrawScale(
+    imgW: Int,
+    imgH: Int,
+    viewW: Float,
+    viewH: Float,
+    scale: Float,
+    coverBaseline: Boolean,
+    coverFill: Boolean = false,
+): Float {
+    val stored = scale.coerceIn(ChromeWallpaperStore.SCALE_MIN, ChromeWallpaperStore.SCALE_MAX)
+    if (coverFill) {
+        val fit = min(viewW / imgW.toFloat(), viewH / imgH.toFloat())
+        val cover = kotlin.math.max(viewW / imgW.toFloat(), viewH / imgH.toFloat())
+        if (fit < 1e-6f) return stored
+        return (cover / fit * stored).coerceIn(
+            ChromeWallpaperStore.SCALE_MIN,
+            ChromeWallpaperStore.SCALE_MAX,
+        )
+    }
+    if (!coverBaseline) return stored
+    val baseline = ChromeWallpaperStore.defaultCanvasScale(imgW, imgH, viewW, viewH)
+    return (baseline * stored).coerceIn(ChromeWallpaperStore.SCALE_MIN, ChromeWallpaperStore.SCALE_MAX)
+}
+
+/**
+ * 画布铺法：[scale] 经 [wallpaperDrawScale] 后相对 contain。
+ * [offsetX]/[offsetY] 0 对齐图的左/上边，1 对齐右/下边。
+ * 铺满后平移裁切，不会把图移出视口露出底色。
  */
 internal fun wallpaperCanvasPlacement(
     viewW: Float,
@@ -261,12 +292,13 @@ internal fun wallpaperCanvasPlacement(
     scale: Float,
     offsetX: Float,
     offsetY: Float,
+    coverBaseline: Boolean = false,
+    coverFill: Boolean = false,
 ): WallpaperCanvasPlace? {
     if (viewW < 1f || viewH < 1f || imgW <= 0 || imgH <= 0) return null
     val fit = min(viewW / imgW.toFloat(), viewH / imgH.toFloat())
-    val s = fit * scale.coerceIn(
-        ChromeWallpaperStore.SCALE_MIN,
-        ChromeWallpaperStore.SCALE_MAX,
+    val s = fit * wallpaperDrawScale(
+        imgW, imgH, viewW, viewH, scale, coverBaseline, coverFill,
     )
     val drawnW = (imgW * s).coerceAtLeast(1f)
     val drawnH = (imgH * s).coerceAtLeast(1f)
@@ -279,6 +311,16 @@ internal fun wallpaperCanvasPlacement(
         h = drawnH.roundToInt().coerceAtLeast(1),
     )
 }
+
+internal fun wallpaperCoversViewport(
+    place: WallpaperCanvasPlace,
+    viewW: Float,
+    viewH: Float,
+): Boolean =
+    place.x <= 0 &&
+        place.y <= 0 &&
+        place.x + place.w >= viewW.roundToInt() - 1 &&
+        place.y + place.h >= viewH.roundToInt() - 1
 
 /** 画布平移：0 对齐图的左/上边，1 对齐右/下边，与当前缩放无关。 */
 internal fun wallpaperAlignPan(

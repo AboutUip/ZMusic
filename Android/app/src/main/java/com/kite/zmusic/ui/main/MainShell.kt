@@ -85,6 +85,7 @@ import com.kite.zmusic.data.TrackRow
 import com.kite.zmusic.playback.MvPlayback
 import com.kite.zmusic.playback.PlaybackViewModel
 import com.kite.zmusic.plugin.PluginDebugProbe
+import com.kite.zmusic.plugin.PluginLookPresent
 import com.kite.zmusic.ui.artist.resolveTrackArtists
 import com.kite.zmusic.ui.chrome.ChromeWallpaperLayer
 import com.kite.zmusic.ui.chrome.LocalChromeWallpaperFrame
@@ -712,7 +713,8 @@ fun MainShell(
     val currentDest = MainPagerDestinations.getOrElse(currentPagerPage) {
         MainDestination.Home
     }
-    val wallpaper by app.chromeWallpaperStore.state.collectAsStateWithLifecycle()
+    val wallpaperStored by app.chromeWallpaperStore.state.collectAsStateWithLifecycle()
+    val wallpaper = PluginLookPresent.wallpaper(wallpaperStored)
     val wallpaperFrame = wallpaper.frame(
         chromeWallpaperSurface(
             overlay = overlay,

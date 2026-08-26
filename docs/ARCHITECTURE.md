@@ -148,7 +148,7 @@ Compose 取依赖：`LocalContext.current.applicationContext as ZMusicApplicatio
 
 ## 12. 后续（本阶段不做）
 
-- 插件管理 / 选文件 UI、验签、宿主 http 与播放 API、打包器（引擎核心见 [`plugin-engine/`](./plugin-engine) 与 [`plugin-engine/internal/`](./plugin-engine/internal)）
+- 验签、未签名确认弹窗（引擎核心见 [`plugin-engine/`](./plugin-engine) 与 [`plugin-engine/internal/`](./plugin-engine/internal)）
 - Gradle `:feature-*` / Hilt
 - R8 minify
 - 缓存 TTL / 版本策略

@@ -198,6 +198,10 @@ class WorkshopClient(
 
     fun downloadUrl(id: String): String = httpUrl("$BASE/plugins/${enc(id)}/download")
 
+    fun ackDownload(id: String) {
+        jsonMutate(httpUrl("$BASE/plugins/${enc(id)}/download"), "POST", null)
+    }
+
     private fun throwIfBusinessError(ok: Boolean, error: String) {
         if (ok) return
         when (error.trim()) {
@@ -298,6 +302,7 @@ class WorkshopClient(
                 sha256 = sha,
                 signature = WorkshopSignature(kid, alg, sig),
                 myRating = myRating,
+                packageUrl = catalogString(m["package_url"]),
             )
         }
 

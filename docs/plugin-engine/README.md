@@ -8,7 +8,7 @@ ZMusic 提供插件的包装、安装与运行。插件内容与行为由提供�
 |---|---|
 | 包格式（`zpp`） | `1` |
 | 引擎版本 | `0.1.0`（整数 `100`） |
-| 当前宿主 API | 版本只读、运行状态、灵动岛、同步延迟、非阻塞定时器、钩子、包内 `require` / 读资源、主题、播放、出站 HTTP、持久键值、插件界面、设备（相册 / 分享 / 剪贴板）（见 [运行时](./RUNTIME.md)） |
+| 当前宿主 API | 版本只读、运行状态、灵动岛、同步延迟、非阻塞定时器、钩子、包内 `require` / 读资源、主题、外观、播放、出站 HTTP、持久键值、插件界面（含陈列）、设备（相册 / 分享 / 剪贴板）（见 [运行时](./RUNTIME.md)） |
 | `capabilities` | 展示用。未知项忽略，不挡加载，也不是 API 门闩 |
 
 跨端同一套规范。客户端如何实现引擎，见 [internal/](./internal/)。
@@ -23,11 +23,12 @@ ZMusic 提供插件的包装、安装与运行。插件内容与行为由提供�
 | [RUNTIME.md](./RUNTIME.md) | `Xuan` 运行时 API |
 | [HOOK.md](./HOOK.md) | `Xuan.hook` 总线与宿主事件 |
 | [PACK.md](./PACK.md) | `Xuan.require` 与 `Xuan.pack` |
+| [LOOK.md](./LOOK.md) | 外观 overlay：壁纸、玻璃、浅深色、播放页氛围 |
 | [THEME.md](./THEME.md) | 色 token 与 `Xuan.theme` |
 | [PLAYER.md](./PLAYER.md) | `Xuan.player` 快照、控制与喜欢 |
 | [HTTP.md](./HTTP.md) | `Xuan.http` 出站请求 |
 | [STORE.md](./STORE.md) | `Xuan.store` 持久键值 |
-| [UI.md](./UI.md) | `Xuan.ui` 槽位、组件树、多级页面与宿主表面操作槽 |
+| [UI.md](./UI.md) | `Xuan.ui` 槽位、组件树、多级页面、宿主表面操作槽与陈列 |
 | [DEVICE.md](./DEVICE.md) | `Xuan.media` / `Xuan.share` / `Xuan.clipboard` |
 | [SIGNING.md](./SIGNING.md) | 签名字段与未签名包 |
 | [TOOLKIT.md](./TOOLKIT.md) | 官方打包命令 |

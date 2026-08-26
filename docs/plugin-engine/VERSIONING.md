@@ -47,10 +47,11 @@
 | 名称 | 说明 |
 |---|---|
 | `theme` | 宿主主题：`Xuan.theme`，见 [THEME.md](./THEME.md) |
+| `look` | 非危险个性化：`Xuan.look`，见 [LOOK.md](./LOOK.md) |
 | `player` | 播放快照与控制：`Xuan.player`，见 [PLAYER.md](./PLAYER.md) |
 | `http` | 出站网络：`Xuan.http`，见 [HTTP.md](./HTTP.md) |
 | `store` | 持久键值：`Xuan.store`，见 [STORE.md](./STORE.md) |
-| `ui` | 槽位、组件树页面、弹窗与 sheet：`Xuan.ui`，见 [UI.md](./UI.md) |
+| `ui` | 槽位、组件树页面、弹窗与 sheet、陈列布置：`Xuan.ui`，见 [UI.md](./UI.md) |
 | `media` | 保存图片到相册：`Xuan.media`，见 [DEVICE.md](./DEVICE.md) |
 | `share` | 系统分享：`Xuan.share`，见 [DEVICE.md](./DEVICE.md) |
 | `clipboard` | 剪贴板：`Xuan.clipboard`，见 [DEVICE.md](./DEVICE.md) |

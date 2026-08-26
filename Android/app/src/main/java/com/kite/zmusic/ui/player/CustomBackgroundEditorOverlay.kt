@@ -16,6 +16,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -54,18 +55,22 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -79,6 +84,7 @@ import androidx.compose.ui.unit.sp
 import com.kite.zmusic.data.PlayerBackgroundPreset
 import com.kite.zmusic.data.PlayerDisplayPrefs
 import com.kite.zmusic.data.TrackRow
+import com.kite.zmusic.ui.chrome.wallpaperCanvasPlacement
 import com.kite.zmusic.ui.theme.TextTheme
 import java.io.File
 import kotlinx.coroutines.Dispatchers
@@ -189,33 +195,83 @@ fun PlayerCustomBackgroundLayer(
     Box(
         modifier
             .fillMaxSize()
+            .clipToBounds()
             .graphicsLayer { alpha = t },
     ) {
         // Fit 留白处保持不透明，避免透出下层主界面
         Box(Modifier.fillMaxSize().background(TextTheme.PlayerStage))
         if (preset != null && preset.hasImage && t > 0.001f) {
-            LocalPathImage(
-                path = preset.imagePath,
-                contentDescription = null,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer {
-                        scaleX = sc
-                        scaleY = sc
-                        // 0→左/上，1→右/下；以中心为 0
-                        translationX = (ox - 0.5f) * size.width * 0.55f
-                        translationY = (oy - 0.5f) * size.height * 0.55f
-                    },
-                // 不自动裁切：完整显示原图，取景交给 scale / offset
-                contentScale = ContentScale.Fit,
-            )
-            // 轻微压暗，保证前景可读
+            if (preset.coverFill) {
+                // 与主壳壁纸同一套：铺满后按 offset 裁切，平移不会露出 player.stage
+                PlayerCoverFillImage(
+                    path = preset.imagePath,
+                    offsetX = ox,
+                    offsetY = oy,
+                    scale = sc,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else {
+                LocalPathImage(
+                    path = preset.imagePath,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            scaleX = sc
+                            scaleY = sc
+                            translationX = (ox - 0.5f) * size.width * 0.55f
+                            translationY = (oy - 0.5f) * size.height * 0.55f
+                        },
+                    contentScale = ContentScale.Fit,
+                )
+            }
             Box(
                 Modifier
                     .fillMaxSize()
                     .background(Color.Black.copy(alpha = 0.28f * t)),
             )
         }
+    }
+}
+
+@Composable
+private fun PlayerCoverFillImage(
+    path: String,
+    offsetX: Float,
+    offsetY: Float,
+    scale: Float,
+    modifier: Modifier = Modifier,
+) {
+    var bitmap by remember(path) { mutableStateOf<ImageBitmap?>(null) }
+    LaunchedEffect(path) {
+        bitmap = withContext(Dispatchers.IO) {
+            runCatching { BitmapFactory.decodeFile(path)?.asImageBitmap() }.getOrNull()
+        }
+    }
+    val bmp = bitmap
+    if (bmp == null) {
+        Box(modifier.background(Color(0xFF12141A)))
+        return
+    }
+    Canvas(modifier.clipToBounds()) {
+        val place = wallpaperCanvasPlacement(
+            viewW = size.width,
+            viewH = size.height,
+            imgW = bmp.width,
+            imgH = bmp.height,
+            scale = scale,
+            offsetX = offsetX,
+            offsetY = offsetY,
+            coverFill = true,
+        ) ?: return@Canvas
+        drawImage(
+            image = bmp,
+            srcOffset = IntOffset.Zero,
+            srcSize = IntSize(bmp.width, bmp.height),
+            dstOffset = IntOffset(place.x, place.y),
+            dstSize = IntSize(place.w, place.h),
+            filterQuality = FilterQuality.Medium,
+        )
     }
 }
 

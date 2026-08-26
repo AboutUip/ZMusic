@@ -3,6 +3,7 @@ package com.kite.zmusic.ui.player
 import androidx.compose.ui.graphics.Color
 import com.kite.zmusic.data.PlayerDisplayPrefs
 import com.kite.zmusic.data.VinylColorStyle
+import com.kite.zmusic.plugin.PluginLookPresent
 
 /** 黑胶盘绘制用色（径向底 + 纹路）。data 层只存 ARGB。 */
 data class VinylPlateColors(
@@ -79,12 +80,15 @@ data class VinylPlateColors(
     }
 }
 
-fun PlayerDisplayPrefs.vinylPlateColors(): VinylPlateColors = when (vinylColorStyle) {
-    VinylColorStyle.BLACK -> VinylPlateColors.Black
-    VinylColorStyle.GOLD -> VinylPlateColors.Gold
-    VinylColorStyle.WHITE -> VinylPlateColors.White
-    VinylColorStyle.CUSTOM -> VinylPlateColors.custom(
-        vinylCustomBaseArgb,
-        vinylCustomGrooveArgb,
-    )
+fun PlayerDisplayPrefs.vinylPlateColors(): VinylPlateColors {
+    PluginLookPresent.playerVinyl()?.let { return it.plateColors() }
+    return when (vinylColorStyle) {
+        VinylColorStyle.BLACK -> VinylPlateColors.Black
+        VinylColorStyle.GOLD -> VinylPlateColors.Gold
+        VinylColorStyle.WHITE -> VinylPlateColors.White
+        VinylColorStyle.CUSTOM -> VinylPlateColors.custom(
+            vinylCustomBaseArgb,
+            vinylCustomGrooveArgb,
+        )
+    }
 }

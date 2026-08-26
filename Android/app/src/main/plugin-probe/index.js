@@ -72,6 +72,36 @@ function onEvent(ev) {
       Xuan.theme.clear();
       return;
     }
+    if (ev.id === "colGrid") {
+      ["library.liked", "library.created", "library.collected.playlists"].forEach(function (r) {
+        Xuan.ui.collection.set(r, { flow: "grid", columns: 3, item: "tile", cover: "round" });
+      });
+      return;
+    }
+    if (ev.id === "colVinyl") {
+      Xuan.ui.collection.set("library.created", {
+        flow: "grid",
+        columns: 3,
+        item: "tile",
+        cover: "vinyl",
+        vinyl: { style: "black" }
+      });
+      return;
+    }
+    if (ev.id === "colClear") {
+      Xuan.ui.collection.clear();
+      return;
+    }
+    if (ev.id === "lookDark") {
+      Xuan.look.set("appearance", { mode: "dark" });
+      Xuan.look.set("chrome.glass", { mode: "frost", blur: 0.65 });
+      Xuan.look.set("player.vinyl", { style: "gold" });
+      return;
+    }
+    if (ev.id === "lookClear") {
+      Xuan.look.clear();
+      return;
+    }
     if (ev.id === "notice") {
       Xuan.notice.show("探针：" + Xuan.engine.version);
       return;
@@ -173,6 +203,35 @@ Xuan.ui.page.define("tune", {
             children: [
               { type: "button", id: "themeAccent", label: "试用强调色", role: "primary", icon: "check" },
               { type: "button", id: "themeClear", label: "清除覆盖", flex: 0, width: "hug" }
+            ]
+          }
+        ]
+      },
+      {
+        type: "section",
+        title: "陈列",
+        children: [
+          {
+            type: "row",
+            gap: 8,
+            children: [
+              { type: "button", id: "colGrid", label: "歌单方阵", role: "primary", icon: "playlist" },
+              { type: "button", id: "colVinyl", label: "试用黑胶", flex: 0, width: "hug" }
+            ]
+          },
+          { type: "button", id: "colClear", label: "清除陈列", width: "hug" }
+        ]
+      },
+      {
+        type: "section",
+        title: "外观",
+        children: [
+          {
+            type: "row",
+            gap: 8,
+            children: [
+              { type: "button", id: "lookDark", label: "试用深色磨砂", role: "primary", icon: "moon" },
+              { type: "button", id: "lookClear", label: "清除外观", flex: 0, width: "hug" }
             ]
           }
         ]

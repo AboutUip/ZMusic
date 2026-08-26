@@ -54,6 +54,7 @@ import com.kite.zmusic.data.LyricRoleStyle
 import com.kite.zmusic.data.PlayerBackgroundPreset
 import com.kite.zmusic.data.PlayerDisplayPrefs
 import com.kite.zmusic.data.TrackRow
+import com.kite.zmusic.plugin.PluginLookPresent
 import com.kite.zmusic.playback.PlaybackUiState
 import com.kite.zmusic.ui.notice.showIslandNotice
 import com.kite.zmusic.ui.theme.TextTheme
@@ -202,7 +203,7 @@ internal fun NowPlayingScreenLayers(
             ) {
                 GeminiOrbsBackdrop(
                     modifier = Modifier.fillMaxSize(),
-                    activeHalo = displayPrefs.activeHalo,
+                    activeHalo = PluginLookPresent.atmosphereHalo(displayPrefs.activeHalo),
                     playWhenReady = state.playWhenReady,
                     positionMs = state.positionMs,
                     scrubbing = sliderDragging,
@@ -235,8 +236,8 @@ internal fun NowPlayingScreenLayers(
                         .graphicsLayer {
                             alpha = (1f - portraitCustomBgProgress).coerceIn(0f, 1f)
                         },
-                    activeHalo = portraitDisplayPrefs.activeHalo &&
-                        !portraitDisplayPrefs.customBackgroundEnabled,
+                    activeHalo = PluginLookPresent.atmosphereHalo(portraitDisplayPrefs.activeHalo) &&
+                        portraitCustomBg == null,
                     playWhenReady = state.playWhenReady,
                     positionMs = state.positionMs,
                     scrubbing = sliderDragging,

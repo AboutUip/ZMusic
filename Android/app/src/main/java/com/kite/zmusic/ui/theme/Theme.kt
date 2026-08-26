@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.Density
 import androidx.core.view.WindowCompat
 import com.kite.zmusic.ZMusicApplication
 import com.kite.zmusic.data.AppAppearance
+import com.kite.zmusic.plugin.PluginLookPresent
 import kotlinx.coroutines.flow.MutableStateFlow
 
 /** 不跟系统字体大小走；略小于设计 sp，避免界面发撑。 */
@@ -62,7 +63,8 @@ fun ZMusicTheme(content: @Composable () -> Unit) {
             ?: MutableStateFlow(AppAppearance.Light)
     }
     val appearance by appearanceFlow.collectAsState()
-    val dark = appearance.resolveDark(isSystemInDarkTheme())
+    val overlayAppearance = PluginLookPresent.appearance()
+    val dark = (overlayAppearance ?: appearance).resolveDark(isSystemInDarkTheme())
     val colors = if (dark) MainColors.Dark else MainColors.Light
     MainPalette.bind(colors)
 

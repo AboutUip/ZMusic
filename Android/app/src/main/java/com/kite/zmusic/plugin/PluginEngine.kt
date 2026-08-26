@@ -23,7 +23,7 @@ import kotlinx.coroutines.flow.asStateFlow
  * 调试 API（[ping]、[registerFromZpp]、[setEnabled]、[clearQuarantine]、[dumpRecords]）
  * 在调试开关关闭时抛 [PluginDebugApiDeniedException]。
  * 产品路径：[listModules]、[installWorkshopZpp]、[setModuleEnabled]、[uninstallModule]
- * 不依赖调试开关。探针不可由用户开关或删除。
+ * 不依赖调试开关。探针不可由用户开关、删除或从本机 `.zpp` 覆盖。
  */
 class PluginEngine(
     filesDir: File,
@@ -354,6 +354,7 @@ class PluginEngine(
     /**
      * 工坊 / 产品注册：解压校验后写入引擎目录。
      * 新装默认禁用；升级保留原启用位。不要求调试开关。
+     * 不能用此路径覆盖内置探针 [PluginDebugProbe.ID]。
      */
     fun installWorkshopZpp(
         zpp: File,
@@ -361,6 +362,10 @@ class PluginEngine(
     ): PluginRegisterResult {
         synchronized(lock) {
             paths.ensure()
+            if (ZppUnpacker.peekId(zpp) == PluginDebugProbe.ID) {
+                PluginLog.w(debugEnabled(), "产品安装忽略内置探针")
+                return PluginRegisterResult.Skipped("不能覆盖内置探针")
+            }
             val result = installLocked(
                 zpp = zpp,
                 replaceExisting = replaceExisting,
@@ -513,6 +518,8 @@ class PluginEngine(
             onSessionEnded = { id ->
                 hookRegistry.dropPlugin(id)
                 PluginTextThemeBridge.clearIfOwner(id)
+                PluginCollectionPresent.clearIfOwner(id)
+                PluginLookPresent.clearIfOwner(id)
                 ui.dropPlugin(id)
                 http?.cancel(id)
                 device.cancel(id)

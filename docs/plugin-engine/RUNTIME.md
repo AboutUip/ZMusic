@@ -190,11 +190,15 @@ Xuan.timer.remove("tick");
 
 ## `Xuan.ui`
 
-宿主绘制的槽位入口、组件树页面、多级叠层、弹窗、sheet，以及宿主表面的操作槽。见 [UI.md](./UI.md)。清单建议声明 `ui`，不是调用门闩。
+宿主绘制的槽位入口、组件树页面、多级叠层、弹窗、sheet、宿主表面的操作槽，以及具名陈列区的布置。见 [UI.md](./UI.md)。清单建议声明 `ui`，不是调用门闩。
 
 ## `Xuan.media` / `Xuan.share` / `Xuan.clipboard`
 
 保存图片到相册、系统分享、剪贴板。见 [DEVICE.md](./DEVICE.md)。清单建议分别声明 `media` / `share` / `clipboard`，不是调用门闩。
+
+## `Xuan.look`
+
+主界面与播放页的非危险个性化（壁纸、玻璃、浅深色、黑胶盘色、氛围、背景图）。位图只读包内文件。见 [LOOK.md](./LOOK.md)。清单建议声明 `look`，不是调用门闩。
 
 ## `Xuan.theme`
 

@@ -62,6 +62,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.kite.zmusic.R
 import com.kite.zmusic.ZMusicApplication
+import com.kite.zmusic.plugin.PluginLookPresent
 import com.kite.zmusic.ui.common.GlassActionSheetHostState
 import com.kite.zmusic.ui.common.GlassActionSheetOverlay
 import com.kite.zmusic.ui.common.GlassAlertHostState
@@ -121,6 +122,7 @@ fun IslandNoticeRoot(
     val islandHaze = remember { HazeState() }
     val app = LocalContext.current.applicationContext as ZMusicApplication
     val glassStyle by app.chromeGlassStore.style.collectAsStateWithLifecycle()
+    val effectiveGlass = PluginLookPresent.glass(glassStyle)
     val predictiveBackOn by app.predictiveBackStore.enabled.collectAsStateWithLifecycle()
     val predictiveBackClaims = remember { PredictiveBackClaimsState() }
     val landscape =
@@ -132,7 +134,7 @@ fun IslandNoticeRoot(
     CompositionLocalProvider(
         LocalGlassAlertHost provides alertHost,
         LocalGlassActionSheetHost provides actionSheetHost,
-        LocalChromeGlassStyle provides glassStyle,
+        LocalChromeGlassStyle provides effectiveGlass,
         LocalChromeHaze provides islandHaze,
         LocalPredictiveBackEnabled provides predictiveBackOn,
         LocalPredictiveBackClaimsState provides predictiveBackClaims,

@@ -2,13 +2,13 @@
   "zpp": 1,
   "id": "dev.zmusic.probe",
   "name": "引擎探针",
-  "version": 4,
+  "version": 6,
   "entry": "index.js",
   "engine": {
     "min": 100
   },
   "description": "调试开启时由宿主从 Dock 打开的引擎调优页。",
   "author": "ZMusic",
-  "capabilities": ["ui", "theme", "player"],
+  "capabilities": ["ui", "theme", "look", "player"],
   "signatures": []
 }

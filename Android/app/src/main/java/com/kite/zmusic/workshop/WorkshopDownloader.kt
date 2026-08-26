@@ -15,14 +15,63 @@ data class WorkshopDownloadMeta(
     val signature: String,
 )
 
+/** 仅绝对 http(s) 才直取 TOS。相对路径必须走社区流，避免拼到社区主机后被当成无鉴权直链。 */
+internal fun workshopDirectPackageUrl(packageUrl: String): String? {
+    val t = packageUrl.trim()
+    if (t.startsWith("https://", ignoreCase = true) ||
+        t.startsWith("http://", ignoreCase = true)
+    ) {
+        return t
+    }
+    return null
+}
+
+/** TOS 401 / 正文含 unauthorized 不得清工坊 token。 */
+internal fun workshopDownloadClearsAuth(direct: Boolean, httpCode: Int, body: String): Boolean =
+    !direct && (httpCode == 401 || body.contains("unauthorized"))
+
 /**
- * 下载工坊包：必须 Content-Length + 三头齐全，读完后严格验签，失败删文件。
+ * 社区流必须有 Content-Length。TOS 直取若缺头则用详情 `size_bytes`（仍 ≤64MiB 且与详情一致）。
+ */
+internal fun workshopExpectedDownloadBytes(
+    direct: Boolean,
+    contentLengthHeader: String?,
+    sizeBytes: Long,
+    maxBytes: Long = WorkshopClient.maxZppBytes(),
+): Long {
+    val header = contentLengthHeader?.trim()?.toLongOrNull()
+    if (header != null) {
+        if (header <= 0L || header > maxBytes) error("bad Content-Length")
+        if (header != sizeBytes) error("size mismatch detail")
+        return header
+    }
+    if (!direct) error("missing Content-Length")
+    if (sizeBytes <= 0L || sizeBytes > maxBytes) error("bad size")
+    return sizeBytes
+}
+
+/**
+ * 下载工坊包：优先直取 TOS；否则走社区流。读完后严格验签，失败删文件。
  */
 class WorkshopDownloader(
     private val http: OkHttpClient,
-    private val client: WorkshopClient,
-    private val auth: WorkshopAuthStore,
+    private val downloadUrl: (pluginId: String) -> String,
+    private val authHeaders: () -> Map<String, String>,
+    private val ackDownload: (pluginId: String) -> Unit,
+    private val clearAuth: () -> Unit,
 ) {
+    constructor(
+        http: OkHttpClient,
+        client: WorkshopClient,
+        auth: WorkshopAuthStore,
+    ) : this(
+        http = http,
+        downloadUrl = client::downloadUrl,
+        authHeaders = client::authHeaders,
+        ackDownload = client::ackDownload,
+        clearAuth = auth::clear,
+    )
+
     suspend fun download(
         pluginId: String,
         detail: WorkshopPluginDetail,
@@ -32,42 +81,58 @@ class WorkshopDownloader(
         runCatching {
             dest.parentFile?.mkdirs()
             if (dest.exists()) dest.delete()
-            val reqBuilder = Request.Builder()
-                .url(client.downloadUrl(pluginId))
-                .get()
-            client.authHeaders().forEach { (k, v) -> reqBuilder.header(k, v) }
-            http.newCall(reqBuilder.build()).execute().use { resp ->
+            val directUrl = workshopDirectPackageUrl(detail.packageUrl)
+            val direct = directUrl != null
+            val req = if (directUrl != null) {
+                Request.Builder().url(directUrl).get().build()
+            } else {
+                val reqBuilder = Request.Builder()
+                    .url(downloadUrl(pluginId))
+                    .get()
+                authHeaders().forEach { (k, v) -> reqBuilder.header(k, v) }
+                reqBuilder.build()
+            }
+            http.newCall(req).execute().use { resp ->
                 coroutineContext.ensureActive()
                 val body = resp.body ?: error("empty body")
                 if (resp.code != 200) {
                     val text = runCatching { body.string() }.getOrDefault("")
-                    if (text.contains("unauthorized") || resp.code == 401) {
-                        auth.clear()
+                    if (workshopDownloadClearsAuth(direct, resp.code, text)) {
+                        clearAuth()
                         throw WorkshopApiError.Unauthorized
                     }
                     error("download http ${resp.code}")
                 }
-                val lengthHeader = resp.header("Content-Length")?.toLongOrNull()
-                    ?: error("missing Content-Length")
-                if (lengthHeader <= 0L || lengthHeader > WorkshopClient.maxZppBytes()) {
-                    error("bad Content-Length")
+                val expectedLen = workshopExpectedDownloadBytes(
+                    direct = direct,
+                    contentLengthHeader = resp.header("Content-Length"),
+                    sizeBytes = detail.sizeBytes,
+                )
+                val hSha: String
+                val hKid: String
+                val hSig: String
+                if (direct) {
+                    hSha = detail.sha256.lowercase()
+                    hKid = detail.signature.kid
+                    hSig = detail.signature.sig
+                    if (hSha.isEmpty() || hKid.isEmpty() || hSig.isEmpty()) {
+                        error("missing signature")
+                    }
+                } else {
+                    hSha = resp.header("X-Zpp-Sha256")?.trim()?.lowercase().orEmpty()
+                    hKid = resp.header("X-Zpp-Kid")?.trim().orEmpty()
+                    hSig = resp.header("X-Zpp-Signature")?.trim().orEmpty()
+                    if (hSha.isEmpty() || hKid.isEmpty() || hSig.isEmpty()) {
+                        error("missing signature headers")
+                    }
+                    if (hSha != detail.sha256.lowercase()) error("sha256 header≠detail")
+                    if (hKid != detail.signature.kid) error("kid header≠detail")
+                    if (hSig != detail.signature.sig) error("sig header≠detail")
                 }
-                if (lengthHeader != detail.sizeBytes) {
-                    error("size mismatch detail")
-                }
-                val hSha = resp.header("X-Zpp-Sha256")?.trim()?.lowercase().orEmpty()
-                val hKid = resp.header("X-Zpp-Kid")?.trim().orEmpty()
-                val hSig = resp.header("X-Zpp-Signature")?.trim().orEmpty()
-                if (hSha.isEmpty() || hKid.isEmpty() || hSig.isEmpty()) {
-                    error("missing signature headers")
-                }
-                if (hSha != detail.sha256.lowercase()) error("sha256 header≠detail")
-                if (hKid != detail.signature.kid) error("kid header≠detail")
-                if (hSig != detail.signature.sig) error("sig header≠detail")
                 if (detail.signature.alg != "Ed25519") error("bad alg")
                 val pub = WorkshopKeys.publicKey(hKid) ?: error("unknown kid")
 
-                onProgress(0L, lengthHeader)
+                onProgress(0L, expectedLen)
                 dest.outputStream().use { out ->
                     body.byteStream().use { input ->
                         val buf = ByteArray(64 * 1024)
@@ -78,13 +143,13 @@ class WorkshopDownloader(
                             if (n <= 0) break
                             out.write(buf, 0, n)
                             received += n
-                            if (received > lengthHeader) {
+                            if (received > expectedLen) {
                                 dest.delete()
                                 error("overflow")
                             }
-                            onProgress(received, lengthHeader)
+                            onProgress(received, expectedLen)
                         }
-                        if (received != lengthHeader) {
+                        if (received != expectedLen) {
                             dest.delete()
                             error("length mismatch")
                         }
@@ -100,6 +165,9 @@ class WorkshopDownloader(
                 ) {
                     dest.delete()
                     error("signature verify failed")
+                }
+                if (direct) {
+                    runCatching { ackDownload(pluginId) }
                 }
                 dest
             }

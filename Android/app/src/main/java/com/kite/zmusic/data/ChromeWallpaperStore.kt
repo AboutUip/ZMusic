@@ -33,6 +33,11 @@ data class WallpaperFrame(
     val offsetY: Float = 0.5f,
     val scale: Float = 1f,
     val locked: Boolean = false,
+    /**
+     * 插件 overlay：`scale` 相对用户选图默认（铺满再略放大）。
+     * 用户设置帧：`scale` 相对 contain。不写入偏好。
+     */
+    val coverBaseline: Boolean = false,
 ) {
     val hasImage: Boolean get() = imagePath.isNotBlank()
 }

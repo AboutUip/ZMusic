@@ -401,6 +401,7 @@ internal fun PortraitPlayerBody(
                         Modifier
                             .fillMaxWidth()
                             .fillMaxHeight()
+                            .clipToBounds()
                             // 整页可点进歌词（含黑胶左右空白）；勿用 clickable，以免 down 即 consume 挡住下滑退出
                             .vinylLightTapGestures(
                                 onTap = onOpenLyrics,
@@ -441,7 +442,7 @@ internal fun PortraitPlayerBody(
                                     fullCover = vinylFullCover,
                                     centerRadiusFrac = 0.20f,
                                     outerScale = 1f,
-                                    plateColors = VinylPlateColors.Black,
+                                    plateColors = displayPrefs.vinylPlateColors(),
                                     gestureDamping = displayPrefs.vinylGestureDamping,
                                 )
                             }

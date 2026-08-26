@@ -13,8 +13,9 @@ object PluginCapabilities {
     const val MEDIA = "media"
     const val SHARE = "share"
     const val CLIPBOARD = "clipboard"
+    const val LOOK = "look"
 
-    val KNOWN: Set<String> = setOf(THEME, PLAYER, HTTP, STORE, UI, MEDIA, SHARE, CLIPBOARD)
+    val KNOWN: Set<String> = setOf(THEME, PLAYER, HTTP, STORE, UI, MEDIA, SHARE, CLIPBOARD, LOOK)
 
     /**
      * @return 规范化后的**已知**能力列表；`null` 表示字段非法（不是数组，或含非字符串）
