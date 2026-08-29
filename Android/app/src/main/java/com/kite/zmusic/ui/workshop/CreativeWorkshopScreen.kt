@@ -124,7 +124,7 @@ fun CreativeWorkshopScreen(
     val app = LocalContext.current.applicationContext as ZMusicApplication
     val auth by app.workshopAuthStore.session.collectAsStateWithLifecycle()
     val net by app.networkMode.state.collectAsStateWithLifecycle()
-    val openLogin = rememberCommunityLoginOpener()
+    val openLogin = rememberCommunityLoginOpener(offerWebsite = true)
     val pager = rememberPagerState(initialPage = 0, pageCount = { 2 })
     val scope = rememberCoroutineScope()
     val offline = net.phase == NetworkPhase.Offline

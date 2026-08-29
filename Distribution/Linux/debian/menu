@@ -1,0 +1,3 @@
+?package(zmusic):needs="X11" section="Applications/Sound"\
+  title="ZMusic" command="/usr/bin/zmusic"\
+  icon="/usr/share/pixmaps/zmusic.png"

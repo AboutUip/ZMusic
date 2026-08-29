@@ -6,12 +6,12 @@
             <TextBlock Text="推荐"
                        FontSize="28"
                        FontWeight="SemiBold"
-                       Foreground="#F2FFFFFF"
+                       Foreground="{DynamicResource TextFillColorPrimaryBrush}"
                        HorizontalAlignment="Center" />
             <TextBlock Margin="0,10,0,0"
                        Text="个性化推荐稍后放这里"
                        FontSize="14"
-                       Foreground="#88FFFFFF"
+                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                        HorizontalAlignment="Center" />
         </StackPanel>
     </Grid>

@@ -16,13 +16,13 @@
                  MinHeight="560"
                  WindowStartupLocation="CenterScreen"
                  ExtendsContentIntoTitleBar="True"
-                 WindowBackdropType="Acrylic"
-                 Background="Transparent"
+                 WindowBackdropType="None"
+                 Background="{ui:ThemeResource ApplicationBackgroundBrush}"
                  Icon="pack://application:,,,/Assets/app-icon.png">
     <ui:FluentWindow.Resources>
         <Style x:Key="NavButton" TargetType="Button">
             <Setter Property="Background" Value="Transparent" />
-            <Setter Property="Foreground" Value="#A8FFFFFF" />
+            <Setter Property="Foreground" Value="{ui:ThemeResource TextFillColorSecondaryBrush}" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
             <Setter Property="Padding" Value="14,12" />
@@ -41,8 +41,8 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#18FFFFFF" />
-                                <Setter Property="Foreground" Value="#F2FFFFFF" />
+                                <Setter TargetName="Bd" Property="Background" Value="{ui:ThemeResource SubtleFillColorSecondaryBrush}" />
+                                <Setter Property="Foreground" Value="{ui:ThemeResource TextFillColorPrimaryBrush}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -51,8 +51,8 @@
         </Style>
 
         <Style x:Key="NavButtonActive" TargetType="Button" BasedOn="{StaticResource NavButton}">
-            <Setter Property="Background" Value="#28FFFFFF" />
-            <Setter Property="Foreground" Value="#F5FFFFFF" />
+            <Setter Property="Background" Value="{ui:ThemeResource SubtleFillColorTertiaryBrush}" />
+            <Setter Property="Foreground" Value="{ui:ThemeResource TextFillColorPrimaryBrush}" />
             <Setter Property="FontWeight" Value="SemiBold" />
         </Style>
 
@@ -74,8 +74,6 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <Border Grid.RowSpan="2" Background="#B208080C" IsHitTestVisible="False" />
-
         <ui:TitleBar Grid.Row="0"
                      Title="ZMusic"
                      Icon="{ui:ImageIcon 'pack://application:,,,/Assets/app-icon.png'}">
@@ -96,7 +94,7 @@
             </Grid.ColumnDefinitions>
 
             <DockPanel Grid.Column="0" Margin="6,14,0,10">
-                <StackPanel DockPanel.Dock="Bottom" Margin="10,0,10,0">
+                <StackPanel DockPanel.Dock="Bottom">
                     <Button x:Name="SettingsNavButton"
                             Command="{Binding NavigateCommand}"
                             CommandParameter="{x:Static nav:AppPage.Settings}"
@@ -106,7 +104,7 @@
                             <TextBlock Text="设置" Style="{StaticResource NavLabel}" />
                         </StackPanel>
                     </Button>
-                    <ctrl:UserAccountCard Margin="0,10,0,0"
+                    <ctrl:UserAccountCard Margin="10,10,10,0"
                                           DisplayName="{Binding UserDisplayName}"
                                           AvatarUrl="{Binding UserAvatarUrl}" />
                 </StackPanel>
@@ -145,7 +143,7 @@
             <Border Grid.Column="1"
                     Width="1"
                     Margin="0,10"
-                    Background="#28FFFFFF" />
+                    Background="{ui:ThemeResource DividerStrokeColorDefaultBrush}" />
 
             <Grid Grid.Column="2" Margin="4,10,10,10">
                 <Grid.RowDefinitions>
@@ -159,7 +157,7 @@
                            Text="{Binding PageTitle}"
                            FontSize="22"
                            FontWeight="SemiBold"
-                           Foreground="#F5FFFFFF"
+                           Foreground="{ui:ThemeResource TextFillColorPrimaryBrush}"
                            Focusable="False">
                     <TextBlock.Style>
                         <Style TargetType="TextBlock">
@@ -176,7 +174,7 @@
                 <Border Grid.Row="1"
                         Height="1"
                         Margin="24,0,24,0"
-                        Background="#18FFFFFF">
+                        Background="{ui:ThemeResource DividerStrokeColorDefaultBrush}">
                     <Border.Style>
                         <Style TargetType="Border">
                             <Setter Property="Visibility" Value="Visible" />

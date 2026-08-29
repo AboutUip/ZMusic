@@ -1,7 +1,9 @@
 package com.kite.zmusic.ui.community
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -55,6 +57,7 @@ import androidx.core.content.ContextCompat
 import com.kite.zmusic.ZMusicApplication
 import com.kite.zmusic.data.CommunityLoginConfig
 import com.kite.zmusic.data.CommunityLoginPreview
+import com.kite.zmusic.ui.common.GlassAlertDialog
 import com.kite.zmusic.ui.common.QrScannerOverlay
 import com.kite.zmusic.ui.common.UrlImage
 import com.kite.zmusic.ui.icons.ZIcons
@@ -75,13 +78,16 @@ private sealed class CommunityLoginPhase {
 }
 
 @Composable
-fun rememberCommunityLoginOpener(): () -> Unit {
+fun rememberCommunityLoginOpener(
+    offerWebsite: Boolean = false,
+): () -> Unit {
     val context = LocalContext.current
     val app = context.applicationContext as ZMusicApplication
     val scope = rememberCoroutineScope()
     var phase by remember { mutableStateOf<CommunityLoginPhase>(CommunityLoginPhase.Hidden) }
     var busy by remember { mutableStateOf(false) }
     var previewJob by remember { mutableStateOf<Job?>(null) }
+    var showChoice by remember { mutableStateOf(false) }
 
     fun toast(msg: String) = context.showIslandNotice(msg)
 
@@ -147,6 +153,14 @@ fun rememberCommunityLoginOpener(): () -> Unit {
         } else {
             cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
         }
+    }
+
+    fun openWebsite() {
+        val url = app.communityServerStore.siteUrl()
+        val ok = runCatching {
+            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+        }.isSuccess
+        if (!ok) toast("无法打开社区网站")
     }
 
     if (phase is CommunityLoginPhase.Scanner) {
@@ -262,7 +276,28 @@ fun rememberCommunityLoginOpener(): () -> Unit {
         }
     }
 
-    return { openScanner() }
+    if (offerWebsite && showChoice) {
+        GlassAlertDialog(
+            title = "如何确认？",
+            message = "可扫描社区页上的登录码，或先打开社区网站。",
+            confirmLabel = "去扫码",
+            cancelLabel = null,
+            tertiaryLabel = "打开社区网站",
+            onConfirm = {
+                showChoice = false
+                openScanner()
+            },
+            onDismiss = { showChoice = false },
+            onTertiary = {
+                showChoice = false
+                openWebsite()
+            },
+        )
+    }
+
+    return {
+        if (offerWebsite) showChoice = true else openScanner()
+    }
 }
 
 @Composable

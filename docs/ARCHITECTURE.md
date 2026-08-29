@@ -10,6 +10,7 @@
 - 播放: Media3 ExoPlayer + **MediaSessionService**（通知 / 前台服务由 Media3 独占）
 - UI 控制: `MediaController` 拉起 Service；业务命令经进程内 `PlaybackBridge`
 - 网络: OkHttp（`AppContainer` 内**一个** `OkHttpClient`）
+- 社区目录: Maven Central **`io.github.aboutuip:xaiop:0.15.1`**（Java 包名 `io.xaiop`）；传输由 [`OkHttpXaiop`](../Android/app/src/main/java/com/kite/zmusic/data/xaiop/OkHttpXaiop.kt) 接到同一 `OkHttpClient`
 - 状态: `StateFlow` + ViewModel + Bridge
 - 安全存储: `EncryptedSharedPreferences`（会话）；播放队列快照用普通 `SharedPreferences`
 
@@ -88,6 +89,7 @@ Compose 取依赖：`LocalContext.current.applicationContext as ZMusicApplicatio
 ## 6. 数据层（`data/*`）
 
 - HTTP：`NcmUserClient`、`NcmAuthClient`（container 单例）
+- 社区公开目录：`CommunityXaiopClient` + `OkHttpXaiop`（`Accept: text/xaiop`）。依赖见 `Android/gradle/libs.versions.toml` 的 `xaiop`；不要调用 `Xaiop.stream(url)` / `XaiopWs.connect(url)`（Android 没有 `java.net.http`）
 - 解析：`NcmLibraryParse` / `NcmHomeParse` / `NcmArtistParse` / `NcmCommentParse` / `NcmMvParse`
 - 会话：`SessionRepository`、`SessionWarmup`
 - 仓库 / 缓存：`HomeFeedRepository`、`LikedPlaylistRepository`、`LibraryHomeRepository`、歌单/专辑曲目缓存、`LyricRepository`、收藏仓库、`SongRepository`、`CatalogRepository`、`CommentsRepository`、`SearchRepository`、`ArtistRepository`
@@ -128,6 +130,7 @@ Compose 取依赖：`LocalContext.current.applicationContext as ZMusicApplicatio
 
 - 默认 API 基址：`app/build.gradle.kts` → `BuildConfig.NCM_API_BASE_URL`
 - `local.properties` 可覆盖 `ncm.api.base.url`
+- XAIOP：Gradle 版本目录 `io.github.aboutuip:xaiop` **0.15.1**。`settings.gradle.kts` 对该 group 走 `mavenLocal()` 再 `mavenCentral()`（Central 索引未齐时可先用本机安装的 JAR）。Java 包名仍是 `io.xaiop`。
 - 应用内「服务器配置」可运行期覆盖并持久化
 - Splash → 连通性探测 → 主流程
 - 接口约定见 [`netease-new/`](./netease-new)

@@ -4,6 +4,8 @@
 
 # --- Android ---
 .gradle/
+.gradle-linux/
+.tools/
 **/build/
 Android/.gradle/
 Android/.idea/

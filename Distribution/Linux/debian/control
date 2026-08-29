@@ -1,0 +1,15 @@
+Package: zmusic
+Version: 0.1-1
+Section: sound
+Priority: optional
+Architecture: amd64
+Depends: libc6 (>= 2.35), libasound2, libx11-6, libxext6, libxrender1, libxi6, libgl1, libdbus-1-3
+Recommends: hicolor-icon-theme, desktop-file-utils
+Maintainer: ZMusic <noreply@github.com>
+Homepage: https://github.com/AboutUip/ZMusic
+Description: ZMusic landscape music client
+ ZMusic Linux client. Replicates the Android landscape shell:
+ navigation rail, playback, lyrics, and settings.
+ Installed to /opt/zmusic; launch with zmusic.
+ Registers a desktop launcher under Audio / Sound so it appears
+ in GNOME, XFCE, and Kali application menus.

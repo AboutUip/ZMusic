@@ -1,0 +1,3 @@
+zmusic: embedded-library
+zmusic: statically-linked-binary
+zmusic: unstripped-binary-or-object

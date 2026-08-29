@@ -1,0 +1,18 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=ZMusic
+Name[zh_CN]=ZMusic
+GenericName=Music Player
+GenericName[zh_CN]=音乐播放器
+Comment=ZMusic landscape music player
+Comment[zh_CN]=横屏听歌
+Exec=/usr/bin/zmusic
+TryExec=/usr/bin/zmusic
+Icon=zmusic
+Terminal=false
+StartupNotify=true
+StartupWMClass=com-kite-zmusic-MainKt
+Categories=AudioVideo;Audio;Player;GTK;
+Keywords=music;player;netease;zmusic;
+MimeType=audio/mpeg;audio/flac;audio/ogg;audio/x-vorbis+ogg;audio/mp4;

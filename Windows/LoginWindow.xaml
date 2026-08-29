@@ -14,8 +14,8 @@
                  MinHeight="520"
                  WindowStartupLocation="CenterScreen"
                  ExtendsContentIntoTitleBar="True"
-                 WindowBackdropType="Acrylic"
-                 Background="Transparent"
+                 WindowBackdropType="None"
+                 Background="{ui:ThemeResource ApplicationBackgroundBrush}"
                  Icon="pack://application:,,,/Assets/app-icon.png">
     <ui:FluentWindow.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis" />
@@ -150,9 +150,6 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
-
-        <!-- Dark Acrylic tint layer -->
-        <Border Grid.RowSpan="2" Background="#B208080C" IsHitTestVisible="False" />
 
         <ui:TitleBar Grid.Row="0"
                      Title="ZMusic"

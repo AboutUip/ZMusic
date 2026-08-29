@@ -6,12 +6,12 @@
             <TextBlock Text="设置"
                        FontSize="28"
                        FontWeight="SemiBold"
-                       Foreground="#F2FFFFFF"
+                       Foreground="{DynamicResource TextFillColorPrimaryBrush}"
                        HorizontalAlignment="Center" />
             <TextBlock Margin="0,10,0,0"
                        Text="服务器、账号与外观稍后放这里"
                        FontSize="14"
-                       Foreground="#88FFFFFF"
+                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                        HorizontalAlignment="Center" />
         </StackPanel>
     </Grid>

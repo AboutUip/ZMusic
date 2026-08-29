@@ -9,9 +9,10 @@
 3. Android 应用内灵动岛：[`ANDROID-ISLAND-NOTICE.md`](./ANDROID-ISLAND-NOTICE.md)
 4. Windows 架构：[`WINDOWS.md`](./WINDOWS.md)
 5. Windows 安装包：[`WINDOWS-DISTRIBUTION.md`](./WINDOWS-DISTRIBUTION.md)
-6. 插件规范（作者）：[`plugin-engine/`](./plugin-engine)
-7. 插件引擎实现说明：[`plugin-engine/internal/`](./plugin-engine/internal)
-8. 网易云兼容 API：[`netease-new/`](./netease-new)
+6. Linux 架构（终局规格）：[`LINUX.md`](./LINUX.md)
+7. 插件规范（作者）：[`plugin-engine/`](./plugin-engine)
+8. 插件引擎实现说明：[`plugin-engine/internal/`](./plugin-engine/internal)
+9. 网易云兼容 API：[`netease-new/`](./netease-new)
 
 ## 索引
 
@@ -20,13 +21,14 @@
 | [`../LICENSE`](../LICENSE) | GNU GPL v2.0 |
 | [`../Android/`](../Android) | Android 客户端 |
 | [`../Windows/`](../Windows) | Windows 客户端 |
-| [`../Linux/`](../Linux) | Linux 占位 |
+| [`../Linux/`](../Linux) | Linux 客户端（Compose Desktop，规格见 LINUX.md） |
 | [`../Distribution/Android/`](../Distribution/Android) | Android 发行脚本 |
 | [`../Distribution/Windows/`](../Distribution/Windows) | Windows 安装包 |
-| [`ARCHITECTURE.md`](./ARCHITECTURE.md) | Android 架构与主链路 |
+| [`ARCHITECTURE.md`](./ARCHITECTURE.md) | Android 架构与主链路（含 XAIOP Maven 依赖） |
 | [`ANDROID-ISLAND-NOTICE.md`](./ANDROID-ISLAND-NOTICE.md) | 应用内灵动岛通知 |
 | [`WINDOWS.md`](./WINDOWS.md) | Windows 架构 |
 | [`WINDOWS-DISTRIBUTION.md`](./WINDOWS-DISTRIBUTION.md) | Windows 分发 |
+| [`LINUX.md`](./LINUX.md) | Linux 终局规格：横屏 1:1、deb、测试门闩 |
 | [`plugin-engine/`](./plugin-engine) | 插件作者规范（包格式、清单、Xuan API） |
 | [`plugin-engine/internal/`](./plugin-engine/internal) | 客户端插件引擎实现说明 |
 | [`netease-new/`](./netease-new) | 接口文档（Enhanced） |

@@ -14,8 +14,7 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
-        // Dark Acrylic needs immersive dark mode from the theme manager.
-        ApplicationThemeManager.Apply(ApplicationTheme.Dark);
+        ApplicationThemeManager.Apply(ApplicationTheme.Dark, Wpf.Ui.Controls.WindowBackdropType.None);
 
         // Splash closes before the next window is shown; prevent auto-exit.
         ShutdownMode = ShutdownMode.OnExplicitShutdown;

@@ -28,10 +28,10 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#22FFFFFF" />
+                                <Setter TargetName="Bd" Property="Background" Value="{ui:ThemeResource SubtleFillColorSecondaryBrush}" />
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#33FFFFFF" />
+                                <Setter TargetName="Bd" Property="Background" Value="{ui:ThemeResource SubtleFillColorTertiaryBrush}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -40,27 +40,27 @@
         </Style>
 
         <Style x:Key="InkPlayButton" TargetType="Button">
-            <Setter Property="Width" Value="42" />
-            <Setter Property="Height" Value="42" />
+            <Setter Property="Width" Value="40" />
+            <Setter Property="Height" Value="40" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="FocusVisualStyle" Value="{x:Null}" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Border x:Name="Bd"
-                                Width="42"
-                                Height="42"
-                                CornerRadius="21"
-                                Background="#FFFFFFFF">
+                                Width="40"
+                                Height="40"
+                                CornerRadius="20"
+                                Background="{ui:ThemeResource TextFillColorPrimaryBrush}">
                             <ContentPresenter HorizontalAlignment="Center"
                                               VerticalAlignment="Center" />
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#E6E6E6" />
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.88" />
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#CCCCCC" />
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.76" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -78,12 +78,14 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="ProgressBar">
                         <Grid>
-                            <Border Height="3" CornerRadius="1.5" Background="#28FFFFFF" />
+                            <Border Height="3"
+                                    CornerRadius="1.5"
+                                    Background="{ui:ThemeResource ControlStrokeColorDefaultBrush}" />
                             <Border x:Name="PART_Indicator"
                                     Height="3"
                                     HorizontalAlignment="Left"
                                     CornerRadius="1.5"
-                                    Background="#E6FFFFFF"
+                                    Background="{ui:ThemeResource TextFillColorPrimaryBrush}"
                                     SnapsToDevicePixels="True" />
                         </Grid>
                     </ControlTemplate>
@@ -93,7 +95,6 @@
     </UserControl.Resources>
 
     <Grid x:Name="Root"
-          Margin="12,0,12,0"
           RenderTransformOrigin="0.5,1"
           Cursor="Hand">
         <Grid.RenderTransform>
@@ -101,21 +102,13 @@
         </Grid.RenderTransform>
 
         <Border x:Name="Card"
-                Background="#E6000000"
-                BorderBrush="#22FFFFFF"
-                BorderThickness="1"
-                CornerRadius="14"
-                Padding="14,10"
+                Background="{ui:ThemeResource ApplicationBackgroundBrush}"
+                BorderBrush="{ui:ThemeResource DividerStrokeColorDefaultBrush}"
+                BorderThickness="0,1,0,0"
+                Padding="16,10"
                 Opacity="0"
                 Cursor="Hand"
                 MouseLeftButtonUp="OnCardClick">
-            <Border.Effect>
-                <DropShadowEffect BlurRadius="16"
-                                  ShadowDepth="0"
-                                  Opacity="0.35"
-                                  Color="#000000" />
-            </Border.Effect>
-
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
@@ -129,23 +122,22 @@
                         <ColumnDefinition Width="*" MinWidth="120" />
                     </Grid.ColumnDefinitions>
 
-                    <!-- Track meta (clicks bubble to Card → expand) -->
                     <Grid Margin="0,0,12,0" HorizontalAlignment="Left">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
 
-                        <Border Width="44"
-                                Height="44"
-                                CornerRadius="10"
+                        <Border Width="40"
+                                Height="40"
+                                CornerRadius="6"
                                 ClipToBounds="True"
-                                Background="#1AFFFFFF"
+                                Background="{ui:ThemeResource ControlFillColorDefaultBrush}"
                                 IsHitTestVisible="False">
                             <Grid>
                                 <TextBlock Text="♪"
                                            FontSize="16"
-                                           Foreground="#88FFFFFF"
+                                           Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
                                            HorizontalAlignment="Center"
                                            VerticalAlignment="Center"
                                            Visibility="{Binding HasCover, Converter={StaticResource InvBoolToVis}}" />
@@ -163,17 +155,16 @@
                             <TextBlock Text="{Binding Title}"
                                        FontSize="13"
                                        FontWeight="SemiBold"
-                                       Foreground="#FFFFFFFF"
+                                       Foreground="{ui:ThemeResource TextFillColorPrimaryBrush}"
                                        TextTrimming="CharacterEllipsis" />
                             <TextBlock Margin="0,3,0,0"
                                        Text="{Binding Artists}"
                                        FontSize="11"
-                                       Foreground="#88FFFFFF"
+                                       Foreground="{ui:ThemeResource TextFillColorSecondaryBrush}"
                                        TextTrimming="CharacterEllipsis" />
                         </StackPanel>
                     </Grid>
 
-                    <!-- Transport: buttons consume click; do not expand -->
                     <StackPanel Grid.Column="1"
                                 Orientation="Horizontal"
                                 VerticalAlignment="Center"
@@ -184,7 +175,7 @@
                                 Margin="0,0,4,0">
                             <ui:SymbolIcon Symbol="Previous24"
                                            FontSize="15"
-                                           Foreground="#E6FFFFFF" />
+                                           Foreground="{ui:ThemeResource TextFillColorPrimaryBrush}" />
                         </Button>
 
                         <Button Style="{StaticResource InkPlayButton}"
@@ -194,11 +185,11 @@
                             <Grid>
                                 <ui:SymbolIcon Symbol="Play24"
                                                FontSize="15"
-                                               Foreground="#FF000000"
+                                               Foreground="{ui:ThemeResource ApplicationBackgroundBrush}"
                                                Visibility="{Binding IsPlaying, Converter={StaticResource InvBoolToVis}}" />
                                 <ui:SymbolIcon Symbol="Pause24"
                                                FontSize="15"
-                                               Foreground="#FF000000"
+                                               Foreground="{ui:ThemeResource ApplicationBackgroundBrush}"
                                                Visibility="{Binding IsPlaying, Converter={StaticResource BoolToVis}}" />
                             </Grid>
                         </Button>
@@ -209,7 +200,7 @@
                                 Margin="4,0,8,0">
                             <ui:SymbolIcon Symbol="Next24"
                                            FontSize="15"
-                                           Foreground="#E6FFFFFF" />
+                                           Foreground="{ui:ThemeResource TextFillColorPrimaryBrush}" />
                         </Button>
 
                         <Button Style="{StaticResource InkIconButton}"
@@ -219,17 +210,17 @@
                                 <ui:SymbolIcon x:Name="ModeOrderIcon"
                                                Symbol="ArrowRepeatAll24"
                                                FontSize="14"
-                                               Foreground="#AAFFFFFF"
+                                               Foreground="{ui:ThemeResource TextFillColorSecondaryBrush}"
                                                Visibility="Visible" />
                                 <ui:SymbolIcon x:Name="ModeOneIcon"
                                                Symbol="ArrowRepeat124"
                                                FontSize="14"
-                                               Foreground="#AAFFFFFF"
+                                               Foreground="{ui:ThemeResource TextFillColorSecondaryBrush}"
                                                Visibility="Collapsed" />
                                 <ui:SymbolIcon x:Name="ModeShuffleIcon"
                                                Symbol="ArrowShuffle24"
                                                FontSize="14"
-                                               Foreground="#AAFFFFFF"
+                                               Foreground="{ui:ThemeResource TextFillColorSecondaryBrush}"
                                                Visibility="Collapsed" />
                             </Grid>
                         </Button>
@@ -243,16 +234,16 @@
                         <TextBlock Text="{Binding PositionText}"
                                    FontSize="11"
                                    FontFamily="Consolas"
-                                   Foreground="#AAFFFFFF"
+                                   Foreground="{ui:ThemeResource TextFillColorSecondaryBrush}"
                                    VerticalAlignment="Center" />
                         <TextBlock Text=" / "
                                    FontSize="11"
-                                   Foreground="#44FFFFFF"
+                                   Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
                                    VerticalAlignment="Center" />
                         <TextBlock Text="{Binding DurationText}"
                                    FontSize="11"
                                    FontFamily="Consolas"
-                                   Foreground="#66FFFFFF"
+                                   Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}"
                                    VerticalAlignment="Center" />
                     </StackPanel>
                 </Grid>

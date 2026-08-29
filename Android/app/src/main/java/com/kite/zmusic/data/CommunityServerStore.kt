@@ -35,10 +35,15 @@ class CommunityServerStore(context: Context) {
         _endpoint.value = ServerConfigRepository.Endpoint(h, port)
     }
 
-    fun submitUrl(): String {
+    fun submitUrl(): String = "${origin()}${CommunityLoginConfig.SUBMIT_PATH}"
+
+    fun siteUrl(): String = "${origin()}${CommunityLoginConfig.SITE_PATH}"
+
+    private fun origin(): String {
         val e = current()
-        val authority = if (e.port == 80) e.host.trim() else "${e.host.trim()}:${e.port}"
-        return "http://$authority${CommunityLoginConfig.SUBMIT_PATH}"
+        val host = e.host.trim()
+        val authority = if (e.port == 80) host else "$host:${e.port}"
+        return "http://$authority"
     }
 
     private fun readStored(): ServerConfigRepository.Endpoint? {

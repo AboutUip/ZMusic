@@ -1,0 +1,5 @@
+# Shell / Debian maintainer scripts must be LF or Linux shebang fails.
+*.sh text eol=lf
+Distribution/Linux/debian/postinst text eol=lf
+Distribution/Linux/debian/postrm text eol=lf
+Linux/gradlew text eol=lf

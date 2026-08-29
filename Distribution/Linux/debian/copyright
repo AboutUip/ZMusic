@@ -1,0 +1,23 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: ZMusic
+Source: https://github.com/AboutUip/ZMusic
+
+Files: *
+Copyright: ZMusic contributors
+License: GPL-2.0-only
+
+Files: opt/zmusic/lib/runtime/*
+Comment: Eclipse Temurin / jlink runtime
+License: GPL-2.0-with-classpath-exception
+
+Files: opt/zmusic/lib/native/libmpv*
+Comment: mpv / libmpv
+License: LGPL-2.1+
+
+Files: opt/zmusic/zmusic.jar
+Comment: Bundled third-party: Skiko/Skia, OkHttp, XAIOP, JNA, dbus-java
+License: GPL-2.0-only
+
+License: GPL-2.0-only
+ GNU General Public License, version 2.
+ See /usr/share/common-licenses/GPL-2

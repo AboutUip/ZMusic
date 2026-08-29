@@ -1,0 +1,61 @@
+name: Linux
+
+on:
+  push:
+    paths:
+      - Linux/**
+      - Distribution/Linux/**
+      - docs/LINUX.md
+  pull_request:
+    paths:
+      - Linux/**
+      - Distribution/Linux/**
+
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        working-directory: Linux
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Native deps for pack
+        working-directory: .
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libmpv1 libmpv-dev desktop-file-utils lintian xvfb python3
+      - name: Unit tests
+        run: chmod +x gradlew && xvfb-run -a ./gradlew --no-daemon test
+      - name: Package deb
+        working-directory: .
+        run: bash Distribution/Linux/build-deb.sh --skip-tests
+      - name: Install-gate checks
+        working-directory: .
+        run: |
+          set -e
+          test -f artifacts/linux/ZMusic-Linux-0.1.deb
+          dpkg-deb -I artifacts/linux/ZMusic-Linux-0.1.deb | grep -q "Architecture: amd64"
+          dpkg-deb -I artifacts/linux/ZMusic-Linux-0.1.deb | grep -q "Package: zmusic"
+          desktop-file-validate Distribution/Linux/zmusic.desktop
+          mkdir -p /tmp/zmusic-root /tmp/zmusic-ctrl
+          dpkg-deb -x artifacts/linux/ZMusic-Linux-0.1.deb /tmp/zmusic-root
+          dpkg-deb -e artifacts/linux/ZMusic-Linux-0.1.deb /tmp/zmusic-ctrl
+          test -x /tmp/zmusic-root/usr/bin/zmusic
+          test -f /tmp/zmusic-root/usr/share/applications/zmusic.desktop
+          test -f /tmp/zmusic-root/usr/share/icons/hicolor/48x48/apps/zmusic.png
+          test -f /tmp/zmusic-root/usr/share/icons/hicolor/256x256/apps/zmusic.png
+          test -f /tmp/zmusic-root/usr/share/pixmaps/zmusic.png
+          test -f /tmp/zmusic-root/usr/share/menu/zmusic
+          test -x /tmp/zmusic-ctrl/postinst
+          grep -q update-desktop-database /tmp/zmusic-ctrl/postinst
+          /tmp/zmusic-root/opt/zmusic/bin/zmusic --version | grep -q 0.1
+          /tmp/zmusic-root/opt/zmusic/bin/zmusic --smoke | grep -q ok
+          lintian -o Distribution/Linux/lintian.overrides artifacts/linux/ZMusic-Linux-0.1.deb || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zmusic-linux-deb
+          path: artifacts/linux/*.deb

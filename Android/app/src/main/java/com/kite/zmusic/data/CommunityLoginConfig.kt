@@ -12,6 +12,8 @@ object CommunityLoginConfig {
     const val DISPLAY_NAME = "量子像素 · ZMusic"
     const val QR_PREFIX = "ZMLOGIN1:"
     const val SUBMIT_PATH = "/api/v1/communities/zmusic/login/submit"
+    /** 社区网页登录页（扫码确认用）。 */
+    const val SITE_PATH = "/zmusic/login"
     const val ASSERTION_TTL_SEC = 90L
     const val SID_MIN = 16
     const val SID_MAX = 64

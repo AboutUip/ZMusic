@@ -1,0 +1,24 @@
+#!/bin/sh
+set -e
+
+# Register the launcher so GNOME / XFCE / Kali application menus pick it up.
+if command -v update-desktop-database >/dev/null 2>&1; then
+  update-desktop-database -q /usr/share/applications || true
+fi
+
+if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+  gtk-update-icon-cache -q -t -f /usr/share/icons/hicolor || true
+elif command -v gtk4-update-icon-cache >/dev/null 2>&1; then
+  gtk4-update-icon-cache -q -t -f /usr/share/icons/hicolor || true
+fi
+
+if command -v xdg-desktop-menu >/dev/null 2>&1; then
+  xdg-desktop-menu forceupdate || true
+fi
+
+# Debian / Kali classic menu (Applications window)
+if command -v update-menus >/dev/null 2>&1; then
+  update-menus || true
+fi
+
+exit 0
