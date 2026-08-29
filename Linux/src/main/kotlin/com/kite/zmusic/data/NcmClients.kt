@@ -199,11 +199,20 @@ class NcmUserClient(
     suspend fun banner(cookie: String, type: Int = 1): JSONObject =
         get("/banner", mapOf("type" to type.toString(), "cookie" to cookie, "timestamp" to ts()))
 
-    suspend fun personalizedPlaylists(cookie: String, limit: Int = 12): JSONObject =
+    suspend fun personalizedPlaylists(cookie: String, limit: Int = 30): JSONObject =
         get(
             "/personalized",
             mapOf("limit" to limit.toString(), "cookie" to cookie, "timestamp" to ts()),
         )
+
+    suspend fun personalizedNewsong(cookie: String): JSONObject =
+        get("/personalized/newsong", mapOf("cookie" to cookie, "timestamp" to ts()))
+
+    suspend fun personalizedMv(cookie: String): JSONObject =
+        get("/personalized/mv", mapOf("cookie" to cookie, "timestamp" to ts()))
+
+    suspend fun recommendResource(cookie: String): JSONObject =
+        get("/recommend/resource", mapOf("cookie" to cookie, "timestamp" to ts()))
 
     suspend fun toplistDetail(cookie: String): JSONObject =
         get("/toplist/detail", mapOf("cookie" to cookie, "timestamp" to ts()))
@@ -238,17 +247,142 @@ class NcmUserClient(
     suspend fun mvUrl(id: Long, cookie: String): JSONObject =
         get("/mv/url", mapOf("id" to id.toString(), "cookie" to cookie, "timestamp" to ts()))
 
-    suspend fun intelligenceList(songId: Long, cookie: String): JSONObject =
-        get(
-            "/playmode/intelligence/list",
-            mapOf("id" to songId.toString(), "cookie" to cookie, "timestamp" to ts()),
+    suspend fun intelligenceList(
+        songId: Long,
+        cookie: String,
+        playlistId: Long = 0L,
+        startSongId: Long = songId,
+    ): JSONObject {
+        val q = mutableMapOf(
+            "id" to songId.toString(),
+            "sid" to startSongId.toString(),
+            "count" to "50",
+            "cookie" to cookie,
+            "timestamp" to ts(),
         )
+        if (playlistId > 0L) q["pid"] = playlistId.toString()
+        return get("/playmode/intelligence/list", q)
+    }
 
     suspend fun artistSublist(cookie: String): JSONObject =
         get("/artist/sublist", mapOf("cookie" to cookie, "timestamp" to ts()))
 
+    suspend fun albumSublist(cookie: String, limit: Int = 50, offset: Int = 0): JSONObject =
+        get(
+            "/album/sublist",
+            mapOf(
+                "limit" to limit.toString(),
+                "offset" to offset.toString(),
+                "cookie" to cookie,
+                "timestamp" to ts(),
+            ),
+        )
+
     suspend fun userDetail(uid: Long, cookie: String): JSONObject =
         get("/user/detail", mapOf("uid" to uid.toString(), "cookie" to cookie, "timestamp" to ts()))
+
+    suspend fun likeList(uid: Long, cookie: String): JSONObject =
+        get("/likelist", mapOf("uid" to uid.toString(), "cookie" to cookie, "timestamp" to ts()))
+
+    suspend fun songLikeCheck(ids: List<Long>, cookie: String): JSONObject {
+        val idsParam = ids.joinToString(separator = ",", prefix = "[", postfix = "]")
+        return get(
+            "/song/like/check",
+            mapOf("ids" to idsParam, "cookie" to cookie, "timestamp" to ts()),
+        )
+    }
+
+    suspend fun likeSong(id: Long, like: Boolean, cookie: String): JSONObject =
+        get(
+            "/like",
+            mapOf("id" to id.toString(), "like" to like.toString(), "cookie" to cookie, "timestamp" to ts()),
+        )
+
+    suspend fun playlistSubscribe(id: Long, subscribe: Boolean, cookie: String): JSONObject =
+        get(
+            "/playlist/subscribe",
+            mapOf(
+                "t" to if (subscribe) "1" else "2",
+                "id" to id.toString(),
+                "cookie" to cookie,
+                "timestamp" to ts(),
+            ),
+        )
+
+    suspend fun playlistDetailDynamic(id: Long, cookie: String): JSONObject =
+        get("/playlist/detail/dynamic", mapOf("id" to id.toString(), "cookie" to cookie, "timestamp" to ts()))
+
+    suspend fun playlistCreate(name: String, cookie: String): JSONObject =
+        get("/playlist/create", mapOf("name" to name, "cookie" to cookie, "timestamp" to ts()))
+
+    suspend fun albumDetailDynamic(id: Long, cookie: String): JSONObject =
+        get("/album/detail/dynamic", mapOf("id" to id.toString(), "cookie" to cookie, "timestamp" to ts()))
+
+    suspend fun albumSub(id: Long, subscribe: Boolean, cookie: String): JSONObject =
+        get(
+            "/album/sub",
+            mapOf(
+                "id" to id.toString(),
+                "t" to if (subscribe) "1" else "0",
+                "cookie" to cookie,
+                "timestamp" to ts(),
+            ),
+        )
+
+    suspend fun artistSub(id: Long, follow: Boolean, cookie: String): JSONObject =
+        get(
+            "/artist/sub",
+            mapOf(
+                "id" to id.toString(),
+                "t" to if (follow) "1" else "0",
+                "cookie" to cookie,
+                "timestamp" to ts(),
+            ),
+        )
+
+    suspend fun artistAlbums(id: Long, cookie: String, limit: Int = 30, offset: Int = 0): JSONObject =
+        get(
+            "/artist/album",
+            mapOf(
+                "id" to id.toString(),
+                "limit" to limit.toString(),
+                "offset" to offset.toString(),
+                "cookie" to cookie,
+                "timestamp" to ts(),
+            ),
+        )
+
+    suspend fun artistMv(id: Long, cookie: String, limit: Int = 30, offset: Int = 0): JSONObject =
+        get(
+            "/artist/mv",
+            mapOf(
+                "id" to id.toString(),
+                "limit" to limit.toString(),
+                "offset" to offset.toString(),
+                "cookie" to cookie,
+                "timestamp" to ts(),
+            ),
+        )
+
+    suspend fun userFollow(id: Long, follow: Boolean, cookie: String): JSONObject =
+        get(
+            "/follow",
+            mapOf(
+                "id" to id.toString(),
+                "t" to if (follow) "1" else "0",
+                "cookie" to cookie,
+                "timestamp" to ts(),
+            ),
+        )
+
+    suspend fun searchHotDetail(cookie: String): JSONObject =
+        get("/search/hot/detail", mapOf("cookie" to cookie, "timestamp" to ts()))
+
+    suspend fun searchSuggest(keywords: String, cookie: String): JSONObject =
+        get(
+            "/search/suggest",
+            mapOf("keywords" to keywords, "type" to "mobile", "cookie" to cookie, "timestamp" to ts()),
+        )
 
     private suspend fun get(path: String, query: Map<String, String>): JSONObject = withContext(Dispatchers.IO) {
         val base = NcmApiConfig.baseUrl.trimEnd('/')

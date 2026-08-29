@@ -56,6 +56,21 @@ internal object NcmLibraryParse {
         )
     }
 
+    fun profileFromUserDetail(json: JSONObject): UserProfileBrief? {
+        val profile = json.optJSONObject("profile") ?: return null
+        val userId = profile.optLong("userId", 0L)
+        if (userId <= 0L) return null
+        return UserProfileBrief(
+            userId = userId,
+            nickname = profile.optString("nickname", "用户").ifBlank { "用户" },
+            avatarUrl = profile.optString("avatarUrl", "").takeIf { it.isNotBlank() },
+            signature = profile.optString("signature", "").takeIf { it.isNotBlank() },
+            backgroundUrl = profile.optString("backgroundUrl", "").takeIf { it.isNotBlank() },
+            follows = profile.optLong("follows", 0L).takeIf { it > 0L },
+            followeds = profile.optLong("followeds", 0L).takeIf { it > 0L },
+        )
+    }
+
     fun tracksFromPlaylistDetail(json: JSONObject): List<TrackRow> {
         if (NcmJson.apiCode(json) != 200) return emptyList()
         val pl = json.optJSONObject("playlist") ?: return emptyList()
@@ -132,6 +147,52 @@ internal object NcmLibraryParse {
         }
         return null
     }
+
+    fun likedIdsFromLikeCheck(json: JSONObject): Set<Long> {
+        if (NcmJson.apiCode(json) != 200) return emptySet()
+        val fromData = longIdsFromArray(json.optJSONArray("data"))
+        if (fromData.isNotEmpty()) return fromData
+        return longIdsFromArray(json.optJSONArray("ids"))
+    }
+
+    fun isTrackLiked(json: JSONObject, trackId: Long): Boolean =
+        trackId > 0L && likedIdsFromLikeCheck(json).contains(trackId)
+
+    fun likeIdsFromLikeList(json: JSONObject): Set<Long> {
+        val arr = json.optJSONArray("ids")
+            ?: json.optJSONObject("data")?.optJSONArray("ids")
+            ?: return emptySet()
+        return longIdsFromArray(arr)
+    }
+
+    fun isSubscribed(json: JSONObject): Boolean =
+        json.optBoolean("subscribed", json.optBoolean("isSub", json.optBoolean("followed", false)))
+
+    fun searchHotTerms(json: JSONObject): List<String> {
+        val arr = json.optJSONArray("data") ?: json.optJSONArray("hots") ?: return emptyList()
+        return buildList {
+            for (i in 0 until arr.length()) {
+                val o = arr.optJSONObject(i) ?: continue
+                val t = o.optString("searchWord", o.optString("first", o.optString("keyword", ""))).trim()
+                if (t.isNotEmpty()) add(t)
+            }
+        }
+    }
+
+    private fun longIdsFromArray(arr: JSONArray?): Set<Long> {
+        if (arr == null) return emptySet()
+        return buildSet {
+            for (i in 0 until arr.length()) {
+                val id = when (val v = arr.opt(i)) {
+                    is Number -> v.toLong()
+                    is String -> v.toLongOrNull() ?: 0L
+                    is JSONObject -> v.optLong("id", 0L)
+                    else -> arr.optLong(i, 0L)
+                }
+                if (id > 0L) add(id)
+            }
+        }
+    }
 }
 
 internal object NcmHomeParse {
@@ -162,6 +223,90 @@ internal object NcmHomeParse {
         if (NcmJson.apiCode(json) != 200) return emptyList()
         val arr = json.optJSONArray("result") ?: return emptyList()
         return playlistCardsFromArray(arr)
+    }
+
+    fun recommendResourcePlaylists(json: JSONObject): List<RecommendPlaylistCard> {
+        if (NcmJson.apiCode(json) != 200) return emptyList()
+        val arr = json.optJSONArray("recommend") ?: return emptyList()
+        return playlistCardsFromArray(arr)
+    }
+
+    fun personalizedNewSongs(json: JSONObject): List<TrackRow> {
+        if (NcmJson.apiCode(json) != 200) return emptyList()
+        val arr = json.optJSONArray("result") ?: json.optJSONArray("data") ?: return emptyList()
+        return buildList {
+            for (i in 0 until arr.length()) {
+                val o = arr.optJSONObject(i) ?: continue
+                val song = o.optJSONObject("song") ?: o
+                val track = NcmLibraryParse.trackFromSongObject(song) ?: continue
+                val cover = track.coverUrl
+                    ?: o.optString("picUrl", "").takeIf { it.isNotBlank() }
+                add(if (cover != null && cover != track.coverUrl) track.copy(coverUrl = cover) else track)
+            }
+        }
+    }
+
+    fun personalizedMvs(json: JSONObject): List<RecommendMvCard> {
+        if (NcmJson.apiCode(json) != 200) return emptyList()
+        val arr = json.optJSONArray("result") ?: json.optJSONArray("data") ?: return emptyList()
+        return buildList {
+            for (i in 0 until arr.length()) {
+                val o = arr.optJSONObject(i) ?: continue
+                val src = o.optJSONObject("mv") ?: o
+                val id = src.optLong("id", 0L)
+                if (id <= 0L) continue
+                add(
+                    RecommendMvCard(
+                        id = id,
+                        name = src.optString("name", "MV").ifBlank { "MV" },
+                        coverUrl = src.optString("picUrl", "")
+                            .ifBlank { src.optString("cover", "") }
+                            .ifBlank { src.optString("imgurl", "") }
+                            .takeIf { it.isNotBlank() },
+                        artist = src.optString("artistName", "").takeIf { it.isNotBlank() },
+                        playCount = src.optLong("playCount", 0L),
+                    ),
+                )
+            }
+        }
+    }
+
+    fun collectedAlbums(json: JSONObject): List<CollectedAlbum> {
+        val arr = json.optJSONArray("data")
+            ?: json.optJSONArray("albums")
+            ?: json.optJSONArray("hotAlbums")
+            ?: json.optJSONObject("data")?.optJSONArray("albums")
+            ?: return emptyList()
+        return buildList {
+            for (i in 0 until arr.length()) {
+                val o = arr.optJSONObject(i) ?: continue
+                val id = o.optLong("id", 0L)
+                if (id <= 0L) continue
+                val artistObj = o.optJSONObject("artist")
+                val artistsArr = o.optJSONArray("artists")
+                val artist = artistObj?.optString("name", "")?.takeIf { it.isNotBlank() && it != "null" }
+                    ?: buildString {
+                        if (artistsArr == null) return@buildString
+                        for (j in 0 until artistsArr.length()) {
+                            val n = artistsArr.optJSONObject(j)?.optString("name", "")?.trim().orEmpty()
+                            if (n.isEmpty() || n == "null") continue
+                            if (isNotEmpty()) append(" / ")
+                            append(n)
+                        }
+                    }.takeIf { it.isNotBlank() }
+                add(
+                    CollectedAlbum(
+                        id = id,
+                        name = o.optString("name", "专辑").ifBlank { "专辑" },
+                        coverUrl = o.optString("picUrl", "")
+                            .ifBlank { o.optString("blurPicUrl", "") }
+                            .ifBlank { o.optString("coverImgUrl", "") }
+                            .takeIf { it.isNotBlank() },
+                        artist = artist,
+                    ),
+                )
+            }
+        }
     }
 
     fun charts(json: JSONObject): List<ChartSummary> {
@@ -199,6 +344,58 @@ internal object NcmHomeParse {
                     playCount = o.optLong("playCount", 0L),
                 ),
             )
+        }
+    }
+
+    fun personalFmTracks(json: JSONObject): List<TrackRow> {
+        if (NcmJson.apiCode(json) != 200) return emptyList()
+        val arr = json.optJSONArray("data") ?: return emptyList()
+        return buildList {
+            for (i in 0 until arr.length()) {
+                val o = arr.optJSONObject(i) ?: continue
+                NcmLibraryParse.trackFromSongObject(o)?.let { add(it) }
+            }
+        }
+    }
+
+    fun intelligenceTracks(json: JSONObject): List<TrackRow> {
+        if (NcmJson.apiCode(json) != 200) return emptyList()
+        val arr = json.optJSONArray("data") ?: return emptyList()
+        return buildList {
+            for (i in 0 until arr.length()) {
+                val o = arr.optJSONObject(i) ?: continue
+                val song = o.optJSONObject("songInfo")
+                    ?: o.optJSONObject("song")
+                    ?: o.optJSONObject("songData")
+                    ?: o
+                NcmLibraryParse.trackFromSongObject(song)?.let { add(it) }
+            }
+        }
+    }
+
+    fun artistMvs(json: JSONObject): List<RecommendMvCard> {
+        val arr = json.optJSONArray("mvs")
+            ?: json.optJSONObject("data")?.optJSONArray("mvs")
+            ?: json.optJSONArray("mv")
+            ?: return emptyList()
+        return buildList {
+            for (i in 0 until arr.length()) {
+                val o = arr.optJSONObject(i) ?: continue
+                val id = o.optLong("id", 0L)
+                if (id <= 0L) continue
+                add(
+                    RecommendMvCard(
+                        id = id,
+                        name = o.optString("name", "MV").ifBlank { "MV" },
+                        coverUrl = o.optString("imgurl", "")
+                            .ifBlank { o.optString("cover", "") }
+                            .ifBlank { o.optString("picUrl", "") }
+                            .takeIf { it.isNotBlank() },
+                        artist = o.optString("artistName", "").takeIf { it.isNotBlank() },
+                        playCount = o.optLong("playCount", 0L),
+                    ),
+                )
+            }
         }
     }
 }

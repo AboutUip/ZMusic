@@ -1,14 +1,20 @@
 package com.kite.zmusic
 
 import com.kite.zmusic.data.AudioQuality
+import com.kite.zmusic.data.AppAppearance
+import com.kite.zmusic.data.AppPrefs
+import com.kite.zmusic.data.ChromeGlassMode
+import com.kite.zmusic.data.GlassStyle
 import com.kite.zmusic.data.LrcParser
 import com.kite.zmusic.data.NcmHomeParse
 import com.kite.zmusic.data.NcmJson
 import com.kite.zmusic.data.NcmLibraryParse
 import com.kite.zmusic.data.NcmPlaybackParse
 import com.kite.zmusic.data.YrcParser
+import com.kite.zmusic.playback.pulseSpectrum
 import com.kite.zmusic.data.isSelfHeartPlaylist
 import com.kite.zmusic.playback.PlaybackMode
+import com.kite.zmusic.ui.catalog.parseSearchHits
 import com.kite.zmusic.ui.main.MainOverlay
 import com.kite.zmusic.ui.main.OverlayStack
 import org.json.JSONObject
@@ -108,6 +114,14 @@ class LibraryParseTest {
         assertEquals(1, list.size)
         assertTrue(list[0].isHeartPlaylist)
         assertTrue(list[0].isOwned)
+        val liked = NcmLibraryParse.likedIdsFromLikeCheck(
+            JSONObject("""{"code":200,"data":[11,22]}"""),
+        )
+        assertTrue(liked.contains(11L))
+        assertTrue(NcmLibraryParse.isTrackLiked(JSONObject("""{"code":200,"ids":[11]}"""), 11L))
+        assertEquals(setOf(3L, 4L), NcmLibraryParse.likeIdsFromLikeList(JSONObject("""{"ids":[3,4]}""")))
+        assertTrue(NcmLibraryParse.isSubscribed(JSONObject("""{"subscribed":true}""")))
+        assertEquals(listOf("热歌"), NcmLibraryParse.searchHotTerms(JSONObject("""{"data":[{"searchWord":"热歌"}]}""")))
         val detail = JSONObject(
             """
             {"code":200,"playlist":{"tracks":[
@@ -141,6 +155,206 @@ class HomeParseTest {
             JSONObject("""{"list":[{"id":8,"name":"热歌榜","coverImgUrl":"https://p/c.jpg","updateFrequency":"每天"}]}"""),
         )
         assertEquals("热歌榜", charts[0].name)
+    }
+
+    @Test
+    fun personalizedFeedAndCollectedAlbums() {
+        val playlists = NcmHomeParse.personalizedPlaylists(
+            JSONObject("""{"code":200,"result":[{"id":1,"name":"推荐歌单","picUrl":"https://p/a.jpg","playCount":9}]}"""),
+        )
+        assertEquals(1, playlists.size)
+        assertEquals("推荐歌单", playlists[0].name)
+        val news = NcmHomeParse.personalizedNewSongs(
+            JSONObject(
+                """{"code":200,"result":[{"song":{"id":2,"name":"新歌","ar":[{"name":"A"}],"al":{"picUrl":"https://p/n.jpg"},"dt":1000}}]}""",
+            ),
+        )
+        assertEquals("新歌", news[0].name)
+        val albums = NcmHomeParse.collectedAlbums(
+            JSONObject("""{"code":200,"data":[{"id":5,"name":"专","picUrl":"https://p/c.jpg","artist":{"name":"B"}}]}"""),
+        )
+        assertEquals(1, albums.size)
+        assertEquals("专", albums[0].name)
+        assertEquals("B", albums[0].artist)
+        val fm = NcmHomeParse.personalFmTracks(
+            JSONObject("""{"code":200,"data":[{"id":9,"name":"漫游","ar":[{"name":"C"}],"al":{"picUrl":"https://p/f.jpg"},"dt":1000}]}"""),
+        )
+        assertEquals("漫游", fm[0].name)
+        val intel = NcmHomeParse.intelligenceTracks(
+            JSONObject("""{"code":200,"data":[{"songInfo":{"id":8,"name":"心动","ar":[{"name":"D"}],"al":{},"dt":1}}]}"""),
+        )
+        assertEquals("心动", intel[0].name)
+    }
+}
+
+class SearchHitParseTest {
+    @Test
+    fun parsesUserAndMvHits() {
+        val users = parseSearchHits(
+            JSONObject("""{"result":{"userprofiles":[{"userId":5,"nickname":"萱","avatarUrl":"https://p/a.jpg"}]}}"""),
+            1002,
+        )
+        assertEquals(5L, users[0].id)
+        assertEquals("萱", users[0].name)
+        val mvs = parseSearchHits(
+            JSONObject("""{"result":{"mvs":[{"id":7,"name":"PV","artistName":"A","cover":"https://p/m.jpg"}]}}"""),
+            1004,
+        )
+        assertEquals("PV", mvs[0].name)
+    }
+}
+
+class AppearanceGlassTest {
+    @Test
+    fun appearanceResolvesSystemFromOs() {
+        assertEquals(false, AppAppearance.Light.resolveDark(true))
+        assertEquals(true, AppAppearance.Dark.resolveDark(false))
+        assertEquals(true, AppAppearance.System.resolveDark(true))
+        assertEquals(false, AppAppearance.System.resolveDark(false))
+        assertEquals("跟随系统", AppAppearance.System.title)
+    }
+
+    @Test
+    fun chromeGlassHasLiquidFrostedSolid() {
+        assertEquals(listOf("液态", "磨砂", "纯色"), ChromeGlassMode.entries.map { it.title })
+        assertTrue(GlassStyle(mode = ChromeGlassMode.Frosted, blur = 0.5f).settingsSubtitle.contains("磨砂"))
+        assertEquals("纯色，不透明", GlassStyle(mode = ChromeGlassMode.Solid).settingsSubtitle)
+        assertEquals(true, AppPrefs().playerHalo)
+    }
+
+    @Test
+    fun pulseSpectrumRisesWhenPlaying() {
+        val idle = pulseSpectrum(false, 0L)
+        val live = pulseSpectrum(true, 12_000L)
+        assertTrue(idle.low < 0.2f)
+        assertTrue(live.low > idle.low)
+        assertTrue(live.high > 0f)
+    }
+}
+
+class LandscapeSourceTest {
+    @Test
+    fun homeDoesNotLoadLikedPlaylists() {
+        val text = readLinuxSrc("ui/home/HomeScreen.kt")
+        assertNotNull(text)
+        assertTrue(!text.contains("userPlaylist"))
+        assertTrue(text.contains("推荐歌单"))
+        assertTrue(text.contains("isLikedMusicPlaylistName"))
+        assertTrue(text.contains("LandscapeDailyPanel"))
+    }
+
+    @Test
+    fun profileHasLandscapeLibrarySections() {
+        val text = readLinuxSrc("ui/library/ProfileScreen.kt")
+        assertNotNull(text)
+        assertTrue(text.contains("我喜欢的音乐"))
+        assertTrue(text.contains("创建的歌单"))
+        assertTrue(text.contains("进入用户空间"))
+        assertTrue(text.contains("albumSublist"))
+        assertTrue(text.contains("playlistCreate"))
+        assertTrue(text.contains("新建"))
+    }
+
+    @Test
+    fun settingsUsesGroupedCardsAndGlassPages() {
+        val settings = readLinuxSrc("ui/settings/SettingsScreen.kt")
+        val pages = readLinuxSrc("ui/settings/SettingsPages.kt")
+        assertNotNull(settings)
+        assertNotNull(pages)
+        assertTrue(settings.contains("SettingsGroup"))
+        assertTrue(settings.contains("AppearanceSettingsPage"))
+        assertTrue(settings.contains("LiquidGlassStylePage"))
+        assertTrue(settings.contains("DownloadAccelSettingsPage"))
+        assertTrue(settings.contains("RealtimeCacheSettingsPage"))
+        assertTrue(settings.contains("AnimatedContent"))
+        assertTrue(settings.contains("chromeGlassSurface"))
+        assertTrue(settings.contains("动态光晕"))
+        assertTrue(pages.contains("磨砂"))
+        assertTrue(pages.contains("AppAppearance.System"))
+        assertTrue(!settings.contains("if (it.appearance == AppAppearance.Light)"))
+    }
+
+    @Test
+    fun playerCopiesLandscapeHaloAndVinyl() {
+        val body = readLinuxSrc("ui/player/LandscapePlayerBody.kt")
+        val orbs = readLinuxSrc("ui/player/PlayerAtmosphere.kt")
+        val vinyl = readLinuxSrc("ui/player/PlayerVinyl.kt")
+        assertNotNull(body)
+        assertNotNull(orbs)
+        assertNotNull(vinyl)
+        assertTrue(body.contains("GeminiOrbsBackdrop"))
+        assertTrue(body.contains("VinylWithCoverArt"))
+        assertTrue(orbs.contains("Color(0xFFE8A0C8)"))
+        assertTrue(vinyl.contains("VinylDiscBase"))
+        assertTrue(body.contains("onToggleLike"))
+        assertTrue(body.contains("QueuePickOverlay"))
+        assertTrue(body.contains("投影歌词"))
+        assertTrue(body.contains("播放队列"))
+        assertTrue(body.contains("skipDir"))
+        assertTrue(body.contains("slideInHorizontally"))
+        assertTrue(vinyl.contains("skipSeq"))
+        assertTrue(!body.contains("fun VinylDisc(playing"))
+    }
+
+    @Test
+    fun catalogWiresSearchSubscribeAndCache() {
+        val search = readLinuxSrc("ui/catalog/CatalogOverlays.kt")
+        val detail = readLinuxSrc("ui/catalog/DetailOverlays.kt")
+        val home = readLinuxSrc("ui/home/HomeScreen.kt")
+        val settings = readLinuxSrc("ui/settings/SettingsScreen.kt")
+        val pages = readLinuxSrc("ui/settings/SettingsPages.kt")
+        val shell = readLinuxSrc("ui/main/MainShell.kt")
+        assertNotNull(search)
+        assertNotNull(detail)
+        assertNotNull(home)
+        assertNotNull(settings)
+        assertNotNull(pages)
+        assertNotNull(shell)
+        assertTrue(search.contains("1004 to \"MV\""))
+        assertTrue(search.contains("1002 to \"用户\""))
+        assertTrue(search.contains("searchHotDetail"))
+        assertTrue(search.contains("CachedSongsOverlay"))
+        assertTrue(search.contains("playlistSubscribe"))
+        assertTrue(detail.contains("ArtistTab"))
+        assertTrue(detail.contains("artistAlbums"))
+        assertTrue(detail.contains("userFollow"))
+        assertTrue(home.contains("targetType == 10"))
+        assertTrue(home.contains("targetType == 100"))
+        assertTrue(home.contains("targetType == 1"))
+        assertTrue(settings.contains("SettingsPage.Appreciate"))
+        assertTrue(pages.contains("img_wechat_appreciate"))
+        assertTrue(shell.contains("onToggleLike"))
+        assertTrue(shell.contains("insertNext"))
+        assertTrue(shell.contains("personalFmTracks"))
+        assertTrue(search.contains("occupancy"))
+        val cachePage = readLinuxSrc("ui/settings/SettingsCachePages.kt")
+        val lib = readLinuxSrc("data/LocalLibrary.kt")
+        val coord = readLinuxSrc("playback/PlaylistCoordinator.kt")
+        val mini = readLinuxSrc("ui/main/MiniPlayerBar.kt")
+        val rail = readLinuxSrc("ui/main/LandscapeNavRail.kt")
+        val urlImage = readLinuxSrc("ui/common/UrlImage.kt")
+        assertNotNull(cachePage)
+        assertNotNull(lib)
+        assertNotNull(coord)
+        assertNotNull(mini)
+        assertNotNull(rail)
+        assertNotNull(urlImage)
+        assertTrue(cachePage.contains("OccupancyCard"))
+        assertTrue(lib.contains("fun playUri"))
+        assertTrue(lib.contains("fun occupancy"))
+        assertTrue(lib.contains("fun finishListen"))
+        assertTrue(lib.contains("readImageCache"))
+        assertTrue(lib.contains("listOf(cacheDir())"))
+        assertTrue(!lib.contains("accelDirs() + cacheDir()"))
+        assertTrue(coord.contains("cachePrefs"))
+        assertTrue(coord.contains("此歌曲已进行缓存加速"))
+        assertTrue(mini.contains("AnimatedContent"))
+        assertTrue(rail.contains("animateColorAsState"))
+        assertTrue(urlImage.contains("Crossfade"))
+        assertTrue(urlImage.contains("readImageCache"))
+        assertTrue(home.contains("animateScrollToPage"))
+        assertTrue(shell.contains("LandscapeCoverEnter"))
+        assertTrue(shell.contains("slideInVertically"))
     }
 }
 
@@ -283,6 +497,16 @@ class XaiopJarTest {
         val jar = roots.firstOrNull { java.nio.file.Files.isRegularFile(it) }
         assertNotNull(jar, "Linux/libs/xaiop-0.15.1.jar missing")
         assertTrue(java.nio.file.Files.size(jar) > 100_000L)
+    }
+}
+
+private fun readLinuxSrc(rel: String): String? {
+    val roots = listOf(
+        java.nio.file.Path.of("src", "main", "kotlin", "com", "kite", "zmusic").resolve(rel),
+        java.nio.file.Path.of("Linux", "src", "main", "kotlin", "com", "kite", "zmusic").resolve(rel),
+    )
+    return roots.firstOrNull { java.nio.file.Files.exists(it) }?.let {
+        java.nio.file.Files.readString(it)
     }
 }
 

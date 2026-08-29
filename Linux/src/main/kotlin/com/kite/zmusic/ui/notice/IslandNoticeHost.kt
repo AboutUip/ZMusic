@@ -31,7 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.kite.zmusic.data.GlassStyle
-import com.kite.zmusic.ui.chrome.liquidGlass
+import com.kite.zmusic.ui.chrome.chromeGlassSurface
 import com.kite.zmusic.ui.theme.MainPalette
 import kotlinx.coroutines.delay
 
@@ -64,7 +64,7 @@ fun IslandNoticeHost(
                 Modifier
                     .padding(top = 16.dp)
                     .widthIn(max = 320.dp)
-                    .liquidGlass(RoundedCornerShape(50), glass)
+                    .chromeGlassSurface(RoundedCornerShape(50), glass)
                     .padding(horizontal = 16.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {

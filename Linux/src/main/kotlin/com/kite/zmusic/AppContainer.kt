@@ -2,7 +2,6 @@ package com.kite.zmusic
 
 import com.kite.zmusic.config.NcmApiConfig
 import com.kite.zmusic.data.CommunityCatalogClient
-import com.kite.zmusic.data.LocalLibrary
 import com.kite.zmusic.data.NcmAuthClient
 import com.kite.zmusic.data.NcmUserClient
 import com.kite.zmusic.data.PrefsStore
@@ -38,15 +37,8 @@ class AppContainer(
         cookie = { sessions.session.value?.cookie },
         quality = { prefs.current().audioQuality },
         persistentPlayback = { prefs.current().persistentPlayback },
-        downloadAccelPath = { track ->
-            if (prefs.current().downloadAccel) {
-                LocalLibrary.findTrackFile(track.id) ?: track.localAudioUri
-            } else {
-                track.localAudioUri
-            }
-        },
-        realtimeCache = { prefs.current().realtimeCache.enabled },
-        realtimeCacheMb = { prefs.current().realtimeCache.maxMb },
+        downloadAccel = { prefs.current().downloadAccel },
+        cachePrefs = { prefs.current().realtimeCache },
     )
     val bridge = PlaybackBridge(coordinator)
 

@@ -1,5 +1,7 @@
 package com.kite.zmusic.ui.main
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -25,6 +27,7 @@ import androidx.compose.material.icons.outlined.Widgets
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -132,7 +135,16 @@ private fun RailItem(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     onClick: () -> Unit,
 ) {
-    val bg = if (selected) MainPalette.Accent.copy(alpha = 0.10f) else Color.Transparent
+    val bg by animateColorAsState(
+        if (selected) MainPalette.Accent.copy(alpha = 0.10f) else Color.Transparent,
+        tween(220),
+        label = "railBg",
+    )
+    val tint by animateColorAsState(
+        if (selected) MainPalette.DockActive else MainPalette.DockInactive,
+        tween(220),
+        label = "railTint",
+    )
     Row(
         Modifier
             .fillMaxWidth()
@@ -150,14 +162,14 @@ private fun RailItem(
         Icon(
             imageVector = icon,
             contentDescription = label,
-            tint = if (selected) MainPalette.DockActive else MainPalette.DockInactive,
+            tint = tint,
             modifier = Modifier.size(20.dp),
         )
         Spacer(Modifier.width(12.dp))
         Text(
             label,
             style = TextStyle(
-                color = if (selected) MainPalette.DockActive else MainPalette.DockInactive,
+                color = tint,
                 fontSize = 14.sp,
                 fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
             ),

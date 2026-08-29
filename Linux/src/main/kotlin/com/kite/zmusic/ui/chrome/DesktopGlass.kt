@@ -3,7 +3,6 @@ package com.kite.zmusic.ui.chrome
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
@@ -12,6 +11,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.unit.dp
+import com.kite.zmusic.data.ChromeGlassMode
 import com.kite.zmusic.data.GlassStyle
 import com.kite.zmusic.ui.theme.MainPalette
 import org.jetbrains.skia.Paint
@@ -20,8 +20,8 @@ import org.jetbrains.skia.RuntimeEffect
 import org.jetbrains.skia.RuntimeShaderBuilder
 
 /**
- * 桌面液体玻璃：Skia RuntimeEffect（折射率 / 模糊）画在面板上，不糊文字。
- * 这是 Linux 终局玻璃引擎，设置项直接绑定这两档参数。
+ * 桌面液体玻璃：Skia RuntimeEffect 只在 [ChromeGlassMode.Liquid] 启用。
+ * 磨砂 / 纯色走廉价半透明或实色，避免每个卡片每帧跑着色器。
  */
 private const val GLASS_SKSL = """
 uniform float2 uResolution;
@@ -42,11 +42,27 @@ half4 main(float2 fragCoord) {
 """
 
 @Composable
+fun Modifier.chromeGlassSurface(shape: Shape, style: GlassStyle): Modifier =
+    when (style.mode) {
+        ChromeGlassMode.Solid ->
+            clip(shape).background(MainPalette.Surface).border(0.5.dp, MainPalette.Hairline, shape)
+        ChromeGlassMode.Frosted -> {
+            val alpha = (0.52f + style.blur * 0.28f).coerceIn(0.40f, 0.88f)
+            clip(shape)
+                .background(MainPalette.SheetTint.copy(alpha = alpha))
+                .border(0.5.dp, MainPalette.Hairline, shape)
+        }
+        ChromeGlassMode.Liquid -> liquidGlass(shape, style)
+    }
+
+private val glassEffect: RuntimeEffect? by lazy {
+    runCatching { RuntimeEffect.makeForShader(GLASS_SKSL) }.getOrNull()
+}
+
+@Composable
 fun Modifier.liquidGlass(shape: Shape, style: GlassStyle): Modifier {
     val dark = if (MainPalette.isDark) 1f else 0f
-    val effect = remember {
-        runCatching { RuntimeEffect.makeForShader(GLASS_SKSL) }.getOrNull()
-    }
+    val effect = glassEffect
     val fill = MainPalette.snapshot.glassFill(0.18f + style.refraction * 0.28f + style.blur * 0.08f)
     return this
         .clip(shape)

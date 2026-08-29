@@ -10,22 +10,94 @@ import kotlinx.coroutines.flow.asStateFlow
 import org.json.JSONObject
 
 enum class AppAppearance(val title: String, val subtitle: String) {
-    Light("浅色", "浅色界面"),
-    Dark("深色", "深色界面"),
+    Light("浅色", "始终使用浅色界面"),
+    Dark("深色", "始终使用深色界面"),
+    System("跟随系统", "与系统外观保持一致"),
+    ;
+
+    fun resolveDark(systemDark: Boolean): Boolean = when (this) {
+        Light -> false
+        Dark -> true
+        System -> systemDark
+    }
+
+    companion object {
+        fun fromStored(raw: String?): AppAppearance =
+            entries.firstOrNull { it.name.equals(raw?.trim(), ignoreCase = true) } ?: Light
+    }
+}
+
+enum class ChromeGlassMode {
+    Liquid,
+    Frosted,
+    Solid,
+    ;
+
+    val title: String
+        get() = when (this) {
+            Liquid -> "液态"
+            Frosted -> "磨砂"
+            Solid -> "纯色"
+        }
+
+    val caption: String
+        get() = when (this) {
+            Liquid -> "折射背后的画面"
+            Frosted -> "只做模糊，不折射"
+            Solid -> "不透明底，不再透出背景"
+        }
+
+    companion object {
+        fun fromStored(raw: String?): ChromeGlassMode =
+            entries.firstOrNull { it.name.equals(raw?.trim(), ignoreCase = true) } ?: Liquid
+    }
 }
 
 data class GlassStyle(
-    val refraction: Float = 0.42f,
-    val blur: Float = 0.55f,
+    val mode: ChromeGlassMode = ChromeGlassMode.Liquid,
+    val refraction: Float = 1f,
+    val blur: Float = 0.4f,
 ) {
     val settingsSubtitle: String
-        get() = "折射率 ${(refraction * 100).toInt()} · 模糊 ${(blur * 100).toInt()}"
+        get() = when (mode) {
+            ChromeGlassMode.Liquid ->
+                "液态 · 折射率 ${formatRefraction(refraction)} · 模糊 ${formatBlurPercent(blur)}"
+            ChromeGlassMode.Frosted -> "磨砂 · 模糊 ${formatBlurPercent(blur)}"
+            ChromeGlassMode.Solid -> "纯色，不透明"
+        }
+
+    companion object {
+        fun formatRefraction(value: Float): String =
+            String.format(java.util.Locale.US, "%.2f", value.coerceIn(0f, 2f))
+
+        fun formatBlurPercent(value: Float): String =
+            "${(value.coerceIn(0f, 1f) * 100f).toInt()}%"
+    }
+}
+
+enum class RealtimeCacheMode(val title: String, val caption: String) {
+    Cautious("谨慎", "听满六成后再写入"),
+    Realtime("实时", "边听边下，听不满就删"),
+    Aggressive("激进", "边听边下，占满按旧文件淘汰"),
+    ;
+
+    companion object {
+        fun fromStored(raw: String?): RealtimeCacheMode =
+            entries.firstOrNull { it.name.equals(raw?.trim(), ignoreCase = true) } ?: Cautious
+    }
 }
 
 data class RealtimeCachePrefs(
     val enabled: Boolean = false,
+    val mode: RealtimeCacheMode = RealtimeCacheMode.Cautious,
     val maxMb: Int = 512,
-)
+) {
+    val liveDownload: Boolean
+        get() = enabled && (mode == RealtimeCacheMode.Realtime || mode == RealtimeCacheMode.Aggressive)
+
+    val settingsSubtitle: String
+        get() = if (enabled) "已开启 · ${mode.title}模式" else "已关闭 · 不采样不走本地缓存"
+}
 
 data class AppPrefs(
     val musicServer: String = "",
@@ -38,6 +110,7 @@ data class AppPrefs(
     val appearance: AppAppearance = AppAppearance.Light,
     val glass: GlassStyle = GlassStyle(),
     val wallpaperPath: String = "",
+    val playerHalo: Boolean = true,
 )
 
 class PrefsStore {
@@ -68,18 +141,17 @@ class PrefsStore {
                 downloadAccel = o.optBoolean("downloadAccel", false),
                 realtimeCache = RealtimeCachePrefs(
                     enabled = o.optBoolean("realtimeCache", false),
-                    maxMb = o.optInt("realtimeCacheMb", 512),
+                    mode = RealtimeCacheMode.fromStored(o.optString("realtimeCacheMode")),
+                    maxMb = o.optInt("realtimeCacheMb", 512).coerceIn(64, 4096),
                 ),
-                appearance = if (o.optString("appearance") == "Dark") {
-                    AppAppearance.Dark
-                } else {
-                    AppAppearance.Light
-                },
+                appearance = AppAppearance.fromStored(o.optString("appearance")),
                 glass = GlassStyle(
-                    refraction = o.optDouble("glassRefraction", 0.42).toFloat(),
-                    blur = o.optDouble("glassBlur", 0.55).toFloat(),
+                    mode = ChromeGlassMode.fromStored(o.optString("glassMode")),
+                    refraction = o.optDouble("glassRefraction", 1.0).toFloat(),
+                    blur = o.optDouble("glassBlur", 0.4).toFloat(),
                 ),
                 wallpaperPath = o.optString("wallpaperPath", ""),
+                playerHalo = o.optBoolean("playerHalo", true),
             )
         }.getOrDefault(AppPrefs())
     }
@@ -93,11 +165,14 @@ class PrefsStore {
             .put("lyricWordByWord", p.lyricWordByWord)
             .put("downloadAccel", p.downloadAccel)
             .put("realtimeCache", p.realtimeCache.enabled)
+            .put("realtimeCacheMode", p.realtimeCache.mode.name)
             .put("realtimeCacheMb", p.realtimeCache.maxMb)
             .put("appearance", p.appearance.name)
+            .put("glassMode", p.glass.mode.name)
             .put("glassRefraction", p.glass.refraction.toDouble())
             .put("glassBlur", p.glass.blur.toDouble())
             .put("wallpaperPath", p.wallpaperPath)
+            .put("playerHalo", p.playerHalo)
         file().writeText(o.toString())
     }
 }

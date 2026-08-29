@@ -4,35 +4,39 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.toComposeImageBitmap
-import androidx.compose.ui.unit.dp
 import com.kite.zmusic.AppContainer
 import com.kite.zmusic.config.NcmApiConfig
+import com.kite.zmusic.data.NcmHomeParse
 import com.kite.zmusic.data.NcmJson
 import com.kite.zmusic.data.NcmLibraryParse
 import com.kite.zmusic.data.TrackRow
 import com.kite.zmusic.ui.catalog.AlbumOverlay
 import com.kite.zmusic.ui.catalog.ArtistOverlay
+import com.kite.zmusic.ui.catalog.CachedSongsOverlay
 import com.kite.zmusic.ui.catalog.ChartsOverlay
 import com.kite.zmusic.ui.catalog.DailyOverlay
 import com.kite.zmusic.ui.catalog.LikedArtistsOverlay
@@ -48,8 +52,6 @@ import com.kite.zmusic.ui.player.LandscapePlayerBody
 import com.kite.zmusic.ui.settings.SettingsScreen
 import com.kite.zmusic.ui.theme.MainColors
 import com.kite.zmusic.ui.theme.MainPalette
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 @Composable
@@ -63,10 +65,12 @@ fun MainShell(app: AppContainer, onLogout: () -> Unit) {
     var playerOpen by remember { mutableStateOf(false) }
     var uid by remember { mutableStateOf(0L) }
     val cookie = session?.cookie.orEmpty()
+    val scope = rememberCoroutineScope()
 
-    LaunchedEffect(prefs.appearance) {
+    val systemDark = isSystemInDarkTheme()
+    LaunchedEffect(prefs.appearance, systemDark) {
         MainPalette.bind(
-            if (prefs.appearance == com.kite.zmusic.data.AppAppearance.Dark) MainColors.Dark else MainColors.Light,
+            if (prefs.appearance.resolveDark(systemDark)) MainColors.Dark else MainColors.Light,
         )
     }
     LaunchedEffect(cookie) {
@@ -126,7 +130,6 @@ fun MainShell(app: AppContainer, onLogout: () -> Unit) {
                     when (dest) {
                         MainDestination.Home -> HomeScreen(
                             cookie = cookie,
-                            uid = uid,
                             userClient = app.user,
                             onOpenOverlay = ::push,
                             onPlayTracks = { t, i, pid, title -> play(t, i, pid, title) },
@@ -134,53 +137,66 @@ fun MainShell(app: AppContainer, onLogout: () -> Unit) {
                         MainDestination.Features -> FeaturesScreen(
                             onOpenOverlay = ::push,
                             onStartFm = {
-                                CoroutineScope(Dispatchers.Default).launch {
+                                scope.launch {
                                     val json = runCatching { app.user.personalFm(cookie) }.getOrNull()
                                         ?: return@launch
-                                    val data = json.optJSONArray("data") ?: return@launch
-                                    val tracks = buildList {
-                                        for (i in 0 until data.length()) {
-                                            val o = data.optJSONObject(i) ?: continue
-                                            NcmLibraryParse.trackFromSongObject(o)?.let { add(it) }
-                                        }
-                                    }
+                                    val tracks = NcmHomeParse.personalFmTracks(json)
                                     if (tracks.isNotEmpty()) {
-                                        app.bridge.playQueue(tracks, 0, fm = true)
+                                        app.bridge.playQueue(tracks, 0, fm = true, playlistTitle = "私人漫游")
+                                        playerOpen = true
+                                    } else {
+                                        app.notices.show("暂时无法开始私人漫游")
                                     }
                                 }
                             },
                             onStartIntelligence = {
-                                CoroutineScope(Dispatchers.Default).launch {
-                                    if (uid <= 0L) return@launch
+                                scope.launch {
+                                    if (uid <= 0L) {
+                                        app.notices.show("未登录")
+                                        return@launch
+                                    }
                                     val lists = runCatching {
                                         NcmLibraryParse.playlistsFromUserPlaylist(
                                             app.user.userPlaylist(uid, cookie),
                                             uid,
                                         )
                                     }.getOrDefault(emptyList())
-                                    val heart = lists.firstOrNull { it.isHeartPlaylist } ?: return@launch
+                                    val heart = lists.firstOrNull { it.isHeartPlaylist }
+                                    if (heart == null) {
+                                        app.notices.show("先在我喜欢的音乐里收藏几首歌")
+                                        return@launch
+                                    }
                                     val seed = NcmLibraryParse.tracksFromPlaylistDetail(
                                         app.user.playlistDetail(heart.id, cookie),
-                                    ).firstOrNull() ?: return@launch
-                                    val json = runCatching {
-                                        app.user.intelligenceList(seed.id, cookie)
-                                    }.getOrNull() ?: return@launch
-                                    val arr = json.optJSONArray("data") ?: return@launch
-                                    val tracks = buildList {
-                                        for (i in 0 until arr.length()) {
-                                            val o = arr.optJSONObject(i) ?: continue
-                                            val song = o.optJSONObject("songInfo") ?: o
-                                            NcmLibraryParse.trackFromSongObject(song)?.let { add(it) }
-                                        }
+                                    ).firstOrNull()
+                                    if (seed == null) {
+                                        app.notices.show("先在我喜欢的音乐里收藏几首歌")
+                                        return@launch
                                     }
+                                    val json = runCatching {
+                                        app.user.intelligenceList(seed.id, cookie, playlistId = heart.id)
+                                    }.getOrNull()
+                                    val tracks = json?.let { NcmHomeParse.intelligenceTracks(it) }.orEmpty()
                                     if (tracks.isNotEmpty()) {
-                                        app.bridge.playQueue(tracks, 0, intelligence = true)
+                                        app.bridge.playQueue(
+                                            tracks,
+                                            0,
+                                            playlistId = heart.id,
+                                            playlistTitle = "心动模式",
+                                            intelligence = true,
+                                        )
+                                        playerOpen = true
+                                    } else {
+                                        app.notices.show("心动模式暂时不可用")
                                     }
                                 }
                             },
                         )
                         MainDestination.Profile -> ProfileScreen(
-                            session = session,
+                            cookie = cookie,
+                            uid = uid,
+                            userClient = app.user,
+                            onOpenOverlay = ::push,
                             onOpenLikedArtists = { push(MainOverlay.LikedArtists) },
                         )
                     }
@@ -206,8 +222,11 @@ fun MainShell(app: AppContainer, onLogout: () -> Unit) {
                                     overlay = o,
                                     cookie = cookie,
                                     userClient = app.user,
+                                    uid = uid,
                                     onBack = ::pop,
                                     onPlay = { t, i -> play(t, i, o.id, o.title) },
+                                    onInsertNext = { app.bridge.insertNext(it) },
+                                    onNotice = { app.notices.show(it) },
                                 )
                                 is MainOverlay.Charts -> ChartsOverlay(
                                     cookie = cookie,
@@ -223,6 +242,7 @@ fun MainShell(app: AppContainer, onLogout: () -> Unit) {
                                     userClient = app.user,
                                     onBack = ::pop,
                                     onPlay = { t, i -> play(t, i, title = "每日推荐") },
+                                    onInsertNext = { app.bridge.insertNext(it) },
                                 )
                                 is MainOverlay.Search -> SearchOverlay(
                                     cookie = cookie,
@@ -241,6 +261,14 @@ fun MainShell(app: AppContainer, onLogout: () -> Unit) {
                                         overlayStack.push(MainOverlay.Playlist(id, name))
                                         overlayTick++
                                     },
+                                    onOpenUser = { id, name ->
+                                        overlayStack.push(MainOverlay.User(id, name))
+                                        overlayTick++
+                                    },
+                                    onOpenMv = { id, name ->
+                                        overlayStack.push(MainOverlay.Mv(id, name))
+                                        overlayTick++
+                                    },
                                 )
                                 is MainOverlay.Album -> AlbumOverlay(
                                     overlay = o,
@@ -248,6 +276,8 @@ fun MainShell(app: AppContainer, onLogout: () -> Unit) {
                                     userClient = app.user,
                                     onBack = ::pop,
                                     onPlay = { t, i -> play(t, i) },
+                                    onInsertNext = { app.bridge.insertNext(it) },
+                                    onNotice = { app.notices.show(it) },
                                 )
                                 is MainOverlay.Artist -> ArtistOverlay(
                                     overlay = o,
@@ -255,6 +285,16 @@ fun MainShell(app: AppContainer, onLogout: () -> Unit) {
                                     userClient = app.user,
                                     onBack = ::pop,
                                     onPlay = { t, i -> play(t, i) },
+                                    onInsertNext = { app.bridge.insertNext(it) },
+                                    onOpenAlbum = { id, name ->
+                                        overlayStack.push(MainOverlay.Album(id, name))
+                                        overlayTick++
+                                    },
+                                    onOpenMv = { id, name ->
+                                        overlayStack.push(MainOverlay.Mv(id, name))
+                                        overlayTick++
+                                    },
+                                    onNotice = { app.notices.show(it) },
                                 )
                                 is MainOverlay.User -> UserOverlay(
                                     overlay = o,
@@ -265,6 +305,7 @@ fun MainShell(app: AppContainer, onLogout: () -> Unit) {
                                         overlayStack.push(MainOverlay.Playlist(id, name))
                                         overlayTick++
                                     },
+                                    onNotice = { app.notices.show(it) },
                                 )
                                 is MainOverlay.LikedArtists -> LikedArtistsOverlay(
                                     cookie = cookie,
@@ -284,15 +325,22 @@ fun MainShell(app: AppContainer, onLogout: () -> Unit) {
                                         )
                                     }
                                 }
-                                is MainOverlay.CachedSongs -> OverlayScaffold("缓存的歌曲", ::pop) {
-                                    CachedSongsBody()
-                                }
+                                is MainOverlay.CachedSongs -> CachedSongsOverlay(
+                                    cookie = cookie,
+                                    userClient = app.user,
+                                    onBack = ::pop,
+                                    onPlay = { t, i -> play(t, i, title = "缓存的歌曲") },
+                                )
                                 else -> OverlayScaffold(o?.javaClass?.simpleName ?: "返回", ::pop) {}
                             }
                         }
                     }
                 }
-                if (playback.hasQueue && !playerOpen) {
+                AnimatedVisibility(
+                    visible = playback.hasQueue && !playerOpen,
+                    enter = fadeIn(tween(200)) + slideInVertically(tween(260)) { it / 3 },
+                    exit = fadeOut(tween(140)) + slideOutVertically(tween(180)) { it / 4 },
+                ) {
                     MiniPlayerBar(
                         state = playback,
                         glass = prefs.glass,
@@ -304,42 +352,25 @@ fun MainShell(app: AppContainer, onLogout: () -> Unit) {
         }
         AnimatedVisibility(
             visible = playerOpen && playback.hasQueue,
-            enter = fadeIn(tween(220)),
-            exit = fadeOut(tween(160)),
+            enter = LandscapeCoverEnter,
+            exit = LandscapeCoverExit,
         ) {
             LandscapePlayerBody(
                 state = playback,
                 wordByWord = prefs.lyricWordByWord,
+                activeHalo = prefs.playerHalo,
+                onHaloChange = { on -> app.prefs.update { it.copy(playerHalo = on) } },
                 onBack = { playerOpen = false },
                 onToggle = { app.bridge.togglePlay() },
                 onSeek = { app.bridge.seek(it) },
                 onMode = { app.bridge.cycleMode() },
                 onNext = { app.bridge.skipNext() },
                 onPrev = { app.bridge.skipPrev() },
+                onToggleLike = { app.bridge.toggleLike() },
+                onPlayAt = { app.bridge.playAt(it) },
             )
         }
         IslandNoticeHost(app.notices, prefs.glass, Modifier.align(Alignment.TopCenter))
-    }
-}
-
-@Composable
-private fun CachedSongsBody() {
-    val files = remember {
-        com.kite.zmusic.data.LocalLibrary.cacheDir().toFile().listFiles()?.filter { it.isFile }
-            .orEmpty()
-    }
-    if (files.isEmpty()) {
-        androidx.compose.material3.Text("还没有缓存曲目。", color = MainPalette.Secondary)
-    } else {
-        Column {
-            files.forEach { f ->
-                androidx.compose.material3.Text(
-                    f.name,
-                    color = MainPalette.Ink,
-                    modifier = Modifier.padding(vertical = 6.dp),
-                )
-            }
-        }
     }
 }
 

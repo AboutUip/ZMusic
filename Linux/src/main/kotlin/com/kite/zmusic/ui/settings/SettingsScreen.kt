@@ -1,10 +1,16 @@
 package com.kite.zmusic.ui.settings
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -21,6 +27,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Business
 import androidx.compose.material.icons.outlined.Cloud
+import androidx.compose.material.icons.outlined.BlurOn
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Dns
 import androidx.compose.material.icons.outlined.Favorite
@@ -37,7 +44,6 @@ import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.Subtitles
 import androidx.compose.material.icons.outlined.VolunteerActivism
 import androidx.compose.material3.Icon
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -58,13 +64,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kite.zmusic.config.NcmApiConfig
-import com.kite.zmusic.data.AppAppearance
 import com.kite.zmusic.data.AppPrefs
 import com.kite.zmusic.data.AudioQuality
 import com.kite.zmusic.data.ChangelogRoster
 import com.kite.zmusic.data.CommunityCatalogClient
+import com.kite.zmusic.data.GlassStyle
 import com.kite.zmusic.data.PartnerRoster
 import com.kite.zmusic.data.SponsorRoster
+import com.kite.zmusic.ui.chrome.chromeGlassSurface
 import com.kite.zmusic.ui.chrome.itemChrome
 import com.kite.zmusic.ui.main.LandscapeSettingsIconWell
 import com.kite.zmusic.ui.main.MainContentPadTop
@@ -74,7 +81,10 @@ import com.kite.zmusic.ui.theme.MainPalette
 import java.awt.FileDialog
 import java.awt.Frame
 
-private enum class SettingsPage { Root, Changelog, Sponsors, Partners, About, Legal }
+private enum class SettingsPage {
+    Root, Appearance, Glass, DownloadAccel, RealtimeCache,
+    Changelog, Sponsors, Appreciate, Partners, About, Legal,
+}
 
 @Composable
 fun SettingsScreen(
@@ -86,14 +96,47 @@ fun SettingsScreen(
     modifier: Modifier = Modifier,
 ) {
     var page by remember { mutableStateOf(SettingsPage.Root) }
-    when (page) {
+    AnimatedContent(
+        targetState = page,
+        transitionSpec = {
+            fadeIn(tween(220)) togetherWith fadeOut(tween(160))
+        },
+        label = "settingsPage",
+        modifier = modifier,
+    ) { current ->
+    when (current) {
         SettingsPage.Root -> SettingsRoot(
             prefs = prefs,
             onUpdate = onUpdate,
             onLogout = onLogout,
             onOpen = { page = it },
             notices = notices,
-            modifier = modifier,
+            modifier = Modifier,
+        )
+        SettingsPage.Appearance -> AppearanceSettingsPage(
+            selected = prefs.appearance,
+            onSelect = { next -> onUpdate { it.copy(appearance = next) } },
+            onBack = { page = SettingsPage.Root },
+        )
+        SettingsPage.Glass -> LiquidGlassStylePage(
+            style = prefs.glass,
+            onMode = { mode -> onUpdate { it.copy(glass = it.glass.copy(mode = mode)) } },
+            onRefraction = { v -> onUpdate { it.copy(glass = it.glass.copy(refraction = v)) } },
+            onBlur = { v -> onUpdate { it.copy(glass = it.glass.copy(blur = v)) } },
+            onReset = { onUpdate { it.copy(glass = GlassStyle()) } },
+            onBack = { page = SettingsPage.Root },
+        )
+        SettingsPage.DownloadAccel -> DownloadAccelSettingsPage(
+            enabled = prefs.downloadAccel,
+            onEnabled = { v -> onUpdate { it.copy(downloadAccel = v) } },
+            glass = prefs.glass,
+            onBack = { page = SettingsPage.Root },
+        )
+        SettingsPage.RealtimeCache -> RealtimeCacheSettingsPage(
+            prefs = prefs.realtimeCache,
+            glass = prefs.glass,
+            onUpdate = { next -> onUpdate { it.copy(realtimeCache = next) } },
+            onBack = { page = SettingsPage.Root },
         )
         SettingsPage.Changelog -> CatalogListPage("更新日志", { page = SettingsPage.Root }) {
             val snap = catalog.get("/api/v1/communities/zmusic/releases", "page=1&per_page=20")
@@ -103,6 +146,7 @@ fun SettingsScreen(
             val snap = catalog.get("/api/v1/communities/zmusic/sponsors", "page=1&per_page=40")
             SponsorRoster.parseRemote(snap).entries.map { "${it.name}  ${it.amount}" }
         }
+        SettingsPage.Appreciate -> AppreciateSettingsPage { page = SettingsPage.Root }
         SettingsPage.Partners -> CatalogListPage("赞助商", { page = SettingsPage.Root }) {
             val snap = catalog.get("/api/v1/communities/zmusic/vendors", "page=1&per_page=20")
             PartnerRoster.parseRemote(snap).entries.map { it.name }
@@ -120,6 +164,7 @@ fun SettingsScreen(
             )
         }
     }
+    }
 }
 
 @Composable
@@ -133,6 +178,7 @@ private fun SettingsRoot(
 ) {
     var editingMusic by remember { mutableStateOf(false) }
     var editingCommunity by remember { mutableStateOf(false) }
+    val glass = prefs.glass
     Column(
         modifier
             .fillMaxSize()
@@ -144,104 +190,127 @@ private fun SettingsRoot(
             "设置",
             style = TextStyle(color = MainPalette.Ink, fontSize = 26.sp, fontWeight = FontWeight.Bold),
         )
-        Spacer(Modifier.height(20.dp))
-        Group("连接")
-        if (editingMusic) {
-            ServerField(prefs.musicServer.ifBlank { NcmApiConfig.baseUrl }) { v ->
-                onUpdate { it.copy(musicServer = v.trim()) }
-                editingMusic = false
+        Spacer(Modifier.height(8.dp))
+        SettingsGroup("连接", glass) {
+            if (editingMusic) {
+                ServerField(prefs.musicServer.ifBlank { NcmApiConfig.baseUrl }) { v ->
+                    onUpdate { it.copy(musicServer = v.trim()) }
+                    editingMusic = false
+                }
+            } else {
+                SettingsRow("服务器", prefs.musicServer.ifBlank { NcmApiConfig.baseUrl }, Icons.Outlined.Dns, Color(0xFF5070F0)) {
+                    editingMusic = true
+                }
             }
-        } else {
-            SettingsRow("服务器", prefs.musicServer.ifBlank { NcmApiConfig.baseUrl }, Icons.Outlined.Dns, Color(0xFF5B8DEF)) {
-                editingMusic = true
-            }
-        }
-        if (editingCommunity) {
-            ServerField(prefs.communityServer) { v ->
-                onUpdate { it.copy(communityServer = v.trim()) }
-                editingCommunity = false
-            }
-        } else {
-            SettingsRow("社区服务器", prefs.communityServer, Icons.Outlined.Cloud, Color(0xFF30D158)) {
-                editingCommunity = true
-            }
-        }
-        Group("播放")
-        QualityRow(prefs.audioQuality) { q -> onUpdate { it.copy(audioQuality = q) } }
-        SwitchRow("持续播放", "与其它程序同时出声", prefs.persistentPlayback, Icons.Outlined.PlayArrow, Color(0xFF5B8DEF)) { v ->
-            onUpdate { it.copy(persistentPlayback = v) }
-        }
-        SwitchRow("逐字歌词", "有逐字数据时按字高亮", prefs.lyricWordByWord, Icons.Outlined.Subtitles, Color(0xFFFF9500)) { v ->
-            onUpdate { it.copy(lyricWordByWord = v) }
-        }
-        Group("缓存")
-        SwitchRow("下载加速", "命中本机文件则直接播", prefs.downloadAccel, Icons.Outlined.Folder, Color(0xFF30D158)) { v ->
-            onUpdate { it.copy(downloadAccel = v) }
-        }
-        SwitchRow("实时缓存", "边播边写入本机", prefs.realtimeCache.enabled, Icons.Outlined.Folder, Color(0xFF64D2FF)) { v ->
-            onUpdate { it.copy(realtimeCache = it.realtimeCache.copy(enabled = v)) }
-        }
-        Group("主题")
-        SettingsRow("外观", prefs.appearance.subtitle, Icons.Outlined.Palette, Color(0xFFAF52DE)) {
-            onUpdate {
-                it.copy(
-                    appearance = if (it.appearance == AppAppearance.Light) {
-                        AppAppearance.Dark
-                    } else {
-                        AppAppearance.Light
-                    },
-                )
+            SettingsHairline()
+            if (editingCommunity) {
+                ServerField(prefs.communityServer) { v ->
+                    onUpdate { it.copy(communityServer = v.trim()) }
+                    editingCommunity = false
+                }
+            } else {
+                SettingsRow("社区服务器", prefs.communityServer, Icons.Outlined.Cloud, Color(0xFF6B5CE7)) {
+                    editingCommunity = true
+                }
             }
         }
-        SettingsRow("液态玻璃样式", "折射率与模糊", Icons.Outlined.Opacity, Color(0xFF64D2FF)) {}
-        Text("折射率", style = TextStyle(color = MainPalette.Ink, fontSize = 14.sp), modifier = Modifier.padding(top = 4.dp))
-        Slider(
-            value = prefs.glass.refraction,
-            onValueChange = { v -> onUpdate { it.copy(glass = it.glass.copy(refraction = v)) } },
-        )
-        Text("模糊程度", style = TextStyle(color = MainPalette.Ink, fontSize = 14.sp))
-        Slider(
-            value = prefs.glass.blur,
-            onValueChange = { v -> onUpdate { it.copy(glass = it.glass.copy(blur = v)) } },
-        )
-        SettingsRow(
-            "自定义背景",
-            prefs.wallpaperPath.ifBlank { "选择横屏壁纸" },
-            Icons.Outlined.Image,
-            Color(0xFF8E8E93),
-        ) {
-            val picked = pickImageFile()
-            if (picked != null) onUpdate { it.copy(wallpaperPath = picked) }
-            else notices.show("未选择图片")
+        SettingsGroup("播放", glass) {
+            QualityRow(prefs.audioQuality) { q -> onUpdate { it.copy(audioQuality = q) } }
+            SettingsHairline()
+            SwitchRow(
+                "持续播放",
+                if (prefs.persistentPlayback) "已开启 · 与其他应用同时出声" else "已关闭 · 按系统规则让出",
+                prefs.persistentPlayback,
+                Icons.Outlined.PlayArrow,
+                Color(0xFF2E9B6B),
+            ) { v -> onUpdate { it.copy(persistentPlayback = v) } }
+            SettingsHairline()
+            SwitchRow(
+                "逐字歌词",
+                if (prefs.lyricWordByWord) "按字渲染 · 需歌曲提供逐字歌词" else "按行渲染",
+                prefs.lyricWordByWord,
+                Icons.Outlined.Subtitles,
+                Color(0xFF5B8DEF),
+            ) { v -> onUpdate { it.copy(lyricWordByWord = v) } }
         }
-        Group("ZMusic")
-        SettingsRow("关于", "ZMusic Linux ${NcmApiConfig.PRODUCT_VERSION} · GPL-2.0", Icons.Outlined.Info, Color(0xFF5B8DEF)) {
-            onOpen(SettingsPage.About)
+        SettingsGroup("缓存", glass) {
+            SettingsRow(
+                "下载加速",
+                if (prefs.downloadAccel) "已开启 · 命中本机缓存则跳过网络" else "已关闭 · 始终按音质在线拉取",
+                Icons.Outlined.Folder,
+                Color(0xFF3D9B8F),
+            ) { onOpen(SettingsPage.DownloadAccel) }
+            SettingsHairline()
+            SettingsRow(
+                "实时缓存",
+                prefs.realtimeCache.settingsSubtitle,
+                Icons.Outlined.Folder,
+                Color(0xFF5070F0),
+            ) { onOpen(SettingsPage.RealtimeCache) }
         }
-        SettingsRow("更新日志", "按版本查阅更新预览", Icons.Outlined.History, Color(0xFFFF9500)) {
-            onOpen(SettingsPage.Changelog)
+        SettingsGroup("主题", glass) {
+            SettingsRow("外观", prefs.appearance.subtitle, Icons.Outlined.Palette, Color(0xFF6B7CFF)) {
+                onOpen(SettingsPage.Appearance)
+            }
+            SettingsHairline()
+            SettingsRow("液态玻璃样式", prefs.glass.settingsSubtitle, Icons.Outlined.Opacity, Color(0xFF2BB3B0)) {
+                onOpen(SettingsPage.Glass)
+            }
+            SettingsHairline()
+            SwitchRow(
+                "动态光晕",
+                if (prefs.playerHalo) "已开启 · 播放页光球随节奏呼吸" else "已关闭 · 仅保留氛围底",
+                prefs.playerHalo,
+                Icons.Outlined.BlurOn,
+                Color(0xFFE8A0C8),
+            ) { v -> onUpdate { it.copy(playerHalo = v) } }
+            SettingsHairline()
+            SettingsRow(
+                "自定义背景",
+                prefs.wallpaperPath.substringAfterLast('/', prefs.wallpaperPath).ifBlank { "未选择" },
+                Icons.Outlined.Image,
+                Color(0xFF8B6BFF),
+            ) {
+                val picked = pickImageFile()
+                if (picked != null) onUpdate { it.copy(wallpaperPath = picked) }
+                else notices.show("未选择图片")
+            }
         }
-        SettingsRow("赞赏", "请小萱喝一口热乎的", Icons.Outlined.VolunteerActivism, Color(0xFFEC4141)) {
-            onOpen(SettingsPage.Sponsors)
+        SettingsGroup("ZMusic", glass) {
+            SettingsRow("关于", "版本、开发者与协议", Icons.Outlined.Info, Color(0xFF5B7CFA)) {
+                onOpen(SettingsPage.About)
+            }
+            SettingsHairline()
+            SettingsRow("更新日志", "按版本查阅更新预览", Icons.Outlined.History, Color(0xFF2A9D8F)) {
+                onOpen(SettingsPage.Changelog)
+            }
+            SettingsHairline()
+            SettingsRow("赞赏", "请小萱喝一口热乎的", Icons.Outlined.VolunteerActivism, Color(0xFFEC4141)) {
+                onOpen(SettingsPage.Appreciate)
+            }
+            SettingsHairline()
+            SettingsRow("赞助名单", "谢谢投喂的人", Icons.Outlined.Favorite, Color(0xFFEC4141)) {
+                onOpen(SettingsPage.Sponsors)
+            }
+            SettingsHairline()
+            SettingsRow("赞助商", "支持本应用的伙伴", Icons.Outlined.Business, Color(0xFF5E5CE6)) {
+                onOpen(SettingsPage.Partners)
+            }
+            SettingsHairline()
+            SettingsRow("条款与隐私", "服务条款与隐私说明", Icons.Outlined.Description, Color(0xFF8E8E93)) {
+                onOpen(SettingsPage.Legal)
+            }
         }
-        SettingsRow("赞助名单", "谢谢投喂的人", Icons.Outlined.Favorite, Color(0xFFEC4141)) {
-            onOpen(SettingsPage.Sponsors)
+        SettingsGroup("账号", glass) {
+            SettingsRow(
+                "退出登录",
+                "当前账号会退出，播放也会停止",
+                Icons.AutoMirrored.Outlined.Logout,
+                MainPalette.Accent,
+                destructive = true,
+                onClick = onLogout,
+            )
         }
-        SettingsRow("赞助商", "支持本应用的伙伴", Icons.Outlined.Business, Color(0xFF5E5CE6)) {
-            onOpen(SettingsPage.Partners)
-        }
-        SettingsRow("条款与隐私", "服务条款与隐私说明", Icons.Outlined.Description, Color(0xFF8E8E93)) {
-            onOpen(SettingsPage.Legal)
-        }
-        Group("账号")
-        SettingsRow(
-            "退出登录",
-            "当前账号会退出，播放也会停止",
-            Icons.AutoMirrored.Outlined.Logout,
-            MainPalette.Accent,
-            destructive = true,
-            onClick = onLogout,
-        )
     }
 }
 
@@ -276,21 +345,48 @@ private fun SimplePage(title: String, onBack: () -> Unit, content: @Composable (
             .padding(horizontal = mainContentPadH())
             .padding(top = MainContentPadTop, bottom = 32.dp),
     ) {
-        Text(
-            "返回",
-            color = MainPalette.Accent,
-            modifier = Modifier
-                .padding(top = 8.dp, bottom = 12.dp)
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = onBack,
-                ),
-        )
+        SettingsBack(onBack)
         Text(title, style = TextStyle(color = MainPalette.Ink, fontSize = 26.sp, fontWeight = FontWeight.Bold))
         Spacer(Modifier.height(16.dp))
         content()
     }
+}
+
+@Composable
+private fun SettingsGroup(
+    title: String,
+    glass: GlassStyle,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Column(Modifier.padding(top = 22.dp)) {
+        Text(
+            title,
+            modifier = Modifier.padding(start = 4.dp, bottom = 8.dp),
+            style = TextStyle(
+                color = MainPalette.Secondary,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = 0.4.sp,
+            ),
+        )
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .chromeGlassSurface(RoundedCornerShape(16.dp), glass),
+            content = content,
+        )
+    }
+}
+
+@Composable
+private fun SettingsHairline() {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .padding(start = 62.dp)
+            .height(0.5.dp)
+            .background(MainPalette.Hairline),
+    )
 }
 
 @Composable
@@ -299,8 +395,6 @@ private fun ServerField(value: String, onCommit: (String) -> Unit) {
     Column(
         Modifier
             .fillMaxWidth()
-            .padding(bottom = 8.dp)
-            .itemChrome(RoundedCornerShape(16.dp))
             .padding(horizontal = 18.dp, vertical = 12.dp),
     ) {
         BasicTextField(
@@ -325,19 +419,6 @@ private fun ServerField(value: String, onCommit: (String) -> Unit) {
 }
 
 @Composable
-private fun Group(title: String) {
-    Text(
-        title,
-        modifier = Modifier.padding(top = 18.dp, bottom = 8.dp),
-        style = TextStyle(
-            color = MainPalette.Secondary,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.SemiBold,
-        ),
-    )
-}
-
-@Composable
 private fun SettingsRow(
     title: String,
     subtitle: String,
@@ -349,8 +430,6 @@ private fun SettingsRow(
     Row(
         Modifier
             .fillMaxWidth()
-            .padding(bottom = 8.dp)
-            .itemChrome(RoundedCornerShape(16.dp))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
@@ -408,8 +487,6 @@ private fun SwitchRow(
     Row(
         Modifier
             .fillMaxWidth()
-            .padding(bottom = 8.dp)
-            .itemChrome(RoundedCornerShape(16.dp))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
@@ -445,7 +522,7 @@ private fun QualityRow(current: AudioQuality, onPick: (AudioQuality) -> Unit) {
         title = "音源默认质量",
         subtitle = "${current.title} · ${current.caption}",
         icon = Icons.Outlined.GraphicEq,
-        tint = Color(0xFFEC4141),
+        tint = Color(0xFFB08D57),
         onClick = { onPick(next) },
     )
 }

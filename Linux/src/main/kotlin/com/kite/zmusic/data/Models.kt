@@ -42,6 +42,31 @@ data class RecommendPlaylistCard(
     val playCount: Long,
 )
 
+data class RecommendMvCard(
+    val id: Long,
+    val name: String,
+    val coverUrl: String?,
+    val artist: String?,
+    val playCount: Long,
+)
+
+data class UserProfileBrief(
+    val userId: Long,
+    val nickname: String,
+    val avatarUrl: String?,
+    val signature: String?,
+    val backgroundUrl: String? = null,
+    val follows: Long? = null,
+    val followeds: Long? = null,
+)
+
+data class CollectedAlbum(
+    val id: Long,
+    val name: String,
+    val coverUrl: String?,
+    val artist: String?,
+)
+
 data class ChartSummary(
     val id: Long,
     val name: String,

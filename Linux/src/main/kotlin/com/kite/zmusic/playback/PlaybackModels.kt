@@ -34,6 +34,9 @@ data class PlaybackUiState(
     val notice: PlaybackNotice? = null,
     val vinylHue: Float = 0.02f,
     val lyricAlignVinyl: Boolean = false,
+    val trackLiked: Boolean = false,
+    val skipDir: Int = 0,
+    val skipSeq: Int = 0,
 ) {
     val currentTrack: TrackRow?
         get() = queue.getOrNull(index)

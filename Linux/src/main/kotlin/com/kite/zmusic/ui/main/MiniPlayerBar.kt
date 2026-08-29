@@ -1,12 +1,15 @@
 package com.kite.zmusic.ui.main
 
-import androidx.compose.foundation.background
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -32,7 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kite.zmusic.data.GlassStyle
 import com.kite.zmusic.playback.PlaybackUiState
-import com.kite.zmusic.ui.chrome.liquidGlass
+import com.kite.zmusic.ui.chrome.chromeGlassSurface
 import com.kite.zmusic.ui.common.UrlImage
 import com.kite.zmusic.ui.theme.MainPalette
 
@@ -54,7 +57,7 @@ fun MiniPlayerBar(
         modifier
             .fillMaxWidth()
             .padding(horizontal = 20.dp, vertical = 10.dp)
-            .liquidGlass(RoundedCornerShape(LandscapeMiniBarRadius), glass)
+                    .chromeGlassSurface(RoundedCornerShape(LandscapeMiniBarRadius), glass)
             .padding(horizontal = 8.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -80,22 +83,30 @@ fun MiniPlayerBar(
                     onClick = onExpand,
                 ),
         ) {
-            Text(
-                track.name,
-                style = TextStyle(
-                    color = MainPalette.MiniPlayerTitle,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold,
-                ),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                track.artists,
-                style = TextStyle(color = MainPalette.MiniPlayerSubtitle, fontSize = 11.sp),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            AnimatedContent(
+                targetState = Triple(track.id, track.name, track.artists),
+                transitionSpec = { fadeIn(tween(180)) togetherWith fadeOut(tween(120)) },
+                label = "miniMeta",
+            ) { (_, name, artists) ->
+                Column {
+                    Text(
+                        name,
+                        style = TextStyle(
+                            color = MainPalette.MiniPlayerTitle,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        ),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        artists,
+                        style = TextStyle(color = MainPalette.MiniPlayerSubtitle, fontSize = 11.sp),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
             LinearProgressIndicator(
                 progress = { progress },
                 modifier = Modifier
