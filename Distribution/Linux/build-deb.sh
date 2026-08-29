@@ -22,6 +22,7 @@ XAIOP_URL="https://github.com/AboutUip/XAIOP/releases/download/v0.15.1/xaiop-0.1
 
 INSTALL_DEPS=0
 SKIP_TESTS=1
+SKIP_GRADLE=0
 ALLOW_FOREIGN=0
 DOWNLOAD_JDK=1
 
@@ -33,6 +34,7 @@ Usage: bash Distribution/Linux/build-deb.sh [options]
                    Also tries openjdk-21 if no JDK 21 is found.
   --test           Run Linux/gradlew test (uses xvfb-run when DISPLAY is empty).
   --skip-tests     Do not run unit tests (default).
+  --skip-gradle    Reuse Linux/build/compose/jars (skip compile).
   --no-download-jdk
                    Never fetch Temurin 21; fail if no local JDK 21 exists.
   --allow-foreign  Continue on non-amd64 (deb is still Architecture: amd64).
@@ -51,6 +53,7 @@ while [ $# -gt 0 ]; do
     --install-deps) INSTALL_DEPS=1 ;;
     --test) SKIP_TESTS=0 ;;
     --skip-tests) SKIP_TESTS=1 ;;
+    --skip-gradle) SKIP_GRADLE=1 ;;
     --no-download-jdk) DOWNLOAD_JDK=0 ;;
     --allow-foreign) ALLOW_FOREIGN=1 ;;
     -h|--help) usage; exit 0 ;;
@@ -264,7 +267,13 @@ verify_deb() {
         file "${extract}/opt/zmusic/runtime/bin/java" | grep -qi 'ELF' || die "bundled java is not ELF (wrong builder OS?)"
       fi
       "${extract}/opt/zmusic/bin/zmusic" --version | grep -q '0.1' || die "zmusic --version failed"
-      "${extract}/opt/zmusic/bin/zmusic" --smoke | grep -q 'ok' || die "zmusic --smoke failed"
+      grep -F '$ROOT/zmusic.jar' "${extract}/opt/zmusic/bin/zmusic" >/dev/null \
+        || die "launcher does not resolve jar from ROOT"
+      if grep -F -- '-jar /opt/zmusic/zmusic.jar' "${extract}/opt/zmusic/bin/zmusic" >/dev/null; then
+        die "launcher still hardcodes /opt/zmusic/zmusic.jar"
+      fi
+      smoke_out="$("${extract}/opt/zmusic/bin/zmusic" --smoke)" || die "zmusic --smoke failed"
+      [ "$smoke_out" = "ok" ] || die "zmusic --smoke expected ok, got: ${smoke_out}"
     else
       log "warning: no jlink runtime in the deb; Kali must provide Java 21 to launch"
     fi
@@ -310,6 +319,8 @@ log "repo ${ROOT}"
 
 chmod +x "${LINUX}/gradlew" || true
 ensure_xaiop_jar
+log "pack.py --self-test"
+python3 "$PACK" --self-test
 
 if [ "$SKIP_TESTS" != 1 ]; then
   log "gradle test"
@@ -321,7 +332,11 @@ if [ "$SKIP_TESTS" != 1 ]; then
 fi
 
 log "pack.py"
-python3 "$PACK"
+if [ "$SKIP_GRADLE" = 1 ]; then
+  python3 "$PACK" --skip-gradle
+else
+  python3 "$PACK"
+fi
 
 verify_deb
 log "ok ${OUT_DEB}"

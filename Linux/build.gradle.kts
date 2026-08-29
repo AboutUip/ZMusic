@@ -17,6 +17,9 @@ java {
 
 kotlin {
     jvmToolchain(21)
+    compilerOptions {
+        allWarningsAsErrors.set(true)
+    }
 }
 
 fun xaiopJar(): java.io.File {

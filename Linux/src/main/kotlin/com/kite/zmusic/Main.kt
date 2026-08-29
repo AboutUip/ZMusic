@@ -24,15 +24,14 @@ fun main(args: Array<String>) {
         println(NcmApiConfig.PRODUCT_VERSION)
         return
     }
+    if (args.contains("--smoke")) {
+        println("ok")
+        return
+    }
     val app = runCatching { AppContainer() }.getOrElse { err ->
         System.err.println("ZMusic failed to start: ${err.message}")
         err.printStackTrace()
         throw err
-    }
-    if (args.contains("--smoke")) {
-        runCatching { app.coordinator.close() }
-        println("ok")
-        return
     }
     Thread.setDefaultUncaughtExceptionHandler { _, e ->
         System.err.println("ZMusic crash: ${e.message}")

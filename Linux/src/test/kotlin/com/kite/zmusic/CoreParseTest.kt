@@ -175,7 +175,8 @@ class DebControlTest {
         assertTrue(text.contains("Package: zmusic"))
         assertTrue(text.contains("Architecture: amd64"))
         assertTrue(text.contains("Version:"))
-        assertTrue(text.contains("Recommends:"))
+        assertTrue(text.contains("libasound2t64 | libasound2"))
+        assertTrue(text.contains("libgl1 | libgl1-mesa-glx"))
     }
 
     @Test
@@ -208,6 +209,8 @@ class DebControlTest {
         assertTrue(text.contains("jdk-21"))
         assertTrue(text.contains("XAIOP_URL"))
         assertTrue(text.contains("ensure_xaiop_jar"))
+        assertTrue(text.contains("pack.py --self-test"))
+        assertTrue(text.contains("--skip-gradle"))
         assertTrue(!text.contains("\r"), "build-deb.sh must be LF (CRLF breaks shebang on Linux)")
     }
 
@@ -217,6 +220,54 @@ class DebControlTest {
         assertNotNull(text)
         assertTrue(text.contains("XAIOP_URL"))
         assertTrue(text.contains("ensure_xaiop_jar"))
+    }
+
+    @Test
+    fun packPyLauncherResolvesInstallRoot() {
+        val text = readDist("pack.py")
+        assertNotNull(text)
+        val launcher = text.substringAfter("INNER_LAUNCHER = \"\"\"").substringBefore("\"\"\"")
+        assertTrue(launcher.contains("dirname --"))
+        assertTrue(launcher.contains("\$ROOT/zmusic.jar"))
+        assertTrue(launcher.contains("--smoke"))
+        assertTrue(!launcher.contains("-jar /opt/zmusic/zmusic.jar"))
+        assertTrue(text.contains("--compress=zip"))
+    }
+
+    @Test
+    fun smokeReturnsBeforeAppContainer() {
+        val roots = listOf(
+            java.nio.file.Path.of("src", "main", "kotlin", "com", "kite", "zmusic", "Main.kt"),
+            java.nio.file.Path.of("Linux", "src", "main", "kotlin", "com", "kite", "zmusic", "Main.kt"),
+        )
+        val text = roots.firstOrNull { java.nio.file.Files.exists(it) }?.let {
+            java.nio.file.Files.readString(it)
+        }
+        assertNotNull(text)
+        val smoke = text.indexOf("args.contains(\"--smoke\")")
+        val container = text.indexOf("AppContainer()")
+        assertTrue(smoke >= 0 && container >= 0 && smoke < container)
+    }
+
+    @Test
+    fun directionalIconsUseAutoMirrored() {
+        val files = listOf(
+            "ui/catalog/CatalogOverlays.kt",
+            "ui/player/LandscapePlayerBody.kt",
+            "ui/settings/SettingsScreen.kt",
+        ).flatMap { rel ->
+            listOf(
+                java.nio.file.Path.of("src", "main", "kotlin", "com", "kite", "zmusic").resolve(rel),
+                java.nio.file.Path.of("Linux", "src", "main", "kotlin", "com", "kite", "zmusic").resolve(rel),
+            )
+        }
+        val texts = files.filter { java.nio.file.Files.exists(it) }.map { java.nio.file.Files.readString(it) }
+        assertTrue(texts.isNotEmpty())
+        texts.forEach { text ->
+            assertTrue(!text.contains("Icons.Outlined.ArrowBack"))
+            assertTrue(!text.contains("Icons.Outlined.Logout"))
+            assertTrue(!text.contains("Icons.Outlined.KeyboardArrowRight"))
+        }
     }
 }
 

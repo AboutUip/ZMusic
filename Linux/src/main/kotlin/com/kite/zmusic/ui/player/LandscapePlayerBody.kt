@@ -23,11 +23,11 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
-import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Repeat
 import androidx.compose.material.icons.outlined.Shuffle
 import androidx.compose.material3.Icon
@@ -133,7 +133,7 @@ fun LandscapePlayerBody(
             }
         }
         Icon(
-            Icons.Outlined.ArrowBack,
+            Icons.AutoMirrored.Outlined.ArrowBack,
             contentDescription = "返回",
             tint = PlayerInk,
             modifier = Modifier

@@ -29,8 +29,8 @@ import androidx.compose.material.icons.outlined.GraphicEq
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material.icons.outlined.KeyboardArrowRight
-import androidx.compose.material.icons.outlined.Logout
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material.icons.outlined.Opacity
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.PlayArrow
@@ -237,7 +237,7 @@ private fun SettingsRoot(
         SettingsRow(
             "退出登录",
             "当前账号会退出，播放也会停止",
-            Icons.Outlined.Logout,
+            Icons.AutoMirrored.Outlined.Logout,
             MainPalette.Accent,
             destructive = true,
             onClick = onLogout,
@@ -387,7 +387,7 @@ private fun SettingsRow(
         }
         if (!destructive) {
             Icon(
-                Icons.Outlined.KeyboardArrowRight,
+                Icons.AutoMirrored.Outlined.KeyboardArrowRight,
                 contentDescription = null,
                 tint = MainPalette.Hint,
                 modifier = Modifier.size(18.dp),

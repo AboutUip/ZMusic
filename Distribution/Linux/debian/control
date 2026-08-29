@@ -3,7 +3,7 @@ Version: 0.1-1
 Section: sound
 Priority: optional
 Architecture: amd64
-Depends: libc6 (>= 2.35), libasound2, libx11-6, libxext6, libxrender1, libxi6, libgl1, libdbus-1-3
+Depends: libc6 (>= 2.35), libasound2t64 | libasound2, libx11-6, libxext6, libxrender1, libxi6, libgl1 | libgl1-mesa-glx, libdbus-1-3
 Recommends: hicolor-icon-theme, desktop-file-utils
 Maintainer: ZMusic <noreply@github.com>
 Homepage: https://github.com/AboutUip/ZMusic

@@ -16,7 +16,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -52,7 +52,7 @@ fun OverlayScaffold(
     Column(Modifier.fillMaxSize().padding(horizontal = 24.dp).padding(top = 16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
-                Icons.Outlined.ArrowBack,
+                Icons.AutoMirrored.Outlined.ArrowBack,
                 contentDescription = "返回",
                 tint = MainPalette.Ink,
                 modifier = Modifier.clickable(

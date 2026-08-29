@@ -43,6 +43,37 @@ JLINK_MODULES = ",".join(
     ]
 )
 SKIP_LDD = ("libc.so", "libm.so", "libdl.so", "libpthread.so", "ld-linux", "libgcc_s", "linux-vdso")
+OPTIONAL_JLINK_MODULES = ("jdk.unsupported.desktop", "jdk.accessibility")
+
+INNER_LAUNCHER = """\
+#!/bin/sh
+ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+JAVA="$ROOT/runtime/bin/java"
+if [ ! -x "$JAVA" ]; then JAVA="${JAVA_HOME:+$JAVA_HOME/bin/java}"; fi
+if [ ! -x "$JAVA" ]; then JAVA="$(command -v java 2>/dev/null || true)"; fi
+if [ "$1" = "--version" ]; then echo 0.1.0; exit 0; fi
+if [ -z "$JAVA" ] || [ ! -x "$JAVA" ]; then
+  echo "zmusic: no java runtime (expected $ROOT/runtime/bin/java)" >&2
+  exit 1
+fi
+export LD_LIBRARY_PATH="$ROOT/lib/native${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+if [ "$1" = "--smoke" ]; then
+  exec "$JAVA" -Djava.awt.headless=true -Djava.library.path="$ROOT/lib/native" -jar "$ROOT/zmusic.jar" --smoke
+fi
+exec "$JAVA" -Djava.library.path="$ROOT/lib/native" -jar "$ROOT/zmusic.jar" "$@"
+"""
+
+
+def write_unix(path: Path, text: str, mode: int = 0o644) -> None:
+    data = text.replace("\r\n", "\n").replace("\r", "\n")
+    if not data.endswith("\n"):
+        data += "\n"
+    path.write_bytes(data.encode("utf-8"))
+    os.chmod(path, mode)
+
+
+def copy_unix_text(src: Path, dest: Path, mode: int = 0o644) -> None:
+    write_unix(dest, src.read_text(encoding="utf-8"), mode)
 
 
 def run(cmd: list[str], cwd: Path | None = None) -> None:
@@ -104,18 +135,36 @@ def seed_xaiop_maven_local() -> None:
         )
 
 
+def find_app_jar() -> Path | None:
+    jars = list((LINUX / "build" / "compose" / "jars").glob("*.jar"))
+    if jars:
+        return jars[0]
+    jars = list((LINUX / "build" / "libs").glob("*zmusic*.jar"))
+    return jars[0] if jars else None
+
+
 def gradle_jar() -> Path:
     ensure_xaiop_jar()
     gradlew = LINUX / "gradlew"
     cmd = [str(gradlew) if os.name != "nt" else str(LINUX / "gradlew.bat")]
     run(cmd + ["--no-daemon", "packageUberJarForCurrentOS"], cwd=LINUX)
-    jars = list((LINUX / "build" / "compose" / "jars").glob("*.jar"))
-    if not jars:
-        run(cmd + ["--no-daemon", "jar"], cwd=LINUX)
-        jars = list((LINUX / "build" / "libs").glob("*.jar"))
-    if not jars:
+    jar = find_app_jar()
+    if jar is None:
         raise SystemExit("no application jar")
-    return jars[0]
+    return jar
+
+
+def discover_optional_modules(java_bin: Path) -> str:
+    try:
+        out = subprocess.check_output(
+            [str(java_bin), "--list-modules"],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return ""
+    have = {line.split("@", 1)[0].strip() for line in out.splitlines() if line.strip()}
+    return ",".join(name for name in OPTIONAL_JLINK_MODULES if name in have)
 
 
 def jlink_runtime(dest: Path) -> None:
@@ -124,27 +173,49 @@ def jlink_runtime(dest: Path) -> None:
         print("skip jlink: not a Linux builder (refusing to embed a non-Linux JRE)")
         return
     java_home = os.environ.get("JAVA_HOME") or str(Path(shutil.which("java") or "").resolve().parents[1])
+    java_bin = Path(java_home) / "bin" / "java"
     jlink = Path(java_home) / "bin" / "jlink"
     if not jlink.exists():
-        jlink = Path(shutil.which("jlink") or "")
+        which = shutil.which("jlink") or ""
+        jlink = Path(which)
+        if which:
+            java_bin = jlink.parent / "java"
     if not jlink.exists():
         print("jlink not found; deb will need a system JRE fallback")
         return
-    if dest.exists():
-        shutil.rmtree(dest)
-    run(
-        [
-            str(jlink),
-            "--add-modules",
-            JLINK_MODULES,
-            "--strip-debug",
-            "--no-header-files",
-            "--no-man-pages",
-            "--compress=2",
-            "--output",
-            str(dest),
-        ]
-    )
+    extra = discover_optional_modules(java_bin)
+    module_sets = [JLINK_MODULES]
+    if extra:
+        module_sets.insert(0, f"{JLINK_MODULES},{extra}")
+    last: subprocess.CompletedProcess[str] | None = None
+    for modules in module_sets:
+        for compress in ("--compress=zip", "--compress=2"):
+            if dest.exists():
+                shutil.rmtree(dest)
+            cmd = [
+                str(jlink),
+                "--add-modules",
+                modules,
+                "--strip-debug",
+                "--no-header-files",
+                "--no-man-pages",
+                compress,
+                "--output",
+                str(dest),
+            ]
+            last = subprocess.run(cmd, capture_output=True, text=True)
+            if last.returncode == 0:
+                for line in (last.stderr or "").splitlines():
+                    low = line.lower()
+                    if "compress" in low and (
+                        "过时" in line or "outdated" in low or "deprecated" in low
+                    ):
+                        continue
+                    if line.strip():
+                        print(line, file=sys.stderr)
+                return
+    detail = (last.stderr or last.stdout or "unknown") if last else "unknown"
+    raise SystemExit(f"jlink failed: {detail.strip()}")
 
 
 def copy_libmpv(native: Path) -> None:
@@ -192,7 +263,7 @@ def write_control(dest: Path, installed_size_kb: int) -> None:
             continue
         lines.append(line)
     lines.append(f"Installed-Size: {installed_size_kb}")
-    dest.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    write_unix(dest, "\n".join(lines) + "\n")
 
 
 def md5sums(root: Path) -> str:
@@ -257,16 +328,14 @@ def pack_layout(stage: Path, jar: Path | None) -> None:
     (stage / "usr" / "share" / "doc" / PACKAGE).mkdir(parents=True)
     (stage / "usr" / "share" / "menu").mkdir(parents=True)
     install_icons(stage)
-    shutil.copy2(DIST / "zmusic.desktop", stage / "usr" / "share" / "applications" / "zmusic.desktop")
-    shutil.copy2(DIST / "debian" / "copyright", stage / "usr" / "share" / "doc" / PACKAGE / "copyright")
-    shutil.copy2(DIST / "debian" / "menu", stage / "usr" / "share" / "menu" / PACKAGE)
-    launcher = stage / "usr" / "bin" / "zmusic"
-    launcher.write_text(
-        "#!/bin/sh\n"
-        "exec /opt/zmusic/bin/zmusic \"$@\"\n",
-        encoding="utf-8",
+    copy_unix_text(DIST / "zmusic.desktop", stage / "usr" / "share" / "applications" / "zmusic.desktop")
+    copy_unix_text(DIST / "debian" / "copyright", stage / "usr" / "share" / "doc" / PACKAGE / "copyright")
+    copy_unix_text(DIST / "debian" / "menu", stage / "usr" / "share" / "menu" / PACKAGE)
+    write_unix(
+        stage / "usr" / "bin" / "zmusic",
+        "#!/bin/sh\nexec /opt/zmusic/bin/zmusic \"$@\"\n",
+        0o755,
     )
-    os.chmod(launcher, 0o755)
     bin_dir = opt / "bin"
     bin_dir.mkdir()
     runtime = opt / "runtime"
@@ -276,25 +345,17 @@ def pack_layout(stage: Path, jar: Path | None) -> None:
         copy_libmpv(opt / "lib" / "native")
     wrapper = bin_dir / "zmusic"
     if jar:
-        script = (
-            "#!/bin/sh\n"
-            "JAVA=/opt/zmusic/runtime/bin/java\n"
-            "if [ ! -x \"$JAVA\" ]; then JAVA=${JAVA_HOME:+$JAVA_HOME/bin/java}; fi\n"
-            "if [ ! -x \"$JAVA\" ]; then JAVA=$(command -v java); fi\n"
-            "if [ \"$1\" = \"--version\" ]; then echo 0.1.0; exit 0; fi\n"
-            "export LD_LIBRARY_PATH=/opt/zmusic/lib/native${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}\n"
-            "exec \"$JAVA\" -Djava.library.path=/opt/zmusic/lib/native -jar /opt/zmusic/zmusic.jar \"$@\"\n"
-        )
+        write_unix(wrapper, INNER_LAUNCHER, 0o755)
     else:
-        script = (
+        write_unix(
+            wrapper,
             "#!/bin/sh\n"
             "if [ \"$1\" = \"--version\" ]; then echo 0.1.0; exit 0; fi\n"
             "if [ \"$1\" = \"--smoke\" ]; then echo ok; exit 0; fi\n"
             "echo \"ZMusic runtime not bundled in this dry tree\" >&2\n"
-            "exit 0\n"
+            "exit 0\n",
+            0o755,
         )
-    wrapper.write_text(script, encoding="utf-8")
-    os.chmod(wrapper, 0o755)
 
 
 def build_deb(stage: Path, out: Path) -> None:
@@ -317,19 +378,60 @@ def build_deb(stage: Path, out: Path) -> None:
         data_tar = tdp / "data.tar.gz"
         with tarfile.open(data_tar, "w:gz") as tf:
             for child in stage.iterdir():
-                tf.add(child, arcname=child.name)
+                tf.add(child, arcname=child.name, filter=_exec_filter)
         debian_bin = tdp / "debian-binary"
-        debian_bin.write_text("2.0\n", encoding="utf-8")
+        debian_bin.write_bytes(b"2.0\n")
         ar_deb(out, debian_bin, control_tar, data_tar)
+
+
+def _exec_filter(info: tarfile.TarInfo) -> tarfile.TarInfo:
+    posix = info.name.replace("\\", "/")
+    base = posix.rsplit("/", 1)[-1]
+    if info.isfile() and base in {"zmusic", "java", "keytool", "jspawnhelper"}:
+        info.mode = (info.mode or 0o755) | 0o111
+    return info
+
+
+def self_test() -> None:
+    if "-jar /opt/zmusic/zmusic.jar" in INNER_LAUNCHER:
+        raise SystemExit("inner launcher must not hardcode /opt jar path")
+    if "$ROOT/zmusic.jar" not in INNER_LAUNCHER:
+        raise SystemExit("inner launcher must resolve jar from ROOT")
+    src = Path(__file__).read_text(encoding="utf-8")
+    if "--compress=zip" not in src:
+        raise SystemExit("jlink must prefer --compress=zip")
+    with tempfile.TemporaryDirectory() as td:
+        script = Path(td) / "zmusic"
+        write_unix(script, INNER_LAUNCHER, 0o755)
+        blob = script.read_bytes()
+        if b"\r" in blob:
+            raise SystemExit("launcher must be LF")
+        stage = Path(td) / "stage"
+        stage.mkdir()
+        pack_layout(stage, None)
+        usr = (stage / "usr" / "bin" / "zmusic").read_bytes()
+        if not usr.startswith(b"#!/bin/sh\n"):
+            raise SystemExit("usr/bin/zmusic shebang")
+        if b"\r" in usr:
+            raise SystemExit("usr/bin/zmusic CRLF")
+    print("pack.py self-test ok")
 
 
 def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--skip-gradle", action="store_true")
+    p.add_argument("--self-test", action="store_true")
     args = p.parse_args()
+    if args.self_test:
+        self_test()
+        return
     ARTIFACTS.mkdir(parents=True, exist_ok=True)
     jar = None
-    if not args.skip_gradle:
+    if args.skip_gradle:
+        jar = find_app_jar()
+        if jar is None:
+            raise SystemExit("no application jar; run without --skip-gradle")
+    else:
         jar = gradle_jar()
     with tempfile.TemporaryDirectory() as td:
         stage = Path(td) / "stage"
