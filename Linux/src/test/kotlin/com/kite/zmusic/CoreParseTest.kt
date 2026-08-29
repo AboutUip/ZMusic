@@ -232,6 +232,8 @@ class DebControlTest {
         assertTrue(launcher.contains("--smoke"))
         assertTrue(!launcher.contains("-jar /opt/zmusic/zmusic.jar"))
         assertTrue(text.contains("--compress=zip"))
+        assertTrue(text.contains("GNU_FORMAT"))
+        assertTrue(text.contains("assert_dpkg_tar"))
     }
 
     @Test

@@ -317,7 +317,64 @@ def add_tar_bytes(tf: tarfile.TarFile, arcname: str, data: bytes, mode: int) -> 
     info.mtime = int(time.time())
     info.uid = 0
     info.gid = 0
+    info.uname = "root"
+    info.gname = "root"
+    info.pax_headers = {}
     tf.addfile(info, io.BytesIO(data))
+
+
+def _dpkg_tar_filter(info: tarfile.TarInfo) -> tarfile.TarInfo:
+    info = _exec_filter(info)
+    info.uid = 0
+    info.gid = 0
+    info.uname = "root"
+    info.gname = "root"
+    info.mtime = int(info.mtime or 0)
+    info.pax_headers = {}
+    return info
+
+
+def open_gnu_gz(path: Path) -> tarfile.TarFile:
+    # dpkg rejects Python 3's default PAX type 'x' (header 120).
+    return tarfile.open(
+        path,
+        "w:gz",
+        format=tarfile.GNU_FORMAT,
+        encoding="utf-8",
+        errors="surrogateescape",
+    )
+
+
+def tar_typeflags(tgz: Path) -> list[int]:
+    import gzip
+
+    flags: list[int] = []
+    with gzip.open(tgz, "rb") as fh:
+        while True:
+            hdr = fh.read(512)
+            if len(hdr) < 512:
+                break
+            if hdr == b"\0" * 512:
+                break
+            flags.append(hdr[156])
+            try:
+                size_field = hdr[124:136].split(b"\0", 1)[0].strip()
+                size = int(size_field, 8) if size_field else 0
+            except ValueError:
+                size = 0
+            skip = (size + 511) // 512 * 512
+            if skip:
+                fh.read(skip)
+    return flags
+
+
+def assert_dpkg_tar(tgz: Path) -> None:
+    bad = {chr(flag) for flag in tar_typeflags(tgz) if flag in (ord("x"), ord("g"))}
+    if bad:
+        raise SystemExit(
+            f"{tgz.name} uses PAX tar headers {sorted(bad)}; "
+            "dpkg cannot unpack this (type 120). Rebuild with GNU tar."
+        )
 
 
 def pack_layout(stage: Path, jar: Path | None) -> None:
@@ -366,22 +423,40 @@ def build_deb(stage: Path, out: Path) -> None:
         write_control(ctrl, max(size_kb, 1))
         (tdp / "md5sums").write_text(md5sums(stage), encoding="utf-8")
         control_tar = tdp / "control.tar.gz"
-        with tarfile.open(control_tar, "w:gz") as tf:
-            tf.add(ctrl, arcname="control")
-            tf.add(tdp / "md5sums", arcname="md5sums")
+        with open_gnu_gz(control_tar) as tf:
+            tf.add(ctrl, arcname="control", filter=_dpkg_tar_filter)
+            tf.add(tdp / "md5sums", arcname="md5sums", filter=_dpkg_tar_filter)
             postinst = DIST / "debian" / "postinst"
             postrm = DIST / "debian" / "postrm"
             if postinst.exists():
                 add_tar_bytes(tf, "postinst", postinst.read_bytes().replace(b"\r\n", b"\n"), 0o755)
             if postrm.exists():
                 add_tar_bytes(tf, "postrm", postrm.read_bytes().replace(b"\r\n", b"\n"), 0o755)
+        assert_dpkg_tar(control_tar)
         data_tar = tdp / "data.tar.gz"
-        with tarfile.open(data_tar, "w:gz") as tf:
+        with open_gnu_gz(data_tar) as tf:
             for child in stage.iterdir():
-                tf.add(child, arcname=child.name, filter=_exec_filter)
+                tf.add(child, arcname=child.name, filter=_dpkg_tar_filter)
+        assert_dpkg_tar(data_tar)
         debian_bin = tdp / "debian-binary"
         debian_bin.write_bytes(b"2.0\n")
         ar_deb(out, debian_bin, control_tar, data_tar)
+
+
+def _ar_members(deb: Path) -> dict[str, bytes]:
+    data = deb.read_bytes()
+    if not data.startswith(b"!<arch>\n"):
+        raise SystemExit("not an ar archive")
+    pos = 8
+    out: dict[str, bytes] = {}
+    while pos + 60 <= len(data):
+        name = data[pos : pos + 16].decode("ascii", "replace").strip()
+        size = int(data[pos + 48 : pos + 58].strip() or b"0")
+        pos += 60
+        blob = data[pos : pos + size]
+        pos += size + (size % 2)
+        out[name] = blob
+    return out
 
 
 def _exec_filter(info: tarfile.TarInfo) -> tarfile.TarInfo:
@@ -414,6 +489,18 @@ def self_test() -> None:
             raise SystemExit("usr/bin/zmusic shebang")
         if b"\r" in usr:
             raise SystemExit("usr/bin/zmusic CRLF")
+        out = Path(td) / "probe.deb"
+        build_deb(stage, out)
+        payloads = _ar_members(out)
+        for name in ("control.tar.gz", "data.tar.gz"):
+            blob = payloads.get(name)
+            if not blob:
+                raise SystemExit(f"deb missing {name}")
+            tgz = Path(td) / name
+            tgz.write_bytes(blob)
+            assert_dpkg_tar(tgz)
+        if "GNU_FORMAT" not in Path(__file__).read_text(encoding="utf-8"):
+            raise SystemExit("pack.py must use GNU_FORMAT for dpkg")
     print("pack.py self-test ok")
 
 
