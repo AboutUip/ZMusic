@@ -3,3 +3,5 @@
 Distribution/Linux/debian/postinst text eol=lf
 Distribution/Linux/debian/postrm text eol=lf
 Linux/gradlew text eol=lf
+Linux/libs/*.jar binary
+

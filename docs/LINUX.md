@@ -124,6 +124,8 @@ sudo apt install ./artifacts/linux/ZMusic-Linux-0.1.deb
 
 脚本会定位 JDK 21（`JAVA_HOME`、`/usr/lib/jvm`、或下载 Temurin 到 `.tools/jdk-21`），用 **Linux jlink** 打进运行时，并写入桌面项。不要在 Windows 上跑 `pack.py` 指望得到能在 Kali 执行的 JRE。
 
+社区目录 SDK **不走 Maven Central**（上面没有 `io.github.aboutuip:xaiop`）。官方 JAR 钉在 `Linux/libs/xaiop-0.15.1.jar`；`build-deb.sh` 缺文件时从 GitHub Releases 拉取。Gradle 用 `files()` 引用，不要对该 group 做 `exclusiveContent`。
+
 分层（禁止打穿）：
 
 ```

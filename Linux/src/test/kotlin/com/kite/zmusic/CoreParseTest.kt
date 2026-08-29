@@ -206,7 +206,30 @@ class DebControlTest {
         assertTrue(text.contains("pack.py"))
         assertTrue(text.contains("--install-deps"))
         assertTrue(text.contains("jdk-21"))
+        assertTrue(text.contains("XAIOP_URL"))
+        assertTrue(text.contains("ensure_xaiop_jar"))
         assertTrue(!text.contains("\r"), "build-deb.sh must be LF (CRLF breaks shebang on Linux)")
+    }
+
+    @Test
+    fun packPyVendorsXaiop() {
+        val text = readDist("pack.py")
+        assertNotNull(text)
+        assertTrue(text.contains("XAIOP_URL"))
+        assertTrue(text.contains("ensure_xaiop_jar"))
+    }
+}
+
+class XaiopJarTest {
+    @Test
+    fun officialSdkJarIsVendored() {
+        val roots = listOf(
+            java.nio.file.Path.of("libs", "xaiop-0.15.1.jar"),
+            java.nio.file.Path.of("Linux", "libs", "xaiop-0.15.1.jar"),
+        )
+        val jar = roots.firstOrNull { java.nio.file.Files.isRegularFile(it) }
+        assertNotNull(jar, "Linux/libs/xaiop-0.15.1.jar missing")
+        assertTrue(java.nio.file.Files.size(jar) > 100_000L)
     }
 }
 

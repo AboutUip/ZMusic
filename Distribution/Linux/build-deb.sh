@@ -17,6 +17,8 @@ PACK="${SCRIPT_DIR}/pack.py"
 OUT_DEB="${ROOT}/artifacts/linux/ZMusic-Linux-0.1.deb"
 TOOLS_JDK="${ROOT}/.tools/jdk-21"
 ADOPTIUM_JDK_URL="https://api.adoptium.net/v3/binary/latest/21/ga/linux/x64/jdk/hotspot/normal/eclipse?project=jdk"
+XAIOP_JAR="${LINUX}/libs/xaiop-0.15.1.jar"
+XAIOP_URL="https://github.com/AboutUip/XAIOP/releases/download/v0.15.1/xaiop-0.15.1.jar"
 
 INSTALL_DEPS=0
 SKIP_TESTS=1
@@ -172,8 +174,23 @@ fetch_url() {
   elif command -v wget >/dev/null 2>&1; then
     wget -O "$dest" "$url"
   else
-    die "need curl or wget to download JDK 21"
+    die "need curl or wget to download $url"
   fi
+}
+
+ensure_xaiop_jar() {
+  local bytes=0
+  if [ -f "$XAIOP_JAR" ]; then
+    bytes="$(wc -c < "$XAIOP_JAR" | tr -d ' ')"
+  fi
+  if [ "${bytes:-0}" -gt 100000 ]; then
+    return 0
+  fi
+  mkdir -p "$(dirname "$XAIOP_JAR")"
+  log "xaiop is not on Maven Central; fetching official JAR"
+  fetch_url "$XAIOP_URL" "$XAIOP_JAR"
+  bytes="$(wc -c < "$XAIOP_JAR" | tr -d ' ')"
+  [ "${bytes:-0}" -gt 100000 ] || die "xaiop download failed ($XAIOP_URL)"
 }
 
 install_temurin_local() {
@@ -185,7 +202,7 @@ install_temurin_local() {
   log "downloading Temurin 21 (linux x64) into .tools/jdk-21"
   fetch_url "$ADOPTIUM_JDK_URL" "$tarball"
   tar -xzf "$tarball" -C "$tmp"
-  extracted="$(find "$tmp" -maxdepth 1 -type d -name 'jdk-21*' | head -n 1)"
+  extracted="$(find "$tmp" -maxdepth 1 -type d -name 'jdk-21*' | head -n 1 || true)"
   [ -n "$extracted" ] || die "Temurin archive layout unexpected"
   rm -rf "$TOOLS_JDK"
   mkdir -p "$(dirname "$TOOLS_JDK")"
@@ -275,6 +292,7 @@ log "java $(java_major "${JAVA_HOME}/bin/java") ($(printf '%s\n' "$_java_ver" | 
 log "repo ${ROOT}"
 
 chmod +x "${LINUX}/gradlew" || true
+ensure_xaiop_jar
 
 if [ "$SKIP_TESTS" != 1 ]; then
   log "gradle test"

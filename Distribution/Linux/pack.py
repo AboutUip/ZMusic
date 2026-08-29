@@ -13,6 +13,7 @@ import sys
 import tarfile
 import tempfile
 import time
+import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -48,7 +49,24 @@ def run(cmd: list[str], cwd: Path | None = None) -> None:
     subprocess.check_call(cmd, cwd=str(cwd) if cwd else None)
 
 
+XAIOP_JAR = LINUX / "libs" / "xaiop-0.15.1.jar"
+XAIOP_URL = "https://github.com/AboutUip/XAIOP/releases/download/v0.15.1/xaiop-0.15.1.jar"
+
+
+def ensure_xaiop_jar() -> None:
+    if XAIOP_JAR.is_file() and XAIOP_JAR.stat().st_size > 100_000:
+        return
+    XAIOP_JAR.parent.mkdir(parents=True, exist_ok=True)
+    print("xaiop is not on Maven Central; fetching official JAR")
+    req = urllib.request.Request(XAIOP_URL, headers={"User-Agent": "ZMusic-pack"})
+    with urllib.request.urlopen(req) as resp:
+        XAIOP_JAR.write_bytes(resp.read())
+    if not XAIOP_JAR.is_file() or XAIOP_JAR.stat().st_size <= 100_000:
+        raise SystemExit(f"xaiop download failed ({XAIOP_URL})")
+
+
 def gradle_jar() -> Path:
+    ensure_xaiop_jar()
     gradlew = LINUX / "gradlew"
     cmd = [str(gradlew) if os.name != "nt" else str(LINUX / "gradlew.bat")]
     run(cmd + ["--no-daemon", "packageUberJarForCurrentOS"], cwd=LINUX)

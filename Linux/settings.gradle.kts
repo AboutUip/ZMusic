@@ -10,11 +10,6 @@ pluginManagement {
 
 dependencyResolutionManagement {
     repositories {
-        exclusiveContent {
-            forRepository { mavenLocal() }
-            forRepository { mavenCentral() }
-            filter { includeGroup("io.github.aboutuip") }
-        }
         maven { url = uri("https://maven.aliyun.com/repository/public") }
         maven { url = uri("https://maven.aliyun.com/repository/google") }
         mavenCentral()

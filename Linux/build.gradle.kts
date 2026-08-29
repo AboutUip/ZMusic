@@ -19,6 +19,16 @@ kotlin {
     jvmToolchain(21)
 }
 
+fun xaiopJar(): java.io.File {
+    val jar = file("libs/xaiop-0.15.1.jar")
+    check(jar.isFile && jar.length() > 100_000L) {
+        "Missing ${jar.invariantSeparatorsPath}. " +
+            "Download https://github.com/AboutUip/XAIOP/releases/download/v0.15.1/xaiop-0.15.1.jar " +
+            "into Linux/libs/ (or re-run Distribution/Linux/build-deb.sh)."
+    }
+    return jar
+}
+
 dependencies {
     implementation(compose.desktop.currentOs)
     implementation(compose.material3)
@@ -28,7 +38,7 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.json:json:20240303")
     implementation("net.java.dev.jna:jna:5.17.0")
-    implementation("io.github.aboutuip:xaiop:0.15.1")
+    implementation(files(xaiopJar()))
     implementation("com.github.hypfvieh:dbus-java-core:5.1.1")
     implementation("com.github.hypfvieh:dbus-java-transport-native-unixsocket:5.1.1")
     testImplementation(kotlin("test"))
