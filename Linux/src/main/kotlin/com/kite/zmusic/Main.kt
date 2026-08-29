@@ -11,10 +11,10 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import com.kite.zmusic.config.NcmApiConfig
-import com.kite.zmusic.data.AppAppearance
 import com.kite.zmusic.ui.login.LoginScreen
 import com.kite.zmusic.ui.main.MainShell
 import com.kite.zmusic.ui.main.SplashScreen
+import com.kite.zmusic.ui.theme.LinuxSystemTheme
 import com.kite.zmusic.ui.theme.MainColors
 import com.kite.zmusic.ui.theme.MainPalette
 import java.awt.Dimension
@@ -37,8 +37,9 @@ fun main(args: Array<String>) {
         System.err.println("ZMusic crash: ${e.message}")
         e.printStackTrace()
     }
+    val appearance = app.prefs.current().appearance
     MainPalette.bind(
-        if (app.prefs.current().appearance == AppAppearance.Dark) MainColors.Dark else MainColors.Light,
+        if (appearance.resolveDark(LinuxSystemTheme.isDark())) MainColors.Dark else MainColors.Light,
     )
     application {
         val state = rememberWindowState(width = 1280.dp, height = 800.dp)

@@ -15,6 +15,7 @@ import com.kite.zmusic.playback.pulseSpectrum
 import com.kite.zmusic.data.isSelfHeartPlaylist
 import com.kite.zmusic.playback.PlaybackMode
 import com.kite.zmusic.ui.catalog.parseSearchHits
+import com.kite.zmusic.ui.theme.LinuxSystemTheme
 import com.kite.zmusic.ui.main.MainOverlay
 import com.kite.zmusic.ui.main.OverlayStack
 import org.json.JSONObject
@@ -212,6 +213,33 @@ class AppearanceGlassTest {
         assertEquals(true, AppAppearance.System.resolveDark(true))
         assertEquals(false, AppAppearance.System.resolveDark(false))
         assertEquals("跟随系统", AppAppearance.System.title)
+        val gtkDark = LinuxSystemTheme.parseGtkIni(
+            "[Settings]\ngtk-application-prefer-dark-theme=1\n",
+        )
+        val gtkLight = LinuxSystemTheme.parseGtkIni(
+            "[Settings]\ngtk-application-prefer-dark-theme=0\n",
+        )
+        val adwaitaDark = LinuxSystemTheme.parseGtkIni(
+            "gtk-theme-name=Adwaita-dark\n",
+        )
+        assertEquals(true, gtkDark)
+        assertEquals(false, gtkLight)
+        assertEquals(true, adwaitaDark)
+        assertEquals(true, LinuxSystemTheme.parseGsettingsColorScheme("'prefer-dark'"))
+        assertEquals(false, LinuxSystemTheme.parseGsettingsColorScheme("'prefer-light'"))
+        assertEquals(true, LinuxSystemTheme.parseKdeGlobals("ColorScheme=BreezeDark\n"))
+        val shell = readLinuxSrc("ui/main/MainShell.kt")
+        val main = java.nio.file.Files.readString(
+            listOf(
+                java.nio.file.Path.of("src", "main", "kotlin", "com", "kite", "zmusic", "Main.kt"),
+                java.nio.file.Path.of("Linux", "src", "main", "kotlin", "com", "kite", "zmusic", "Main.kt"),
+            ).first { java.nio.file.Files.exists(it) },
+        )
+        assertNotNull(shell)
+        assertTrue(shell.contains("LinuxSystemTheme.isDark()"))
+        assertTrue(!shell.contains("isSystemInDarkTheme"))
+        assertTrue(main.contains("LinuxSystemTheme.isDark()"))
+        assertTrue(!main.contains("isSystemInDarkTheme"))
     }
 
     @Test

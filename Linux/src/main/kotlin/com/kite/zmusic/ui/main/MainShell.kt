@@ -8,7 +8,6 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -30,6 +29,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import com.kite.zmusic.AppContainer
 import com.kite.zmusic.config.NcmApiConfig
+import com.kite.zmusic.data.AppAppearance
 import com.kite.zmusic.data.NcmHomeParse
 import com.kite.zmusic.data.NcmJson
 import com.kite.zmusic.data.NcmLibraryParse
@@ -50,8 +50,10 @@ import com.kite.zmusic.ui.library.ProfileScreen
 import com.kite.zmusic.ui.notice.IslandNoticeHost
 import com.kite.zmusic.ui.player.LandscapePlayerBody
 import com.kite.zmusic.ui.settings.SettingsScreen
+import com.kite.zmusic.ui.theme.LinuxSystemTheme
 import com.kite.zmusic.ui.theme.MainColors
 import com.kite.zmusic.ui.theme.MainPalette
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @Composable
@@ -67,7 +69,15 @@ fun MainShell(app: AppContainer, onLogout: () -> Unit) {
     val cookie = session?.cookie.orEmpty()
     val scope = rememberCoroutineScope()
 
-    val systemDark = isSystemInDarkTheme()
+    var systemDark by remember { mutableStateOf(LinuxSystemTheme.isDark()) }
+    LaunchedEffect(prefs.appearance) {
+        if (System.getProperty("zmusic.test") == "true") return@LaunchedEffect
+        if (prefs.appearance != AppAppearance.System) return@LaunchedEffect
+        while (true) {
+            systemDark = LinuxSystemTheme.isDark()
+            delay(2_500)
+        }
+    }
     LaunchedEffect(prefs.appearance, systemDark) {
         MainPalette.bind(
             if (prefs.appearance.resolveDark(systemDark)) MainColors.Dark else MainColors.Light,
