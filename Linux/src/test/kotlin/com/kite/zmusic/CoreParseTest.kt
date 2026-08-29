@@ -473,9 +473,12 @@ class DebControlTest {
         assertTrue(launcher.contains("\$ROOT/zmusic.jar"))
         assertTrue(launcher.contains("--smoke"))
         assertTrue(!launcher.contains("-jar /opt/zmusic/zmusic.jar"))
+        assertTrue(launcher.contains("export LC_NUMERIC=C"))
+        assertTrue(launcher.contains("unset LC_ALL"))
         assertTrue(text.contains("--compress=zip"))
         assertTrue(text.contains("GNU_FORMAT"))
         assertTrue(text.contains("assert_dpkg_tar"))
+        assertTrue(text.contains("libmpv.so"))
     }
 
     @Test
@@ -512,6 +515,25 @@ class DebControlTest {
             assertTrue(!text.contains("Icons.Outlined.Logout"))
             assertTrue(!text.contains("Icons.Outlined.KeyboardArrowRight"))
         }
+    }
+}
+
+class MpvPlaybackEngineTest {
+    @Test
+    fun forcesCNumericLocaleBeforeInitialize() {
+        val text = readLinuxSrc("playback/MpvPlaybackEngine.kt")
+        assertNotNull(text)
+        assertTrue(text.contains("setlocale"))
+        assertTrue(text.contains("LC_NUMERIC"))
+        val create = text.substringAfter("fun create()")
+        val opt = create.indexOf("mpv_set_option_string")
+        val init = create.indexOf("mpv_initialize")
+        assertTrue(opt >= 0 && init > opt, "options must be set before mpv_initialize")
+        assertTrue(text.contains("http-header-fields"))
+        assertTrue(text.contains("music.163.com"))
+        assertTrue(text.contains("\"vo\" to \"null\""))
+        assertTrue(text.contains("MPV_END_FILE_REASON_EOF"))
+        assertTrue(text.contains("MpvNumericLocale.apply()"))
     }
 }
 

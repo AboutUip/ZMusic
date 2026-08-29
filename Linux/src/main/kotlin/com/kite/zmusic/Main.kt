@@ -14,6 +14,7 @@ import com.kite.zmusic.config.NcmApiConfig
 import com.kite.zmusic.ui.login.LoginScreen
 import com.kite.zmusic.ui.main.MainShell
 import com.kite.zmusic.ui.main.SplashScreen
+import com.kite.zmusic.playback.MpvNumericLocale
 import com.kite.zmusic.ui.theme.LinuxSystemTheme
 import com.kite.zmusic.ui.theme.MainColors
 import com.kite.zmusic.ui.theme.MainPalette
@@ -28,6 +29,7 @@ fun main(args: Array<String>) {
         println("ok")
         return
     }
+    MpvNumericLocale.apply()
     val app = runCatching { AppContainer() }.getOrElse { err ->
         System.err.println("ZMusic failed to start: ${err.message}")
         err.printStackTrace()
@@ -42,6 +44,7 @@ fun main(args: Array<String>) {
         if (appearance.resolveDark(LinuxSystemTheme.isDark())) MainColors.Dark else MainColors.Light,
     )
     application {
+        MpvNumericLocale.apply()
         val state = rememberWindowState(width = 1280.dp, height = 800.dp)
         Window(
             onCloseRequest = {

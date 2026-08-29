@@ -28,7 +28,9 @@ class AppContainer(
     val catalog = CommunityCatalogClient(http) { prefs.current().communityServer }
     val engine: PlaybackEngine = engineOverride
         ?: MpvPlaybackEngine.create()
-        ?: FakePlaybackEngine()
+        ?: FakePlaybackEngine().also {
+            System.err.println("zmusic: libmpv failed to load; playback will be silent")
+        }
     val mpris = DbusMprisExporter.create() ?: NoopMprisExporter()
     val coordinator = PlaylistCoordinator(
         userClient = user,

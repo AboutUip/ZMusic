@@ -57,6 +57,20 @@ if [ -z "$JAVA" ] || [ ! -x "$JAVA" ]; then
   exit 1
 fi
 export LD_LIBRARY_PATH="$ROOT/lib/native${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+# libmpv requires LC_NUMERIC=C. LC_ALL overrides every LC_* (and Java later
+# calls setlocale(LC_ALL,"")), so split it before forcing numeric C.
+if [ -n "${LC_ALL:-}" ]; then
+  _zmusic_all="$LC_ALL"
+  unset LC_ALL
+  export LANG="${LANG:-$_zmusic_all}"
+  export LC_CTYPE="${LC_CTYPE:-$_zmusic_all}"
+  export LC_MESSAGES="${LC_MESSAGES:-$_zmusic_all}"
+  export LC_TIME="${LC_TIME:-$_zmusic_all}"
+  export LC_COLLATE="${LC_COLLATE:-$_zmusic_all}"
+  export LC_MONETARY="${LC_MONETARY:-$_zmusic_all}"
+  unset _zmusic_all
+fi
+export LC_NUMERIC=C
 if [ "$1" = "--smoke" ]; then
   exec "$JAVA" -Djava.awt.headless=true -Djava.library.path="$ROOT/lib/native" -jar "$ROOT/zmusic.jar" --smoke
 fi
@@ -231,6 +245,13 @@ def copy_libmpv(native: Path) -> None:
         print("libmpv not on builder; native dir left empty")
         return
     copy_with_deps(so, native)
+    dest_so = native / so.name
+    unversioned = native / "libmpv.so"
+    if dest_so.name != "libmpv.so" and dest_so.is_file() and not unversioned.exists():
+        try:
+            unversioned.symlink_to(dest_so.name)
+        except OSError:
+            shutil.copy2(dest_so, unversioned)
 
 
 def copy_with_deps(so: Path, dest: Path) -> None:
@@ -472,6 +493,10 @@ def self_test() -> None:
         raise SystemExit("inner launcher must not hardcode /opt jar path")
     if "$ROOT/zmusic.jar" not in INNER_LAUNCHER:
         raise SystemExit("inner launcher must resolve jar from ROOT")
+    if "export LC_NUMERIC=C" not in INNER_LAUNCHER:
+        raise SystemExit("inner launcher must force LC_NUMERIC=C for libmpv")
+    if "unset LC_ALL" not in INNER_LAUNCHER:
+        raise SystemExit("inner launcher must unset LC_ALL so LC_NUMERIC applies")
     src = Path(__file__).read_text(encoding="utf-8")
     if "--compress=zip" not in src:
         raise SystemExit("jlink must prefer --compress=zip")
