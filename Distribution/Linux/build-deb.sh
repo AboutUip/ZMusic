@@ -178,19 +178,36 @@ fetch_url() {
   fi
 }
 
+seed_xaiop_maven_local() {
+  local dest="${HOME}/.m2/repository/io/github/aboutuip/xaiop/0.15.1"
+  mkdir -p "$dest"
+  cp -f "$XAIOP_JAR" "${dest}/xaiop-0.15.1.jar"
+  if [ ! -f "${dest}/xaiop-0.15.1.pom" ]; then
+    cat > "${dest}/xaiop-0.15.1.pom" <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<project>
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>io.github.aboutuip</groupId>
+  <artifactId>xaiop</artifactId>
+  <version>0.15.1</version>
+</project>
+EOF
+  fi
+}
+
 ensure_xaiop_jar() {
   local bytes=0
   if [ -f "$XAIOP_JAR" ]; then
     bytes="$(wc -c < "$XAIOP_JAR" | tr -d ' ')"
   fi
-  if [ "${bytes:-0}" -gt 100000 ]; then
-    return 0
+  if [ "${bytes:-0}" -le 100000 ]; then
+    mkdir -p "$(dirname "$XAIOP_JAR")"
+    log "xaiop is not on Maven Central; fetching official JAR"
+    fetch_url "$XAIOP_URL" "$XAIOP_JAR"
+    bytes="$(wc -c < "$XAIOP_JAR" | tr -d ' ')"
+    [ "${bytes:-0}" -gt 100000 ] || die "xaiop download failed ($XAIOP_URL)"
   fi
-  mkdir -p "$(dirname "$XAIOP_JAR")"
-  log "xaiop is not on Maven Central; fetching official JAR"
-  fetch_url "$XAIOP_URL" "$XAIOP_JAR"
-  bytes="$(wc -c < "$XAIOP_JAR" | tr -d ' ')"
-  [ "${bytes:-0}" -gt 100000 ] || die "xaiop download failed ($XAIOP_URL)"
+  seed_xaiop_maven_local
 }
 
 install_temurin_local() {

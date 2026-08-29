@@ -51,10 +51,12 @@ def run(cmd: list[str], cwd: Path | None = None) -> None:
 
 XAIOP_JAR = LINUX / "libs" / "xaiop-0.15.1.jar"
 XAIOP_URL = "https://github.com/AboutUip/XAIOP/releases/download/v0.15.1/xaiop-0.15.1.jar"
+XAIOP_M2 = Path.home() / ".m2" / "repository" / "io" / "github" / "aboutuip" / "xaiop" / "0.15.1"
 
 
 def ensure_xaiop_jar() -> None:
     if XAIOP_JAR.is_file() and XAIOP_JAR.stat().st_size > 100_000:
+        seed_xaiop_maven_local()
         return
     XAIOP_JAR.parent.mkdir(parents=True, exist_ok=True)
     print("xaiop is not on Maven Central; fetching official JAR")
@@ -63,6 +65,43 @@ def ensure_xaiop_jar() -> None:
         XAIOP_JAR.write_bytes(resp.read())
     if not XAIOP_JAR.is_file() or XAIOP_JAR.stat().st_size <= 100_000:
         raise SystemExit(f"xaiop download failed ({XAIOP_URL})")
+    seed_xaiop_maven_local()
+
+
+def seed_xaiop_maven_local() -> None:
+    """Old Linux/build.gradle.kts asked Maven for this coordinate; Central 404s."""
+    XAIOP_M2.mkdir(parents=True, exist_ok=True)
+    dest = XAIOP_M2 / "xaiop-0.15.1.jar"
+    if not dest.is_file() or dest.stat().st_size != XAIOP_JAR.stat().st_size:
+        shutil.copy2(XAIOP_JAR, dest)
+    pom = XAIOP_M2 / "xaiop-0.15.1.pom"
+    if not pom.is_file():
+        pom.write_text(
+            """<?xml version="1.0" encoding="UTF-8"?>
+<project>
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>io.github.aboutuip</groupId>
+  <artifactId>xaiop</artifactId>
+  <version>0.15.1</version>
+</project>
+""",
+            encoding="utf-8",
+        )
+    meta = XAIOP_M2.parent / "maven-metadata-local.xml"
+    if not meta.is_file():
+        meta.write_text(
+            """<?xml version="1.0" encoding="UTF-8"?>
+<metadata>
+  <groupId>io.github.aboutuip</groupId>
+  <artifactId>xaiop</artifactId>
+  <versioning>
+    <release>0.15.1</release>
+    <versions><version>0.15.1</version></versions>
+  </versioning>
+</metadata>
+""",
+            encoding="utf-8",
+        )
 
 
 def gradle_jar() -> Path:
