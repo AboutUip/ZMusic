@@ -646,6 +646,30 @@ class DebControlTest {
     }
 
     @Test
+    fun windowUsesZmusicVinylLogo() {
+        val main = readLinuxSrc("Main.kt")
+        assertNotNull(main)
+        assertTrue(main.contains("rememberAppLogoPainter()"))
+        assertTrue(main.contains("applyAppWindowIcon(window)"))
+        val gradleRoots = listOf(
+            java.nio.file.Path.of("build.gradle.kts"),
+            java.nio.file.Path.of("Linux", "build.gradle.kts"),
+        )
+        val gradle = gradleRoots.firstOrNull { java.nio.file.Files.exists(it) }?.let {
+            java.nio.file.Files.readString(it)
+        }
+        assertNotNull(gradle)
+        assertTrue(gradle.contains("iconFile.set"))
+        assertTrue(gradle.contains("ic_logo_vinyl_z.png"))
+        val pack = readDist("pack.py")
+        assertNotNull(pack)
+        assertTrue(pack.contains("ic_logo_vinyl_z.png"))
+        val icons = loadAppAwtIcons()
+        assertTrue(icons.isNotEmpty())
+        assertTrue(icons.first().getWidth(null) > 16)
+    }
+
+    @Test
     fun smokeReturnsBeforeAppContainer() {
         val roots = listOf(
             java.nio.file.Path.of("src", "main", "kotlin", "com", "kite", "zmusic", "Main.kt"),

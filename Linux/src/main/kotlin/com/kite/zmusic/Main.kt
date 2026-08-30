@@ -52,10 +52,12 @@ fun main(args: Array<String>) {
                 exitApplication()
             },
             title = "ZMusic",
+            icon = rememberAppLogoPainter(),
             state = state,
         ) {
             LaunchedEffect(Unit) {
                 window.minimumSize = Dimension(1100, 700)
+                applyAppWindowIcon(window)
             }
             MaterialTheme {
             var phase by remember { mutableStateOf("splash") }

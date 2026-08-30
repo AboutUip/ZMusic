@@ -67,6 +67,7 @@ compose.desktop {
             copyright = "GPL-2.0"
             vendor = "AboutUip"
             linux {
+                iconFile.set(project.file("src/main/resources/drawable/ic_logo_vinyl_z.png"))
                 debMaintainer = "ZMusic <noreply@github.com>"
                 menuGroup = "AudioVideo;Audio;Player;"
                 appRelease = "1"
