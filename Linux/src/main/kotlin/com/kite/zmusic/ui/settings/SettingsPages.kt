@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -38,6 +39,7 @@ import com.kite.zmusic.data.AppAppearance
 import com.kite.zmusic.data.ChromeGlassMode
 import com.kite.zmusic.data.GlassStyle
 import com.kite.zmusic.ui.chrome.chromeGlassSurface
+import com.kite.zmusic.ui.icons.ZIcons
 import com.kite.zmusic.ui.theme.MainColors
 import com.kite.zmusic.ui.theme.MainPalette
 
@@ -273,11 +275,13 @@ private fun GlassModePicker(selected: ChromeGlassMode, onSelect: (ChromeGlassMod
 
 @Composable
 internal fun SettingsBack(onBack: () -> Unit) {
-    Text(
-        "返回",
-        color = MainPalette.Accent,
+    Icon(
+        imageVector = ZIcons.Back,
+        contentDescription = "返回",
+        tint = MainPalette.Accent,
         modifier = Modifier
             .padding(top = 8.dp, bottom = 12.dp)
+            .size(22.dp)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,

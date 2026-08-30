@@ -110,7 +110,7 @@ data class AppPrefs(
     val appearance: AppAppearance = AppAppearance.Light,
     val glass: GlassStyle = GlassStyle(),
     val wallpaperPath: String = "",
-    val playerHalo: Boolean = true,
+    val playerDisplay: PlayerDisplayPrefs = PlayerDisplayPrefs(),
 )
 
 class PrefsStore {
@@ -151,7 +151,10 @@ class PrefsStore {
                     blur = o.optDouble("glassBlur", 0.4).toFloat(),
                 ),
                 wallpaperPath = o.optString("wallpaperPath", ""),
-                playerHalo = o.optBoolean("playerHalo", true),
+                playerDisplay = playerDisplayPrefsFromJson(
+                    o.optJSONObject("playerDisplay"),
+                    haloFallback = o.optBoolean("playerHalo", false),
+                ),
             )
         }.getOrDefault(AppPrefs())
     }
@@ -172,7 +175,7 @@ class PrefsStore {
             .put("glassRefraction", p.glass.refraction.toDouble())
             .put("glassBlur", p.glass.blur.toDouble())
             .put("wallpaperPath", p.wallpaperPath)
-            .put("playerHalo", p.playerHalo)
+            .put("playerDisplay", p.playerDisplay.toJson())
         file().writeText(o.toString())
     }
 }

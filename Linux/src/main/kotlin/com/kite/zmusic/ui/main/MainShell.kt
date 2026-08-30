@@ -85,8 +85,12 @@ fun MainShell(app: AppContainer, onLogout: () -> Unit) {
     }
     LaunchedEffect(cookie) {
         uid = if (cookie.isBlank()) {
+            app.homeFeed.clear()
+            app.libraryFeed.clear()
             0L
         } else {
+            app.homeFeed.ensureLoaded()
+            app.libraryFeed.ensureLoaded()
             runCatching { NcmJson.userIdFromLoginStatus(app.auth.loginStatus(cookie)) }.getOrNull() ?: 0L
         }
     }
@@ -127,9 +131,12 @@ fun MainShell(app: AppContainer, onLogout: () -> Unit) {
             LandscapeNavRail(
                 selected = dest,
                 settingsSelected = overlay is MainOverlay.Settings,
-                onDestination = {
-                    dest = it
-                    if (overlay is MainOverlay.Settings) pop()
+                onDestination = { next ->
+                    dest = next
+                    if (overlayStack.isNotEmpty()) {
+                        overlayStack.clear()
+                        overlayTick++
+                    }
                 },
                 onOpenSettings = {
                     if (overlay is MainOverlay.Settings) pop() else push(MainOverlay.Settings)
@@ -137,85 +144,97 @@ fun MainShell(app: AppContainer, onLogout: () -> Unit) {
             )
             Column(Modifier.weight(1f).fillMaxHeight()) {
                 Box(Modifier.weight(1f).fillMaxWidth()) {
-                    when (dest) {
-                        MainDestination.Home -> HomeScreen(
-                            cookie = cookie,
-                            userClient = app.user,
-                            onOpenOverlay = ::push,
-                            onPlayTracks = { t, i, pid, title -> play(t, i, pid, title) },
-                        )
-                        MainDestination.Features -> FeaturesScreen(
-                            onOpenOverlay = ::push,
-                            onStartFm = {
-                                scope.launch {
-                                    val json = runCatching { app.user.personalFm(cookie) }.getOrNull()
-                                        ?: return@launch
-                                    val tracks = NcmHomeParse.personalFmTracks(json)
-                                    if (tracks.isNotEmpty()) {
-                                        app.bridge.playQueue(tracks, 0, fm = true, playlistTitle = "私人漫游")
-                                        playerOpen = true
-                                    } else {
-                                        app.notices.show("暂时无法开始私人漫游")
+                    LandscapeCoverPages(
+                        currentIndex = dest.ordinal,
+                        pageCount = MainDestination.entries.size,
+                        modifier = Modifier.fillMaxSize(),
+                    ) { index ->
+                        when (MainDestination.entries[index]) {
+                            MainDestination.Home -> HomeScreen(
+                                homeFeed = app.homeFeed,
+                                cookie = cookie,
+                                userClient = app.user,
+                                onOpenOverlay = ::push,
+                                onPlayTracks = { t, i, pid, title -> play(t, i, pid, title) },
+                            )
+                            MainDestination.Features -> FeaturesScreen(
+                                onOpenOverlay = ::push,
+                                onStartFm = {
+                                    scope.launch {
+                                        val json = runCatching { app.user.personalFm(cookie) }.getOrNull()
+                                            ?: return@launch
+                                        val tracks = NcmHomeParse.personalFmTracks(json)
+                                        if (tracks.isNotEmpty()) {
+                                            app.bridge.playQueue(tracks, 0, fm = true, playlistTitle = "私人漫游")
+                                            playerOpen = true
+                                        } else {
+                                            app.notices.show("暂时无法开始私人漫游")
+                                        }
                                     }
-                                }
-                            },
-                            onStartIntelligence = {
-                                scope.launch {
-                                    if (uid <= 0L) {
-                                        app.notices.show("未登录")
-                                        return@launch
+                                },
+                                onStartIntelligence = {
+                                    scope.launch {
+                                        if (uid <= 0L) {
+                                            app.notices.show("未登录")
+                                            return@launch
+                                        }
+                                        val lists = runCatching {
+                                            NcmLibraryParse.playlistsFromUserPlaylist(
+                                                app.user.userPlaylist(uid, cookie),
+                                                uid,
+                                            )
+                                        }.getOrDefault(emptyList())
+                                        val heart = lists.firstOrNull { it.isHeartPlaylist }
+                                        if (heart == null) {
+                                            app.notices.show("先在我喜欢的音乐里收藏几首歌")
+                                            return@launch
+                                        }
+                                        val seed = NcmLibraryParse.tracksFromPlaylistDetail(
+                                            app.user.playlistDetail(heart.id, cookie),
+                                        ).firstOrNull()
+                                        if (seed == null) {
+                                            app.notices.show("先在我喜欢的音乐里收藏几首歌")
+                                            return@launch
+                                        }
+                                        val json = runCatching {
+                                            app.user.intelligenceList(seed.id, cookie, playlistId = heart.id)
+                                        }.getOrNull()
+                                        val tracks = json?.let { NcmHomeParse.intelligenceTracks(it) }.orEmpty()
+                                        if (tracks.isNotEmpty()) {
+                                            app.bridge.playQueue(
+                                                tracks,
+                                                0,
+                                                playlistId = heart.id,
+                                                playlistTitle = "心动模式",
+                                                intelligence = true,
+                                            )
+                                            playerOpen = true
+                                        } else {
+                                            app.notices.show("心动模式暂时不可用")
+                                        }
                                     }
-                                    val lists = runCatching {
-                                        NcmLibraryParse.playlistsFromUserPlaylist(
-                                            app.user.userPlaylist(uid, cookie),
-                                            uid,
-                                        )
-                                    }.getOrDefault(emptyList())
-                                    val heart = lists.firstOrNull { it.isHeartPlaylist }
-                                    if (heart == null) {
-                                        app.notices.show("先在我喜欢的音乐里收藏几首歌")
-                                        return@launch
-                                    }
-                                    val seed = NcmLibraryParse.tracksFromPlaylistDetail(
-                                        app.user.playlistDetail(heart.id, cookie),
-                                    ).firstOrNull()
-                                    if (seed == null) {
-                                        app.notices.show("先在我喜欢的音乐里收藏几首歌")
-                                        return@launch
-                                    }
-                                    val json = runCatching {
-                                        app.user.intelligenceList(seed.id, cookie, playlistId = heart.id)
-                                    }.getOrNull()
-                                    val tracks = json?.let { NcmHomeParse.intelligenceTracks(it) }.orEmpty()
-                                    if (tracks.isNotEmpty()) {
-                                        app.bridge.playQueue(
-                                            tracks,
-                                            0,
-                                            playlistId = heart.id,
-                                            playlistTitle = "心动模式",
-                                            intelligence = true,
-                                        )
-                                        playerOpen = true
-                                    } else {
-                                        app.notices.show("心动模式暂时不可用")
-                                    }
-                                }
-                            },
-                        )
-                        MainDestination.Profile -> ProfileScreen(
-                            cookie = cookie,
-                            uid = uid,
-                            userClient = app.user,
-                            onOpenOverlay = ::push,
-                            onOpenLikedArtists = { push(MainOverlay.LikedArtists) },
-                        )
+                                },
+                            )
+                            MainDestination.Profile -> ProfileScreen(
+                                libraryFeed = app.libraryFeed,
+                                cookie = cookie,
+                                uid = uid,
+                                onOpenOverlay = ::push,
+                                onOpenLikedArtists = { push(MainOverlay.LikedArtists) },
+                            )
+                        }
                     }
                     androidx.compose.animation.AnimatedVisibility(
                         visible = overlay != null,
                         enter = LandscapeCoverEnter,
                         exit = LandscapeCoverExit,
                     ) {
-                        Box(Modifier.fillMaxSize().background(MainPalette.Page)) {
+                        Box(
+                            Modifier
+                                .fillMaxSize()
+                                .background(MainPalette.Page)
+                                .consumeClicks(),
+                        ) {
                             when (val o = overlay) {
                                 is MainOverlay.Settings -> SettingsScreen(
                                     prefs = prefs,
@@ -368,8 +387,8 @@ fun MainShell(app: AppContainer, onLogout: () -> Unit) {
             LandscapePlayerBody(
                 state = playback,
                 wordByWord = prefs.lyricWordByWord,
-                activeHalo = prefs.playerHalo,
-                onHaloChange = { on -> app.prefs.update { it.copy(playerHalo = on) } },
+                displayPrefs = prefs.playerDisplay,
+                onDisplayPrefsChange = { next -> app.prefs.update { it.copy(playerDisplay = next) } },
                 onBack = { playerOpen = false },
                 onToggle = { app.bridge.togglePlay() },
                 onSeek = { app.bridge.seek(it) },

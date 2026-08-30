@@ -16,9 +16,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
@@ -37,6 +34,7 @@ import com.kite.zmusic.data.GlassStyle
 import com.kite.zmusic.playback.PlaybackUiState
 import com.kite.zmusic.ui.chrome.chromeGlassSurface
 import com.kite.zmusic.ui.common.UrlImage
+import com.kite.zmusic.ui.icons.ZIcons
 import com.kite.zmusic.ui.theme.MainPalette
 
 @Composable
@@ -130,7 +128,7 @@ fun MiniPlayerBar(
             contentAlignment = Alignment.Center,
         ) {
             Icon(
-                imageVector = if (state.playWhenReady) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                imageVector = if (state.playWhenReady) ZIcons.Pause else ZIcons.Play,
                 contentDescription = if (state.playWhenReady) "暂停" else "播放",
                 tint = MainPalette.MiniPlayerIcon,
                 modifier = Modifier.size(22.dp),

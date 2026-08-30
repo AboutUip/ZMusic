@@ -24,25 +24,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Business
-import androidx.compose.material.icons.outlined.Cloud
-import androidx.compose.material.icons.outlined.BlurOn
-import androidx.compose.material.icons.outlined.Description
-import androidx.compose.material.icons.outlined.Dns
-import androidx.compose.material.icons.outlined.Favorite
-import androidx.compose.material.icons.outlined.Folder
-import androidx.compose.material.icons.outlined.GraphicEq
-import androidx.compose.material.icons.outlined.History
-import androidx.compose.material.icons.outlined.Image
-import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
-import androidx.compose.material.icons.automirrored.outlined.Logout
-import androidx.compose.material.icons.outlined.Opacity
-import androidx.compose.material.icons.outlined.Palette
-import androidx.compose.material.icons.outlined.PlayArrow
-import androidx.compose.material.icons.outlined.Subtitles
-import androidx.compose.material.icons.outlined.VolunteerActivism
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -73,6 +54,7 @@ import com.kite.zmusic.data.PartnerRoster
 import com.kite.zmusic.data.SponsorRoster
 import com.kite.zmusic.ui.chrome.chromeGlassSurface
 import com.kite.zmusic.ui.chrome.itemChrome
+import com.kite.zmusic.ui.icons.ZIcons
 import com.kite.zmusic.ui.main.LandscapeSettingsIconWell
 import com.kite.zmusic.ui.main.MainContentPadTop
 import com.kite.zmusic.ui.main.mainContentPadH
@@ -198,7 +180,7 @@ private fun SettingsRoot(
                     editingMusic = false
                 }
             } else {
-                SettingsRow("服务器", prefs.musicServer.ifBlank { NcmApiConfig.baseUrl }, Icons.Outlined.Dns, Color(0xFF5070F0)) {
+                SettingsRow("服务器", prefs.musicServer.ifBlank { NcmApiConfig.baseUrl }, ZIcons.Server, Color(0xFF5070F0)) {
                     editingMusic = true
                 }
             }
@@ -209,7 +191,7 @@ private fun SettingsRoot(
                     editingCommunity = false
                 }
             } else {
-                SettingsRow("社区服务器", prefs.communityServer, Icons.Outlined.Cloud, Color(0xFF6B5CE7)) {
+                SettingsRow("社区服务器", prefs.communityServer, ZIcons.Cloud, Color(0xFF6B5CE7)) {
                     editingCommunity = true
                 }
             }
@@ -221,7 +203,7 @@ private fun SettingsRoot(
                 "持续播放",
                 if (prefs.persistentPlayback) "已开启 · 与其他应用同时出声" else "已关闭 · 按系统规则让出",
                 prefs.persistentPlayback,
-                Icons.Outlined.PlayArrow,
+                ZIcons.Headset,
                 Color(0xFF2E9B6B),
             ) { v -> onUpdate { it.copy(persistentPlayback = v) } }
             SettingsHairline()
@@ -229,7 +211,7 @@ private fun SettingsRoot(
                 "逐字歌词",
                 if (prefs.lyricWordByWord) "按字渲染 · 需歌曲提供逐字歌词" else "按行渲染",
                 prefs.lyricWordByWord,
-                Icons.Outlined.Subtitles,
+                ZIcons.Lyrics,
                 Color(0xFF5B8DEF),
             ) { v -> onUpdate { it.copy(lyricWordByWord = v) } }
         }
@@ -237,38 +219,30 @@ private fun SettingsRoot(
             SettingsRow(
                 "下载加速",
                 if (prefs.downloadAccel) "已开启 · 命中本机缓存则跳过网络" else "已关闭 · 始终按音质在线拉取",
-                Icons.Outlined.Folder,
+                ZIcons.Speed,
                 Color(0xFF3D9B8F),
             ) { onOpen(SettingsPage.DownloadAccel) }
             SettingsHairline()
             SettingsRow(
                 "实时缓存",
                 prefs.realtimeCache.settingsSubtitle,
-                Icons.Outlined.Folder,
+                ZIcons.Storage,
                 Color(0xFF5070F0),
             ) { onOpen(SettingsPage.RealtimeCache) }
         }
         SettingsGroup("主题", glass) {
-            SettingsRow("外观", prefs.appearance.subtitle, Icons.Outlined.Palette, Color(0xFF6B7CFF)) {
+            SettingsRow("外观", prefs.appearance.subtitle, ZIcons.DarkMode, Color(0xFF6B7CFF)) {
                 onOpen(SettingsPage.Appearance)
             }
             SettingsHairline()
-            SettingsRow("液态玻璃样式", prefs.glass.settingsSubtitle, Icons.Outlined.Opacity, Color(0xFF2BB3B0)) {
+            SettingsRow("液态玻璃样式", prefs.glass.settingsSubtitle, ZIcons.Glass, Color(0xFF2BB3B0)) {
                 onOpen(SettingsPage.Glass)
             }
-            SettingsHairline()
-            SwitchRow(
-                "动态光晕",
-                if (prefs.playerHalo) "已开启 · 播放页光球随节奏呼吸" else "已关闭 · 仅保留氛围底",
-                prefs.playerHalo,
-                Icons.Outlined.BlurOn,
-                Color(0xFFE8A0C8),
-            ) { v -> onUpdate { it.copy(playerHalo = v) } }
             SettingsHairline()
             SettingsRow(
                 "自定义背景",
                 prefs.wallpaperPath.substringAfterLast('/', prefs.wallpaperPath).ifBlank { "未选择" },
-                Icons.Outlined.Image,
+                ZIcons.Wallpaper,
                 Color(0xFF8B6BFF),
             ) {
                 val picked = pickImageFile()
@@ -277,27 +251,27 @@ private fun SettingsRoot(
             }
         }
         SettingsGroup("ZMusic", glass) {
-            SettingsRow("关于", "版本、开发者与协议", Icons.Outlined.Info, Color(0xFF5B7CFA)) {
+            SettingsRow("关于", "版本、开发者与协议", ZIcons.Info, Color(0xFF5B7CFA)) {
                 onOpen(SettingsPage.About)
             }
             SettingsHairline()
-            SettingsRow("更新日志", "按版本查阅更新预览", Icons.Outlined.History, Color(0xFF2A9D8F)) {
+            SettingsRow("更新日志", "按版本查阅更新预览", ZIcons.History, Color(0xFF2A9D8F)) {
                 onOpen(SettingsPage.Changelog)
             }
             SettingsHairline()
-            SettingsRow("赞赏", "请小萱喝一口热乎的", Icons.Outlined.VolunteerActivism, Color(0xFFEC4141)) {
+            SettingsRow("赞赏", "请小萱喝一口热乎的", ZIcons.Sponsor, Color(0xFFEC4141)) {
                 onOpen(SettingsPage.Appreciate)
             }
             SettingsHairline()
-            SettingsRow("赞助名单", "谢谢投喂的人", Icons.Outlined.Favorite, Color(0xFFEC4141)) {
+            SettingsRow("赞助名单", "谢谢投喂的人", ZIcons.Favorite, Color(0xFFEC4141)) {
                 onOpen(SettingsPage.Sponsors)
             }
             SettingsHairline()
-            SettingsRow("赞助商", "支持本应用的伙伴", Icons.Outlined.Business, Color(0xFF5E5CE6)) {
+            SettingsRow("赞助商", "支持本应用的伙伴", ZIcons.Partners, Color(0xFF5E5CE6)) {
                 onOpen(SettingsPage.Partners)
             }
             SettingsHairline()
-            SettingsRow("条款与隐私", "服务条款与隐私说明", Icons.Outlined.Description, Color(0xFF8E8E93)) {
+            SettingsRow("条款与隐私", "服务条款与隐私说明", ZIcons.Legal, Color(0xFF8E8E93)) {
                 onOpen(SettingsPage.Legal)
             }
         }
@@ -305,7 +279,7 @@ private fun SettingsRoot(
             SettingsRow(
                 "退出登录",
                 "当前账号会退出，播放也会停止",
-                Icons.AutoMirrored.Outlined.Logout,
+                ZIcons.Logout,
                 MainPalette.Accent,
                 destructive = true,
                 onClick = onLogout,
@@ -466,7 +440,7 @@ private fun SettingsRow(
         }
         if (!destructive) {
             Icon(
-                Icons.AutoMirrored.Outlined.KeyboardArrowRight,
+                ZIcons.Chevron,
                 contentDescription = null,
                 tint = MainPalette.Hint,
                 modifier = Modifier.size(18.dp),
@@ -521,7 +495,7 @@ private fun QualityRow(current: AudioQuality, onPick: (AudioQuality) -> Unit) {
     SettingsRow(
         title = "音源默认质量",
         subtitle = "${current.title} · ${current.caption}",
-        icon = Icons.Outlined.GraphicEq,
+        icon = ZIcons.GraphicEq,
         tint = Color(0xFFB08D57),
         onClick = { onPick(next) },
     )

@@ -205,11 +205,45 @@ class NcmUserClient(
             mapOf("limit" to limit.toString(), "cookie" to cookie, "timestamp" to ts()),
         )
 
-    suspend fun personalizedNewsong(cookie: String): JSONObject =
-        get("/personalized/newsong", mapOf("cookie" to cookie, "timestamp" to ts()))
+    suspend fun personalizedNewsong(cookie: String, limit: Int = 20): JSONObject =
+        get(
+            "/personalized/newsong",
+            mapOf(
+                "limit" to limit.toString(),
+                "cookie" to cookie,
+                "timestamp" to ts(),
+            ),
+        )
 
     suspend fun personalizedMv(cookie: String): JSONObject =
         get("/personalized/mv", mapOf("cookie" to cookie, "timestamp" to ts()))
+
+    suspend fun mvFirst(cookie: String, limit: Int = 24): JSONObject =
+        get(
+            "/mv/first",
+            mapOf(
+                "limit" to limit.toString(),
+                "cookie" to cookie,
+                "timestamp" to ts(),
+            ),
+        )
+
+    suspend fun topPlaylists(
+        cookie: String,
+        limit: Int = 15,
+        offset: Int = 0,
+        order: String = "hot",
+    ): JSONObject =
+        get(
+            "/top/playlist",
+            mapOf(
+                "limit" to limit.toString(),
+                "offset" to offset.toString(),
+                "order" to order,
+                "cookie" to cookie,
+                "timestamp" to ts(),
+            ),
+        )
 
     suspend fun recommendResource(cookie: String): JSONObject =
         get("/recommend/resource", mapOf("cookie" to cookie, "timestamp" to ts()))

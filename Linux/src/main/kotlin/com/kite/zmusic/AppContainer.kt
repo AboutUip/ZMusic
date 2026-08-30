@@ -2,6 +2,8 @@ package com.kite.zmusic
 
 import com.kite.zmusic.config.NcmApiConfig
 import com.kite.zmusic.data.CommunityCatalogClient
+import com.kite.zmusic.data.HomeFeedRepository
+import com.kite.zmusic.data.LibraryFeedRepository
 import com.kite.zmusic.data.NcmAuthClient
 import com.kite.zmusic.data.NcmUserClient
 import com.kite.zmusic.data.PrefsStore
@@ -26,6 +28,8 @@ class AppContainer(
     val prefs = PrefsStore()
     val notices = IslandNoticeCenter()
     val catalog = CommunityCatalogClient(http) { prefs.current().communityServer }
+    val homeFeed = HomeFeedRepository(sessions, user)
+    val libraryFeed = LibraryFeedRepository(sessions, user, auth)
     val engine: PlaybackEngine = engineOverride
         ?: MpvPlaybackEngine.create()
         ?: FakePlaybackEngine().also {

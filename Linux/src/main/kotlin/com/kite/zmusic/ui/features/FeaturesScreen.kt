@@ -18,10 +18,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Folder
-import androidx.compose.material.icons.outlined.Star
-import androidx.compose.material.icons.outlined.Today
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -37,6 +33,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kite.zmusic.ui.chrome.itemChrome
+import com.kite.zmusic.ui.icons.ZIcons
 import com.kite.zmusic.ui.main.LandscapeFeatureIconWell
 import com.kite.zmusic.ui.main.MainContentPadTop
 import com.kite.zmusic.ui.main.MainOverlay
@@ -60,13 +57,13 @@ fun FeaturesScreen(
 ) {
     val modes = remember { builtInListenModes() }
     val tools = listOf(
-        FeatureItem("每日推荐", "今天的三十首", MainPalette.Accent, Icons.Outlined.Today) {
+        FeatureItem("每日推荐", "今天的三十首", MainPalette.Accent, ZIcons.Daily) {
             onOpenOverlay(MainOverlay.Daily)
         },
-        FeatureItem("排行榜", "官方与热歌榜", Color(0xFFFF9500), Icons.Outlined.Star) {
+        FeatureItem("排行榜", "官方与热歌榜", Color(0xFFFF9500), ZIcons.Charts) {
             onOpenOverlay(MainOverlay.Charts)
         },
-        FeatureItem("缓存的歌曲", "本机已下载", Color(0xFF30D158), Icons.Outlined.Folder) {
+        FeatureItem("缓存的歌曲", "本机已下载", Color(0xFF30D158), ZIcons.CachedSongs) {
             onOpenOverlay(MainOverlay.CachedSongs)
         },
     )

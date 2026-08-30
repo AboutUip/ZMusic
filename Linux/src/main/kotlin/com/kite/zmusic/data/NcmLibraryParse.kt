@@ -225,6 +225,25 @@ internal object NcmHomeParse {
         return playlistCardsFromArray(arr)
     }
 
+    fun topPlaylists(json: JSONObject): List<RecommendPlaylistCard> {
+        val arr = json.optJSONArray("playlists")
+            ?: json.optJSONObject("data")?.optJSONArray("playlists")
+            ?: return emptyList()
+        return playlistCardsFromArray(arr)
+    }
+
+    fun dailySongs(json: JSONObject): List<TrackRow> {
+        val songs = json.optJSONObject("data")?.optJSONArray("dailySongs")
+            ?: json.optJSONArray("recommend")
+            ?: return emptyList()
+        return buildList {
+            for (i in 0 until songs.length()) {
+                val o = songs.optJSONObject(i) ?: continue
+                NcmLibraryParse.trackFromSongObject(o)?.let { add(it) }
+            }
+        }
+    }
+
     fun recommendResourcePlaylists(json: JSONObject): List<RecommendPlaylistCard> {
         if (NcmJson.apiCode(json) != 200) return emptyList()
         val arr = json.optJSONArray("recommend") ?: return emptyList()
@@ -249,25 +268,36 @@ internal object NcmHomeParse {
     fun personalizedMvs(json: JSONObject): List<RecommendMvCard> {
         if (NcmJson.apiCode(json) != 200) return emptyList()
         val arr = json.optJSONArray("result") ?: json.optJSONArray("data") ?: return emptyList()
-        return buildList {
-            for (i in 0 until arr.length()) {
-                val o = arr.optJSONObject(i) ?: continue
-                val src = o.optJSONObject("mv") ?: o
-                val id = src.optLong("id", 0L)
-                if (id <= 0L) continue
-                add(
-                    RecommendMvCard(
-                        id = id,
-                        name = src.optString("name", "MV").ifBlank { "MV" },
-                        coverUrl = src.optString("picUrl", "")
-                            .ifBlank { src.optString("cover", "") }
-                            .ifBlank { src.optString("imgurl", "") }
-                            .takeIf { it.isNotBlank() },
-                        artist = src.optString("artistName", "").takeIf { it.isNotBlank() },
-                        playCount = src.optLong("playCount", 0L),
-                    ),
-                )
-            }
+        return mvsFromArray(arr)
+    }
+
+    fun latestMvs(json: JSONObject): List<RecommendMvCard> {
+        if (NcmJson.apiCode(json) != 200) return emptyList()
+        val arr = json.optJSONArray("data")
+            ?: json.optJSONObject("data")?.optJSONArray("mvList")
+            ?: json.optJSONArray("result")
+            ?: return emptyList()
+        return mvsFromArray(arr)
+    }
+
+    private fun mvsFromArray(arr: org.json.JSONArray): List<RecommendMvCard> = buildList {
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i) ?: continue
+            val src = o.optJSONObject("mv") ?: o
+            val id = src.optLong("id", 0L)
+            if (id <= 0L) continue
+            add(
+                RecommendMvCard(
+                    id = id,
+                    name = src.optString("name", "MV").ifBlank { "MV" },
+                    coverUrl = src.optString("picUrl", "")
+                        .ifBlank { src.optString("cover", "") }
+                        .ifBlank { src.optString("imgurl", "") }
+                        .takeIf { it.isNotBlank() },
+                    artist = src.optString("artistName", "").takeIf { it.isNotBlank() },
+                    playCount = src.optLong("playCount", 0L),
+                ),
+            )
         }
     }
 

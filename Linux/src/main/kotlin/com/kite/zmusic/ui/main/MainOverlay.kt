@@ -20,6 +20,10 @@ class OverlayStack {
 
     fun snapshot(): List<MainOverlay> = items.toList()
 
+    fun isEmpty(): Boolean = items.isEmpty()
+
+    fun isNotEmpty(): Boolean = items.isNotEmpty()
+
     fun top(): MainOverlay? = items.lastOrNull()
 
     fun push(overlay: MainOverlay) {

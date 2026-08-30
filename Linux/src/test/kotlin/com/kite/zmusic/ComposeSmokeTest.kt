@@ -185,7 +185,6 @@ class ComposeSmokeTest {
         onNodeWithContentDescription("返回").assertIsDisplayed()
         onNodeWithContentDescription("暂停").assertIsDisplayed()
         onNodeWithContentDescription("喜欢").assertIsDisplayed()
-        onNodeWithContentDescription("播放队列").assertIsDisplayed()
-        onNodeWithContentDescription("投影歌词").assertIsDisplayed()
+        onNodeWithContentDescription("设置").assertIsDisplayed()
     }
 }

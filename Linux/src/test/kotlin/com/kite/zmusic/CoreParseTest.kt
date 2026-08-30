@@ -5,16 +5,33 @@ import com.kite.zmusic.data.AppAppearance
 import com.kite.zmusic.data.AppPrefs
 import com.kite.zmusic.data.ChromeGlassMode
 import com.kite.zmusic.data.GlassStyle
+import com.kite.zmusic.data.HomeBanner
+import com.kite.zmusic.data.HomeFeed
+import com.kite.zmusic.data.HomeFeedRepository
+import com.kite.zmusic.data.LrcLine
 import com.kite.zmusic.data.LrcParser
 import com.kite.zmusic.data.NcmHomeParse
 import com.kite.zmusic.data.NcmJson
 import com.kite.zmusic.data.NcmLibraryParse
 import com.kite.zmusic.data.NcmPlaybackParse
+import com.kite.zmusic.data.PlayerDisplayPrefs
+import com.kite.zmusic.data.TitleAlignMode
+import com.kite.zmusic.data.VinylColorStyle
+import com.kite.zmusic.data.playerDisplayPrefsFromJson
+import com.kite.zmusic.data.toJson
+import com.kite.zmusic.ui.player.VinylSongPickPhase
+import com.kite.zmusic.ui.player.landscapeSideSheetSlideX
+import com.kite.zmusic.data.RecommendPlaylistCard
 import com.kite.zmusic.data.YrcParser
 import com.kite.zmusic.playback.pulseSpectrum
 import com.kite.zmusic.data.isSelfHeartPlaylist
 import com.kite.zmusic.playback.PlaybackMode
 import com.kite.zmusic.ui.catalog.parseSearchHits
+import com.kite.zmusic.ui.player.lyricActiveIndex
+import com.kite.zmusic.ui.player.lyricAnimActiveIndex
+import com.kite.zmusic.ui.player.lyricAnimTimingForWindow
+import com.kite.zmusic.ui.player.lyricFocusIndex
+import com.kite.zmusic.ui.player.lyricIsLive
 import com.kite.zmusic.ui.theme.LinuxSystemTheme
 import com.kite.zmusic.ui.main.MainOverlay
 import com.kite.zmusic.ui.main.OverlayStack
@@ -247,7 +264,36 @@ class AppearanceGlassTest {
         assertEquals(listOf("液态", "磨砂", "纯色"), ChromeGlassMode.entries.map { it.title })
         assertTrue(GlassStyle(mode = ChromeGlassMode.Frosted, blur = 0.5f).settingsSubtitle.contains("磨砂"))
         assertEquals("纯色，不透明", GlassStyle(mode = ChromeGlassMode.Solid).settingsSubtitle)
-        assertEquals(true, AppPrefs().playerHalo)
+        assertEquals(false, AppPrefs().playerDisplay.activeHalo)
+    }
+
+    @Test
+    fun playerDisplayPrefsRoundTripKeepsLandscapeFields() {
+        val src = PlayerDisplayPrefs(
+            rainNightEnabled = false,
+            activeHalo = true,
+            vinylSongPickEnabled = true,
+            lyricLineSpacingDp = 16f,
+            lyricPlayedCount = 3,
+            titleAlign = TitleAlignMode.LYRICS,
+        )
+        val json = src.toJson()
+        val back = playerDisplayPrefsFromJson(json, haloFallback = false)
+        assertEquals(false, back.rainNightEnabled)
+        assertEquals(true, back.activeHalo)
+        assertEquals(true, back.vinylSongPickEnabled)
+        assertEquals(16f, back.lyricLineSpacingDp)
+        assertEquals(3, back.lyricPlayedCount)
+        assertEquals(TitleAlignMode.LYRICS, back.titleAlign)
+        assertEquals(VinylColorStyle.BLACK, back.vinylColorStyle)
+    }
+
+    @Test
+    fun landscapeSideSheetSlideCoversPanelAndPad() {
+        assertEquals(0f, landscapeSideSheetSlideX(1f, 400f, 28f), 0.01f)
+        assertEquals(428f, landscapeSideSheetSlideX(0f, 400f, 28f), 0.01f)
+        assertEquals(214f, landscapeSideSheetSlideX(0.5f, 400f, 28f), 0.01f)
+        assertEquals(6, VinylSongPickPhase.entries.size)
     }
 
     @Test
@@ -264,31 +310,42 @@ class LandscapeSourceTest {
     @Test
     fun homeDoesNotLoadLikedPlaylists() {
         val text = readLinuxSrc("ui/home/HomeScreen.kt")
+        val feed = readLinuxSrc("data/HomeFeedRepository.kt")
         assertNotNull(text)
+        assertNotNull(feed)
         assertTrue(!text.contains("userPlaylist"))
         assertTrue(text.contains("推荐歌单"))
-        assertTrue(text.contains("isLikedMusicPlaylistName"))
+        assertTrue(text.contains("homeFeed.ensureLoaded"))
         assertTrue(text.contains("LandscapeDailyPanel"))
+        assertTrue(text.contains("horizontalPagerMouseDrag"))
+        assertTrue(text.contains("verticalScroll"))
+        assertTrue(feed.contains("isLikedMusicPlaylistName"))
+        assertTrue(feed.contains("if (_feed.value.isWarm) return"))
     }
 
     @Test
     fun profileHasLandscapeLibrarySections() {
         val text = readLinuxSrc("ui/library/ProfileScreen.kt")
+        val feed = readLinuxSrc("data/LibraryFeedRepository.kt")
         assertNotNull(text)
+        assertNotNull(feed)
         assertTrue(text.contains("我喜欢的音乐"))
         assertTrue(text.contains("创建的歌单"))
         assertTrue(text.contains("进入用户空间"))
-        assertTrue(text.contains("albumSublist"))
-        assertTrue(text.contains("playlistCreate"))
+        assertTrue(text.contains("libraryFeed.createPlaylist"))
         assertTrue(text.contains("新建"))
+        assertTrue(feed.contains("albumSublist"))
+        assertTrue(feed.contains("if (_feed.value.isWarm) return"))
     }
 
     @Test
     fun settingsUsesGroupedCardsAndGlassPages() {
         val settings = readLinuxSrc("ui/settings/SettingsScreen.kt")
         val pages = readLinuxSrc("ui/settings/SettingsPages.kt")
+        val playerSettings = readLinuxSrc("ui/player/LandscapePlayerSettings.kt")
         assertNotNull(settings)
         assertNotNull(pages)
+        assertNotNull(playerSettings)
         assertTrue(settings.contains("SettingsGroup"))
         assertTrue(settings.contains("AppearanceSettingsPage"))
         assertTrue(settings.contains("LiquidGlassStylePage"))
@@ -296,9 +353,14 @@ class LandscapeSourceTest {
         assertTrue(settings.contains("RealtimeCacheSettingsPage"))
         assertTrue(settings.contains("AnimatedContent"))
         assertTrue(settings.contains("chromeGlassSurface"))
-        assertTrue(settings.contains("动态光晕"))
+        assertTrue(!settings.contains("动态光晕"))
+        assertTrue(playerSettings.contains("活跃光晕"))
+        assertTrue(playerSettings.contains("歌词样式"))
+        assertTrue(playerSettings.contains("标题样式"))
+        assertTrue(playerSettings.contains("黑胶选歌"))
         assertTrue(pages.contains("磨砂"))
         assertTrue(pages.contains("AppAppearance.System"))
+        assertTrue(pages.contains("ZIcons.Back"))
         assertTrue(!settings.contains("if (it.appearance == AppAppearance.Light)"))
     }
 
@@ -315,13 +377,40 @@ class LandscapeSourceTest {
         assertTrue(orbs.contains("Color(0xFFE8A0C8)"))
         assertTrue(vinyl.contains("VinylDiscBase"))
         assertTrue(body.contains("onToggleLike"))
-        assertTrue(body.contains("QueuePickOverlay"))
-        assertTrue(body.contains("投影歌词"))
-        assertTrue(body.contains("播放队列"))
+        assertTrue(body.contains("VinylSongPickOverlay"))
+        assertTrue(body.contains("RainGlassAtmosphere"))
+        assertTrue(body.contains("LandscapeAlignedSongMeta"))
+        assertTrue(body.contains("LyricStyleEditorOverlay"))
+        assertTrue(body.contains("LyricSelectOverlay"))
         assertTrue(body.contains("skipDir"))
-        assertTrue(body.contains("slideInHorizontally"))
-        assertTrue(vinyl.contains("skipSeq"))
-        assertTrue(!body.contains("fun VinylDisc(playing"))
+        assertTrue(body.contains("slideInHorizontally").not())
+        assertTrue(body.contains("LandscapeProjectionLyrics"))
+        assertTrue(body.contains("LandscapePlayerSettingsOverlay"))
+        assertTrue(body.contains("NowPlayingDismissIconButton"))
+        assertTrue(body.contains("NowPlayingSettingsIconButton"))
+        assertTrue(body.contains("landscapeSideSheetSlideX").not())
+        assertTrue(body.contains("rememberSheetProgress"))
+        assertTrue(body.contains("VinylSongPickPhase"))
+        assertTrue(body.contains("dynamicLyrics"))
+        assertTrue(body.contains("vinylAbsT") || body.contains("vinylAbsCenter"))
+        val motion = readLinuxSrc("ui/player/PlayerMotion.kt")
+        assertNotNull(motion)
+        assertTrue(motion.contains("landscapeSideSheetSlideX"))
+        assertTrue(motion.contains("PlayerSettingsCurve"))
+        val pick = readLinuxSrc("ui/player/VinylSongPickOverlay.kt")
+        assertNotNull(pick)
+        assertTrue(pick.contains("VinylSongPickPhase"))
+        assertTrue(pick.contains("Stacking"))
+        assertTrue(pick.contains("FanOut"))
+        assertTrue(pick.contains("轻点中心唱片切歌").not())
+        val lyrics = readLinuxSrc("ui/player/LandscapeProjectionLyrics.kt")
+        assertNotNull(lyrics)
+        assertTrue(lyrics.contains("dynamicLyrics"))
+        assertTrue(lyrics.contains("vinylLeftInset"))
+        val rain = readLinuxSrc("ui/player/RainGlassAtmosphere.kt")
+        assertNotNull(rain)
+        assertTrue(rain.contains("RainStreak"))
+        assertTrue(vinyl.contains("ZIcons.MusicNote"))
     }
 
     @Test
@@ -382,7 +471,20 @@ class LandscapeSourceTest {
         assertTrue(urlImage.contains("readImageCache"))
         assertTrue(home.contains("animateScrollToPage"))
         assertTrue(shell.contains("LandscapeCoverEnter"))
+        assertTrue(shell.contains("LandscapeCoverPages"))
+        assertTrue(shell.contains("overlayStack.clear()"))
+        assertTrue(shell.contains("consumeClicks"))
+        assertTrue(shell.contains("homeFeed.ensureLoaded"))
         assertTrue(shell.contains("slideInVertically"))
+        val lyrics = readLinuxSrc("ui/player/LandscapeProjectionLyrics.kt")
+        val scroll = readLinuxSrc("ui/player/LyricScrollEngine.kt")
+        val icons = readLinuxSrc("ui/icons/ZIcons.kt")
+        assertNotNull(lyrics)
+        assertNotNull(scroll)
+        assertNotNull(icons)
+        assertTrue(lyrics.contains("scrollLyricToCenteredIndex"))
+        assertTrue(scroll.contains("scrollToItem"))
+        assertTrue(icons.contains("fun dock"))
     }
 }
 
@@ -398,8 +500,70 @@ class OverlayStackTest {
         assertEquals(MainOverlay.Settings, stack.top())
         stack.replaceTop(MainOverlay.Charts)
         assertEquals(MainOverlay.Charts, stack.top())
+        assertTrue(stack.isNotEmpty())
         stack.clear()
         assertTrue(stack.snapshot().isEmpty())
+        assertTrue(stack.isEmpty())
+    }
+}
+
+class HomeFeedCacheTest {
+    @Test
+    fun warmFeedSkipsReload() {
+        assertTrue(
+            HomeFeed(banners = listOf(HomeBanner("https://p/a.jpg", "a", 1L, 1000, null))).isWarm,
+        )
+        assertTrue(!HomeFeed().isWarm)
+    }
+
+    @Test
+    fun mergePoolDedupesAndCaps() {
+        val a = RecommendPlaylistCard(1, "A", null, 0)
+        val b = RecommendPlaylistCard(2, "B", null, 0)
+        val dup = RecommendPlaylistCard(1, "A2", null, 0)
+        val merged = HomeFeedRepository.mergePool(listOf(a), listOf(dup, b), 2) { it.id }
+        assertEquals(listOf(1L, 2L), merged.map { it.id })
+    }
+
+    @Test
+    fun nextBatchSkipsAvoidedIds() {
+        val pool = (1L..6L).map { RecommendPlaylistCard(it, "p$it", null, 0) }
+        val (batch, cursor) = HomeFeedRepository.nextBatch(
+            pool,
+            take = 3,
+            cursor = 0,
+            avoid = setOf(1L, 2L),
+        ) { it.id }
+        assertEquals(listOf(3L, 4L, 5L), batch.map { it.id })
+        assertEquals(3, cursor)
+    }
+}
+
+class LyricTimingLogicTest {
+    @Test
+    fun activeIndexPicksLastLineAtOrBeforePosition() {
+        val lines = listOf(
+            LrcLine(0, "a"),
+            LrcLine(1_000, "b"),
+            LrcLine(2_000, "c"),
+        )
+        assertEquals(-1, lyricActiveIndex(lines, -1))
+        assertEquals(0, lyricActiveIndex(lines, 0))
+        assertEquals(1, lyricActiveIndex(lines, 1_500))
+        assertEquals(2, lyricActiveIndex(lines, 9_000))
+        assertEquals(1, lyricFocusIndex(lines, 1))
+        assertTrue(lyricIsLive(lines, 1, 1))
+        assertTrue(!lyricIsLive(lines, -1, 0))
+    }
+
+    @Test
+    fun animTimingShortensForTightWindows() {
+        val tight = lyricAnimTimingForWindow(200L)
+        val wide = lyricAnimTimingForWindow(4_000L)
+        assertTrue(tight.durationMs < wide.durationMs)
+        assertTrue(tight.leadMs < wide.leadMs)
+        val lines = listOf(LrcLine(0, "a"), LrcLine(400, "b"))
+        assertTrue(lyricAnimActiveIndex(lines, 200, 0) >= 0)
     }
 }
 

@@ -22,6 +22,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -40,10 +41,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kite.zmusic.data.CollectedAlbum
-import com.kite.zmusic.data.NcmHomeParse
-import com.kite.zmusic.data.NcmJson
-import com.kite.zmusic.data.NcmLibraryParse
-import com.kite.zmusic.data.NcmUserClient
+import com.kite.zmusic.data.LibraryFeedRepository
 import com.kite.zmusic.data.PlaylistSummary
 import com.kite.zmusic.data.UserProfileBrief
 import com.kite.zmusic.ui.chrome.itemChrome
@@ -57,38 +55,25 @@ private enum class LibraryCollectionKind { Playlist, Album }
 
 @Composable
 fun ProfileScreen(
+    libraryFeed: LibraryFeedRepository,
     cookie: String,
     uid: Long,
-    userClient: NcmUserClient,
     onOpenOverlay: (MainOverlay) -> Unit,
     onOpenLikedArtists: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var profile by remember { mutableStateOf<UserProfileBrief?>(null) }
-    var playlists by remember { mutableStateOf<List<PlaylistSummary>>(emptyList()) }
-    var albums by remember { mutableStateOf<List<CollectedAlbum>>(emptyList()) }
+    val feed by libraryFeed.feed.collectAsState()
+    val profile = feed.profile
+    val playlists = feed.playlists
+    val albums = feed.albums
+    val loading = feed.loading
     var collectionKind by remember { mutableStateOf(LibraryCollectionKind.Playlist) }
-    var loading by remember { mutableStateOf(false) }
     var creating by remember { mutableStateOf(false) }
     var newName by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
 
-    suspend fun reload() {
-        if (cookie.isBlank() || uid <= 0L) {
-            profile = null
-            playlists = emptyList()
-            albums = emptyList()
-            return
-        }
-        profile = NcmLibraryParse.profileFromUserDetail(userClient.userDetail(uid, cookie))
-        playlists = NcmLibraryParse.playlistsFromUserPlaylist(userClient.userPlaylist(uid, cookie), uid)
-        albums = NcmHomeParse.collectedAlbums(userClient.albumSublist(cookie))
-    }
-
     LaunchedEffect(cookie, uid) {
-        loading = true
-        runCatching { reload() }
-        loading = false
+        if (cookie.isNotBlank()) libraryFeed.ensureLoaded()
     }
 
     val liked = playlists.filter { it.isHeartPlaylist && it.isOwned }
@@ -165,11 +150,9 @@ fun ProfileScreen(
                                 val name = newName.trim()
                                 if (name.isEmpty()) return@clickable
                                 scope.launch {
-                                    val json = runCatching { userClient.playlistCreate(name, cookie) }.getOrNull()
-                                    if (json != null && NcmJson.apiCode(json) == 200) {
+                                    if (libraryFeed.createPlaylist(name)) {
                                         newName = ""
                                         creating = false
-                                        runCatching { reload() }
                                     }
                                 }
                             },

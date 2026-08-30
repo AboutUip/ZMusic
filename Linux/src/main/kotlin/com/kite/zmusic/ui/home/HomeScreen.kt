@@ -4,6 +4,8 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -20,25 +22,26 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -46,78 +49,38 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kite.zmusic.data.HomeBanner
-import com.kite.zmusic.data.NcmHomeParse
-import com.kite.zmusic.data.NcmJson
+import com.kite.zmusic.data.HomeFeedRepository
 import com.kite.zmusic.data.NcmLibraryParse
 import com.kite.zmusic.data.NcmUserClient
 import com.kite.zmusic.data.RecommendMvCard
 import com.kite.zmusic.data.RecommendPlaylistCard
 import com.kite.zmusic.data.TrackRow
-import com.kite.zmusic.data.isLikedMusicPlaylistName
-import com.kite.zmusic.ui.catalog.parseDailySongs
 import com.kite.zmusic.ui.common.UrlImage
+import com.kite.zmusic.ui.icons.ZIcons
 import com.kite.zmusic.ui.main.LandscapeHomeSearchHeight
 import com.kite.zmusic.ui.main.MainOverlay
 import com.kite.zmusic.ui.theme.MainPalette
 import java.util.Calendar
+import kotlin.math.abs
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
+
+private const val BannerLoopCopies = 10_000
 
 @Composable
 fun HomeScreen(
+    homeFeed: HomeFeedRepository,
     cookie: String,
     userClient: NcmUserClient,
     onOpenOverlay: (MainOverlay) -> Unit,
     onPlayTracks: (List<TrackRow>, Int, Long?, String?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var banners by remember { mutableStateOf<List<HomeBanner>>(emptyList()) }
-    var playlists by remember { mutableStateOf<List<RecommendPlaylistCard>>(emptyList()) }
-    var dailySongs by remember { mutableStateOf<List<TrackRow>>(emptyList()) }
-    var newSongs by remember { mutableStateOf<List<TrackRow>>(emptyList()) }
-    var mvs by remember { mutableStateOf<List<RecommendMvCard>>(emptyList()) }
-    var dailyPlaylists by remember { mutableStateOf<List<RecommendPlaylistCard>>(emptyList()) }
-    var loading by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
+    val ui by homeFeed.feed.collectAsState()
     val scope = rememberCoroutineScope()
-
     LaunchedEffect(cookie) {
-        if (cookie.isBlank()) return@LaunchedEffect
-        loading = true
-        error = null
-        runCatching {
-            coroutineScope {
-                val bannerDef = async { runCatching { NcmHomeParse.banners(userClient.banner(cookie)) }.getOrDefault(emptyList()) }
-                val plDef = async {
-                    runCatching { NcmHomeParse.personalizedPlaylists(userClient.personalizedPlaylists(cookie)) }
-                        .getOrDefault(emptyList())
-                }
-                val dailyDef = async {
-                    runCatching { parseDailySongs(userClient.recommendSongs(cookie)) }.getOrDefault(emptyList())
-                }
-                val newDef = async {
-                    runCatching { NcmHomeParse.personalizedNewSongs(userClient.personalizedNewsong(cookie)) }
-                        .getOrDefault(emptyList())
-                }
-                val mvDef = async {
-                    runCatching { NcmHomeParse.personalizedMvs(userClient.personalizedMv(cookie)) }
-                        .getOrDefault(emptyList())
-                }
-                val dailyPlDef = async {
-                    runCatching { NcmHomeParse.recommendResourcePlaylists(userClient.recommendResource(cookie)) }
-                        .getOrDefault(emptyList())
-                }
-                banners = bannerDef.await()
-                playlists = plDef.await().filter { !isLikedMusicPlaylistName(it.name) }
-                dailySongs = dailyDef.await()
-                newSongs = newDef.await()
-                mvs = mvDef.await()
-                dailyPlaylists = dailyPlDef.await().filter { !isLikedMusicPlaylistName(it.name) }
-            }
-        }.onFailure { error = it.message }
-        loading = false
+        if (cookie.isNotBlank()) homeFeed.ensureLoaded()
     }
 
     Column(
@@ -141,14 +104,7 @@ fun HomeScreen(
             )
         }
         Spacer(Modifier.height(20.dp))
-        if (loading &&
-            banners.isEmpty() &&
-            playlists.isEmpty() &&
-            dailySongs.isEmpty() &&
-            newSongs.isEmpty() &&
-            mvs.isEmpty() &&
-            dailyPlaylists.isEmpty()
-        ) {
+        if (ui.loading && !ui.isWarm) {
             Box(
                 Modifier
                     .fillMaxWidth()
@@ -158,23 +114,29 @@ fun HomeScreen(
                 Text("加载中…", color = MainPalette.Secondary, fontSize = 14.sp)
             }
         }
-        error?.let { err ->
+        ui.error?.let { err ->
             Text(
                 err,
                 style = TextStyle(color = MainPalette.Secondary, fontSize = 13.sp, lineHeight = 18.sp),
-                modifier = Modifier.padding(vertical = 8.dp),
+                modifier = Modifier
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = { scope.launch { homeFeed.refresh(force = true) } },
+                    )
+                    .padding(vertical = 8.dp),
             )
         }
-        if (banners.isNotEmpty() || dailySongs.isNotEmpty()) {
+        if (ui.banners.isNotEmpty() || ui.dailySongs.isNotEmpty()) {
             Row(
                 Modifier
                     .fillMaxWidth()
                     .height(240.dp),
                 horizontalArrangement = Arrangement.spacedBy(20.dp),
             ) {
-                if (banners.isNotEmpty()) {
+                if (ui.banners.isNotEmpty()) {
                     HomeBannerPager(
-                        banners = banners,
+                        banners = ui.banners,
                         onBanner = { b ->
                             when {
                                 b.targetType == 1 && b.targetId > 0L -> scope.launch {
@@ -203,11 +165,11 @@ fun HomeScreen(
                             .clip(RoundedCornerShape(16.dp)),
                     )
                 }
-                if (dailySongs.isNotEmpty()) {
+                if (ui.dailySongs.isNotEmpty()) {
                     LandscapeDailyPanel(
-                        songs = dailySongs,
+                        songs = ui.dailySongs,
                         onOpenDaily = { onOpenOverlay(MainOverlay.Daily) },
-                        onPlayAt = { i -> onPlayTracks(dailySongs, i, null, "每日推荐") },
+                        onPlayAt = { i -> onPlayTracks(ui.dailySongs, i, null, "每日推荐") },
                         modifier = Modifier
                             .weight(0.85f)
                             .fillMaxHeight(),
@@ -216,45 +178,45 @@ fun HomeScreen(
             }
             Spacer(Modifier.height(28.dp))
         }
-        if (playlists.isNotEmpty()) {
+        if (ui.playlists.isNotEmpty()) {
             SectionTitle("推荐歌单")
             Spacer(Modifier.height(14.dp))
-            PlaylistGrid(playlists.take(10), columns = 5) { c ->
+            PlaylistGrid(ui.playlists.take(10), columns = 5) { c ->
                 onOpenOverlay(MainOverlay.Playlist(c.id, c.name, c.coverUrl))
             }
         }
-        if (newSongs.isNotEmpty()) {
+        if (ui.newSongs.isNotEmpty()) {
             Spacer(Modifier.height(28.dp))
             SectionTitle("新歌")
             Spacer(Modifier.height(14.dp))
             PlaylistGrid(
-                newSongs.take(12).map {
+                ui.newSongs.take(12).map {
                     RecommendPlaylistCard(it.id, it.name, it.coverUrl, 0L)
                 },
                 columns = 6,
             ) { card ->
-                val i = newSongs.indexOfFirst { it.id == card.id }.coerceAtLeast(0)
-                onPlayTracks(newSongs, i, null, "新歌")
+                val i = ui.newSongs.indexOfFirst { it.id == card.id }.coerceAtLeast(0)
+                onPlayTracks(ui.newSongs, i, null, "新歌")
             }
         }
-        if (mvs.isNotEmpty()) {
+        if (ui.mvs.isNotEmpty()) {
             Spacer(Modifier.height(28.dp))
             SectionTitle("推荐 MV")
             Spacer(Modifier.height(14.dp))
-            LandscapeMvGrid(mvs.take(6)) { mv ->
+            LandscapeMvGrid(ui.mvs.take(6)) { mv ->
                 onOpenOverlay(MainOverlay.Mv(mv.id, mv.name, mv.coverUrl))
             }
         }
-        if (dailyPlaylists.isNotEmpty()) {
+        if (ui.dailyPlaylists.isNotEmpty()) {
             Spacer(Modifier.height(28.dp))
             SectionTitle("每日歌单")
             Spacer(Modifier.height(14.dp))
-            PlaylistGrid(dailyPlaylists.take(10), columns = 5) { c ->
+            PlaylistGrid(ui.dailyPlaylists.take(10), columns = 5) { c ->
                 onOpenOverlay(MainOverlay.Playlist(c.id, c.name, c.coverUrl))
             }
         }
-        if (!loading && banners.isEmpty() && playlists.isEmpty() && dailySongs.isEmpty()) {
-            Text("暂无推荐，下拉或稍后重试。", color = MainPalette.Secondary, fontSize = 14.sp)
+        if (!ui.loading && !ui.isWarm && ui.error == null) {
+            Text("暂无推荐，点错误提示或稍后重试。", color = MainPalette.Secondary, fontSize = 14.sp)
         }
     }
 }
@@ -267,63 +229,86 @@ private fun SectionTitle(text: String) {
     )
 }
 
+private fun bannerLoopPage(page: Int, count: Int): Int {
+    if (count <= 0) return 0
+    val m = page % count
+    return if (m < 0) m + count else m
+}
+
 @Composable
 private fun HomeBannerPager(
     banners: List<HomeBanner>,
     onBanner: (HomeBanner) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val pager = rememberPagerState(pageCount = { banners.size.coerceAtLeast(1) })
-    LaunchedEffect(banners.size) {
-        if (banners.size < 2) return@LaunchedEffect
-        if (System.getProperty("zmusic.test") == "true") return@LaunchedEffect
-        while (true) {
-            delay(5_000)
-            val next = (pager.currentPage + 1) % banners.size
-            runCatching { pager.animateScrollToPage(next) }
+    val count = banners.size
+    val looped = count > 1
+    val pager = rememberPagerState(
+        initialPage = if (looped) count * (BannerLoopCopies / 2) else 0,
+        pageCount = {
+            when {
+                count <= 0 -> 1
+                looped -> count * BannerLoopCopies
+                else -> count
+            }
+        },
+    )
+    val realPage = bannerLoopPage(pager.currentPage, count)
+    val dragScope = rememberCoroutineScope()
+    LaunchedEffect(count, looped) {
+        if (looped && pager.currentPage < count) {
+            pager.scrollToPage(count * (BannerLoopCopies / 2))
         }
     }
+    LaunchedEffect(pager.settledPage, count, looped) {
+        if (!looped) return@LaunchedEffect
+        if (System.getProperty("zmusic.test") == "true") return@LaunchedEffect
+        delay(4200)
+        pager.animateScrollToPage(pager.currentPage + 1)
+    }
     Box(modifier) {
-        HorizontalPager(state = pager, modifier = Modifier.fillMaxSize()) { page ->
-            val b = banners.getOrNull(page) ?: return@HorizontalPager
+        HorizontalPager(
+            state = pager,
+            beyondViewportPageCount = 1,
+            userScrollEnabled = true,
+            modifier = Modifier
+                .fillMaxSize()
+                .horizontalPagerMouseDrag(pager, dragScope) { page ->
+                    banners.getOrNull(bannerLoopPage(page, count))?.let(onBanner)
+                },
+        ) { page ->
+            val b = banners[bannerLoopPage(page, count)]
             Box(
                 Modifier
                     .fillMaxSize()
-                    .background(MainPalette.Placeholder)
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = { onBanner(b) },
-                    ),
+                    .background(MainPalette.Placeholder),
             ) {
                 UrlImage(b.picUrl, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .background(MainPalette.Page.copy(alpha = 0.08f))
-                        .padding(16.dp),
-                    contentAlignment = Alignment.BottomStart,
-                ) {
+                b.title?.let { title ->
                     Text(
-                        b.title ?: "推荐",
-                        color = MainPalette.Ink,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 14.sp,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
+                        title,
+                        color = androidx.compose.ui.graphics.Color.White,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(10.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(MainPalette.Accent)
+                            .padding(horizontal = 6.dp, vertical = 2.dp),
                     )
                 }
             }
         }
-        if (banners.size > 1) {
+        if (looped) {
             Row(
                 Modifier
                     .align(Alignment.BottomCenter)
                     .padding(bottom = 10.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                repeat(banners.size) { i ->
-                    val on = pager.currentPage == i
+                repeat(count) { i ->
+                    val on = realPage == i
                     val tint by animateColorAsState(
                         if (on) MainPalette.Accent else MainPalette.Ink.copy(alpha = 0.28f),
                         tween(220),
@@ -338,6 +323,44 @@ private fun HomeBannerPager(
                 }
             }
         }
+    }
+}
+
+private fun Modifier.horizontalPagerMouseDrag(
+    pager: PagerState,
+    scope: CoroutineScope,
+    onClick: (page: Int) -> Unit,
+): Modifier = pointerInput(pager) {
+    awaitEachGesture {
+        val down = awaitFirstDown(requireUnconsumed = false)
+        var dragged = false
+        var total = 0f
+        val slop = viewConfiguration.touchSlop
+        while (true) {
+            val event = awaitPointerEvent()
+            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+            if (change.changedToUpIgnoreConsumed()) break
+            val dx = change.positionChange().x
+            if (dx == 0f) continue
+            total += dx
+            if (abs(total) > slop) {
+                dragged = true
+                pager.dispatchRawDelta(-dx)
+                change.consume()
+            }
+        }
+        if (!dragged) {
+            onClick(pager.currentPage)
+            return@awaitEachGesture
+        }
+        val last = (pager.pageCount - 1).coerceAtLeast(0)
+        val frac = pager.currentPageOffsetFraction
+        val target = when {
+            frac > 0.18f -> pager.currentPage + 1
+            frac < -0.18f -> pager.currentPage - 1
+            else -> pager.currentPage
+        }.coerceIn(0, last)
+        scope.launch { runCatching { pager.animateScrollToPage(target) } }
     }
 }
 
@@ -376,38 +399,45 @@ private fun LandscapeDailyPanel(
             )
         }
         Spacer(Modifier.height(10.dp))
-        songs.take(5).forEachIndexed { i, t ->
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = { onPlayAt(i) },
+        Column(
+            Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState()),
+        ) {
+            songs.forEachIndexed { i, t ->
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = { onPlayAt(i) },
+                        )
+                        .padding(vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    UrlImage(
+                        t.coverUrl,
+                        Modifier.size(40.dp).clip(RoundedCornerShape(6.dp)),
+                        contentScale = ContentScale.Crop,
                     )
-                    .padding(vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                UrlImage(
-                    t.coverUrl,
-                    Modifier.size(40.dp).clip(RoundedCornerShape(6.dp)),
-                    contentScale = ContentScale.Crop,
-                )
-                Spacer(Modifier.width(10.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        t.name,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        style = TextStyle(color = MainPalette.Ink, fontSize = 13.sp, fontWeight = FontWeight.Medium),
-                    )
-                    Text(
-                        t.artists.ifBlank { "—" },
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        style = TextStyle(color = MainPalette.Secondary, fontSize = 11.sp),
-                    )
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            t.name,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = TextStyle(color = MainPalette.Ink, fontSize = 13.sp, fontWeight = FontWeight.Medium),
+                        )
+                        Text(
+                            t.artists.ifBlank { "—" },
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = TextStyle(color = MainPalette.Secondary, fontSize = 11.sp),
+                        )
+                    }
                 }
             }
         }
@@ -518,7 +548,7 @@ internal fun HomeSearchEntry(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
-            imageVector = Icons.Outlined.Search,
+            imageVector = ZIcons.Search,
             contentDescription = null,
             tint = MainPalette.Secondary,
             modifier = Modifier.size(18.dp),
@@ -530,6 +560,3 @@ internal fun HomeSearchEntry(
         )
     }
 }
-
-fun uidFromCookieSession(statusJsonCookie: org.json.JSONObject?): Long =
-    statusJsonCookie?.let { NcmJson.userIdFromLoginStatus(it) } ?: 0L

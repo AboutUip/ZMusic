@@ -19,12 +19,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Home
-import androidx.compose.material.icons.outlined.Person
-import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material.icons.outlined.Widgets
 import androidx.compose.material3.Icon
+import com.kite.zmusic.ui.icons.ZIcons
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -104,19 +100,19 @@ fun LandscapeNavRail(
                 Modifier.padding(horizontal = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                RailItem("主页", selected == MainDestination.Home && !settingsSelected, Icons.Outlined.Home) {
+                RailItem("主页", selected == MainDestination.Home && !settingsSelected, ZIcons.Home) {
                     onDestination(MainDestination.Home)
                 }
-                RailItem("功能", selected == MainDestination.Features && !settingsSelected, Icons.Outlined.Widgets) {
+                RailItem("功能", selected == MainDestination.Features && !settingsSelected, ZIcons.Features) {
                     onDestination(MainDestination.Features)
                 }
-                RailItem("个人", selected == MainDestination.Profile && !settingsSelected, Icons.Outlined.Person) {
+                RailItem("个人", selected == MainDestination.Profile && !settingsSelected, ZIcons.Profile) {
                     onDestination(MainDestination.Profile)
                 }
             }
             Spacer(Modifier.weight(1f))
             Column(Modifier.padding(horizontal = 12.dp)) {
-                RailItem("设置", settingsSelected, Icons.Outlined.Settings, onOpenSettings)
+                RailItem("设置", settingsSelected, ZIcons.Settings, onOpenSettings)
             }
         }
         Box(

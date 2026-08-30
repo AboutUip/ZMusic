@@ -1,14 +1,10 @@
 package com.kite.zmusic.ui.player
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -17,48 +13,27 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicText
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.automirrored.outlined.QueueMusic
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.SkipNext
-import androidx.compose.material.icons.filled.SkipPrevious
-import androidx.compose.material.icons.outlined.BlurOn
-import androidx.compose.material.icons.outlined.FavoriteBorder
-import androidx.compose.material.icons.outlined.OpenInFull
-import androidx.compose.material.icons.outlined.Repeat
-import androidx.compose.material.icons.outlined.Shuffle
-import androidx.compose.material.icons.outlined.Subtitles
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -72,24 +47,22 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.lerp as lerpDp
+import androidx.compose.ui.util.lerp
 import androidx.compose.ui.zIndex
-import com.kite.zmusic.data.LrcLine
+import com.kite.zmusic.data.PlayerDisplayPrefs
+import com.kite.zmusic.data.TitleLineStyle
 import com.kite.zmusic.playback.PlaybackMode
 import com.kite.zmusic.playback.PlaybackUiState
+import com.kite.zmusic.ui.icons.ZIcons
 import com.kite.zmusic.ui.main.LandscapeLyricsWeight
 import com.kite.zmusic.ui.main.LandscapeVinylWeight
 import com.kite.zmusic.ui.main.landscapeVinylDiscDp
-import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 
 private val ChromePad = 28.dp
@@ -106,63 +79,161 @@ fun LandscapePlayerBody(
     onPrev: () -> Unit,
     onToggleLike: () -> Unit = {},
     onPlayAt: (Int) -> Unit = {},
-    activeHalo: Boolean = true,
-    onHaloChange: (Boolean) -> Unit = {},
+    displayPrefs: PlayerDisplayPrefs = PlayerDisplayPrefs(),
+    onDisplayPrefsChange: (PlayerDisplayPrefs) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val track = state.currentTrack
-    var showTranslated by remember { mutableStateOf(false) }
     val lines = when {
-        showTranslated && state.translatedLyricLines.isNotEmpty() -> state.translatedLyricLines
         wordByWord && state.wordLyricLines.isNotEmpty() -> state.wordLyricLines
         else -> state.lyricLines
     }
-    val focus = lines.indexOfLast { it.timeMs <= state.positionMs }.coerceAtLeast(0)
-    var controlsVisible by remember { mutableStateOf(true) }
+    var controlsVisible by remember {
+        mutableStateOf(
+            displayPrefs.transportAlwaysVisible || System.getProperty("zmusic.test") == "true",
+        )
+    }
     var sliderDragging by remember { mutableStateOf(false) }
     var sliderValue by remember { mutableFloatStateOf(0f) }
     var swipeAcc by remember { mutableFloatStateOf(0f) }
-    var queueOpen by remember { mutableStateOf(false) }
-    var projection by remember { mutableStateOf(false) }
-    val chrome = remember { Animatable(1f) }
-    LaunchedEffect(controlsVisible) {
-        chrome.animateTo(
-            if (controlsVisible) 1f else 0f,
-            tween(360, easing = FastOutSlowInEasing),
+    var vinylSongPickOpen by remember { mutableStateOf(false) }
+    var pickFocus by remember { mutableIntStateOf(state.index) }
+    var settingsOpen by remember { mutableStateOf(false) }
+    var lyricStyleOpen by remember { mutableStateOf(false) }
+    var titleStyleOpen by remember { mutableStateOf(false) }
+    var vinylColorOpen by remember { mutableStateOf(false) }
+    var lyricSelectOpen by remember { mutableStateOf(false) }
+    val lyricSelectSelected = remember { androidx.compose.runtime.mutableStateSetOf<Int>() }
+    val chrome = remember {
+        Animatable(
+            if (displayPrefs.transportAlwaysVisible || System.getProperty("zmusic.test") == "true") 1f else 0f,
         )
     }
-    LaunchedEffect(controlsVisible, sliderDragging, track?.id) {
-        if (!controlsVisible || sliderDragging) return@LaunchedEffect
+    LaunchedEffect(displayPrefs.transportAlwaysVisible, settingsOpen, vinylSongPickOpen, lyricStyleOpen, titleStyleOpen, vinylColorOpen, lyricSelectOpen) {
+        if (displayPrefs.transportAlwaysVisible && !settingsOpen && !vinylSongPickOpen &&
+            !lyricStyleOpen && !titleStyleOpen && !vinylColorOpen && !lyricSelectOpen
+        ) {
+            controlsVisible = true
+        }
+    }
+    LaunchedEffect(controlsVisible, sliderDragging, track?.id, displayPrefs.transportAlwaysVisible, settingsOpen, vinylSongPickOpen, lyricStyleOpen, titleStyleOpen, vinylColorOpen, lyricSelectOpen) {
+        if (!controlsVisible || sliderDragging || displayPrefs.transportAlwaysVisible) return@LaunchedEffect
+        if (settingsOpen || vinylSongPickOpen || lyricStyleOpen || titleStyleOpen || vinylColorOpen || lyricSelectOpen) return@LaunchedEffect
         if (System.getProperty("zmusic.test") == "true") return@LaunchedEffect
         delay(3_500)
         controlsVisible = false
     }
+    val overlayOpen = settingsOpen || vinylSongPickOpen || lyricStyleOpen || titleStyleOpen ||
+        vinylColorOpen || lyricSelectOpen
+    val showBar = (controlsVisible || sliderDragging || displayPrefs.transportAlwaysVisible) && !overlayOpen
+    LaunchedEffect(showBar) {
+        chrome.animateTo(
+            if (showBar) 1f else 0f,
+            tween(360, easing = FastOutSlowInEasing),
+        )
+    }
     val chromeT = chrome.value
     val density = LocalDensity.current
     val barSlidePx = with(density) { 52.dp.toPx() }
+    val uiScale = displayPrefs.uiScale.coerceIn(PlayerDisplayPrefs.UI_MIN, PlayerDisplayPrefs.UI_MAX)
+    val plate = displayPrefs.vinylPlateColors()
+    val rain = remember { Animatable(if (displayPrefs.rainNightEnabled) 1f else 0f) }
+    LaunchedEffect(displayPrefs.rainNightEnabled) {
+        rain.animateTo(
+            if (displayPrefs.rainNightEnabled) 1f else 0f,
+            tween(640, easing = FastOutSlowInEasing),
+        )
+    }
+    LaunchedEffect(state.index) {
+        if (!vinylSongPickOpen) pickFocus = state.index
+    }
+    val settingsT = rememberSheetProgress(settingsOpen)
+    val lyricStyleT = rememberSheetProgress(lyricStyleOpen)
+    val titleStyleT = rememberSheetProgress(titleStyleOpen)
+    val lyricSelectT = rememberSheetProgress(lyricSelectOpen, VinylCenterMs, VinylCenterEasing)
+    val editorPanel = remember { Animatable(0f) }
+    LaunchedEffect(vinylColorOpen) {
+        if (vinylColorOpen) {
+            delay(VinylCenterMs.toLong())
+            if (vinylColorOpen) {
+                editorPanel.animateTo(1f, tween(VinylCenterMs, easing = VinylCenterEasing))
+            }
+        } else {
+            editorPanel.animateTo(0f, tween(VinylCenterMs, easing = VinylCenterEasing))
+        }
+    }
+    val editorT = editorPanel.value
+    val pickFog = remember { Animatable(0f) }
+    var pickPhase by remember { mutableStateOf(VinylSongPickPhase.Entering) }
+    var pickCoversMain by remember { mutableStateOf(false) }
+    LaunchedEffect(vinylSongPickOpen, pickPhase) {
+        if (!vinylSongPickOpen) {
+            pickCoversMain = false
+            pickFog.animateTo(0f, tween(320, easing = FastOutSlowInEasing))
+            pickPhase = VinylSongPickPhase.Entering
+            return@LaunchedEffect
+        }
+        if (pickPhase == VinylSongPickPhase.Entering) return@LaunchedEffect
+        pickFog.animateTo(1f, tween(380, easing = VinylCenterEasing))
+    }
+    val forceVinylYCentered = vinylColorOpen || vinylSongPickOpen || editorT > 0.001f
+    val vinylAbsT by animateFloatAsState(
+        targetValue = if (displayPrefs.vinylAbsoluteCenter || forceVinylYCentered) 1f else 0f,
+        animationSpec = tween(VinylCenterMs, easing = VinylCenterEasing),
+        label = "vinylAbsCenter",
+    )
+    val pickUiFade = (1f - pickFog.value).coerceIn(0f, 1f)
 
-    Box(modifier.fillMaxSize()) {
+    BoxWithConstraints(modifier.fillMaxSize()) {
+        val chromeSidePad = ChromePad
+        val innerW = (maxWidth - chromeSidePad * 2 - 12.dp).coerceAtLeast(1.dp)
+        val vinylCol = innerW * LandscapeVinylWeight
+        val lyricsCol = innerW * LandscapeLyricsWeight
+        val vinylCenterX = chromeSidePad + vinylCol / 2 + displayPrefs.vinylOffsetXDp.dp
+        val lyricsCenterX = chromeSidePad + vinylCol + 12.dp + lyricsCol / 2 + displayPrefs.lyricOffsetXDp.dp
+        val screenCenterX = maxWidth / 2
+        val discForTitle = landscapeVinylDiscDp(maxWidth) * displayPrefs.vinylSizeScale
+        val titleMaxWidth = (discForTitle * 1.08f).coerceAtMost(maxWidth * 0.52f)
+        val vinylVisualScale = displayPrefs.vinylSizeScale * maxOf(displayPrefs.vinylOuterScale, 1f)
+        val vinylRightEdge = vinylCenterX + discForTitle * vinylVisualScale / 2f
+        val lyricsColStart = chromeSidePad + vinylCol + 12.dp
+        val vinylLeftInset = (vinylRightEdge + 10.dp - lyricsColStart).coerceAtLeast(0.dp)
+
         GeminiOrbsBackdrop(
             modifier = Modifier.fillMaxSize(),
-            activeHalo = activeHalo,
+            activeHalo = displayPrefs.activeHalo,
             playWhenReady = state.playWhenReady,
             positionMs = state.positionMs,
             scrubbing = sliderDragging,
             trackId = track?.id ?: 0L,
             loadPending = state.loadPending,
         )
+        RainGlassAtmosphere(Modifier.fillMaxSize(), intensity = rain.value)
+        Box(
+            Modifier
+                .fillMaxSize()
+                .padding(bottom = 6.dp)
+                .graphicsLayer {
+                    scaleX = uiScale
+                    scaleY = uiScale
+                    transformOrigin = TransformOrigin(0.5f, 0.5f)
+                    clip = false
+                },
+        ) {
         Box(
             Modifier
                 .fillMaxSize()
                 .pointerInput(Unit) {
-                    detectTapGestures(onTap = { controlsVisible = !controlsVisible })
+                    detectTapGestures(onTap = {
+                        if (!displayPrefs.transportAlwaysVisible) {
+                            controlsVisible = !controlsVisible
+                        }
+                    })
                 }
-                .pointerInput(projection) {
+                .pointerInput(Unit) {
                     detectVerticalDragGestures(
                         onDragEnd = {
-                            if (swipeAcc > 96f) {
-                                if (projection) projection = false else onBack()
-                            }
+                            if (swipeAcc > 96f) onBack()
                             swipeAcc = 0f
                         },
                         onDragCancel = { swipeAcc = 0f },
@@ -176,294 +247,291 @@ fun LandscapePlayerBody(
                     .padding(start = ChromePad, end = ChromePad, bottom = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (!projection) {
-                    BoxWithConstraints(
-                        Modifier
-                            .weight(LandscapeVinylWeight)
-                            .fillMaxHeight(),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        val discExpanded = landscapeVinylDiscDp(maxWidth)
-                        val discCompact = (discExpanded * 0.86f).coerceAtLeast(118.dp)
-                        val disc = lerpDp(discExpanded, discCompact, chromeT)
-                        if (track != null) {
-                            VinylWithCoverArt(
-                                track = track,
-                                spinning = state.isPlaying && !state.buffering && !state.loadPending,
-                                onSkipNext = onNext,
-                                onSkipPrev = onPrev,
-                                skipDir = state.skipDir,
-                                skipSeq = state.skipSeq,
-                                modifier = Modifier.size(disc),
-                            )
-                        }
+                BoxWithConstraints(
+                    Modifier
+                        .weight(LandscapeVinylWeight)
+                        .fillMaxHeight(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    val discExpanded = landscapeVinylDiscDp(maxWidth) * displayPrefs.vinylSizeScale
+                    val discCompact = (discExpanded * 0.86f).coerceAtLeast(118.dp)
+                    val absT = vinylAbsT
+                    val disc = lerpDp(lerpDp(discExpanded, discCompact, chromeT), discExpanded, absT)
+                    val compactRatio = if (discExpanded.value > 0.1f) discCompact / discExpanded else 1f
+                    val vinylScale = lerp(1f, lerp(1f, compactRatio, chromeT), absT)
+                    val yOff = displayPrefs.vinylOffsetYDp.dp * (1f - absT)
+                    if (track != null) {
+                        VinylWithCoverArt(
+                            track = track,
+                            spinning = state.isPlaying && !state.buffering && !state.loadPending &&
+                                !vinylSongPickOpen,
+                            onSkipNext = onNext,
+                            onSkipPrev = onPrev,
+                            skipDir = state.skipDir,
+                            skipSeq = state.skipSeq,
+                            plate = plate,
+                            outerScale = displayPrefs.vinylOuterScale,
+                            centerRadiusFrac = displayPrefs.vinylCenterRadiusFrac,
+                            fullCover = displayPrefs.vinylFullCover,
+                            gestureDamping = displayPrefs.vinylGestureDamping,
+                            onLongPress = if (displayPrefs.vinylSongPickEnabled) {
+                                {
+                                    pickFocus = state.index
+                                    vinylSongPickOpen = true
+                                }
+                            } else {
+                                null
+                            },
+                            modifier = Modifier
+                                .size(disc)
+                                .graphicsLayer {
+                                    translationX = displayPrefs.vinylOffsetXDp.dp.toPx()
+                                    translationY = yOff.toPx()
+                                    scaleX = vinylScale
+                                    scaleY = vinylScale
+                                    transformOrigin = TransformOrigin.Center
+                                    alpha = if (pickCoversMain) 0f else 1f
+                                },
+                        )
                     }
-                    Spacer(Modifier.width(12.dp))
                 }
-                LandscapePlayerLyrics(
+                Spacer(Modifier.width(12.dp))
+                LandscapeProjectionLyrics(
                     lines = lines,
-                    focus = focus,
                     positionMs = state.positionMs,
-                    wordByWord = wordByWord && !showTranslated,
-                    projection = projection,
-                    onSeekLine = { onSeek(it) },
+                    trackDurationMs = state.durationMs,
+                    wordByWord = wordByWord,
+                    lineSpacingDp = displayPrefs.lyricLineSpacingDp,
+                    playedCount = displayPrefs.lyricPlayedCount,
+                    upcomingCount = displayPrefs.lyricUpcomingCount,
+                    playingStyle = displayPrefs.lyricPlayingStyle,
+                    playedStyle = displayPrefs.lyricPlayedStyle,
+                    unplayedStyle = displayPrefs.lyricUnplayedStyle,
+                    dynamicLyrics = displayPrefs.dynamicLyrics,
+                    vinylLeftInset = vinylLeftInset,
+                    offsetXDp = displayPrefs.lyricOffsetXDp,
+                    onSeekToMs = { ms ->
+                        onSeek(ms)
+                        if (displayPrefs.lyricTapAutoPlay && !state.playWhenReady) onToggle()
+                    },
+                    onLongPressLine = { index ->
+                        lyricSelectSelected.clear()
+                        lyricSelectSelected.add(index)
+                        lyricSelectOpen = true
+                    },
                     modifier = Modifier
-                        .weight(if (projection) 1f else LandscapeLyricsWeight)
+                        .weight(LandscapeLyricsWeight)
                         .fillMaxHeight()
-                        .padding(end = 4.dp),
+                        .padding(end = 4.dp)
+                        .graphicsLayer { alpha = pickUiFade },
                 )
             }
         }
-        if (track != null && !projection) {
-            Column(
-                Modifier
+        if (track != null) {
+            LandscapeAlignedSongMeta(
+                track = track,
+                sourceTitle = state.sourcePlaylistTitle,
+                titleAlign = displayPrefs.titleAlign,
+                songMetaTopPad = 18.dp,
+                titleOffsetYDp = displayPrefs.titleOffsetYDp,
+                titleNameColor = Color(displayPrefs.titleNameStyle.resolvedArgb(TitleLineStyle.DEFAULT_NAME_ARGB)),
+                titleArtistColor = Color(displayPrefs.titleArtistStyle.resolvedArgb(TitleLineStyle.DEFAULT_ARTIST_ARGB)),
+                titleSourceColor = Color(displayPrefs.titleSourceStyle.resolvedArgb(TitleLineStyle.DEFAULT_SOURCE_ARGB)),
+                titleNameFontScale = displayPrefs.titleNameStyle.fontScale,
+                titleArtistFontScale = displayPrefs.titleArtistStyle.fontScale,
+                titleSourceFontScale = displayPrefs.titleSourceStyle.fontScale,
+                chromeSidePad = chromeSidePad,
+                vinylCenterX = vinylCenterX,
+                lyricsCenterX = lyricsCenterX,
+                screenCenterX = screenCenterX,
+                titleMaxWidth = titleMaxWidth,
+                contentAlpha = pickUiFade,
+                onRevealControls = { controlsVisible = true },
+                modifier = Modifier
+                    .fillMaxWidth()
                     .align(Alignment.TopStart)
-                    .fillMaxWidth(LandscapeVinylWeight)
-                    .padding(start = ChromePad, top = 18.dp, end = 8.dp)
                     .zIndex(30f),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Text(
-                    track.name,
-                    style = TextStyle(
-                        color = LyricCurrent,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                    ),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    textAlign = TextAlign.Center,
-                )
-                Text(
-                    track.artists,
-                    style = TextStyle(color = LyricDim, fontSize = 13.sp),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    textAlign = TextAlign.Center,
-                )
-                val source = state.sourcePlaylistTitle
-                if (!source.isNullOrBlank()) {
-                    Text(
-                        source,
-                        style = TextStyle(color = LyricDim.copy(alpha = 0.8f), fontSize = 12.sp),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        textAlign = TextAlign.Center,
-                    )
-                }
-            }
+            )
         }
-        Row(
+        }
+        if (showBar || chromeT > 0.001f) {
+        val transportShape = if (displayPrefs.transportDocked) {
+            RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp)
+        } else {
+            RoundedCornerShape(14.dp)
+        }
+        Box(
             Modifier
-                .align(Alignment.TopEnd)
-                .padding(end = ChromePad, top = 18.dp)
-                .zIndex(50f)
-                .alpha(chromeT),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            if (state.translatedLyricLines.isNotEmpty()) {
-                Icon(
-                    Icons.Outlined.Subtitles,
-                    contentDescription = if (showTranslated) "原文歌词" else "翻译歌词",
-                    tint = if (showTranslated) AccentRose else LyricCurrent,
-                    modifier = Modifier.size(26.dp).clickable(
-                        enabled = chromeT > 0.2f,
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = {
-                            controlsVisible = true
-                            showTranslated = !showTranslated
-                        },
-                    ),
-                )
-            }
-            Icon(
-                Icons.Outlined.OpenInFull,
-                contentDescription = if (projection) "退出投影歌词" else "投影歌词",
-                tint = if (projection) AccentRose else LyricCurrent,
-                modifier = Modifier.size(26.dp).clickable(
-                    enabled = chromeT > 0.2f,
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = {
-                        controlsVisible = true
-                        projection = !projection
-                    },
-                ),
-            )
-            Icon(
-                Icons.Outlined.BlurOn,
-                contentDescription = if (activeHalo) "关闭动态光晕" else "开启动态光晕",
-                tint = if (activeHalo) AccentRose else LyricDim,
-                modifier = Modifier.size(26.dp).clickable(
-                    enabled = chromeT > 0.2f,
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = {
-                        controlsVisible = true
-                        onHaloChange(!activeHalo)
-                    },
-                ),
-            )
-            Icon(
-                Icons.AutoMirrored.Outlined.ArrowBack,
-                contentDescription = "返回",
-                tint = LyricCurrent,
-                modifier = Modifier.size(28.dp).clickable(
-                    enabled = chromeT > 0.2f,
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = {
-                        if (projection) projection = false else onBack()
-                    },
-                ),
-            )
-        }
-        LandscapeTransportBar(
-            state = state,
-            sliderDragging = sliderDragging,
-            sliderValue = sliderValue,
-            onSliderDragStart = {
-                sliderDragging = true
-                sliderValue = state.positionMs.toFloat()
-                controlsVisible = true
-            },
-            onSliderChange = { sliderValue = it },
-            onSliderDragEnd = {
-                sliderDragging = false
-                onSeek(sliderValue.toLong())
-                controlsVisible = true
-            },
-            onToggle = {
-                controlsVisible = true
-                onToggle()
-            },
-            onMode = {
-                controlsVisible = true
-                onMode()
-            },
-            onNext = {
-                controlsVisible = true
-                onNext()
-            },
-            onPrev = {
-                controlsVisible = true
-                onPrev()
-            },
-            onToggleLike = {
-                controlsVisible = true
-                onToggleLike()
-            },
-            onOpenQueue = {
-                controlsVisible = true
-                queueOpen = true
-            },
-            modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .zIndex(40f)
                 .graphicsLayer {
                     translationY = (1f - chromeT) * barSlidePx
+                    scaleX = uiScale
+                    scaleY = uiScale
                     transformOrigin = TransformOrigin(0.5f, 1f)
                 }
                 .alpha(chromeT)
-                .padding(start = ChromePad, end = ChromePad, bottom = 16.dp),
-        )
-        AnimatedVisibility(
-            visible = queueOpen,
-            enter = fadeIn(tween(180)) + slideInHorizontally(tween(280, easing = FastOutSlowInEasing)) { it / 3 },
-            exit = fadeOut(tween(140)) + slideOutHorizontally(tween(200)) { it / 4 },
+                .padding(
+                    start = chromeSidePad,
+                    end = chromeSidePad,
+                    bottom = if (displayPrefs.transportDocked) 0.dp else displayPrefs.transportBottomInsetDp.dp,
+                )
+                .clip(transportShape)
+                .background(Color.Black.copy(alpha = 0.22f))
+                .padding(horizontal = 14.dp, vertical = 8.dp),
         ) {
-            QueuePickOverlay(
+            LandscapeTransportBar(
                 state = state,
-                onPlayAt = {
-                    onPlayAt(it)
-                    queueOpen = false
+                sliderDragging = sliderDragging,
+                sliderValue = sliderValue,
+                onSliderDragStart = {
+                    sliderDragging = true
+                    sliderValue = state.positionMs.toFloat()
+                    controlsVisible = true
                 },
-                onDismiss = { queueOpen = false },
+                onSliderChange = { sliderValue = it },
+                onSliderDragEnd = {
+                    sliderDragging = false
+                    onSeek(sliderValue.toLong())
+                    controlsVisible = true
+                },
+                onToggle = {
+                    controlsVisible = true
+                    onToggle()
+                },
+                onMode = {
+                    controlsVisible = true
+                    onMode()
+                },
+                onNext = {
+                    controlsVisible = true
+                    onNext()
+                },
+                onPrev = {
+                    controlsVisible = true
+                    onPrev()
+                },
+                onToggleLike = {
+                    controlsVisible = true
+                    onToggleLike()
+                },
             )
         }
-    }
-}
-
-@Composable
-private fun LandscapePlayerLyrics(
-    lines: List<LrcLine>,
-    focus: Int,
-    positionMs: Long,
-    wordByWord: Boolean,
-    projection: Boolean = false,
-    onSeekLine: (Long) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val listState = rememberLazyListState()
-    val density = LocalDensity.current
-    var browsing by remember { mutableStateOf(false) }
-    val scrolling by remember { derivedStateOf { listState.isScrollInProgress } }
-    LaunchedEffect(scrolling) {
-        if (scrolling) browsing = true
-    }
-    BoxWithConstraints(modifier) {
-        val centerOffset = with(density) { -(maxHeight / 2).roundToPx() + 24 }
-        LaunchedEffect(focus, lines.size, maxHeight, browsing) {
-            if (lines.isEmpty() || browsing) return@LaunchedEffect
-            runCatching { listState.animateScrollToItem(focus, centerOffset) }
-        }
-        if (lines.isEmpty()) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("暂无歌词", color = LyricDim, fontSize = if (projection) 22.sp else 15.sp)
-            }
-            return@BoxWithConstraints
-        }
-        LazyColumn(
-            state = listState,
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(vertical = maxHeight / 2),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            itemsIndexed(lines, key = { i, l -> "${l.timeMs}-$i" }) { i, line ->
-                val on = i == focus
-                val played = i < focus
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = {
-                                browsing = false
-                                onSeekLine(line.timeMs)
-                            },
-                        )
-                        .padding(vertical = if (projection) 14.dp else 10.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    if (wordByWord && on && line.words.isNotEmpty()) {
-                        WordLine(line, positionMs)
-                    } else {
-                        Text(
-                            line.text,
-                            textAlign = TextAlign.Center,
-                            style = TextStyle(
-                                color = when {
-                                    on -> LyricCurrent
-                                    played -> LyricDim.copy(alpha = 0.72f)
-                                    else -> LyricDim.copy(alpha = 0.48f)
-                                },
-                                fontSize = when {
-                                    projection && on -> 32.sp
-                                    projection -> 22.sp
-                                    on -> 22.sp
-                                    else -> 16.sp
-                                },
-                                fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal,
-                                lineHeight = if (projection) 40.sp else 28.sp,
-                            ),
-                        )
-                    }
+        Row(
+            Modifier
+                .align(Alignment.TopEnd)
+                .padding(end = chromeSidePad, top = 18.dp)
+                .zIndex(50f)
+                .graphicsLayer {
+                    scaleX = uiScale
+                    scaleY = uiScale
+                    transformOrigin = TransformOrigin(1f, 0f)
                 }
-            }
+                .alpha(chromeT),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(NowPlayingChromeIconGap),
+        ) {
+            NowPlayingDismissIconButton(
+                onClick = {
+                    if (chromeT <= 0.2f) return@NowPlayingDismissIconButton
+                    onBack()
+                },
+            )
+            NowPlayingSettingsIconButton(
+                onClick = {
+                    if (chromeT <= 0.2f) return@NowPlayingSettingsIconButton
+                    controlsVisible = false
+                    settingsOpen = true
+                },
+            )
+        }
+        }
+        if (settingsT > 0.001f || settingsOpen) {
+            LandscapePlayerSettingsOverlay(
+                prefs = displayPrefs,
+                onPrefsChange = onDisplayPrefsChange,
+                onDismiss = { settingsOpen = false },
+                onOpenLyricStyleEditor = {
+                    settingsOpen = false
+                    lyricStyleOpen = true
+                },
+                onOpenTitleStyleEditor = {
+                    settingsOpen = false
+                    titleStyleOpen = true
+                },
+                onOpenVinylColorEditor = {
+                    settingsOpen = false
+                    vinylColorOpen = true
+                },
+                progress = settingsT,
+            )
+        }
+        if (lyricStyleT > 0.001f || lyricStyleOpen) {
+            LyricStyleEditorOverlay(
+                prefs = displayPrefs,
+                onPrefsChange = onDisplayPrefsChange,
+                onDismiss = { lyricStyleOpen = false },
+                onBackToSettings = {
+                    lyricStyleOpen = false
+                    settingsOpen = true
+                },
+                progress = lyricStyleT,
+            )
+        }
+        if (titleStyleT > 0.001f || titleStyleOpen) {
+            TitleStyleEditorOverlay(
+                prefs = displayPrefs,
+                onPrefsChange = onDisplayPrefsChange,
+                onDismiss = { titleStyleOpen = false },
+                onBackToSettings = {
+                    titleStyleOpen = false
+                    settingsOpen = true
+                },
+                progress = titleStyleT,
+            )
+        }
+        if (editorT > 0.001f || vinylColorOpen) {
+            VinylColorEditorOverlay(
+                prefs = displayPrefs,
+                onPrefsChange = onDisplayPrefsChange,
+                onDismiss = { vinylColorOpen = false },
+                onBackToSettings = {
+                    vinylColorOpen = false
+                    settingsOpen = true
+                },
+                progress = editorT,
+            )
+        }
+        if (vinylSongPickOpen) {
+            VinylSongPickOverlay(
+                queue = state.queue,
+                queueIndex = state.index,
+                focusedIndex = pickFocus,
+                onFocusedIndexChange = { pickFocus = it },
+                discSize = landscapeVinylDiscDp(maxWidth) * displayPrefs.vinylSizeScale,
+                plate = plate,
+                fullCover = displayPrefs.vinylFullCover,
+                centerRadiusFrac = displayPrefs.vinylCenterRadiusFrac,
+                outerScale = displayPrefs.vinylOuterScale,
+                titleNameStyle = displayPrefs.titleNameStyle,
+                fogProgress = pickFog.value,
+                onConfirm = { idx -> onPlayAt(idx) },
+                onDismiss = { vinylSongPickOpen = false },
+                onCoverMainChange = { pickCoversMain = it },
+                onPhaseChange = { pickPhase = it },
+            )
+        }
+        if (lyricSelectT > 0.001f || lyricSelectOpen) {
+            LyricSelectOverlay(
+                lines = lines,
+                selected = lyricSelectSelected,
+                onDismiss = {
+                    lyricSelectOpen = false
+                    lyricSelectSelected.clear()
+                },
+                progress = lyricSelectT,
+            )
         }
     }
 }
@@ -481,7 +549,6 @@ private fun LandscapeTransportBar(
     onNext: () -> Unit,
     onPrev: () -> Unit,
     onToggleLike: () -> Unit,
-    onOpenQueue: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val dur = state.durationMs.toFloat().coerceAtLeast(1f)
@@ -493,21 +560,12 @@ private fun LandscapeTransportBar(
         label = "playPulse",
     )
     Row(
-        modifier
-            .clip(RoundedCornerShape(14.dp))
-            .background(Color.Black.copy(alpha = 0.22f))
-            .padding(horizontal = 14.dp, vertical = 8.dp),
+        modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         ModeIcon(state.playbackMode, onMode)
-        TransportHit(
-            if (state.trackLiked) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
-            if (state.trackLiked) "取消喜欢" else "喜欢",
-            onToggleLike,
-            tint = if (state.trackLiked) Color(0xFFEC4141) else LyricCurrent,
-        )
-        TransportHit(Icons.Filled.SkipPrevious, "上一首", onPrev)
+        TransportHit(ZIcons.SkipPrevious, "上一首", onPrev)
         Box(
             Modifier
                 .graphicsLayer {
@@ -525,14 +583,19 @@ private fun LandscapeTransportBar(
             contentAlignment = Alignment.Center,
         ) {
             Icon(
-                if (state.playWhenReady) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                if (state.playWhenReady) ZIcons.Pause else ZIcons.Play,
                 contentDescription = if (state.playWhenReady) "暂停" else "播放",
                 tint = PlayerPlayIcon,
                 modifier = Modifier.size(16.dp),
             )
         }
-        TransportHit(Icons.Filled.SkipNext, "下一首", onNext)
-        TransportHit(Icons.AutoMirrored.Outlined.QueueMusic, "播放队列", onOpenQueue)
+        TransportHit(ZIcons.SkipNext, "下一首", onNext)
+        TransportHit(
+            if (state.trackLiked) ZIcons.Favorite else ZIcons.FavoriteBorder,
+            if (state.trackLiked) "取消喜欢" else "喜欢",
+            onToggleLike,
+            tint = if (state.trackLiked) Color(0xFFEC4141) else LyricCurrent,
+        )
         Text(
             formatMs(displayPos),
             style = TextStyle(
@@ -598,86 +661,11 @@ private fun TransportHit(
 }
 
 @Composable
-private fun QueuePickOverlay(
-    state: PlaybackUiState,
-    onPlayAt: (Int) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.45f))
-            .zIndex(80f)
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = onDismiss,
-            ),
-    ) {
-        Column(
-            Modifier
-                .align(Alignment.CenterEnd)
-                .fillMaxHeight()
-                .fillMaxWidth(0.38f)
-                .background(Color(0xE6111218))
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = {},
-                )
-                .padding(horizontal = 16.dp, vertical = 20.dp),
-        ) {
-            Text(
-                "播放队列  ${state.queue.size}",
-                color = LyricCurrent,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Spacer(Modifier.height(10.dp))
-            LazyColumn(Modifier.weight(1f).heightIn(max = 520.dp)) {
-                itemsIndexed(state.queue, key = { _, t -> t.id }) { i, t ->
-                    val on = i == state.index
-                    Column(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 4.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(if (on) Color.White.copy(alpha = 0.12f) else Color.Transparent)
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                                onClick = { onPlayAt(i) },
-                            )
-                            .padding(horizontal = 10.dp, vertical = 10.dp),
-                    ) {
-                        Text(
-                            t.name,
-                            color = if (on) AccentRose else LyricCurrent,
-                            fontSize = 14.sp,
-                            fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        Text(
-                            t.artists,
-                            color = LyricDim,
-                            fontSize = 12.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
 private fun ModeIcon(mode: PlaybackMode, onClick: () -> Unit) {
     val icon = when (mode) {
-        PlaybackMode.ORDER -> Icons.Outlined.Repeat
-        PlaybackMode.REPEAT_ONE -> Icons.Outlined.Repeat
-        PlaybackMode.SHUFFLE -> Icons.Outlined.Shuffle
+        PlaybackMode.ORDER -> ZIcons.Repeat
+        PlaybackMode.REPEAT_ONE -> ZIcons.RepeatOne
+        PlaybackMode.SHUFFLE -> ZIcons.Shuffle
     }
     Box(
         Modifier
@@ -690,33 +678,8 @@ private fun ModeIcon(mode: PlaybackMode, onClick: () -> Unit) {
             ),
         contentAlignment = Alignment.Center,
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(icon, contentDescription = "播放模式", tint = LyricCurrent, modifier = Modifier.size(16.dp))
-            if (mode == PlaybackMode.REPEAT_ONE) {
-                Text("1", color = Color(0xFFEC4141), fontSize = 10.sp, fontWeight = FontWeight.Bold)
-            }
-        }
+        Icon(icon, contentDescription = "播放模式", tint = LyricCurrent, modifier = Modifier.size(16.dp))
     }
-}
-
-@Composable
-private fun WordLine(line: LrcLine, positionMs: Long) {
-    val active = line.words.indexOfLast { it.timeMs <= positionMs }.coerceAtLeast(0)
-    BasicText(
-        text = buildAnnotatedString {
-            line.words.forEachIndexed { i, w ->
-                pushStyle(
-                    SpanStyle(
-                        color = if (i <= active) LyricCurrent else LyricDim,
-                        fontSize = if (i == active) 22.sp else 18.sp,
-                        fontWeight = if (i == active) FontWeight.SemiBold else FontWeight.Normal,
-                    ),
-                )
-                append(w.text)
-                pop()
-            }
-        },
-    )
 }
 
 private fun formatMs(ms: Long): String {

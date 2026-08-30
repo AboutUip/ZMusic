@@ -20,10 +20,9 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import com.kite.zmusic.ui.icons.ZIcons
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -62,7 +61,7 @@ fun OverlayScaffold(
     Column(Modifier.fillMaxSize().padding(horizontal = 24.dp).padding(top = 16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
-                Icons.AutoMirrored.Outlined.ArrowBack,
+                ZIcons.Back,
                 contentDescription = "返回",
                 tint = MainPalette.Ink,
                 modifier = Modifier.clickable(
@@ -468,17 +467,7 @@ internal suspend fun loadPlaylistTracks(
     return all.ifEmpty { fromDetail }
 }
 
-internal fun parseDailySongs(json: JSONObject): List<TrackRow> {
-    val songs = json.optJSONObject("data")?.optJSONArray("dailySongs")
-        ?: json.optJSONArray("recommend")
-        ?: return emptyList()
-    return buildList {
-        for (i in 0 until songs.length()) {
-            val o = songs.optJSONObject(i) ?: continue
-            NcmLibraryParse.trackFromSongObject(o)?.let { add(it) }
-        }
-    }
-}
+internal fun parseDailySongs(json: JSONObject): List<TrackRow> = NcmHomeParse.dailySongs(json)
 
 internal fun parseSearchHits(json: JSONObject, type: Int): List<TrackRow> {
     val result = json.optJSONObject("result") ?: json
