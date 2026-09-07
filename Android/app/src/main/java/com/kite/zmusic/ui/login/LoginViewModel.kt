@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import com.kite.zmusic.data.NcmAuthClient
 import com.kite.zmusic.data.NcmJson
 import com.kite.zmusic.data.SessionRepository
+import com.kite.zmusic.data.ncm.NcmLog
 import com.kite.zmusic.util.Md5Util
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -36,6 +37,10 @@ class LoginViewModel(
 
     var qrImageBase64 by mutableStateOf<String?>(null)
     var qrHint by mutableStateOf("")
+    var qrRescue by mutableStateOf(false)
+        private set
+    var qrLoginUrl by mutableStateOf("")
+        private set
     private var qrUnikey: String? = null
 
     /** 短信验证码：发送请求中（不用全局 [busy]，避免整页遮罩）。 */
@@ -56,6 +61,20 @@ class LoginViewModel(
         bannerError = null
     }
 
+    fun beginQrFallback() {
+        qrRescue = true
+        qrHint = ""
+        qrLoginUrl = ""
+        qrImageBase64 = null
+        NcmLog.i("login fallback -> qr")
+        loadQrSession()
+    }
+
+    fun dismissQrRescue() {
+        qrRescue = false
+        qrHint = ""
+    }
+
     /** 修改手机号时清空冷却与提示，避免串号。 */
     fun onSmsPhoneChanged() {
         captchaCooldownJob?.cancel()
@@ -74,8 +93,9 @@ class LoginViewModel(
 
     fun loadQrSession() {
         viewModelScope.launch {
-            if (busy) return@launch
-            busy = true
+            val overlay = qrRescue
+            if (!overlay && busy) return@launch
+            if (!overlay) busy = true
             bannerError = null
             try {
                 val keyJson = api.loginQrKey()
@@ -93,19 +113,20 @@ class LoginViewModel(
                     bannerError = NcmJson.userFacingMessage(create, "二维码生成失败")
                     return@launch
                 }
+                qrLoginUrl = NcmJson.qrUrl(create, key)
                 val img = NcmJson.qrImgBase64(create)
-                if (img.isNullOrBlank()) {
+                if (img.isNullOrBlank() && qrLoginUrl.isBlank()) {
                     bannerError = "二维码数据为空，请稍后重试"
                     return@launch
                 }
                 qrImageBase64 = img
-                qrHint = "使用网易云音乐 App 扫描"
+                qrHint = if (overlay) "" else "使用网易云音乐 App 扫描"
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 bannerError = NcmJson.userFacingThrowable(e, "网络错误")
             } finally {
-                busy = false
+                if (!overlay) busy = false
             }
         }
     }
@@ -138,6 +159,7 @@ class LoginViewModel(
                             return
                         }
                         sessionRepository.persist(cookie, NcmJson.displayLabelFromLogin(json))
+                        qrRescue = false
                         onLoggedIn()
                         return
                     }
@@ -162,15 +184,23 @@ class LoginViewModel(
             bannerError = null
             var sentOk = false
             try {
+                NcmLog.i("captchaSent phone=${NcmLog.maskPhone(phone)}")
                 if (!ensurePhoneRegistered()) return@launch
                 val j = api.captchaSent(phone.trim())
+                NcmLog.i("captchaSent resp ${NcmLog.summarize(j)} body=${NcmLog.json(j)}")
+                if (offerQrFallback(j)) {
+                    NcmLog.i("captchaSent -> qr")
+                    return@launch
+                }
                 if (NcmJson.apiCode(j) != 200) {
                     bannerError = NcmJson.userFacingMessage(j, "发送失败")
+                    NcmLog.w("captchaSent fail banner=$bannerError")
                 } else {
                     smsCaptchaHint = "验证码已下发至手机，请查收短信"
                     sentOk = true
                 }
             } catch (e: Exception) {
+                NcmLog.e("captchaSent throw", e)
                 bannerError = NcmJson.userFacingThrowable(e, "发送失败")
             } finally {
                 captchaSending = false
@@ -198,10 +228,20 @@ class LoginViewModel(
             busy = true
             bannerError = null
             try {
+                NcmLog.i("loginSms phone=${NcmLog.maskPhone(phone)} captchaLen=${captcha.trim().length}")
                 if (!ensurePhoneRegistered()) return@launch
-                val j = api.loginCellphone(phone.trim(), captcha = captcha.trim())
+                val j = api.loginCellphone(
+                    phone.trim(),
+                    captcha = captcha.trim(),
+                )
+                NcmLog.i("loginSms resp ${NcmLog.summarize(j)} body=${NcmLog.json(j)}")
+                if (offerQrFallback(j)) {
+                    NcmLog.i("loginSms -> qr")
+                    return@launch
+                }
                 if (consumeLoginSuccess(j)) onDone()
             } catch (e: Exception) {
+                NcmLog.e("loginSms throw", e)
                 bannerError = NcmJson.userFacingThrowable(e, "登录失败")
             } finally {
                 busy = false
@@ -219,11 +259,18 @@ class LoginViewModel(
             busy = true
             bannerError = null
             try {
+                NcmLog.i("loginPwd phone=${NcmLog.maskPhone(phone)}")
                 if (!ensurePhoneRegistered()) return@launch
                 val md5 = Md5Util.md5Hex(password)
                 val j = api.loginCellphone(phone.trim(), md5Password = md5)
+                NcmLog.i("loginPwd resp ${NcmLog.summarize(j)} body=${NcmLog.json(j)}")
+                if (offerQrFallback(j)) {
+                    NcmLog.i("loginPwd -> qr")
+                    return@launch
+                }
                 if (consumeLoginSuccess(j)) onDone()
             } catch (e: Exception) {
+                NcmLog.e("loginPwd throw", e)
                 bannerError = NcmJson.userFacingThrowable(e, "登录失败")
             } finally {
                 busy = false
@@ -241,10 +288,17 @@ class LoginViewModel(
             busy = true
             bannerError = null
             try {
+                NcmLog.i("loginEmail")
                 val md5 = Md5Util.md5Hex(emailPassword)
                 val j = api.loginEmail(email.trim(), md5Password = md5)
+                NcmLog.i("loginEmail resp ${NcmLog.summarize(j)} body=${NcmLog.json(j)}")
+                if (offerQrFallback(j)) {
+                    NcmLog.i("loginEmail -> qr")
+                    return@launch
+                }
                 if (consumeLoginSuccess(j)) onDone()
             } catch (e: Exception) {
+                NcmLog.e("loginEmail throw", e)
                 bannerError = NcmJson.userFacingThrowable(e, "登录失败")
             } finally {
                 busy = false
@@ -256,27 +310,40 @@ class LoginViewModel(
     private fun consumeLoginSuccess(j: JSONObject): Boolean {
         if (NcmJson.apiCode(j) != 200) {
             bannerError = NcmJson.userFacingMessage(j, "登录失败")
+            NcmLog.w("login fail code=${NcmJson.apiCode(j)} banner=$bannerError ${NcmLog.summarize(j)}")
             return false
         }
         val cookie = NcmJson.extractCookie(j)
         if (cookie.isNullOrEmpty()) {
             bannerError = "登录成功但未返回 cookie，请重试或使用二维码"
+            NcmLog.w("login 200 but no cookie ${NcmLog.summarize(j)}")
             return false
         }
+        NcmLog.i("login ok cookieNames=${NcmLog.cookieNames(cookie)} label=${NcmJson.displayLabelFromLogin(j)}")
         sessionRepository.persist(cookie, NcmJson.displayLabelFromLogin(j))
+        qrRescue = false
+        return true
+    }
+
+    private fun offerQrFallback(json: JSONObject): Boolean {
+        if (!NcmJson.needsQrFallback(json)) return false
+        beginQrFallback()
         return true
     }
 
     private suspend fun ensurePhoneRegistered(): Boolean {
         val existJson = api.cellphoneExistenceCheck(phone.trim())
+        NcmLog.i("exist ${NcmLog.summarize(existJson)} body=${NcmLog.json(existJson)}")
         return when (NcmJson.phoneAlreadyRegistered(existJson)) {
             true -> true
             false -> {
                 bannerError = "该手机号尚未注册，请先注册"
+                NcmLog.w("exist not-registered")
                 false
             }
             null -> {
                 bannerError = NcmJson.userFacingMessage(existJson, "无法确认该手机号是否已注册")
+                NcmLog.w("exist unknown banner=$bannerError")
                 false
             }
         }

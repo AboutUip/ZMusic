@@ -58,10 +58,14 @@ class IslandNoticeCenter {
         signal.trySend(Unit)
     }
 
-    fun setSticky(message: String) {
+    fun setSticky(message: String, coverUrl: String? = null) {
         val text = message.trim()
         if (text.isEmpty()) return
-        _sticky.value = IslandNotice(id = StickyId, message = text, coverUrl = null)
+        _sticky.value = IslandNotice(
+            id = StickyId,
+            message = text,
+            coverUrl = coverUrl?.trim()?.takeIf { it.isNotEmpty() },
+        )
         signal.trySend(Unit)
     }
 

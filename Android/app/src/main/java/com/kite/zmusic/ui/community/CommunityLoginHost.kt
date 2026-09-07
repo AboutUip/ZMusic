@@ -38,6 +38,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -57,6 +58,7 @@ import androidx.core.content.ContextCompat
 import com.kite.zmusic.ZMusicApplication
 import com.kite.zmusic.data.CommunityLoginConfig
 import com.kite.zmusic.data.CommunityLoginPreview
+import com.kite.zmusic.data.ZMusicSongLink
 import com.kite.zmusic.ui.common.GlassAlertDialog
 import com.kite.zmusic.ui.common.QrScannerOverlay
 import com.kite.zmusic.ui.common.UrlImage
@@ -77,21 +79,50 @@ private sealed class CommunityLoginPhase {
     data class Authorize(val preview: CommunityLoginPreview) : CommunityLoginPhase()
 }
 
+private data class PendingSongScan(
+    val songId: Long,
+    val title: String,
+    val artists: String,
+)
+
 @Composable
 fun rememberCommunityLoginOpener(
     offerWebsite: Boolean = false,
+    onPlaySong: ((Long) -> Unit)? = null,
 ): () -> Unit {
     val context = LocalContext.current
     val app = context.applicationContext as ZMusicApplication
     val scope = rememberCoroutineScope()
+    val playSong = rememberUpdatedState(onPlaySong)
     var phase by remember { mutableStateOf<CommunityLoginPhase>(CommunityLoginPhase.Hidden) }
     var busy by remember { mutableStateOf(false) }
     var previewJob by remember { mutableStateOf<Job?>(null) }
     var showChoice by remember { mutableStateOf(false) }
+    var pendingSong by remember { mutableStateOf<PendingSongScan?>(null) }
 
     fun toast(msg: String) = context.showIslandNotice(msg)
 
     fun handleQr(raw: String): Boolean {
+        val songId = ZMusicSongLink.parse(raw)
+        if (songId != null) {
+            previewJob?.cancel()
+            phase = CommunityLoginPhase.Hidden
+            pendingSong = PendingSongScan(songId, "这首歌", "")
+            previewJob = scope.launch {
+                val cookie = app.sessionRepository.session.value?.cookie.orEmpty()
+                val track = withContext(Dispatchers.IO) {
+                    runCatching { app.songRepository.trackById(songId, cookie) }.getOrNull()
+                }
+                if (!isActive) return@launch
+                if (pendingSong?.songId != songId) return@launch
+                pendingSong = PendingSongScan(
+                    songId = songId,
+                    title = track?.name?.trim()?.ifBlank { null } ?: "这首歌",
+                    artists = track?.artists?.trim().orEmpty(),
+                )
+            }
+            return true
+        }
         val sid = CommunityLoginConfig.parseQr(raw)
         if (sid == null) {
             return false
@@ -125,7 +156,7 @@ fun rememberCommunityLoginOpener(
                 return@launch
             }
             if (!handleQr(text)) {
-                toast("不是社区登录二维码")
+                toast("无法识别该二维码")
             }
         }
     }
@@ -174,8 +205,8 @@ fun rememberCommunityLoginOpener(
             ),
         ) {
             QrScannerOverlay(
-                title = "扫描登录二维码",
-                subtitle = "对准社区页上的码，也可从相册选取",
+                title = "扫描二维码",
+                subtitle = "对准分享海报或社区登录码，也可从相册选取",
                 onDetected = { raw -> handleQr(raw) },
                 onOpenGallery = {
                     galleryLauncher.launch(
@@ -274,6 +305,32 @@ fun rememberCommunityLoginOpener(
                 },
             )
         }
+    }
+
+    pendingSong?.let { pending ->
+        val message = buildString {
+            append("「${pending.title}」")
+            if (pending.artists.isNotBlank()) {
+                append("\n")
+                append(pending.artists)
+            }
+        }
+        GlassAlertDialog(
+            title = "播放这首歌？",
+            message = message,
+            confirmLabel = "播放",
+            onConfirm = {
+                val id = pending.songId
+                pendingSong = null
+                val play = playSong.value
+                if (play != null) {
+                    play(id)
+                } else {
+                    toast("暂时无法播放")
+                }
+            },
+            onDismiss = { pendingSong = null },
+        )
     }
 
     if (offerWebsite && showChoice) {

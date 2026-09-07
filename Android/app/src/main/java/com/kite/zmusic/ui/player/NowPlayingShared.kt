@@ -420,6 +420,10 @@ internal val CyanSoft = Color(0xFF6FD4D4)
 /** 浏览视觉中心：两色中值，偏亮灰白（横/竖屏共用） */
 internal val LyricBrowseSelect = lerp(Color(0xFFF8FAFC), Color(0xFFDCE6F0), 0.5f)
 internal val OrbInk = Color(0xFF090B12)
+internal val OrbGlowPink = Color(0xFFE8A0C8)
+internal val OrbGlowBlue = Color(0xFF6EB8FF)
+internal val OrbGlowPurple = Color(0xFFB8A0FF)
+internal val OrbGlowPeach = Color(0xFFFFC9A8)
 internal val GlassStroke = Color.White.copy(alpha = 0.16f)
 internal val GlassHi = Color.White.copy(alpha = 0.14f)
 internal val GlassLo = Color.White.copy(alpha = 0.045f)
@@ -690,7 +694,17 @@ internal fun GeminiOrbsBackdrop(
         }
     }
 
-    Canvas(modifier = modifier.background(OrbInk)) {
+    val expand = LocalPlayerExpand.current
+    val expandP = if (expand != null && expand.mounted) {
+        expand.visualProgress
+    } else {
+        1f
+    }
+    val expanding = expand != null && expand.mounted && expandP < PlayerExpandHandoff
+    val orbBase = if (expanding) expandCardColor(expandP, OrbInk) else OrbInk
+
+    Canvas(modifier) {
+        drawRect(orbBase)
         drawGen
         val phaseA = orbSim[0]
         val phaseB = orbSim[1]
@@ -738,21 +752,21 @@ internal fun GeminiOrbsBackdrop(
             cx = w * (0.22f + 0.14f * cos(a)),
             cy = h * (0.32f + 0.16f * sin(a)),
             radius = minOf(w, h) * 0.5f * pulse * (1f + 0.18f * lowT),
-            color = Color(0xFFE8A0C8),
+            color = OrbGlowPink,
             alpha = (0.22f * baseScale + 0.58f * lowT).coerceIn(0f, 0.92f),
         )
         orb(
             cx = w * (0.72f + 0.12f * cos(b + 1.2f)),
             cy = h * (0.68f + 0.14f * sin(b + 0.4f)),
             radius = minOf(w, h) * 0.58f * (0.96f + 0.04f * sin(b)) * (1f + 0.16f * highT),
-            color = Color(0xFF6EB8FF),
+            color = OrbGlowBlue,
             alpha = (0.20f * baseScale + 0.55f * highT).coerceIn(0f, 0.90f),
         )
         orb(
             cx = w * (0.58f + 0.11f * sin(c)),
             cy = h * (0.40f + 0.17f * cos(c)),
             radius = minOf(w, h) * 0.44f * pulseInv * (1f + 0.14f * midT),
-            color = Color(0xFFB8A0FF),
+            color = OrbGlowPurple,
             alpha = (0.18f * baseScale + 0.52f * midT).coerceIn(0f, 0.88f),
         )
         val ambience = maxOf(lowT, midT, highT)
@@ -760,7 +774,7 @@ internal fun GeminiOrbsBackdrop(
             cx = w * (0.38f + 0.26f * sin(b)),
             cy = h * (0.88f + 0.04f * cos(b * 2f)),
             radius = w * 0.46f * (0.94f + 0.06f * sin(c)) * (1f + 0.08f * ambience),
-            color = Color(0xFFFFC9A8),
+            color = OrbGlowPeach,
             alpha = 0.18f * baseScale + 0.22f * ambience,
         )
     }

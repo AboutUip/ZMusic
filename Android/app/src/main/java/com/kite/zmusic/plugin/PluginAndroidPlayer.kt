@@ -3,13 +3,10 @@ package com.kite.zmusic.plugin
 import android.os.Handler
 import com.kite.zmusic.data.LikedPlaylistRepository
 import com.kite.zmusic.data.SessionRepository
-import com.kite.zmusic.data.SongRepository
 import com.kite.zmusic.playback.PlaybackBridge
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.launch
 
 /**
- * 主线程转发播放控制；喜欢走与播放页相同的本地优先再同步远端。
+ * 主线程转发播放控制；喜欢先改本地再后台确认，失败重试后回滚。
  * 不在插件线程等待主线程，避免 `delay` 之外再卡住 JS。
  */
 internal class PluginAndroidPlayer(
@@ -17,9 +14,6 @@ internal class PluginAndroidPlayer(
     private val playback: PlaybackBridge,
     private val likedRepo: LikedPlaylistRepository,
     private val session: SessionRepository,
-    private val songs: SongRepository,
-    private val online: () -> Boolean,
-    private val ioScope: CoroutineScope,
 ) : PluginPlayerController {
     override fun play(): Boolean {
         val ui = playback.ui.value
@@ -58,23 +52,13 @@ internal class PluginAndroidPlayer(
     }
 
     override fun setLiked(liked: Boolean): Boolean {
-        if (!online()) return false
         val sess = session.session.value ?: return false
         if (sess.isGuest) return false
         val cookie = sess.cookie
         if (cookie.isBlank()) return false
         val track = playback.ui.value.currentTrack ?: return false
         likedRepo.applyLocalLike(track, liked = liked)
-        ioScope.launch {
-            try {
-                val ack = songs.likeSong(track.id, like = liked, cookie = cookie)
-                if (!ack.ok) {
-                    likedRepo.applyLocalLike(track, liked = !liked, scheduleSync = false)
-                }
-            } catch (_: Exception) {
-                likedRepo.applyLocalLike(track, liked = !liked, scheduleSync = false)
-            }
-        }
+        likedRepo.submitLike(track, liked, cookie)
         return true
     }
 }

@@ -6,14 +6,32 @@ import android.content.Context
 import android.net.Uri
 import android.provider.MediaStore
 import android.util.Log
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
 import java.util.concurrent.TimeUnit
+import kotlin.coroutines.coroutineContext
 
 class TrackExportException(message: String) : Exception(message)
+
+internal object TrackExportLog {
+    const val TAG = "ZMusicExport"
+
+    fun i(msg: String) = Log.i(TAG, msg)
+
+    fun w(msg: String, error: Throwable? = null) {
+        if (error != null) Log.w(TAG, msg, error) else Log.w(TAG, msg)
+    }
+
+    fun e(msg: String, error: Throwable? = null) {
+        if (error != null) Log.e(TAG, msg, error) else Log.e(TAG, msg)
+    }
+}
 
 /**
  * 导出到公共下载目录 `Download/ZMusic/{可读文件夹}/`，
@@ -59,14 +77,40 @@ class TrackExportRepository(
         track: TrackRow,
         cookie: String,
         options: TrackExportOptions = lastOptions(),
+        onAudioProgress: ((received: Long, total: Long) -> Unit)? = null,
     ): String = withContext(Dispatchers.IO) {
+        try {
+            exportInner(track, cookie, options, onAudioProgress)
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            TrackExportLog.e(
+                "fail id=${track.id} ${e.javaClass.simpleName} ${e.message}",
+                e,
+            )
+            throw e
+        }
+    }
+
+    private suspend fun exportInner(
+        track: TrackRow,
+        cookie: String,
+        options: TrackExportOptions,
+        onAudioProgress: ((received: Long, total: Long) -> Unit)?,
+    ): String {
         if (track.id <= 0L) throw TrackExportException("无法下载这首歌")
         val folder = folderName(track)
         val relative = "$ROOT/$folder/"
+        TrackExportLog.i(
+            "start id=${track.id} q=${options.quality.level} " +
+                "cover=${options.includeCover} lyrics=${options.includeLyrics} " +
+                "meta=${options.includeMetadata} folder=$folder",
+        )
         val audioUrl = resolveAudioUrl(track.id, cookie, options.quality)
             ?: throw TrackExportException("暂时没有可下载的音源")
-        val audioBytes = downloadBytes(audioUrl)
+        TrackExportLog.i("audio url ${urlBrief(audioUrl)}")
+        val audioBytes = downloadBytes("audio", audioUrl, onAudioProgress)
             ?: throw TrackExportException("音频下载失败")
+        TrackExportLog.i("audio bytes=${audioBytes.size}")
         clearFolder(relative)
         val (audioName, audioMime) = audioFileOf(audioBytes)
         writeFile(relative, audioName, audioMime, audioBytes)
@@ -74,11 +118,13 @@ class TrackExportRepository(
         var coverName: String? = null
         if (options.includeCover) {
             track.coverUrl?.takeIf { it.isNotBlank() }?.let { url ->
-                val bytes = downloadBytes(url)
+                val bytes = downloadBytes("cover", url)
                 if (bytes != null && bytes.isNotEmpty()) {
                     val (name, mime) = coverFileOf(bytes)
                     writeFile(relative, name, mime, bytes)
                     coverName = name
+                } else {
+                    TrackExportLog.w("cover skipped id=${track.id} url=${urlBrief(url)}")
                 }
             }
         }
@@ -96,6 +142,10 @@ class TrackExportRepository(
                     writeFile(relative, "lyrics.trans.lrc", MIME_LRC, lrc.toByteArray(Charsets.UTF_8))
                     transName = "lyrics.trans.lrc"
                 }
+                TrackExportLog.i("lyrics orig=${lyricName != null} trans=${transName != null}")
+            }.onFailure {
+                if (it is CancellationException) throw it
+                TrackExportLog.w("lyrics failed id=${track.id}", it)
             }
         }
 
@@ -127,7 +177,8 @@ class TrackExportRepository(
             )
         }
         notifyLibraryChanged()
-        folder
+        TrackExportLog.i("ok id=${track.id} folder=$folder")
+        return folder
     }
 
     /** 扫描 `Download/ZMusic` 下符合 [TRACK_EXPORT_SCHEMA] 的单曲文件夹。 */
@@ -217,23 +268,74 @@ class TrackExportRepository(
         cookie: String,
         quality: AudioQuality,
     ): String? {
-        return PlayUrlResolver.resolve(
-            userClient = userClient,
-            trackId = trackId,
-            cookie = cookie,
-            quality = quality,
-        )
+        return runCatching {
+            PlayUrlResolver.resolve(
+                userClient = userClient,
+                trackId = trackId,
+                cookie = cookie,
+                quality = quality,
+            )
+        }.onFailure {
+            TrackExportLog.w("resolve failed id=$trackId q=${quality.level}", it)
+        }.getOrElse { throw it }.also { url ->
+            if (url == null) {
+                TrackExportLog.w("resolve empty id=$trackId q=${quality.level}")
+            }
+        }
     }
 
-    private fun downloadBytes(url: String): ByteArray? {
+    private suspend fun downloadBytes(
+        kind: String,
+        url: String,
+        onProgress: ((received: Long, total: Long) -> Unit)? = null,
+    ): ByteArray? {
         val req = Request.Builder().url(url).get().build()
         return runCatching {
             client.newCall(req).execute().use { resp ->
-                if (!resp.isSuccessful) return@use null
-                resp.body?.bytes()
+                val declared = resp.body?.contentLength() ?: -1L
+                if (!resp.isSuccessful) {
+                    TrackExportLog.w(
+                        "$kind http ${resp.code} ${urlBrief(url)} contentLength=$declared",
+                    )
+                    return@use null
+                }
+                val body = resp.body ?: return@use null
+                val total = declared
+                val seed = if (total > 0L && total <= Int.MAX_VALUE) total.toInt() else 32 * 1024
+                val out = ByteArrayOutputStream(seed)
+                val buf = ByteArray(16 * 1024)
+                var received = 0L
+                var lastPct = -1
+                onProgress?.invoke(0L, total)
+                body.byteStream().use { input ->
+                    while (true) {
+                        coroutineContext.ensureActive()
+                        val n = input.read(buf)
+                        if (n < 0) break
+                        out.write(buf, 0, n)
+                        received += n
+                        if (onProgress != null) {
+                            val pct = if (total > 0L) {
+                                ((received * 100L) / total).toInt().coerceIn(0, 100)
+                            } else {
+                                -1
+                            }
+                            if (pct != lastPct) {
+                                lastPct = pct
+                                onProgress(received, total)
+                            }
+                        }
+                    }
+                }
+                val bytes = out.toByteArray()
+                TrackExportLog.i(
+                    "$kind http ${resp.code} ${urlBrief(url)} bytes=${bytes.size}",
+                )
+                bytes
             }
         }.onFailure {
-            Log.w(TAG, "download failed", it)
+            if (it is CancellationException) throw it
+            TrackExportLog.w("$kind http failed ${urlBrief(url)}", it)
         }.getOrNull()
     }
 
@@ -244,17 +346,31 @@ class TrackExportRepository(
         bytes: ByteArray,
     ) {
         val resolver = appContext.contentResolver
-        val existing = findExisting(relativeDir, displayName)
-        val uri = existing ?: insertPending(relativeDir, displayName, mime)
-        resolver.openOutputStream(uri, "w")?.use { out ->
-            out.write(bytes)
-            out.flush()
-        } ?: throw TrackExportException("写入下载目录失败")
-        if (existing == null) {
-            val done = ContentValues().apply {
-                put(MediaStore.Downloads.IS_PENDING, 0)
+        try {
+            val existing = findExisting(relativeDir, displayName)
+            val uri = existing ?: insertPending(relativeDir, displayName, mime)
+            TrackExportLog.i(
+                "write $displayName mime=$mime bytes=${bytes.size} " +
+                    "reuse=${existing != null} uri=$uri",
+            )
+            resolver.openOutputStream(uri, "w")?.use { out ->
+                out.write(bytes)
+                out.flush()
+            } ?: throw TrackExportException("写入下载目录失败")
+            if (existing == null) {
+                val done = ContentValues().apply {
+                    put(MediaStore.Downloads.IS_PENDING, 0)
+                }
+                val updated = resolver.update(uri, done, null, null)
+                TrackExportLog.i("pending clear $displayName updated=$updated")
             }
-            resolver.update(uri, done, null, null)
+        } catch (e: TrackExportException) {
+            TrackExportLog.e("write throw $displayName", e)
+            throw e
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            TrackExportLog.e("write failed $displayName", e)
+            throw TrackExportException("写入下载目录失败")
         }
     }
 
@@ -276,9 +392,10 @@ class TrackExportRepository(
         val variants = relativePathVariants(relativeDir)
         val sel = variants.joinToString(" OR ") { "${MediaStore.Downloads.RELATIVE_PATH}=?" }
         runCatching {
-            resolver.delete(MediaStore.Downloads.EXTERNAL_CONTENT_URI, sel, variants)
+            val n = resolver.delete(MediaStore.Downloads.EXTERNAL_CONTENT_URI, sel, variants)
+            TrackExportLog.i("clear $relativeDir deleted=$n")
         }.onFailure {
-            Log.w(TAG, "clear folder failed", it)
+            TrackExportLog.w("clear failed $relativeDir", it)
         }
     }
 
@@ -332,7 +449,6 @@ class TrackExportRepository(
     private data class CachedScanHit(val exportedAt: Long, val track: TrackRow)
 
     companion object {
-        private const val TAG = "TrackExport"
         const val SCHEMA = TRACK_EXPORT_SCHEMA
         const val ROOT = TRACK_EXPORT_ROOT
         private const val PREFS = "zmusic_track_export"
@@ -362,6 +478,15 @@ class TrackExportRepository(
                 }
             }.trim().replace(Regex("\\s+"), " ").trim('.', ' ')
             return cleaned
+        }
+
+        private fun urlBrief(url: String): String {
+            return runCatching {
+                val uri = android.net.Uri.parse(url)
+                val host = uri.host ?: "?"
+                val path = uri.path.orEmpty()
+                "$host$path q=${uri.encodedQuery?.length ?: 0}"
+            }.getOrElse { "urlLen=${url.length}" }
         }
 
         private fun audioFileOf(bytes: ByteArray): Pair<String, String> {

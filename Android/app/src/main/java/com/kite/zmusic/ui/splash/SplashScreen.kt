@@ -67,6 +67,9 @@ private const val TaglineDur = 720f
 private const val HoldMs = 780f
 private const val FadeMs = 360f
 private const val FadeAt = TaglineAt + TaglineDur + HoldMs
+/** uan 落位、尚未被吸入变成 ZMusic；加速启动在此定格。 */
+private const val XuanCompleteMs = 1600f
+private const val AccelHoldMs = 480f
 
 private val taglineStyle = TextStyle(
     color = InkSecondary,
@@ -92,12 +95,17 @@ private data class Pose(
  * [checkReady] 与动画并行；动画播到定格后若探测未完，停在定格等待，再淡出。
  * [onFinished] 的参数为探测是否成功。
  * 定格后若仍有插件未就绪，在画面下方转圈提示，不加遮罩。
+ *
+ * [accelerate] 为真时只播到 Xuan 完整出现后进入；若当时插件尚未就绪，
+ * 忽略加速，照常播完整动画并在定格后显示加载。
  */
 @Composable
 fun SplashScreen(
     checkReady: suspend () -> Boolean,
     onFinished: (connected: Boolean) -> Unit,
     pluginWaitNames: StateFlow<List<String>>? = null,
+    pluginReady: () -> Boolean = { true },
+    accelerate: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -109,28 +117,42 @@ fun SplashScreen(
         ) == 0f
     }
     var tMs by remember { mutableFloatStateOf(if (reduceMotion) FadeAt else 0f) }
+    var exitFadeMs by remember { mutableFloatStateOf(0f) }
     val density = LocalDensity.current
     val checkReadyState = rememberUpdatedState(checkReady)
     val onFinishedState = rememberUpdatedState(onFinished)
+    val pluginReadyState = rememberUpdatedState(pluginReady)
 
     val emptyPluginWait = remember { MutableStateFlow(emptyList<String>()) }
-    val pendingPlugins by (pluginWaitNames ?: emptyPluginWait).collectAsStateWithLifecycle()
+    val pluginWaitFlow = pluginWaitNames ?: emptyPluginWait
+    val pendingPlugins by pluginWaitFlow.collectAsStateWithLifecycle()
 
     SplashLightSystemBars()
 
-    LaunchedEffect(reduceMotion) {
+    LaunchedEffect(reduceMotion, accelerate) {
         val probe = async {
             runCatching { checkReadyState.value() }.getOrDefault(false)
         }
+        var freezeAt = FadeAt
         if (reduceMotion) {
             delay(420)
         } else {
             val start = withFrameNanos { it }
-            while (true) {
-                val now = withFrameNanos { it }
-                val elapsed = (now - start) / 1_000_000f
-                tMs = elapsed.coerceAtMost(FadeAt)
-                if (elapsed >= FadeAt) break
+            val cut = if (accelerate) XuanCompleteMs else FadeAt
+            advanceSplashClock(start, cut) { tMs = it }
+            val pluginsLate = accelerate &&
+                (!pluginReadyState.value() || pluginWaitFlow.value.isNotEmpty())
+            if (pluginsLate) {
+                advanceSplashClock(start, FadeAt) { tMs = it }
+                freezeAt = FadeAt
+            } else if (accelerate) {
+                tMs = XuanCompleteMs
+                freezeAt = XuanCompleteMs
+                while (true) {
+                    val now = withFrameNanos { it }
+                    val elapsed = (now - start) / 1_000_000f
+                    if (elapsed >= XuanCompleteMs + AccelHoldMs) break
+                }
             }
         }
         val connected = probe.await()
@@ -139,14 +161,15 @@ fun SplashScreen(
             while (true) {
                 val now = withFrameNanos { it }
                 val elapsed = (now - fadeStart) / 1_000_000f
-                tMs = FadeAt + elapsed
+                tMs = freezeAt
+                exitFadeMs = elapsed.coerceAtMost(FadeMs)
                 if (elapsed >= FadeMs) break
             }
         }
         onFinishedState.value(connected)
     }
 
-    val fade = if (tMs < FadeAt) 1f else (1f - (tMs - FadeAt) / FadeMs).coerceIn(0f, 1f)
+    val fade = (1f - exitFadeMs / FadeMs).coerceIn(0f, 1f)
 
     Box(
         modifier
@@ -188,7 +211,7 @@ fun SplashScreen(
                 }
             }
         }
-        if (tMs >= FadeAt && pendingPlugins.isNotEmpty()) {
+        if (tMs >= FadeAt && exitFadeMs <= 0f && pendingPlugins.isNotEmpty()) {
             Column(
                 Modifier
                     .align(Alignment.BottomCenter)
@@ -592,6 +615,19 @@ private fun easeOutBack(t: Float): Float {
     val c3 = c1 + 1f
     val p = t - 1f
     return 1f + c3 * p * p * p + c1 * p * p
+}
+
+private suspend fun advanceSplashClock(
+    startNanos: Long,
+    untilMs: Float,
+    onTime: (Float) -> Unit,
+) {
+    while (true) {
+        val now = withFrameNanos { it }
+        val elapsed = (now - startNanos) / 1_000_000f
+        onTime(elapsed.coerceAtMost(untilMs))
+        if (elapsed >= untilMs) break
+    }
 }
 
 @Composable

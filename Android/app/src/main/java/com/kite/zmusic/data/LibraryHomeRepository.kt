@@ -127,6 +127,15 @@ class LibraryHomeRepository(
                             }.getOrNull()
                         }
                     }
+                    val listenMsDef = async {
+                        if (session.isGuest) return@async null
+                        val total = runCatching { userClient.listenDataTotal(session.cookie) }.getOrNull()
+                        total?.let { NcmLibraryParse.listenDurationMsFromJson(it) }?.let { return@async it }
+                        val month = runCatching {
+                            userClient.listenDataRealtimeReport(session.cookie, "month")
+                        }.getOrNull()
+                        month?.let { NcmLibraryParse.listenDurationMsFromJson(it) }
+                    }
                     HomeFetch(
                         detail = detailDef.await(),
                         level = levelDef.await(),
@@ -134,6 +143,7 @@ class LibraryHomeRepository(
                         playlists = plDef.await(),
                         subcount = subDef.await(),
                         albums = albumsDef.await(),
+                        listenDurationMs = listenMsDef.await(),
                     )
                 }
                 var profile = fetched.detail?.let { NcmLibraryParse.userProfileFromDetail(it) }
@@ -160,6 +170,9 @@ class LibraryHomeRepository(
                 applyAlbumPage(fetched.albums)
                 subcount?.let { sc ->
                     profile = profile.copy(artistFollows = sc.subArtistCount.toLong().coerceAtLeast(0L))
+                }
+                fetched.listenDurationMs?.let { ms ->
+                    profile = profile.copy(listenDurationMs = ms)
                 }
                 _snapshot.update {
                     it.copy(
@@ -265,6 +278,7 @@ class LibraryHomeRepository(
         val playlists: JSONObject,
         val subcount: JSONObject?,
         val albums: JSONObject?,
+        val listenDurationMs: Long?,
     )
 
     companion object {

@@ -54,7 +54,7 @@ class CommunityServerStore(context: Context) {
     }
 
     companion object {
-        val DEFAULT = ServerConfigRepository.Endpoint("114.215.189.208", 80)
+        val DEFAULT = ServerConfigRepository.Endpoint("120.27.140.91", 80)
         private const val PREFS_NAME = "zmusic_community_server"
         private const val KEY_HOST = "community_host"
         private const val KEY_PORT = "community_port"

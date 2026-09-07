@@ -891,3 +891,21 @@ internal fun formatPlayCount(n: Long): String = when {
     n >= 10_000 -> "%.1f万".format(n / 10_000.0)
     else -> n.toString()
 }
+
+/** 个人页等级右侧：优先小时，不足一小时用分钟。 */
+internal fun formatListenDuration(ms: Long): Pair<String, String> {
+    val safe = ms.coerceAtLeast(0L)
+    val hours = safe / 3_600_000L
+    val minutes = safe / 60_000L
+    return when {
+        hours >= 10_000L -> formatPlayCount(hours) to "时"
+        hours >= 100L -> hours.toString() to "时"
+        hours >= 1L -> {
+            val tenths = (safe + 180_000L) / 360_000L
+            if (tenths % 10L == 0L) (tenths / 10L).toString() to "时"
+            else "${tenths / 10L}.${tenths % 10L}" to "时"
+        }
+        minutes >= 1L -> minutes.toString() to "分"
+        else -> "0" to "时"
+    }
+}

@@ -176,7 +176,7 @@ private fun WordLyricPreview(
             )
             if (wordByWord && isPlaying && line.words.isNotEmpty()) {
                 KaraokeLyricText(
-                    words = line.karaokeWords(positionMs),
+                    words = line.karaokeWords(),
                     positionMs = positionMs,
                     playingColor = playingColor,
                     unplayedColor = unplayedColor,

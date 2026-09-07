@@ -93,6 +93,9 @@ fun FeaturesScreen(
         ) {
             onOpenOverlay(MainOverlay.CachedSongs)
         },
+        FeatureItem("音乐云盘", "上传的歌曲", Color(0xFF0A84FF), ZIcons.Cloud) {
+            onOpenOverlay(MainOverlay.CloudDisk)
+        },
         FeatureItem(
             title = "创意工坊",
             subtitle = "社区插件与本机模块",

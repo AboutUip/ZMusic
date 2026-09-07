@@ -82,8 +82,10 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderColors
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -143,6 +145,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -219,6 +222,8 @@ internal fun PlayerTransport(
     onOpenMore: (() -> Unit)? = null,
     /** 竖屏：底栏评论入口；时长上方不再单独放钮 */
     onOpenComments: (() -> Unit)? = null,
+    /** 竖屏：底栏分享；五枚按钮 SpaceBetween 时居中 */
+    onOpenShare: (() -> Unit)? = null,
     /**
      * 竖屏：进度条与播放按钮行的垂直偏移。
      * 关闭「容器包含」时底部设置条不参与；开启后整块玻璃容器一并偏移。
@@ -230,6 +235,8 @@ internal fun PlayerTransport(
     controlsChromeAlpha: Float = 1f,
     /** 竖屏歌词清屏：底部工具栏透明度 */
     toolbarChromeAlpha: Float = 1f,
+    /** 歌词多选叠层里的第二套控件不要抢播放键锚点。 */
+    reportExpandPlay: Boolean = true,
 ) {
     val context = LocalContext.current
     val online = rememberNetworkOnline()
@@ -270,7 +277,7 @@ internal fun PlayerTransport(
         else -> 48.dp
     }
     val sliderH = when {
-        landscapeDense -> 28.dp
+        landscapeDense -> 28.dp * (2f / 3f)
         portraitSlim -> 16.dp
         else -> 20.dp
     }
@@ -305,12 +312,14 @@ internal fun PlayerTransport(
         ) {
             PlaybackModeControl(
                 mode = playbackMode,
+                modifier = Modifier.playerExpandHideExtra(),
                 onClick = onCyclePlaybackMode,
                 circleSize = skipHit,
                 tint = iconTint,
             )
             Box(
                 modifier = Modifier
+                    .playerExpandHideExtra()
                     .size(skipHit)
                     .clip(CircleShape)
                     .clickable(
@@ -324,10 +333,16 @@ internal fun PlayerTransport(
             }
             Box(
                 modifier = Modifier
-                    .graphicsLayer {
-                        scaleX = playPulse
-                        scaleY = playPulse
-                    }
+                    .then(
+                        if (reportExpandPlay) {
+                            Modifier
+                                .playerExpandAnchor(PlayerExpandSlot.FullPlay)
+                                .playerExpandHideFull()
+                        } else {
+                            Modifier
+                        },
+                    )
+                    .playerExpandPlayPulse(playPulse)
                     .size(playSize)
                     .clip(CircleShape)
                     .background(TextTheme.PlayerPlayFill)
@@ -347,6 +362,7 @@ internal fun PlayerTransport(
             }
             Box(
                 modifier = Modifier
+                    .playerExpandHideExtra()
                     .size(skipHit)
                     .clip(CircleShape)
                     .clickable(
@@ -360,14 +376,14 @@ internal fun PlayerTransport(
             }
             Box(
                 modifier = Modifier
+                    .playerExpandHideExtra()
                     .size(skipHit)
                     .clip(CircleShape)
-                    .alpha(if (online) 1f else 0.38f)
                     .clickable(
                         enabled = !controlsLocked,
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
-                        onClick = { requireOnline(onToggleLike) },
+                        onClick = onToggleLike,
                     ),
                 contentAlignment = Alignment.Center,
             ) {
@@ -381,39 +397,62 @@ internal fun PlayerTransport(
             Text(
                 text = formatTimeMs(displayPosMs),
                 style = timeStyle,
-                modifier = Modifier.widthIn(min = 36.dp),
+                modifier = Modifier
+                    .widthIn(min = 36.dp)
+                    .then(
+                        if (reportExpandPlay) {
+                            Modifier
+                                .playerExpandAnchor(PlayerExpandSlot.FullElapsedTime)
+                                .playerExpandHideFull()
+                        } else {
+                            Modifier
+                        },
+                    ),
                 textAlign = TextAlign.End,
                 maxLines = 1,
             )
             Box(
                 Modifier
                     .weight(1f)
-                    .height(sliderH),
+                    .height(sliderH)
+                    .playerExpandAnchor(PlayerExpandSlot.FullProgress)
+                    .playerExpandHideFull(),
                 contentAlignment = Alignment.Center,
             ) {
-                Slider(
+                PlayerProgressSlider(
                     modifier = Modifier.fillMaxWidth(),
                     value = sliderPos.coerceIn(0f, maxF),
                     onValueChange = { v ->
-                        if (controlsLocked) return@Slider
-                        onScrub(v)
+                        if (!controlsLocked) onScrub(v)
                     },
                     onValueChangeFinished = { onScrubEnd() },
                     valueRange = 0f..maxF,
                     enabled = !controlsLocked,
                     colors = sliderColors,
+                    trackHeight = sliderH,
                 )
             }
             Text(
                 text = formatTimeMs(durationMs),
                 style = timeStyle,
-                modifier = Modifier.widthIn(min = 36.dp),
+                modifier = Modifier
+                    .widthIn(min = 36.dp)
+                    .then(
+                        if (reportExpandPlay) {
+                            Modifier
+                                .playerExpandAnchor(PlayerExpandSlot.FullDurationTime)
+                                .playerExpandHideFull()
+                        } else {
+                            Modifier
+                        },
+                    ),
                 textAlign = TextAlign.Start,
                 maxLines = 1,
             )
             if (onOpenScore != null) {
                 Box(
                     modifier = Modifier
+                        .playerExpandHideExtra()
                         .size(skipHit)
                         .clip(CircleShape)
                         .clickable(
@@ -466,38 +505,63 @@ internal fun PlayerTransport(
 
         @Composable
         fun PortraitTimeAndSlider(rowPad: Modifier) {
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .then(rowPad)
-                    .padding(bottom = 6.dp),
-            ) {
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
+            Column {
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .then(rowPad)
+                        .padding(bottom = 6.dp),
                 ) {
-                    Text(text = formatTimeMs(displayPosMs), style = timeStyle)
-                    Text(text = formatTimeMs(durationMs), style = timeStyle)
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = formatTimeMs(displayPosMs),
+                            style = timeStyle,
+                            modifier = if (reportExpandPlay) {
+                                Modifier
+                                    .playerExpandAnchor(PlayerExpandSlot.FullElapsedTime)
+                                    .playerExpandHideFull()
+                            } else {
+                                Modifier
+                            },
+                        )
+                        Text(
+                            text = formatTimeMs(durationMs),
+                            style = timeStyle,
+                            modifier = if (reportExpandPlay) {
+                                Modifier
+                                    .playerExpandAnchor(PlayerExpandSlot.FullDurationTime)
+                                    .playerExpandHideFull()
+                            } else {
+                                Modifier
+                            },
+                        )
+                    }
                 }
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .then(rowPad)
+                        .height(sliderH)
+                        .playerExpandAnchor(PlayerExpandSlot.FullProgress)
+                        .playerExpandHideFull(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    PlayerProgressSlider(
+                        modifier = Modifier.fillMaxWidth(),
+                        value = sliderPos.coerceIn(0f, maxF),
+                        onValueChange = { v -> onScrub(v) },
+                        onValueChangeFinished = { onScrubEnd() },
+                        valueRange = 0f..maxF,
+                        colors = sliderColors,
+                        trackHeight = sliderH,
+                    )
+                }
+                Spacer(Modifier.height(16.dp))
             }
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .then(rowPad)
-                    .height(sliderH),
-                contentAlignment = Alignment.Center,
-            ) {
-                Slider(
-                    modifier = Modifier.fillMaxWidth(),
-                    value = sliderPos.coerceIn(0f, maxF),
-                    onValueChange = { v -> onScrub(v) },
-                    onValueChangeFinished = { onScrubEnd() },
-                    valueRange = 0f..maxF,
-                    colors = sliderColors,
-                )
-            }
-            Spacer(Modifier.height(16.dp))
         }
 
         @Composable
@@ -513,6 +577,7 @@ internal fun PlayerTransport(
             ) {
                 PlaybackModeControl(
                     mode = playbackMode,
+                    modifier = Modifier.playerExpandHideExtra(),
                     onClick = onCyclePlaybackMode,
                     circleSize = modeGlyphSize,
                     tint = iconTint,
@@ -520,6 +585,7 @@ internal fun PlayerTransport(
                 )
                 Box(
                     modifier = Modifier
+                        .playerExpandHideExtra()
                         .size(playSize)
                         .clip(CircleShape)
                         .clickable(onClick = onSkipPrev),
@@ -529,10 +595,16 @@ internal fun PlayerTransport(
                 }
                 Box(
                     modifier = Modifier
-                        .graphicsLayer {
-                            scaleX = playPulse
-                            scaleY = playPulse
-                        }
+                        .then(
+                            if (reportExpandPlay) {
+                                Modifier
+                                    .playerExpandAnchor(PlayerExpandSlot.FullPlay)
+                                    .playerExpandHideFull()
+                            } else {
+                                Modifier
+                            },
+                        )
+                        .playerExpandPlayPulse(playPulse)
                         .size(playSize)
                         .clip(CircleShape)
                         .background(TextTheme.PlayerPlayFill)
@@ -548,6 +620,7 @@ internal fun PlayerTransport(
                 }
                 Box(
                     modifier = Modifier
+                        .playerExpandHideExtra()
                         .size(playSize)
                         .clip(CircleShape)
                         .clickable(onClick = onSkipNext),
@@ -557,10 +630,10 @@ internal fun PlayerTransport(
                 }
                 Box(
                     modifier = Modifier
+                        .playerExpandHideExtra()
                         .size(likeGlyphSize)
                         .clip(CircleShape)
-                        .alpha(if (online) 1f else 0.38f)
-                        .clickable(onClick = { requireOnline(onToggleLike) }),
+                        .clickable(onClick = onToggleLike),
                     contentAlignment = Alignment.Center,
                 ) {
                     TransportLikeIcon(
@@ -576,6 +649,7 @@ internal fun PlayerTransport(
         fun PortraitAccessoryBar(rowPad: Modifier, painted: Boolean) {
             Row(
                 Modifier
+                    .playerExpandHideExtra()
                     .fillMaxWidth()
                     .then(rowPad)
                     .height(portraitBottomBandHeight)
@@ -605,6 +679,14 @@ internal fun PlayerTransport(
                         tint = iconTint,
                         enabled = online,
                         onClick = { requireOnline(onOpenComments) },
+                    )
+                }
+                if (onOpenShare != null) {
+                    PortraitAccessoryIcon(
+                        icon = ZIcons.Share,
+                        contentDescription = "分享",
+                        tint = iconTint,
+                        onClick = onOpenShare,
                     )
                 }
                 if (onOpenScore != null) {
@@ -692,16 +774,19 @@ internal fun PlayerTransport(
                         Box(
                             Modifier
                                 .fillMaxWidth()
-                                .height(sliderH),
+                                .height(sliderH)
+                                .playerExpandAnchor(PlayerExpandSlot.FullProgress)
+                                .playerExpandHideFull(),
                             contentAlignment = Alignment.Center,
                         ) {
-                            Slider(
+                            PlayerProgressSlider(
                                 modifier = Modifier.fillMaxWidth(),
                                 value = sliderPos.coerceIn(0f, maxF),
                                 onValueChange = { v -> onScrub(v) },
                                 onValueChangeFinished = { onScrubEnd() },
                                 valueRange = 0f..maxF,
                                 colors = sliderColors,
+                                trackHeight = sliderH,
                             )
                         }
                     }
@@ -790,5 +875,71 @@ internal fun CollapseFade(
                 translationY = (1f - p) * slidePx * if (slideDown) 1f else -1f
             },
         content = content,
+    )
+}
+
+/** 竖条手柄与轨道同高；飞层按当前轨道高度画，避免动画里手柄单独拔高。 */
+internal object PlayerProgressHandle {
+    val ThumbWidth = 4.dp
+    val TrackGap = 6.dp
+    val InsideCorner = 2.dp
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PlayerProgressSlider(
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    valueRange: ClosedFloatingPointRange<Float>,
+    colors: SliderColors,
+    trackHeight: Dp,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    onValueChangeFinished: (() -> Unit)? = null,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val thumbH = trackHeight
+    val span = valueRange.endInclusive - valueRange.start
+    val fraction = if (span <= 0f) {
+        0f
+    } else {
+        ((value - valueRange.start) / span).coerceIn(0f, 1f)
+    }
+    val on = if (enabled) colors.activeTrackColor else colors.disabledActiveTrackColor
+    val off = if (enabled) colors.inactiveTrackColor else colors.disabledInactiveTrackColor
+    Slider(
+        value = value,
+        onValueChange = onValueChange,
+        modifier = modifier,
+        enabled = enabled,
+        valueRange = valueRange,
+        onValueChangeFinished = onValueChangeFinished,
+        colors = colors,
+        interactionSource = interactionSource,
+        thumb = {
+            SliderDefaults.Thumb(
+                interactionSource = interactionSource,
+                colors = colors,
+                enabled = enabled,
+                thumbSize = DpSize(PlayerProgressHandle.ThumbWidth, thumbH),
+            )
+        },
+        track = {
+            Canvas(Modifier.fillMaxWidth().height(trackHeight)) {
+                drawPlayerProgressTracksAt(
+                    left = 0f,
+                    top = 0f,
+                    width = size.width,
+                    height = size.height,
+                    frac = fraction,
+                    thumbWidth = PlayerProgressHandle.ThumbWidth.toPx(),
+                    gap = PlayerProgressHandle.TrackGap.toPx(),
+                    insideCorner = PlayerProgressHandle.InsideCorner.toPx(),
+                    active = on,
+                    inactive = off,
+                    insetForThumb = false,
+                )
+            }
+        },
     )
 }

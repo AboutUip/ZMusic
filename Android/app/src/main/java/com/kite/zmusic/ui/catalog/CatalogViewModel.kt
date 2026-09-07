@@ -59,6 +59,8 @@ data class CatalogListState(
     val albumType: String? = null,
     val albumAlias: String? = null,
     val commentCount: Int = 0,
+    /** 非歌单列表也可分页（如云盘）。 */
+    val canPage: Boolean = false,
 ) {
     val isAlbum: Boolean get() = albumId > 0L
 }
@@ -402,8 +404,7 @@ open class CatalogViewModel(
             try {
                 if (state.isHeartPlaylist) {
                     likedPlaylistRepository.applyLocalLike(track, liked = false)
-                    val ack = catalog.unlikeSong(track.id, cookie)
-                    if (!ack.ok) {
+                    if (!likedPlaylistRepository.pushLike(track, liked = false, cookie)) {
                         likedPlaylistRepository.applyLocalLike(track, liked = true, scheduleSync = false)
                         islandNotices.show("移除失败", track.coverUrl)
                         return@launch
@@ -456,8 +457,7 @@ open class CatalogViewModel(
                     unique.forEach { likedPlaylistRepository.applyLocalLike(it, liked = false) }
                     var failed = 0
                     for (track in unique) {
-                        val ack = catalog.unlikeSong(track.id, cookie)
-                        if (!ack.ok) {
+                        if (!likedPlaylistRepository.pushLike(track, liked = false, cookie)) {
                             likedPlaylistRepository.applyLocalLike(track, liked = true, scheduleSync = false)
                             failed++
                         }
@@ -785,6 +785,7 @@ open class CatalogViewModel(
             albumAlias = entry.alias,
             commentCount = entry.commentCount,
         )
+        likedPlaylistRepository.prefetchLikeStatuses(entry.tracks)
     }
 
     private fun refreshAlbumDynamic(id: Long) {
@@ -879,6 +880,7 @@ open class CatalogViewModel(
                         expectedCount = total.coerceAtLeast(tracks.size),
                     )
                 }
+                likedPlaylistRepository.prefetchLikeStatuses(tracks)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -927,6 +929,9 @@ open class CatalogViewModel(
                         expectedCount = total.coerceAtLeast(merged.size),
                         subtitle = if (total > merged.size) "${merged.size} / $total 首" else "${merged.size} 首",
                     )
+                }
+                if (artistSongsId == id) {
+                    likedPlaylistRepository.prefetchLikeStatuses(songsPage)
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -987,6 +992,7 @@ open class CatalogViewModel(
                     tracks = if (replace) tracks else (it.tracks + tracks),
                 )
             }
+            likedPlaylistRepository.prefetchLikeStatuses(tracks)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -1067,6 +1073,8 @@ open class CatalogViewModel(
                 isHeartPlaylist = if (same) it.isHeartPlaylist else false,
                 creatorName = meta?.creatorName ?: it.creatorName.takeIf { same },
                 creatorAvatarUrl = meta?.creatorAvatarUrl ?: it.creatorAvatarUrl.takeIf { same },
+                creatorId = meta?.creatorId?.takeIf { uid -> uid > 0L }
+                    ?: it.creatorId.takeIf { same } ?: 0L,
                 playCount = meta?.playCount?.takeIf { c -> c > 0L }
                     ?: if (same) it.playCount else 0L,
                 subscribedCount = if (pinMatches(entry.playlistId) && same) {
@@ -1079,6 +1087,7 @@ open class CatalogViewModel(
         }
         syncedCover?.let { playlistCollection.syncCover(entry.playlistId, it) }
         meta?.let { applySubscribeMeta(it) }
+        likedPlaylistRepository.prefetchLikeStatuses(entry.tracks)
     }
 
     private fun applyLikedSnapshot(
@@ -1296,6 +1305,7 @@ open class CatalogViewModel(
                     ?: it.coverUrl,
                 creatorName = meta.creatorName ?: it.creatorName,
                 creatorAvatarUrl = meta.creatorAvatarUrl ?: it.creatorAvatarUrl,
+                creatorId = meta.creatorId.takeIf { uid -> uid > 0L } ?: it.creatorId,
                 playCount = meta.playCount.takeIf { c -> c > 0L } ?: it.playCount,
                 subscribedCount = if (pinMatches(meta.id)) {
                     it.subscribedCount
@@ -1413,6 +1423,7 @@ open class CatalogViewModel(
                 error = error,
             )
         }
+        likedPlaylistRepository.prefetchLikeStatuses(tracks)
     }
 
     private fun cookieOrNull(): String? {

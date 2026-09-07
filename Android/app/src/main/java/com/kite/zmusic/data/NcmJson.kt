@@ -5,15 +5,56 @@ import org.json.JSONObject
 
 internal object NcmJson {
 
-    fun apiCode(json: JSONObject): Int = json.optInt("code", json.optInt("status", -1))
+    fun needsQrFallback(json: JSONObject): Boolean {
+        val code = apiCode(json)
+        if (code == -462 || code == 415) return true
+        val data = json.optJSONObject("data")
+        val url = listOf(
+            data?.optString("url").orEmpty(),
+            data?.optString("verifyUrl").orEmpty(),
+        ).joinToString()
+        if (url.contains("encrypt-pages")) return true
+        if (code == 200 || code == 502 || code == 501) return false
+        val msg = listOf(
+            json.optString("message"),
+            json.optString("msg"),
+            data?.optString("message").orEmpty(),
+            data?.optString("msg").orEmpty(),
+        ).joinToString(" ")
+        return msg.contains("安全验证") ||
+            msg.contains("滑块") ||
+            msg.contains("行为验证") ||
+            msg.contains("人机验证")
+    }
+
+    fun apiCode(json: JSONObject): Int {
+        val raw = when {
+            json.has("code") && !json.isNull("code") -> json.opt("code")
+            json.has("status") && !json.isNull("status") -> json.opt("status")
+            else -> return -1
+        }
+        return when (raw) {
+            is Number -> raw.toInt()
+            is String -> raw.trim().toIntOrNull() ?: -1
+            else -> -1
+        }
+    }
 
     fun extractCookie(json: JSONObject): String? {
-        var c = json.optString("cookie", "").trim()
-        if (c.isNotEmpty()) return c
-        val data = json.optJSONObject("data") ?: return null
-        c = data.optString("cookie", "").trim()
-        if (c.isNotEmpty()) return c
-        return null
+        textField(json, "cookie")?.let { if (looksLikeCookie(it)) return it }
+        json.optJSONObject("data")?.let { data ->
+            textField(data, "cookie")?.let { if (looksLikeCookie(it)) return it }
+        }
+        if (apiCode(json) != 200) return null
+        val token = textField(json, "token")
+            ?: json.optJSONObject("data")?.let { textField(it, "token") }
+        if (token.isNullOrEmpty()) return null
+        val csrf = textField(json, "csrf")
+            ?: json.optJSONObject("data")?.let { textField(it, "csrf") }
+        return buildString {
+            append("MUSIC_U=").append(token)
+            if (!csrf.isNullOrEmpty()) append("; __csrf=").append(csrf)
+        }
     }
 
     /** `/login/status`：data.account 非空视为已登录。 */
@@ -42,16 +83,10 @@ internal object NcmJson {
     }
 
     fun displayLabelFromLogin(json: JSONObject): String? {
-        val profile = json.optJSONObject("profile")
-        val nick = profile?.optString("nickname", "")?.trim().orEmpty()
-        if (nick.isNotEmpty()) return nick
-        val account = json.optJSONObject("account")
-        val name = account?.optString("userName", "")?.trim().orEmpty()
-        if (name.isNotEmpty()) return name
-        val data = json.optJSONObject("data")
-        val p2 = data?.optJSONObject("profile")
-        val n2 = p2?.optString("nickname", "")?.trim().orEmpty()
-        if (n2.isNotEmpty()) return n2
+        json.optJSONObject("profile")?.let { textField(it, "nickname") }?.let { return it }
+        json.optJSONObject("account")?.let { textField(it, "userName") }?.let { return it }
+        json.optJSONObject("data")?.optJSONObject("profile")?.let { textField(it, "nickname") }
+            ?.let { return it }
         return null
     }
 
@@ -67,6 +102,14 @@ internal object NcmJson {
         val data = json.optJSONObject("data") ?: return null
         val k = data.optString("unikey", data.optString("key", "")).trim()
         return k.takeIf { it.isNotEmpty() }
+    }
+
+    fun qrUrl(json: JSONObject, key: String): String {
+        val data = json.optJSONObject("data")
+        val fromApi = data?.optString("qrurl").orEmpty().trim()
+            .ifEmpty { data?.optString("qrUrl").orEmpty().trim() }
+        if (fromApi.startsWith("http")) return fromApi
+        return "https://music.163.com/login?codekey=$key"
     }
 
     /** 二维码轮询：801 等待，802 待确认，803 成功，800 过期。 */
@@ -131,16 +174,18 @@ internal object NcmJson {
     fun userFacingMessage(json: JSONObject, fallback: String): String {
         val data = json.optJSONObject("data")
         val candidates = listOf(
-            json.optString("message", ""),
-            json.optString("msg", ""),
-            data?.optString("message", "").orEmpty(),
-            data?.optString("msg", "").orEmpty(),
+            textField(json, "message"),
+            textField(json, "msg"),
+            textField(data, "message"),
+            textField(data, "msg"),
+            textField(data, "blockText"),
+            textField(json, "blockText"),
         )
         for (raw in candidates) {
             val sanitized = sanitizeUserMessage(raw)
             if (sanitized != null) return sanitized
         }
-        return fallback
+        return messageForCode(apiCode(json), fallback)
     }
 
     fun userFacingThrowable(error: Throwable, fallback: String): String {
@@ -158,6 +203,8 @@ internal object NcmJson {
         val t = raw?.trim().orEmpty()
         if (t.isEmpty()) return null
         val lower = t.lowercase()
+        if (lower == "null" || lower == "undefined" || lower == "nan") return null
+        if (lower == "un login" || lower == "unlogin" || lower == "cheating") return null
         if (lower.startsWith("http ") || lower.contains("http://") || lower.contains("https://")) {
             return null
         }
@@ -175,6 +222,32 @@ internal object NcmJson {
         }
         if (IPV4.containsMatchIn(t) || HTTP_STATUS.containsMatchIn(t)) return null
         return if (t.length > 80) t.take(80).trimEnd() + "…" else t
+    }
+
+    /**
+     * Android [JSONObject.optString] 会把 JSON `null` 变成字面量 "null"。
+     */
+    private fun textField(obj: JSONObject?, key: String): String? {
+        if (obj == null || !obj.has(key) || obj.isNull(key)) return null
+        val v = obj.opt(key) ?: return null
+        if (v === JSONObject.NULL) return null
+        val s = v.toString().trim()
+        if (s.isEmpty() || s.equals("null", true) || s.equals("undefined", true)) return null
+        return s
+    }
+
+    private fun looksLikeCookie(value: String): Boolean = value.contains('=')
+
+    private fun messageForCode(code: Int, fallback: String): String = when (code) {
+        400, 503, 505 -> "验证码不正确"
+        501 -> "账号不存在"
+        502 -> "账号或密码错误"
+        509 -> "密码错误次数过多，请稍后再试"
+        250 -> "登录失败，请稍后重试"
+        301 -> "登录状态无效，请改用二维码登录"
+        415 -> "需要安全验证"
+        -462 -> "需要安全验证"
+        else -> fallback
     }
 
     private val IPV4 = Regex("""\b\d{1,3}(?:\.\d{1,3}){3}\b""")

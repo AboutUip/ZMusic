@@ -1,5 +1,6 @@
 package com.kite.zmusic.ui.player
 
+import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -28,9 +29,11 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -38,13 +41,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -55,6 +63,7 @@ import com.kite.zmusic.data.TrackRow
 import com.kite.zmusic.ui.common.PlayingEqualizer
 import com.kite.zmusic.ui.common.UrlImage
 import com.kite.zmusic.ui.common.UrlImageCache
+import com.kite.zmusic.ui.common.hideSoftwareIme
 import com.kite.zmusic.ui.icons.ZIcons
 import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.main.pageSheetHazeStyle
@@ -122,8 +131,12 @@ fun PortraitQueueSheet(
 ) {
     val listState = rememberLazyListState()
     val context = LocalContext.current
+    val activity = LocalActivity.current
     val focus = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
+    val view = LocalView.current
+    var imeEpoch by remember { mutableIntStateOf(0) }
+    val searchFocus = remember(imeEpoch) { FocusRequester() }
     var query by remember { mutableStateOf("") }
     val safeIndex = if (tracks.isEmpty()) {
         0
@@ -145,6 +158,30 @@ fun PortraitQueueSheet(
         }
     }
     val searching = query.trim().isNotEmpty()
+
+    fun dismissSearchIme() {
+        val token = (view.findFocus() ?: activity?.currentFocus)?.windowToken ?: view.windowToken
+        runCatching { searchFocus.freeFocus() }
+        focus.clearFocus(force = true)
+        keyboard?.hide()
+        hideSoftwareIme(view, activity, token)
+        imeEpoch += 1
+        view.post {
+            focus.clearFocus(force = true)
+            keyboard?.hide()
+            hideSoftwareIme(view, activity, token)
+        }
+        view.postDelayed({
+            focus.clearFocus(force = true)
+            keyboard?.hide()
+            hideSoftwareIme(view, activity, token)
+        }, 80)
+    }
+    val dismissImeLatest = rememberUpdatedState { dismissSearchIme() }
+
+    DisposableEffect(view, activity) {
+        onDispose { hideSoftwareIme(view, activity) }
+    }
 
     val onApproachUpdated = rememberUpdatedState(onApproachEnd)
     val nearEnd by remember {
@@ -169,8 +206,10 @@ fun PortraitQueueSheet(
 
     LaunchedEffect(revealToken) {
         query = ""
-        keyboard?.hide()
+        runCatching { searchFocus.freeFocus() }
         focus.clearFocus(force = true)
+        keyboard?.hide()
+        hideSoftwareIme(view, activity)
         if (tracks.isEmpty()) return@LaunchedEffect
         listState.scrollToItem(safeIndex)
     }
@@ -257,14 +296,12 @@ fun PortraitQueueSheet(
             PortraitQueueSearchField(
                 value = query,
                 onValueChange = { query = it },
-                onSearch = {
-                    keyboard?.hide()
-                    focus.clearFocus()
-                },
+                onSearch = { dismissSearchIme() },
                 onClear = {
                     query = ""
-                    focus.clearFocus()
+                    dismissSearchIme()
                 },
+                focusRequester = searchFocus,
             )
             Spacer(Modifier.height(10.dp))
             Text(
@@ -285,7 +322,8 @@ fun PortraitQueueSheet(
                 Box(
                     Modifier
                         .weight(1f)
-                        .fillMaxWidth(),
+                        .fillMaxWidth()
+                        .dismissImeOnPress { dismissImeLatest.value() },
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
@@ -300,7 +338,8 @@ fun PortraitQueueSheet(
                 Box(
                     Modifier
                         .weight(1f)
-                        .fillMaxWidth(),
+                        .fillMaxWidth()
+                        .dismissImeOnPress { dismissImeLatest.value() },
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
@@ -316,7 +355,8 @@ fun PortraitQueueSheet(
                     state = listState,
                     modifier = Modifier
                         .weight(1f)
-                        .fillMaxWidth(),
+                        .fillMaxWidth()
+                        .dismissImeOnPress { dismissImeLatest.value() },
                     contentPadding = PaddingValues(bottom = 12.dp),
                 ) {
                     itemsIndexed(
@@ -328,7 +368,10 @@ fun PortraitQueueSheet(
                             track = row.track,
                             current = row.originalIndex == safeIndex,
                             playing = isPlaying,
-                            onClick = { onPlayIndex(row.originalIndex) },
+                            onClick = {
+                                dismissSearchIme()
+                                onPlayIndex(row.originalIndex)
+                            },
                         )
                     }
                 }
@@ -343,6 +386,7 @@ private fun PortraitQueueSearchField(
     onValueChange: (String) -> Unit,
     onSearch: () -> Unit,
     onClear: () -> Unit,
+    focusRequester: FocusRequester,
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -369,7 +413,9 @@ private fun PortraitQueueSearchField(
             textStyle = TextStyle(color = MainPalette.Ink, fontSize = 15.sp),
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             keyboardActions = KeyboardActions(onSearch = { onSearch() }),
-            modifier = Modifier.weight(1f),
+            modifier = Modifier
+                .weight(1f)
+                .focusRequester(focusRequester),
             decorationBox = { inner ->
                 if (value.isEmpty()) {
                     Text(
@@ -487,3 +533,15 @@ private fun TrackRow.matchesQueueQuery(needle: String): Boolean {
     val albumName = album
     return !albumName.isNullOrBlank() && albumName.contains(needle, ignoreCase = true)
 }
+
+private fun Modifier.dismissImeOnPress(onDismiss: () -> Unit): Modifier =
+    pointerInput(Unit) {
+        awaitPointerEventScope {
+            while (true) {
+                val event = awaitPointerEvent(PointerEventPass.Initial)
+                if (event.type == PointerEventType.Press) {
+                    onDismiss()
+                }
+            }
+        }
+    }

@@ -192,12 +192,14 @@ import androidx.compose.ui.unit.lerp as lerpDp
 internal fun PortraitPlayerBody(
     track: TrackRow,
     lines: List<LrcLine>,
+    lyricCompanions: List<LrcLine?> = emptyList(),
     positionMs: Long,
     seekPositionMs: Long,
     lyricsExpanded: Boolean,
     onOpenLyrics: () -> Unit,
     onCollapseLyrics: () -> Unit,
     playWhenReady: Boolean,
+    isPlaying: Boolean = playWhenReady,
     buffering: Boolean,
     onTogglePlay: () -> Unit,
     onSkipNext: () -> Unit,
@@ -218,16 +220,19 @@ internal fun PortraitPlayerBody(
     onOpenScore: (() -> Unit)? = null,
     onOpenQuality: (() -> Unit)? = null,
     onOpenComments: (() -> Unit)? = null,
+    onOpenShare: (() -> Unit)? = null,
     settingsOpen: Boolean = false,
     scoreOpen: Boolean = false,
     qualityOpen: Boolean = false,
     commentsOpen: Boolean = false,
+    shareOpen: Boolean = false,
     /** 有面板盖在歌词页上时暂停自动清屏并保持 chrome */
     panelHold: Boolean = false,
     onCloseSettings: (() -> Unit)? = null,
     onCloseScore: (() -> Unit)? = null,
     onCloseQuality: (() -> Unit)? = null,
     onCloseComments: (() -> Unit)? = null,
+    onCloseShare: (() -> Unit)? = null,
     displayPrefs: PlayerDisplayPrefs = PlayerDisplayPrefs(),
     peekNextTrack: TrackRow? = null,
     peekPrevTrack: TrackRow? = null,
@@ -250,10 +255,20 @@ internal fun PortraitPlayerBody(
     var vinylBusy by remember { mutableStateOf(false) }
     val vinylSizeScale = displayPrefs.vinylSizeScale
         .coerceIn(PlayerDisplayPrefs.VINYL_SIZE_SCALE_MIN, PlayerDisplayPrefs.VINYL_SIZE_SCALE_MAX)
+    val vinylOffsetX = displayPrefs.vinylOffsetXDp
+        .coerceIn(PlayerDisplayPrefs.VINYL_OFFSET_MIN, PlayerDisplayPrefs.VINYL_OFFSET_MAX)
+        .dp
     val vinylOffsetY = displayPrefs.vinylOffsetYDp
         .coerceIn(PlayerDisplayPrefs.VINYL_OFFSET_Y_MIN, PlayerDisplayPrefs.VINYL_OFFSET_Y_MAX)
         .dp
     val vinylFullCover = displayPrefs.vinylFullCover
+    val vinylOuterScale = displayPrefs.vinylOuterScale
+        .coerceIn(PlayerDisplayPrefs.VINYL_OUTER_SCALE_MIN, PlayerDisplayPrefs.VINYL_OUTER_SCALE_MAX)
+    val vinylCenterRadiusFrac = displayPrefs.vinylCenterRadiusFrac
+        .coerceIn(
+            PlayerDisplayPrefs.VINYL_CENTER_RADIUS_MIN,
+            PlayerDisplayPrefs.VINYL_CENTER_RADIUS_MAX,
+        )
     val uiScale = displayPrefs.uiScale
         .coerceIn(PlayerDisplayPrefs.UI_MIN, PlayerDisplayPrefs.UI_MAX)
     val selectT = lyricSelectProgress.coerceIn(0f, 1f)
@@ -361,6 +376,7 @@ internal fun PortraitPlayerBody(
                     settingsOpen -> onCloseSettings
                     scoreOpen -> onCloseScore
                     qualityOpen -> onCloseQuality
+                    shareOpen -> onCloseShare
                     else -> onDismiss
                 },
             ),
@@ -415,13 +431,17 @@ internal fun PortraitPlayerBody(
                         contentAlignment = Alignment.Center,
                     ) {
                         BoxWithConstraints(Modifier.fillMaxWidth()) {
-                            val base = maxWidth.coerceAtMost(312.dp).coerceAtLeast(200.dp)
-                            val side = base * vinylSizeScale
+                            val budget = minOf(maxWidth, maxHeight)
+                            val base = minOf(budget, 312.dp).let { cap ->
+                                if (budget >= 200.dp) cap.coerceAtLeast(minOf(200.dp, budget)) else cap
+                            }
+                            val side = (base * vinylSizeScale).coerceAtMost(budget)
                             Box(
                                 Modifier
                                     .size(side)
                                     .align(Alignment.Center)
-                                    .offset(y = vinylOffsetY),
+                                    .offset(x = vinylOffsetX, y = vinylOffsetY)
+                                    .playerExpandAnchor(PlayerExpandSlot.FullVinyl),
                             ) {
                                 VinylTransitionStage(
                                     track = track,
@@ -429,7 +449,7 @@ internal fun PortraitPlayerBody(
                                     peekPrev = peekPrevTrack,
                                     spinning = playWhenReady && !buffering && !vinylBusy,
                                     direction = vinylSkipDir,
-                                    gesturesEnabled = !settingsOpen && !commentsOpen && !qualityOpen,
+                                    gesturesEnabled = !settingsOpen && !commentsOpen && !qualityOpen && !shareOpen,
                                     onTransitionRunningChange = { vinylBusy = it },
                                     onCommitSkip = { dir ->
                                         vinylSkipDir = dir
@@ -440,8 +460,8 @@ internal fun PortraitPlayerBody(
                                     },
                                     modifier = Modifier.fillMaxSize(),
                                     fullCover = vinylFullCover,
-                                    centerRadiusFrac = 0.20f,
-                                    outerScale = 1f,
+                                    centerRadiusFrac = vinylCenterRadiusFrac,
+                                    outerScale = vinylOuterScale,
                                     plateColors = displayPrefs.vinylPlateColors(),
                                     gestureDamping = displayPrefs.vinylGestureDamping,
                                 )
@@ -459,6 +479,10 @@ internal fun PortraitPlayerBody(
                                 key(track.id) {
                                     PortraitPreviewLyrics(
                                         lines = lines,
+                                        companions = lyricCompanions,
+                                        originalOnTop = displayPrefs.portraitLyricOriginalOnTop,
+                                        showCompanionOnOthers =
+                                            displayPrefs.portraitLyricOthersShowTranslation,
                                         positionMs = positionMs,
                                         durationMs = durationMs,
                                         count = displayPrefs.portraitPreviewLyricCount,
@@ -471,6 +495,8 @@ internal fun PortraitPlayerBody(
                                         offsetYDp = displayPrefs.portraitPreviewLyricOffsetYDp,
                                         lineSpacingDp = displayPrefs.portraitPreviewLyricLineSpacingDp,
                                         onOpenLyrics = onOpenLyrics,
+                                        clockRunning = isPlaying && playWhenReady &&
+                                            !buffering && !sliderDragging,
                                         modifier = Modifier.fillMaxWidth(),
                                     )
                                 }
@@ -497,6 +523,10 @@ internal fun PortraitPlayerBody(
                         }
                         PortraitCinemaLyrics(
                             lines = lines,
+                            companions = lyricCompanions,
+                            originalOnTop = displayPrefs.portraitLyricOriginalOnTop,
+                            showCompanionOnOthers =
+                                displayPrefs.portraitLyricOthersShowTranslation,
                             positionMs = frozenLyricPositionMs ?: positionMs,
                             trackDurationMs = durationMs,
                             playingStyle = displayPrefs.lyricPlayingStyle,
@@ -522,6 +552,8 @@ internal fun PortraitPlayerBody(
                             },
                             onCollapse = { onLyricBlankTap() },
                             onBandCoords = onLyricBandCoords,
+                            clockRunning = isPlaying && playWhenReady && !buffering &&
+                                !sliderDragging && frozenLyricPositionMs == null,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .fillMaxHeight()
@@ -589,6 +621,7 @@ internal fun PortraitPlayerBody(
                         onOpenScore = onOpenScore,
                         onOpenQuality = onOpenQuality,
                         onOpenComments = onOpenComments,
+                        onOpenShare = onOpenShare,
                         controlsOffsetYDp = displayPrefs.portraitTransportOffsetYDp,
                         controlsContainerInclude = displayPrefs.portraitTransportContainerInclude,
                         controlsChromeAlpha = transportClearA,
@@ -662,8 +695,10 @@ internal fun PortraitPlayerBody(
                     onOpenScore = onOpenScore,
                     onOpenQuality = onOpenQuality,
                     onOpenComments = onOpenComments,
+                    onOpenShare = onOpenShare,
                     controlsOffsetYDp = displayPrefs.portraitTransportOffsetYDp,
                     controlsContainerInclude = displayPrefs.portraitTransportContainerInclude,
+                    reportExpandPlay = false,
                 )
             }
 
@@ -710,7 +745,10 @@ private fun PortraitPlayerTopBar(
             ),
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier
+                .weight(1f)
+                .playerExpandAnchor(PlayerExpandSlot.FullTitle)
+                .playerExpandHideFull(),
         )
         NowPlayingRotationLockButton(
             locked = rotationLocked,

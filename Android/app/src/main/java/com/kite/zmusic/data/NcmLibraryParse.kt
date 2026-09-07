@@ -155,6 +155,89 @@ internal object NcmLibraryParse {
     }
 
     /**
+     * `/listen/data/total` 的 `data.totalDuration` 为分钟；
+     * `/listen/data/realtime/report` 等再按字段名猜单位。
+     */
+    fun listenDurationMsFromJson(json: JSONObject): Long? {
+        if (NcmJson.apiCode(json) != 200) return null
+        val data = json.optJSONObject("data") ?: json
+        return findListenDurationMs(data, 0)
+    }
+
+    private fun findListenDurationMs(obj: JSONObject, depth: Int): Long? {
+        if (depth > 4) return null
+        durationFieldMs(obj, "totalDuration", ListenDurationUnit.Minutes)?.let { return it }
+        val keys = listOf(
+            "totalPlayTime",
+            "totalPlayDuration",
+            "listenTime",
+            "listenDuration",
+            "playTime",
+            "playDuration",
+            "duration",
+        )
+        for (key in keys) {
+            durationFieldMs(obj, key, ListenDurationUnit.Guess)?.let { return it }
+        }
+        if (depth >= 4) return null
+        for (name in listOf("data", "report", "listenData", "summary", "result")) {
+            val child = obj.optJSONObject(name) ?: continue
+            findListenDurationMs(child, depth + 1)?.let { return it }
+        }
+        return null
+    }
+
+    private fun durationFieldMs(
+        obj: JSONObject,
+        key: String,
+        unit: ListenDurationUnit,
+    ): Long? {
+        if (!obj.has(key) || obj.isNull(key)) return null
+        val raw = when (val v = obj.opt(key)) {
+            is Number -> v.toDouble()
+            is String -> v.trim().toDoubleOrNull()
+            else -> null
+        } ?: return null
+        if (raw.isNaN() || raw < 0.0) return null
+        if (raw >= 1.0e12) return null
+        val lower = key.lowercase()
+        val resolved = when {
+            lower.contains("hour") -> ListenDurationUnit.Hours
+            lower.contains("minute") || lower.endsWith("min") -> ListenDurationUnit.Minutes
+            lower.contains("millis") || lower.endsWith("ms") -> ListenDurationUnit.Millis
+            lower.contains("sec") -> ListenDurationUnit.Seconds
+            else -> unit
+        }
+        val ms = when (resolved) {
+            ListenDurationUnit.Hours -> raw * 3_600_000.0
+            ListenDurationUnit.Minutes ->
+                if (raw >= 1_000_000.0) raw * 1_000.0 else raw * 60_000.0
+            ListenDurationUnit.Seconds -> raw * 1_000.0
+            ListenDurationUnit.Millis -> raw
+            ListenDurationUnit.Guess -> guessDurationMs(raw)
+        }
+        if (ms < 0.0) return null
+        if (ms > 100_000.0 * 3_600_000.0) return null
+        return ms.toLong()
+    }
+
+    private fun guessDurationMs(raw: Double): Double {
+        return when {
+            raw >= 86_400_000.0 -> raw
+            raw >= 86_400.0 -> raw * 1_000.0
+            else -> raw * 60_000.0
+        }
+    }
+
+    private enum class ListenDurationUnit {
+        Hours,
+        Minutes,
+        Seconds,
+        Millis,
+        Guess,
+    }
+
+    /**
      * 网易图床：https；仅当原地址已有 `param=` 时才换成大图，避免给无参/签名 URL 追加参数导致 403。
      */
     internal fun ncmHttpsImage(url: String?, upgradeParam: String? = null): String? {
@@ -299,12 +382,15 @@ internal object NcmLibraryParse {
     /**
      * `/song/like/check`：返回被喜爱的 id 子集（字段可能是 `data` 或 `ids`）。
      */
-    fun likedIdsFromLikeCheck(json: JSONObject): Set<Long> {
-        if (NcmJson.apiCode(json) != 200) return emptySet()
+    fun tryLikedIdsFromLikeCheck(json: JSONObject): Set<Long>? {
+        if (NcmJson.apiCode(json) != 200) return null
         val fromData = longIdsFromArray(json.optJSONArray("data"))
         if (fromData.isNotEmpty()) return fromData
         return longIdsFromArray(json.optJSONArray("ids"))
     }
+
+    fun likedIdsFromLikeCheck(json: JSONObject): Set<Long> =
+        tryLikedIdsFromLikeCheck(json).orEmpty()
 
     fun isTrackLiked(json: JSONObject, trackId: Long): Boolean =
         trackId > 0L && likedIdsFromLikeCheck(json).contains(trackId)

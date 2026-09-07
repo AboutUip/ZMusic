@@ -22,6 +22,7 @@ androidsvg = "1.4"
 xaiop = "0.15.1"
 quickjs = "3.2.3"
 eddsa = "0.3.0"
+bouncycastle = "1.79"
 
 [libraries]
 junit = { group = "junit", name = "junit", version.ref = "junit" }
@@ -60,6 +61,7 @@ xaiop = { group = "io.github.aboutuip", name = "xaiop", version.ref = "xaiop" }
 androidsvg = { group = "com.caverock", name = "androidsvg-aar", version.ref = "androidsvg" }
 quickjs-android = { group = "wang.harlon.quickjs", name = "wrapper-android", version.ref = "quickjs" }
 eddsa = { group = "net.i2p.crypto", name = "eddsa", version.ref = "eddsa" }
+bouncycastle-bcprov = { group = "org.bouncycastle", name = "bcprov-jdk18on", version.ref = "bouncycastle" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

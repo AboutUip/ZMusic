@@ -623,7 +623,7 @@ fun NowPlayingSettingsSheet(
     showPanelBorder: Boolean = false,
     /** 竖屏内容：仅竖屏相关项，不含横屏氛围/黑胶/标题对齐等。 */
     portraitContent: Boolean = false,
-    /** 竖屏：打开自定义背景编辑器 */
+    /** 打开自定义背景编辑器（横/竖屏各用当前方向的偏好与文件） */
     onOpenCustomBackgroundEditor: () -> Unit = {},
     /** 顶部中央拉取条；竖屏底部面板开启。 */
     showDragHandle: Boolean = false,
@@ -1232,6 +1232,26 @@ fun NowPlayingSettingsSheet(
                     SettingsAlpha(dim) {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             SettingsSwitchRow(
+                                title = "自定义背景",
+                                subtitle = "开启后可配置并启用全屏沉浸背景",
+                                checked = prefs.customBackgroundEnabled,
+                                colors = switchColors,
+                                onCheckedChange = {
+                                    onPrefsChange(prefs.copy(customBackgroundEnabled = it))
+                                },
+                            )
+                            SettingsActionRow(
+                                title = "背景调控",
+                                subtitle = if (prefs.customBackgroundEnabled) {
+                                    "5 预设 · 上传 / 定位 / 锁定"
+                                } else {
+                                    "先开启自定义背景"
+                                },
+                                actionLabel = "编辑",
+                                enabled = prefs.customBackgroundEnabled,
+                                onClick = onOpenCustomBackgroundEditor,
+                            )
+                            SettingsSwitchRow(
                                 title = "雨夜效果",
                                 subtitle = "斜雨磨砂玻璃氛围",
                                 checked = prefs.rainNightEnabled,
@@ -1240,10 +1260,17 @@ fun NowPlayingSettingsSheet(
                             )
                             SettingsSwitchRow(
                                 title = "活跃光晕",
-                                subtitle = "低/中/高互斥高亮，同时仅一球发光，运动略加快",
+                                subtitle = if (prefs.customBackgroundEnabled) {
+                                    "自定义背景开启时不可用"
+                                } else {
+                                    "低/中/高互斥高亮，同时仅一球发光，运动略加快"
+                                },
                                 checked = prefs.activeHalo,
                                 colors = switchColors,
-                                onCheckedChange = { onPrefsChange(prefs.copy(activeHalo = it)) },
+                                enabled = !prefs.customBackgroundEnabled,
+                                onCheckedChange = {
+                                    onPrefsChange(prefs.copy(activeHalo = it))
+                                },
                             )
                             SettingsSwitchRow(
                                 title = "播放页屏幕常亮",
@@ -1281,7 +1308,7 @@ fun NowPlayingSettingsSheet(
                             )
                             SettingsActionRow(
                                 title = "标题样式",
-                                subtitle = "歌名 / 制作人 / 歌单 · 颜色与字号",
+                                subtitle = "歌名 / 歌手 · 颜色与字号",
                                 actionLabel = "编辑",
                                 onClick = onOpenTitleStyleEditor,
                             )
@@ -1769,7 +1796,7 @@ private fun SettingsTitleAlignRow(
         )
         Spacer(Modifier.height(2.dp))
         Text(
-            text = "歌名 / 制作人 / 歌单 · 滑动或点选切换",
+            text = "歌名 / 歌手 · 滑动或点选切换",
             style = TextStyle(
                 color = chrome.hint,
                 fontFamily = FontFamily.SansSerif,

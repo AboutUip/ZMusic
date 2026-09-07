@@ -15,6 +15,7 @@ internal fun pluginUiIcon(name: String?): ImageVector = when (name?.trim()?.lowe
     "daily" -> ZIcons.Daily
     "charts" -> ZIcons.Charts
     "folder" -> ZIcons.CachedSongs
+    "cloud" -> ZIcons.Cloud
     "workshop" -> ZIcons.Workshop
     "extension" -> ZIcons.Extension
     "music" -> ZIcons.MusicNote

@@ -51,8 +51,8 @@ android {
         applicationId = "com.kite.zmusic"
         minSdk = 29
         targetSdk = 36
-        versionCode = 8
-        versionName = "1.3.1"
+        versionCode = 9
+        versionName = "1.3.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -95,6 +95,15 @@ android {
         }
     }
     packaging {
+        resources {
+            excludes += setOf(
+                "META-INF/LICENSE",
+                "META-INF/LICENSE.txt",
+                "META-INF/NOTICE",
+                "META-INF/NOTICE.txt",
+                "META-INF/versions/9/OSGI-INF/MANIFEST.MF",
+            )
+        }
         jniLibs {
             // 这些预编译 .so 没有可剥离符号，AGP 默认 strip 会打警告。
             keepDebugSymbols.addAll(
@@ -189,6 +198,7 @@ dependencies {
     implementation(libs.androidsvg)
     implementation(libs.quickjs.android)
     implementation(libs.eddsa)
+    implementation(libs.bouncycastle.bcprov)
 
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.session)

@@ -24,6 +24,7 @@ import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Checklist
+import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.Dns
 import androidx.compose.material.icons.rounded.EmojiEvents
 import androidx.compose.material.icons.rounded.Extension
@@ -65,8 +66,10 @@ import androidx.compose.material.icons.rounded.Radio
 import androidx.compose.material.icons.rounded.Remove
 import androidx.compose.material.icons.rounded.Replay5
 import androidx.compose.material.icons.rounded.ScreenRotation
+import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Security
+import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Swipe
 import androidx.compose.material.icons.rounded.SkipNext
@@ -119,6 +122,8 @@ object ZIcons {
     val More: ImageVector get() = Icons.Rounded.MoreVert
     val MoreHoriz: ImageVector get() = Icons.Rounded.MoreHoriz
     val Comments: ImageVector get() = Icons.Outlined.ChatBubbleOutline
+    val Share: ImageVector get() = Icons.Rounded.Share
+    val Link: ImageVector get() = Icons.Rounded.Link
     val Check: ImageVector get() = Icons.Rounded.Check
     val Manage: ImageVector get() = Icons.Rounded.Checklist
     val Close: ImageVector get() = Icons.Rounded.Close
@@ -134,6 +139,7 @@ object ZIcons {
     val Radio: ImageVector get() = Icons.Rounded.Radio
     val Charts: ImageVector get() = Icons.Rounded.EmojiEvents
     val CachedSongs: ImageVector get() = Icons.Rounded.Folder
+    val Cloud: ImageVector get() = Icons.Rounded.Cloud
     val Speed: ImageVector get() = Icons.Rounded.Speed
     val Storage: ImageVector get() = Icons.Rounded.Storage
     val Playlist: ImageVector get() = Icons.AutoMirrored.Rounded.QueueMusic

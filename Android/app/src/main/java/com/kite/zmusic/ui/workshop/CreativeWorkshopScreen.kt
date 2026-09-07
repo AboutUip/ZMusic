@@ -119,12 +119,13 @@ private val DrillFadeSpec = tween<Float>(durationMillis = 220)
 fun CreativeWorkshopScreen(
     contentBottomInset: Dp,
     onBack: () -> Unit,
+    onPlaySong: ((Long) -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val app = LocalContext.current.applicationContext as ZMusicApplication
     val auth by app.workshopAuthStore.session.collectAsStateWithLifecycle()
     val net by app.networkMode.state.collectAsStateWithLifecycle()
-    val openLogin = rememberCommunityLoginOpener(offerWebsite = true)
+    val openLogin = rememberCommunityLoginOpener(offerWebsite = true, onPlaySong = onPlaySong)
     val pager = rememberPagerState(initialPage = 0, pageCount = { 2 })
     val scope = rememberCoroutineScope()
     val offline = net.phase == NetworkPhase.Offline

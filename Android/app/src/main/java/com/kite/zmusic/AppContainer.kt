@@ -10,6 +10,8 @@ import com.kite.zmusic.data.LyricRenderStore
 import com.kite.zmusic.data.PersistentPlaybackStore
 import com.kite.zmusic.data.LandscapeModeStore
 import com.kite.zmusic.data.PredictiveBackStore
+import com.kite.zmusic.data.MiniQuickSkipStore
+import com.kite.zmusic.data.SplashAccelStore
 import com.kite.zmusic.data.ChromeGlassStore
 import com.kite.zmusic.data.ThemeStore
 import com.kite.zmusic.data.ChromeWallpaperStore
@@ -21,6 +23,7 @@ import com.kite.zmusic.data.HomeFeedRepository
 import com.kite.zmusic.data.LibraryHomeRepository
 import com.kite.zmusic.data.LikedPlaylistRepository
 import com.kite.zmusic.data.NcmAuthClient
+import com.kite.zmusic.data.ncm.NcmDeviceProfileStore
 import com.kite.zmusic.data.NetworkModeController
 import com.kite.zmusic.data.NcmUserClient
 import com.kite.zmusic.data.PlaylistCollectionRepository
@@ -44,6 +47,7 @@ import com.kite.zmusic.data.DiskAppUpdateFiles
 import com.kite.zmusic.data.PartnerRepository
 import com.kite.zmusic.data.SponsorRepository
 import com.kite.zmusic.data.SearchRepository
+import com.kite.zmusic.data.CloudDiskRepository
 import com.kite.zmusic.data.SongRepository
 import com.kite.zmusic.data.TrackExportRepository
 import com.kite.zmusic.data.UserRepository
@@ -72,7 +76,7 @@ class AppContainer(app: Application) {
         .build()
 
     val ncmUserClient = NcmUserClient(httpClient)
-    val ncmAuthClient = NcmAuthClient(httpClient)
+    val ncmAuthClient = NcmAuthClient(httpClient, NcmDeviceProfileStore(app))
     val xaiop = OkHttpXaiop(httpClient)
 
     val sessionRepository = SessionRepository(app)
@@ -91,6 +95,8 @@ class AppContainer(app: Application) {
     val persistentPlaybackStore = PersistentPlaybackStore(app)
     val predictiveBackStore = PredictiveBackStore(app)
     val landscapeModeStore = LandscapeModeStore(app)
+    val splashAccelStore = SplashAccelStore(app)
+    val miniQuickSkipStore = MiniQuickSkipStore(app)
     val lyricRenderStore = LyricRenderStore(app)
     val lyricOverlayStore = LyricOverlayStore(app)
     val chromeGlassStore = ChromeGlassStore(app)
@@ -173,6 +179,13 @@ class AppContainer(app: Application) {
     val catalogRepository = CatalogRepository(ncmUserClient)
     val commentsRepository = CommentsRepository(ncmUserClient, ncmAuthClient)
     val searchRepository = SearchRepository(ncmUserClient)
+    val cloudDiskRepository = CloudDiskRepository(
+        app,
+        sessionRepository,
+        libraryHomeRepository,
+        ncmUserClient,
+        httpClient,
+    )
     val artistRepository = ArtistRepository(ncmUserClient, ncmAuthClient)
     val userRepository = UserRepository(ncmUserClient, ncmAuthClient)
     val networkMode = NetworkModeController(
@@ -200,13 +213,6 @@ class AppContainer(app: Application) {
                 playback = playbackBridge,
                 likedRepo = likedPlaylistRepository,
                 session = sessionRepository,
-                songs = songRepository,
-                online = {
-                    networkMode.state.value.phase != com.kite.zmusic.data.NetworkPhase.Offline
-                },
-                ioScope = kotlinx.coroutines.CoroutineScope(
-                    kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO,
-                ),
             ),
             httpClient = httpClient,
             device = com.kite.zmusic.plugin.PluginAndroidDevice(app, httpClient),

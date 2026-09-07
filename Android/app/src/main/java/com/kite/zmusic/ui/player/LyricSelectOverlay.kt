@@ -464,11 +464,17 @@ fun copyLyricSelection(
     context: Context,
     lines: List<LrcLine>,
     selected: Set<Int>,
+    companions: List<LrcLine?> = emptyList(),
 ) {
     if (selected.isEmpty()) return
     val text = selected
         .sorted()
-        .mapNotNull { i -> lines.getOrNull(i)?.text }
+        .mapNotNull { i ->
+            val main = lines.getOrNull(i)?.text?.trim().orEmpty()
+            if (main.isEmpty()) return@mapNotNull null
+            val extra = companions.getOrNull(i)?.text?.trim().orEmpty()
+            if (extra.isEmpty()) main else "$main\n$extra"
+        }
         .joinToString("\n")
     if (text.isBlank()) return
     val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager

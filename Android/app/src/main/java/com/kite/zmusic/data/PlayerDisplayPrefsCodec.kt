@@ -291,6 +291,22 @@ fun lerpPlayerDisplayPrefs(
         lyricPlayingStyle = lerpLyricRole(from.lyricPlayingStyle, to.lyricPlayingStyle, u),
         lyricPlayedStyle = lerpLyricRole(from.lyricPlayedStyle, to.lyricPlayedStyle, u),
         lyricUnplayedStyle = lerpLyricRole(from.lyricUnplayedStyle, to.lyricUnplayedStyle, u),
+        portraitLyricPreferTranslation = pick(
+            from.portraitLyricPreferTranslation,
+            to.portraitLyricPreferTranslation,
+        ),
+        portraitLyricTranslationCoexist = pick(
+            from.portraitLyricTranslationCoexist,
+            to.portraitLyricTranslationCoexist,
+        ),
+        portraitLyricOriginalOnTop = pick(
+            from.portraitLyricOriginalOnTop,
+            to.portraitLyricOriginalOnTop,
+        ),
+        portraitLyricOthersShowTranslation = pick(
+            from.portraitLyricOthersShowTranslation,
+            to.portraitLyricOthersShowTranslation,
+        ),
     )
 }
 

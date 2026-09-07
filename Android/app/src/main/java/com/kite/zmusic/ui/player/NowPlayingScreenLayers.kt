@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.snapshots.SnapshotStateSet
 import androidx.compose.ui.Alignment
@@ -71,6 +72,7 @@ internal fun NowPlayingScreenLayers(
     state: PlaybackUiState,
     track: TrackRow,
     lyricLines: List<LrcLine>,
+    lyricCompanions: List<LrcLine?>,
     lyricPos: Long,
     displayPos: Long,
     seekDisplayPos: Long,
@@ -108,6 +110,7 @@ internal fun NowPlayingScreenLayers(
     portraitSettingsOpen: Boolean,
     portraitScoreOpen: Boolean,
     portraitQualityOpen: Boolean,
+    portraitShareOpen: Boolean,
     portraitCommentsOpen: Boolean,
     portraitMoreOpen: Boolean,
     portraitPosterOpen: Boolean,
@@ -119,6 +122,7 @@ internal fun NowPlayingScreenLayers(
     portraitSettingsT: Float,
     portraitScoreT: Float,
     portraitQualityT: Float,
+    portraitShareT: Float,
     portraitCommentsT: Float,
     portraitMoreT: Float,
     portraitLyricSelectT: Float,
@@ -127,6 +131,8 @@ internal fun NowPlayingScreenLayers(
     portraitStyleCloneAlpha: Float,
     portraitCustomBg: PlayerBackgroundPreset?,
     portraitCustomBgProgress: Float,
+    landscapeCustomBg: PlayerBackgroundPreset?,
+    landscapeCustomBgProgress: Float,
     portraitSheetFrac: Animatable<Float, AnimationVector1D>,
     portraitMoreSheetFrac: Animatable<Float, AnimationVector1D>,
     portraitScoreSheetFrac: Animatable<Float, AnimationVector1D>,
@@ -165,6 +171,7 @@ internal fun NowPlayingScreenLayers(
     closePortraitSettings: () -> Unit,
     closePortraitScore: () -> Unit,
     closePortraitQuality: () -> Unit,
+    closePortraitShare: () -> Unit,
     closePortraitComments: () -> Unit,
     closePortraitMore: () -> Unit,
     closePortraitLyricSelect: () -> Unit,
@@ -173,6 +180,7 @@ internal fun NowPlayingScreenLayers(
     openPortraitMore: () -> Unit,
     openPortraitScore: () -> Unit,
     openPortraitQuality: () -> Unit,
+    openPortraitShare: () -> Unit,
     openPortraitComments: () -> Unit,
     openPortraitSettings: () -> Unit,
     openPortraitPoster: () -> Unit,
@@ -183,6 +191,16 @@ internal fun NowPlayingScreenLayers(
     snapPortraitScoreSheet: () -> Unit,
 ) {
     val context = LocalContext.current
+    val expand = LocalPlayerExpand.current
+    val expandLook = PlayerExpandLook.from(
+        prefs = if (isLandscape) displayPrefs else portraitDisplayPrefs,
+        landscape = isLandscape,
+    )
+    // 在飞层同帧组合前写入，避免 open() 清空 look 后飞默认黑胶。
+    expand?.reportLook(expandLook)
+    SideEffect {
+        expand?.reportLook(expandLook)
+    }
     Box(
         modifier
             .fillMaxSize()
@@ -201,20 +219,37 @@ internal fun NowPlayingScreenLayers(
                     .fillMaxSize()
                     .hazeSource(state = settingsHazeState, zIndex = 0f),
             ) {
-                GeminiOrbsBackdrop(
-                    modifier = Modifier.fillMaxSize(),
-                    activeHalo = PluginLookPresent.atmosphereHalo(displayPrefs.activeHalo),
-                    playWhenReady = state.playWhenReady,
-                    positionMs = state.positionMs,
-                    scrubbing = sliderDragging,
-                    trackId = track.id,
-                    loadPending = state.loadPending,
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .playerExpandStageFill(),
                 )
-                if (rainIntensity > 0.01f) {
-                    RainGlassAtmosphere(
-                        modifier = Modifier.fillMaxSize(),
-                        intensity = rainIntensity,
+                Box(Modifier.fillMaxSize().playerExpandAtmosphereReveal()) {
+                    GeminiOrbsBackdrop(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer {
+                                alpha = (1f - landscapeCustomBgProgress).coerceIn(0f, 1f)
+                            },
+                        activeHalo = PluginLookPresent.atmosphereHalo(displayPrefs.activeHalo) &&
+                            landscapeCustomBg == null,
+                        playWhenReady = state.playWhenReady,
+                        positionMs = state.positionMs,
+                        scrubbing = sliderDragging,
+                        trackId = track.id,
+                        loadPending = state.loadPending,
                     )
+                    PlayerCustomBackgroundLayer(
+                        preset = landscapeCustomBg,
+                        progress = landscapeCustomBgProgress,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                    if (rainIntensity > 0.01f) {
+                        RainGlassAtmosphere(
+                            modifier = Modifier.fillMaxSize(),
+                            intensity = rainIntensity,
+                        )
+                    }
                 }
             }
         } else {
@@ -228,31 +263,33 @@ internal fun NowPlayingScreenLayers(
                 Box(
                     Modifier
                         .fillMaxSize()
-                        .background(TextTheme.PlayerStage),
+                        .playerExpandStageFill(),
                 )
-                GeminiOrbsBackdrop(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer {
-                            alpha = (1f - portraitCustomBgProgress).coerceIn(0f, 1f)
-                        },
-                    activeHalo = PluginLookPresent.atmosphereHalo(portraitDisplayPrefs.activeHalo) &&
-                        portraitCustomBg == null,
-                    playWhenReady = state.playWhenReady,
-                    positionMs = state.positionMs,
-                    scrubbing = sliderDragging,
-                    trackId = track.id,
-                    loadPending = state.loadPending,
-                    motionEnabled = !portraitLyricsOpen &&
-                        !portraitCommentsOpen &&
-                        !portraitSettingsOpen &&
-                        !portraitPosterOpen,
-                )
-                PlayerCustomBackgroundLayer(
-                    preset = portraitCustomBg,
-                    progress = portraitCustomBgProgress,
-                    modifier = Modifier.fillMaxSize(),
-                )
+                Box(Modifier.fillMaxSize().playerExpandAtmosphereReveal()) {
+                    GeminiOrbsBackdrop(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer {
+                                alpha = (1f - portraitCustomBgProgress).coerceIn(0f, 1f)
+                            },
+                        activeHalo = PluginLookPresent.atmosphereHalo(portraitDisplayPrefs.activeHalo) &&
+                            portraitCustomBg == null,
+                        playWhenReady = state.playWhenReady,
+                        positionMs = state.positionMs,
+                        scrubbing = sliderDragging,
+                        trackId = track.id,
+                        loadPending = state.loadPending,
+                        motionEnabled = !portraitLyricsOpen &&
+                            !portraitCommentsOpen &&
+                            !portraitSettingsOpen &&
+                            !portraitPosterOpen,
+                    )
+                    PlayerCustomBackgroundLayer(
+                        preset = portraitCustomBg,
+                        progress = portraitCustomBgProgress,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
             }
         }
 
@@ -300,8 +337,6 @@ internal fun NowPlayingScreenLayers(
                     bottom = 0.dp,
                 ),
         ) {
-            val srcTitle = state.sourcePlaylistTitle
-
             if (isLandscape) {
                 LandscapePlayerBody(
                     track = track,
@@ -320,9 +355,6 @@ internal fun NowPlayingScreenLayers(
                     trackLiked = trackLiked,
                     onToggleLike = onToggleLike,
                     durationMs = duration,
-                    sourceTitle = srcTitle,
-                    // 横屏：歌单名点击曾直接关全屏（像左上角隐形退出区）；改由右上角退出钮
-                    onSourceClick = null,
                     onArtistClick = onOpenArtist,
                     sliderDragging = sliderDragging,
                     sliderValue = sliderValue,
@@ -358,6 +390,7 @@ internal fun NowPlayingScreenLayers(
                 PortraitPlayerBody(
                     track = track,
                     lines = lyricLines,
+                    lyricCompanions = lyricCompanions,
                     positionMs = lyricPos,
                     seekPositionMs = displayPos,
                     lyricsExpanded = portraitLyricsOpen,
@@ -370,6 +403,7 @@ internal fun NowPlayingScreenLayers(
                         }
                     },
                     playWhenReady = state.playWhenReady,
+                    isPlaying = state.isPlaying,
                     buffering = state.loadPending,
                     onTogglePlay = onTogglePlay,
                     onSkipNext = onSkipNext,
@@ -396,13 +430,16 @@ internal fun NowPlayingScreenLayers(
                     onOpenScore = { openPortraitScore() },
                     onOpenQuality = { openPortraitQuality() },
                     onOpenComments = { openPortraitComments() },
+                    onOpenShare = { openPortraitShare() },
                     settingsOpen = portraitSettingsOpen,
                     scoreOpen = portraitScoreOpen,
                     qualityOpen = portraitQualityOpen,
                     commentsOpen = portraitCommentsOpen,
+                    shareOpen = portraitShareOpen,
                     panelHold = portraitSettingsOpen ||
                         portraitScoreOpen ||
                         portraitQualityOpen ||
+                        portraitShareOpen ||
                         portraitCommentsOpen ||
                         portraitMoreOpen ||
                         portraitPosterOpen ||
@@ -412,6 +449,7 @@ internal fun NowPlayingScreenLayers(
                     onCloseScore = { closePortraitScore() },
                     onCloseQuality = { closePortraitQuality() },
                     onCloseComments = { closePortraitComments() },
+                    onCloseShare = { closePortraitShare() },
                     displayPrefs = portraitDisplayPrefs,
                     peekNextTrack = state.peekNextTrack,
                     peekPrevTrack = state.peekPrevTrack,
@@ -442,6 +480,7 @@ internal fun NowPlayingScreenLayers(
                             context,
                             lyricLines,
                             portraitLyricSelectSelected.toSet(),
+                            lyricCompanions,
                         )
                         closePortraitLyricSelect()
                     },
@@ -619,6 +658,74 @@ internal fun NowPlayingScreenLayers(
             }
         }
 
+        // 竖屏分享：与音源同壳层进出场；固定打开 1/3
+        if (!isLandscape && (portraitShareT > 0.001f || portraitShareOpen)) {
+            val density = LocalDensity.current
+            NowPlayingSettingsOutsideDismiss(
+                onDismiss = { closePortraitShare() },
+                enabled = portraitShareOpen || portraitShareT > 0.05f,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { alpha = portraitShareT },
+            )
+            BoxWithConstraints(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .fillMaxHeight(),
+            ) {
+                val screenH = constraints.maxHeight.toFloat().coerceAtLeast(1f)
+                val statusTopPx = with(density) {
+                    WindowInsets.statusBars.asPaddingValues().calculateTopPadding().toPx()
+                }
+                val maxSheetH = (screenH - statusTopPx).coerceAtLeast(screenH * 0.5f)
+                val sheetHPx = maxSheetH / 3f
+                val sheetHDp = with(density) { sheetHPx.toDp() }
+                PortraitShareSheet(
+                    onPick = { target ->
+                        closePortraitShare()
+                        if (target == NcmShareTarget.CopyLink) {
+                            when (NcmShare.send(context, track, target)) {
+                                NcmShareResult.Copied -> context.showIslandNotice("已复制链接")
+                                NcmShareResult.NoLink -> context.showIslandNotice("当前歌曲无法分享")
+                                else -> context.showIslandNotice("复制失败")
+                            }
+                            return@PortraitShareSheet
+                        }
+                        if (track.id <= 0L) {
+                            context.showIslandNotice("当前歌曲无法分享")
+                            return@PortraitShareSheet
+                        }
+                        portraitSheetScope.launch {
+                            context.showIslandNotice("正在生成分享图")
+                            val uri = ShareSongPoster.prepareShareUri(app, track)
+                            if (uri == null) {
+                                context.showIslandNotice("分享图生成失败")
+                                return@launch
+                            }
+                            when (val result = NcmShare.sendImage(context, uri, target)) {
+                                NcmShareResult.Opened -> Unit
+                                NcmShareResult.Failed -> context.showIslandNotice("分享失败")
+                                is NcmShareResult.MissingApp ->
+                                    context.showIslandNotice("未安装${result.appName}")
+                                else -> context.showIslandNotice("分享失败")
+                            }
+                        }
+                    },
+                    hazeState = settingsHazeState,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .height(sheetHDp)
+                        .graphicsLayer {
+                            transformOrigin = TransformOrigin(0.5f, 1f)
+                            translationY = (1f - portraitShareT) * sheetHPx
+                            alpha = portraitShareT
+                        },
+                )
+            }
+        }
+
         // 竖屏评论：与曲谱同壳层进出场；固定打开 2/3，上箭头扩全屏（不可拖拽改高）
         if (!isLandscape && (portraitCommentsT > 0.001f || portraitCommentsOpen)) {
             val density = LocalDensity.current
@@ -729,12 +836,8 @@ internal fun NowPlayingScreenLayers(
                     excludePlaylistId = state.sourcePlaylistId ?: 0L,
                     visible = portraitMoreOpen,
                     maxHeight = maxSheetHDp,
-                    lyricPreferTranslation = portraitDisplayPrefs.portraitLyricPreferTranslation,
-                    onLyricPreferTranslationChange = { on ->
-                        onPortraitDisplayPrefsChange(
-                            portraitDisplayPrefs.copy(portraitLyricPreferTranslation = on),
-                        )
-                    },
+                    displayPrefs = portraitDisplayPrefs,
+                    onDisplayPrefsChange = onPortraitDisplayPrefsChange,
                     onOpenPoster = {
                         closePortraitMore()
                         openPortraitPoster()

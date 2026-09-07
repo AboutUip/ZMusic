@@ -110,6 +110,7 @@ internal fun CatalogTopBar(
     extraIcon: androidx.compose.ui.graphics.vector.ImageVector? = null,
     onExtra: (() -> Unit)? = null,
     onSearch: (() -> Unit)? = null,
+    searchContentDescription: String = "搜索歌单内歌曲",
     onManage: (() -> Unit)? = null,
     onSelectAll: (() -> Unit)? = null,
     allSelected: Boolean = false,
@@ -203,7 +204,7 @@ internal fun CatalogTopBar(
             ) {
                 Icon(
                     imageVector = ZIcons.Search,
-                    contentDescription = "搜索歌单内歌曲",
+                    contentDescription = searchContentDescription,
                     tint = TextTheme.CatalogTitle,
                     modifier = Modifier.size(22.dp),
                 )

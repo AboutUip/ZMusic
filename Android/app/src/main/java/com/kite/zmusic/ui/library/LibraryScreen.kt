@@ -1389,7 +1389,10 @@ private fun identityStatsOf(profile: UserProfileBrief): List<IdentityStat> {
     }
     profile.followeds?.let { stats += IdentityStat(formatPlayCount(it), "粉丝") }
     profile.level?.let { stats += IdentityStat("Lv.$it") }
-    profile.listenSongs?.let { stats += IdentityStat(formatPlayCount(it), "首") }
+    profile.listenDurationMs?.let { ms ->
+        val (value, unit) = formatListenDuration(ms)
+        stats += IdentityStat(value, unit)
+    }
     return stats
 }
 

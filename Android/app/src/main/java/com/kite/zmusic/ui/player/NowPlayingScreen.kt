@@ -132,6 +132,8 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
@@ -164,6 +166,7 @@ import com.kite.zmusic.playback.PlaybackUiState
 import com.kite.zmusic.playback.PlaybackMode
 import com.kite.zmusic.playback.mergePlaylistQueue
 import com.kite.zmusic.ui.common.UrlImage
+import com.kite.zmusic.ui.common.hideSoftwareIme
 import com.kite.zmusic.ui.common.rememberNetworkOnline
 import com.kite.zmusic.ui.notice.showIslandNotice
 import dev.chrisbanes.haze.HazeState
@@ -215,6 +218,8 @@ fun NowPlayingScreen(
     var sliderValue by remember { mutableFloatStateOf(0f) }
 
     val context = LocalContext.current
+    val keyboard = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
     val online = rememberNetworkOnline()
     val onlineNow = rememberUpdatedState(online)
     val displayPrefsStore = remember { PlayerDisplayPrefsStore(context) }
@@ -270,6 +275,7 @@ fun NowPlayingScreen(
         portraitDisplayPrefs.keepScreenOn
     }
     val playerView = LocalView.current
+    val activity = LocalActivity.current
     DisposableEffect(keepScreenOn, playerView) {
         val previous = playerView.keepScreenOn
         if (keepScreenOn) {
@@ -294,61 +300,43 @@ fun NowPlayingScreen(
         loadedCount = state.queue.size,
         demandMinCount = queueDemand,
     )
-    val songs = app.songRepository
     val likedRepo = app.likedPlaylistRepository
-    val likeScope = rememberCoroutineScope()
     // 首帧即读缓存，避免切歌先闪「未喜欢」
     var trackLiked by remember(track.id) {
         mutableStateOf(likedRepo.isLiked(track.id) ?: false)
     }
-    var likeBusy by remember { mutableStateOf(false) }
 
     LaunchedEffect(track.id) {
-        likedRepo.isLiked(track.id)?.let { trackLiked = it }
-
+        fun paintFromCache() {
+            val liked = likedRepo.isLiked(track.id)
+            if (liked != null) {
+                trackLiked = liked
+            } else {
+                val session = app.sessionRepository.session.value
+                if (session == null || session.isGuest) trackLiked = false
+            }
+        }
+        paintFromCache()
         launch {
-            likedRepo.snapshot.collect {
-                likedRepo.isLiked(track.id)?.let { trackLiked = it }
-            }
+            likedRepo.snapshot.collect { paintFromCache() }
         }
-
-        val cookie = app.sessionRepository.session.value?.cookie.orEmpty()
-        if (cookie.isNotEmpty()) {
-            try {
-                val liked = songs.isTrackLiked(track.id, cookie)
-                if (liked != null) {
-                    trackLiked = liked
-                    likedRepo.recordLikeStatus(track, liked)
-                }
-            } catch (_: Exception) {
-            }
+        launch {
+            likedRepo.likeStatus.collect { paintFromCache() }
         }
+        likedRepo.prefetchLikeStatuses(listOf(track))
     }
 
     fun toggleTrackLike() {
-        if (!onlineNow.value) return
-        if (likeBusy || state.loadPending) return
-        val cookie = app.sessionRepository.session.value?.cookie.orEmpty()
-        if (cookie.isEmpty()) return
+        val session = app.sessionRepository.session.value
+        if (session == null || session.isGuest || session.cookie.isBlank()) {
+            context.showIslandNotice("请先登录")
+            return
+        }
         val likedTrack = track
         val next = !trackLiked
         trackLiked = next
         likedRepo.applyLocalLike(likedTrack, liked = next)
-        likeBusy = true
-        likeScope.launch {
-            try {
-                val ack = songs.likeSong(likedTrack.id, like = next, cookie = cookie)
-                if (!ack.ok) {
-                    trackLiked = !next
-                    likedRepo.applyLocalLike(likedTrack, liked = !next, scheduleSync = false)
-                }
-            } catch (_: Exception) {
-                trackLiked = !next
-                likedRepo.applyLocalLike(likedTrack, liked = !next, scheduleSync = false)
-            } finally {
-                likeBusy = false
-            }
-        }
+        likedRepo.submitLike(likedTrack, next, session.cookie)
     }
 
     LaunchedEffect(track.id) {
@@ -369,11 +357,13 @@ fun NowPlayingScreen(
     val displayPos = if (sliderDragging) sliderValue.toLong() else seekDisplayPos
     val lyricPos = if (sliderDragging) sliderValue.toLong() else state.positionMs
     // 歌词选择抽到小函数：避免在超大 Composable 里混用 List/Boolean 的 remember key（ART VerifyError）
-    val lyricLines = rememberDisplayLyricLines(
+    val lyricBundle = rememberDisplayLyrics(
         state = state,
         isLandscape = isLandscape,
         portraitPrefs = portraitDisplayPrefs,
     )
+    val lyricLines = lyricBundle.lines
+    val lyricCompanions = lyricBundle.companions
 
     val openSourcePlaylist = onOpenSourcePlaylist
     // 下滑退出阈值：交给竖/横屏 body 的空白手势识别
@@ -403,6 +393,7 @@ fun NowPlayingScreen(
     var portraitSettingsOpen by remember { mutableStateOf(false) }
     var portraitScoreOpen by remember { mutableStateOf(false) }
     var portraitQualityOpen by remember { mutableStateOf(false) }
+    var portraitShareOpen by remember { mutableStateOf(false) }
     var portraitLyricSelectOpen by remember { mutableStateOf(false) }
     val portraitLyricSelectSelected: SnapshotStateSet<Int> = remember { mutableStateSetOf() }
     val portraitLyricSelectPanel = remember { Animatable(0f) }
@@ -438,6 +429,7 @@ fun NowPlayingScreen(
     var portraitSheetDragVel by remember { mutableFloatStateOf(0f) }
     val portraitScorePanel = remember { Animatable(0f) }
     val portraitQualityPanel = remember { Animatable(0f) }
+    val portraitSharePanel = remember { Animatable(0f) }
     val portraitMorePanel = remember { Animatable(0f) }
     val portraitMoreSheetFrac = remember { Animatable(1f / 3f) }
     var portraitMoreSheetDragVel by remember { mutableFloatStateOf(0f) }
@@ -501,6 +493,25 @@ fun NowPlayingScreen(
             )
         } else {
             portraitQualityPanel.animateTo(
+                targetValue = 0f,
+                animationSpec = tween(
+                    durationMillis = 360,
+                    easing = CubicBezierEasing(0.4f, 0f, 0.2f, 1f),
+                ),
+            )
+        }
+    }
+    LaunchedEffect(portraitShareOpen) {
+        if (portraitShareOpen) {
+            portraitSharePanel.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(
+                    durationMillis = 420,
+                    easing = CubicBezierEasing(0.16f, 1.02f, 0.3f, 1f),
+                ),
+            )
+        } else {
+            portraitSharePanel.animateTo(
                 targetValue = 0f,
                 animationSpec = tween(
                     durationMillis = 360,
@@ -583,6 +594,7 @@ fun NowPlayingScreen(
         portraitLyricSelectResumeToken = 0
         portraitCommentsOpen = false
         portraitMoreOpen = false
+        portraitShareOpen = false
     }
     // 退出歌词页后清零：否则 token 残留会在下次进入时触发从头动画滚
     LaunchedEffect(portraitLyricsOpen) {
@@ -593,6 +605,7 @@ fun NowPlayingScreen(
     val portraitSettingsT = portraitSettingsPanel.value
     val portraitScoreT = portraitScorePanel.value
     val portraitQualityT = portraitQualityPanel.value
+    val portraitShareT = portraitSharePanel.value
     val portraitMoreT = portraitMorePanel.value
     val portraitCommentsT = portraitCommentsPanel.value
     val portraitLyricSelectT = portraitLyricSelectPanel.value
@@ -601,10 +614,16 @@ fun NowPlayingScreen(
         portraitSettingsOpen = false
     }
     fun closePortraitScore() {
+        keyboard?.hide()
+        focusManager.clearFocus(force = true)
+        hideSoftwareIme(playerView, activity)
         portraitScoreOpen = false
     }
     fun closePortraitQuality() {
         portraitQualityOpen = false
+    }
+    fun closePortraitShare() {
+        portraitShareOpen = false
     }
     fun closePortraitComments() {
         portraitCommentsOpen = false
@@ -624,6 +643,7 @@ fun NowPlayingScreen(
         portraitSettingsOpen = false
         portraitScoreOpen = false
         portraitQualityOpen = false
+        portraitShareOpen = false
         portraitCommentsOpen = false
         portraitLyricSelectOpen = false
         portraitMoreOpen = false
@@ -635,6 +655,7 @@ fun NowPlayingScreen(
         portraitSettingsPanel.snapTo(0f)
         portraitScorePanel.snapTo(0f)
         portraitQualityPanel.snapTo(0f)
+        portraitSharePanel.snapTo(0f)
         portraitMorePanel.snapTo(0f)
         portraitCommentsPanel.snapTo(0f)
         portraitCommentsSheetFrac.snapTo(2f / 3f)
@@ -651,6 +672,7 @@ fun NowPlayingScreen(
         closePortraitSettings()
         closePortraitScore()
         closePortraitQuality()
+        closePortraitShare()
         closePortraitComments()
         closePortraitMore()
         portraitLyricSelectSelected.clear()
@@ -660,6 +682,7 @@ fun NowPlayingScreen(
     fun openPortraitScore() {
         closePortraitSettings()
         closePortraitQuality()
+        closePortraitShare()
         closePortraitLyricSelect()
         closePortraitComments()
         closePortraitMore()
@@ -669,14 +692,25 @@ fun NowPlayingScreen(
         if (!onlineNow.value) return
         closePortraitSettings()
         closePortraitScore()
+        closePortraitShare()
         closePortraitLyricSelect()
         closePortraitComments()
         closePortraitMore()
         portraitQualityOpen = true
     }
+    fun openPortraitShare() {
+        closePortraitSettings()
+        closePortraitScore()
+        closePortraitQuality()
+        closePortraitLyricSelect()
+        closePortraitComments()
+        closePortraitMore()
+        portraitShareOpen = true
+    }
     fun openPortraitSettings() {
         closePortraitScore()
         closePortraitQuality()
+        closePortraitShare()
         closePortraitLyricSelect()
         closePortraitComments()
         closePortraitMore()
@@ -687,6 +721,7 @@ fun NowPlayingScreen(
         closePortraitSettings()
         closePortraitScore()
         closePortraitQuality()
+        closePortraitShare()
         closePortraitLyricSelect()
         closePortraitMore()
         portraitCommentsOpen = true
@@ -703,6 +738,7 @@ fun NowPlayingScreen(
         closePortraitSettings()
         closePortraitScore()
         closePortraitQuality()
+        closePortraitShare()
         closePortraitComments()
         closePortraitLyricSelect()
         closePortraitMore()
@@ -715,6 +751,7 @@ fun NowPlayingScreen(
         closePortraitSettings()
         closePortraitScore()
         closePortraitQuality()
+        closePortraitShare()
         closePortraitComments()
         closePortraitLyricSelect()
         portraitMoreOpen = true
@@ -872,6 +909,9 @@ fun NowPlayingScreen(
     BackHandler(enabled = !isLandscape && portraitQualityOpen) {
         closePortraitQuality()
     }
+    BackHandler(enabled = !isLandscape && portraitShareOpen) {
+        closePortraitShare()
+    }
     BackHandler(enabled = !isLandscape && portraitMoreOpen) {
         closePortraitMore()
     }
@@ -1009,6 +1049,26 @@ fun NowPlayingScreen(
             )
         }
     }
+    val landscapeCustomBg = if (isLandscape) {
+        PluginLookPresent.playerBackground() ?: displayPrefs.resolvedCustomBackground()
+    } else {
+        null
+    }
+    val landscapeCustomBgTarget = if (landscapeCustomBg != null) 1f else 0f
+    val landscapeCustomBgT = remember { Animatable(0f) }
+    LaunchedEffect(landscapeCustomBgTarget, isLandscape) {
+        if (!isLandscape) {
+            landscapeCustomBgT.snapTo(0f)
+        } else {
+            landscapeCustomBgT.animateTo(
+                landscapeCustomBgTarget,
+                animationSpec = tween(
+                    durationMillis = 480,
+                    easing = CubicBezierEasing(0.22f, 0.8f, 0.28f, 1f),
+                ),
+            )
+        }
+    }
     // UI 放到独立 Composable：避免 NowPlayingScreen 方法过大被 ART verifier 拒绝
     NowPlayingScreenLayers(
         modifier = modifier,
@@ -1016,6 +1076,7 @@ fun NowPlayingScreen(
         state = state,
         track = track,
         lyricLines = lyricLines,
+        lyricCompanions = lyricCompanions,
         lyricPos = lyricPos,
         displayPos = displayPos,
         seekDisplayPos = seekDisplayPos,
@@ -1053,6 +1114,7 @@ fun NowPlayingScreen(
         portraitSettingsOpen = portraitSettingsOpen,
         portraitScoreOpen = portraitScoreOpen,
         portraitQualityOpen = portraitQualityOpen,
+        portraitShareOpen = portraitShareOpen,
         portraitCommentsOpen = portraitCommentsOpen,
         portraitMoreOpen = portraitMoreOpen,
         portraitPosterOpen = portraitPosterOpen,
@@ -1064,6 +1126,7 @@ fun NowPlayingScreen(
         portraitSettingsT = portraitSettingsT,
         portraitScoreT = portraitScoreT,
         portraitQualityT = portraitQualityT,
+        portraitShareT = portraitShareT,
         portraitCommentsT = portraitCommentsT,
         portraitMoreT = portraitMoreT,
         portraitLyricSelectT = portraitLyricSelectT,
@@ -1072,6 +1135,8 @@ fun NowPlayingScreen(
         portraitStyleCloneAlpha = portraitStyleCloneAlpha,
         portraitCustomBg = portraitCustomBg,
         portraitCustomBgProgress = portraitCustomBgT.value,
+        landscapeCustomBg = landscapeCustomBg,
+        landscapeCustomBgProgress = landscapeCustomBgT.value,
         portraitSheetFrac = portraitSheetFrac,
         portraitMoreSheetFrac = portraitMoreSheetFrac,
         portraitScoreSheetFrac = portraitScoreSheetFrac,
@@ -1110,6 +1175,7 @@ fun NowPlayingScreen(
         closePortraitSettings = ::closePortraitSettings,
         closePortraitScore = ::closePortraitScore,
         closePortraitQuality = ::closePortraitQuality,
+        closePortraitShare = ::closePortraitShare,
         closePortraitComments = ::closePortraitComments,
         closePortraitMore = ::closePortraitMore,
         closePortraitLyricSelect = ::closePortraitLyricSelect,
@@ -1118,6 +1184,7 @@ fun NowPlayingScreen(
         openPortraitMore = ::openPortraitMore,
         openPortraitScore = ::openPortraitScore,
         openPortraitQuality = ::openPortraitQuality,
+        openPortraitShare = ::openPortraitShare,
         openPortraitComments = ::openPortraitComments,
         openPortraitSettings = ::openPortraitSettings,
         openPortraitPoster = ::openPortraitPoster,

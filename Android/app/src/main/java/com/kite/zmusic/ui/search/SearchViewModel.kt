@@ -7,6 +7,7 @@ import com.kite.zmusic.data.HotSearchWord
 import com.kite.zmusic.data.NcmHomeParse
 import com.kite.zmusic.data.NcmJson
 import com.kite.zmusic.data.NcmLibraryParse
+import com.kite.zmusic.data.LikedPlaylistRepository
 import com.kite.zmusic.data.SearchRepository
 import com.kite.zmusic.data.RecommendMvCard
 import com.kite.zmusic.data.SearchArtistHit
@@ -138,6 +139,7 @@ class SearchViewModel(
     private val sessionRepository: SessionRepository,
     private val searchHistory: SearchHistoryRepository,
     private val search: SearchRepository,
+    private val likedPlaylistRepository: LikedPlaylistRepository,
 ) : ViewModel() {
 
     private val _ui = MutableStateFlow(SearchUiState(history = searchHistory.items.value))
@@ -535,7 +537,10 @@ class SearchViewModel(
     }
 
     private fun SearchUiState.withPage(kind: SearchKind, page: SearchKindPage) = when (kind) {
-        SearchKind.Song -> copy(results = page.tracks, songHasMore = page.hasMore)
+        SearchKind.Song -> {
+            likedPlaylistRepository.prefetchLikeStatuses(page.tracks)
+            copy(results = page.tracks, songHasMore = page.hasMore)
+        }
         SearchKind.Playlist -> copy(playlists = page.playlists, playlistHasMore = page.hasMore)
         SearchKind.Album -> copy(albums = page.albums, albumHasMore = page.hasMore)
         SearchKind.Mv -> copy(mvs = page.mvs, mvHasMore = page.hasMore)

@@ -5,6 +5,13 @@ sealed class MainOverlay {
     data object Fm : MainOverlay()
     data object Charts : MainOverlay()
     data object CachedSongs : MainOverlay()
+    data object CloudDisk : MainOverlay()
+    data object CloudDiskSearch : MainOverlay()
+    data class CloudMatch(
+        val songId: Long,
+        val title: String,
+        val artists: String = "",
+    ) : MainOverlay()
     data object CreativeWorkshop : MainOverlay()
     data object Search : MainOverlay()
     data object Settings : MainOverlay()
@@ -72,6 +79,9 @@ sealed class MainOverlay {
         Fm -> "fm"
         Charts -> "charts"
         CachedSongs -> "cached-songs"
+        CloudDisk -> "cloud-disk"
+        CloudDiskSearch -> "cloud-disk-search"
+        is CloudMatch -> "cloud-match-$songId"
         CreativeWorkshop -> "creative-workshop"
         Search -> "search"
         Settings -> "settings"

@@ -22,11 +22,15 @@ import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import java.io.InputStream
 
 object PlayerDisplayQr {
-    fun encodeBitmap(content: String, sizePx: Int): Bitmap {
+    fun encodeBitmap(
+        content: String,
+        sizePx: Int,
+        errorCorrection: ErrorCorrectionLevel = ErrorCorrectionLevel.M,
+    ): Bitmap {
         val size = sizePx.coerceIn(256, 1200)
         val hints = mapOf(
             com.google.zxing.EncodeHintType.CHARACTER_SET to "UTF-8",
-            com.google.zxing.EncodeHintType.ERROR_CORRECTION to ErrorCorrectionLevel.M,
+            com.google.zxing.EncodeHintType.ERROR_CORRECTION to errorCorrection,
             com.google.zxing.EncodeHintType.MARGIN to 1,
         )
         val matrix = QRCodeWriter().encode(content, BarcodeFormat.QR_CODE, size, size, hints)

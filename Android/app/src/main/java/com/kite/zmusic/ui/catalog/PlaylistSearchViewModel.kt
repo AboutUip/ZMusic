@@ -112,8 +112,7 @@ class PlaylistSearchViewModel(
             try {
                 if (heartSource) {
                     likedPlaylistRepository.applyLocalLike(track, liked = false)
-                    val ack = catalog.unlikeSong(track.id, cookie)
-                    if (!ack.ok) {
+                    if (!likedPlaylistRepository.pushLike(track, liked = false, cookie)) {
                         likedPlaylistRepository.applyLocalLike(track, liked = true, scheduleSync = false)
                         islandNotices.show("移除失败", track.coverUrl)
                         return@launch
@@ -271,6 +270,7 @@ class PlaylistSearchViewModel(
                 error = if (nextLoaded.isNotEmpty()) null else state.error,
             )
         }
+        likedPlaylistRepository.prefetchLikeStatuses(tracks)
     }
 
     private fun refilter() {

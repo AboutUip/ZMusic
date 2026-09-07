@@ -37,6 +37,9 @@ import com.kite.zmusic.ui.artist.ArtistAlbumsScreen
 import com.kite.zmusic.ui.artist.ArtistMvsScreen
 import com.kite.zmusic.ui.artist.ArtistScreen
 import com.kite.zmusic.ui.catalog.CatalogCollectionPage
+import com.kite.zmusic.ui.catalog.CloudDiskScreen
+import com.kite.zmusic.ui.catalog.CloudDiskSearchScreen
+import com.kite.zmusic.ui.catalog.CloudMatchScreen
 import com.kite.zmusic.ui.catalog.PlaylistManageBridge
 import com.kite.zmusic.ui.catalog.PlaylistSearchScreen
 import com.kite.zmusic.ui.chrome.ChromeWallpaperBackdrop
@@ -70,6 +73,7 @@ fun CatalogOverlayHost(
     onPushOverlay: (MainOverlay) -> Unit = {},
     onHint: (String) -> Unit = {},
     onLogout: () -> Unit = {},
+    onPlaySong: ((Long) -> Unit)? = null,
     searchInStack: Boolean = overlayStack.any { it is MainOverlay.Search },
     playingTrackId: Long = 0L,
     playingSourceId: Long = 0L,
@@ -80,7 +84,12 @@ fun CatalogOverlayHost(
 ) {
     val app = LocalContext.current.applicationContext as ZMusicApplication
     val searchVm: SearchViewModel = viewModel(
-        factory = SearchViewModelFactory(sessionRepository, app.searchHistoryRepository, app.searchRepository),
+        factory = SearchViewModelFactory(
+            sessionRepository,
+            app.searchHistoryRepository,
+            app.searchRepository,
+            app.likedPlaylistRepository,
+        ),
     )
     val keyboard = LocalSoftwareKeyboardController.current
     val focus = LocalFocusManager.current
@@ -149,6 +158,7 @@ fun CatalogOverlayHost(
                             onPushOverlay = onPushOverlay,
                             onHint = onHint,
                             onLogout = onLogout,
+                            onPlaySong = onPlaySong,
                             playingTrackId = playingTrackId,
                             playingSourceId = playingSourceId,
                             isPlaying = isPlaying,
@@ -173,6 +183,7 @@ private fun CatalogOverlayPage(
     onPushOverlay: (MainOverlay) -> Unit,
     onHint: (String) -> Unit,
     onLogout: () -> Unit,
+    onPlaySong: ((Long) -> Unit)?,
     playingTrackId: Long,
     playingSourceId: Long,
     isPlaying: Boolean,
@@ -236,6 +247,48 @@ private fun CatalogOverlayPage(
         MainOverlay.CreativeWorkshop -> {
             CreativeWorkshopScreen(
                 contentBottomInset = contentBottomInset,
+                onBack = onBack,
+                onPlaySong = onPlaySong,
+            )
+        }
+        MainOverlay.CloudDisk -> {
+            CloudDiskScreen(
+                sessionRepository = sessionRepository,
+                contentBottomInset = contentBottomInset,
+                onBack = onBack,
+                onPlayTracks = onPlayTracks,
+                onPushOverlay = onPushOverlay,
+                playingTrackId = playingTrackId,
+                playingSourceId = playingSourceId,
+                isPlaying = isPlaying,
+                manageBridge = manageBridge,
+                onOpenArtist = { id, name, cover ->
+                    onPushOverlay(MainOverlay.Artist(id, name, cover))
+                },
+            )
+        }
+        MainOverlay.CloudDiskSearch -> {
+            CloudDiskSearchScreen(
+                sessionRepository = sessionRepository,
+                contentBottomInset = contentBottomInset,
+                isTop = isTop,
+                onBack = onBack,
+                onPlayTracks = onPlayTracks,
+                onPushOverlay = onPushOverlay,
+                playingTrackId = playingTrackId,
+                playingSourceId = playingSourceId,
+                isPlaying = isPlaying,
+                onOpenArtist = { id, name, cover ->
+                    onPushOverlay(MainOverlay.Artist(id, name, cover))
+                },
+            )
+        }
+        is MainOverlay.CloudMatch -> {
+            CloudMatchScreen(
+                overlay = overlay,
+                sessionRepository = sessionRepository,
+                contentBottomInset = contentBottomInset,
+                isTop = isTop,
                 onBack = onBack,
             )
         }

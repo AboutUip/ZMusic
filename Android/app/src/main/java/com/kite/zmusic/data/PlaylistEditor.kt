@@ -136,10 +136,9 @@ class PlaylistEditor(
         if (liked.isLiked(track.id) == true) return "已经在喜欢的音乐里"
         val cookie = cookieOrNull() ?: return "请先登录"
         liked.applyLocalLike(track, liked = true)
-        val json = userClient.likeSong(track.id, like = true, cookie)
-        if (NcmJson.apiCode(json) != 200) {
+        if (!liked.pushLike(track, liked = true, cookie)) {
             liked.applyLocalLike(track, liked = false, scheduleSync = false)
-            return NcmJson.userFacingMessage(json, "添加失败")
+            return "添加失败"
         }
         return "已添加到喜欢的音乐"
     }

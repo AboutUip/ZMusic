@@ -28,7 +28,7 @@ import com.kite.zmusic.data.PersistentPlaybackStore
 import com.kite.zmusic.data.LikedPlaylistRepository
 import com.kite.zmusic.data.LyricRepository
 import com.kite.zmusic.data.NcmHomeParse
-import com.kite.zmusic.data.NcmLibraryParse
+import com.kite.zmusic.data.NcmListenReporter
 import com.kite.zmusic.data.NcmUserClient
 import com.kite.zmusic.data.PlayUrlResolver
 import com.kite.zmusic.data.SessionRepository
@@ -63,7 +63,7 @@ import kotlin.random.Random
  *
  * 本阶段保持单类：起播语义（空队列发布、URL 解析、FM 续播）没有单元测试护栏，
  * 不要按“文件太大”再拆实现。边界：
- * - 对外：`playQueue` / `playIndex` / skip / mode / FM
+ * - 对外：`playQueue` / `playInsertAfterCurrent` / `playIndex` / skip / mode / FM
  * - 对内：按需 `PlayUrlResolver`、短 TTL 预取、歌词加载
  * - 不：Compose、repository 组装（由 Application / Service 注入）
  */
@@ -88,6 +88,12 @@ class PlaylistCoordinator(
         SupervisorJob() + Dispatchers.Main.immediate + CoroutineExceptionHandler { _, e ->
             Log.w(TAG, "uncaught", e)
         },
+    )
+
+    private val listenReporter = NcmListenReporter(
+        userClient = userClient,
+        sessionRepository = sessionRepository,
+        scope = scope,
     )
 
     private val _spectrum = MutableStateFlow(AudioSpectrumBands.ZERO)
@@ -404,8 +410,75 @@ class PlaylistCoordinator(
         }
         persistSnapshot()
         flushSample()
+        listenReporter.flush()
         loadAndPlayIndex(idx)
         if (radio) ensureRadioLookahead()
+    }
+
+    /**
+     * 把 [track] 插到当前曲后面并立刻播放，其余队列保留。
+     * 无队列时当作单曲起播。已在队列中则先挪到当前曲后方，避免重复。
+     */
+    fun playInsertAfterCurrent(track: TrackRow) {
+        if (track.id <= 0L) return
+        val ui = _ui.value
+        if (!ui.hasQueue || ui.queue.isEmpty() || ui.index !in ui.queue.indices) {
+            playQueue(listOf(track), 0, null, track.name)
+            return
+        }
+        if (sleepTimer?.onLeavingTrack() == true) return
+        if (ui.queue[ui.index].id == track.id) {
+            playIndex(ui.index)
+            return
+        }
+        var cur = ui.index
+        val queue = ui.queue.toMutableList()
+        val existing = queue.indexOfFirst { it.id == track.id }
+        if (existing >= 0) {
+            queue.removeAt(existing)
+            remapQueueIndicesAfterRemove(existing)
+            if (existing < cur) cur -= 1
+        }
+        val insertAt = (cur + 1).coerceAtMost(queue.size)
+        queue.add(insertAt, track)
+        remapQueueIndicesAfterInsert(insertAt)
+        _ui.update {
+            it.copy(
+                queue = queue,
+                index = cur,
+                sourcePlaylistId = if (radioActive) it.sourcePlaylistId else null,
+            )
+        }
+        persistSnapshot()
+        loadAndPlayIndex(insertAt, recordShuffleHistory = true)
+        if (radioActive) ensureRadioLookahead()
+    }
+
+    private fun remapQueueIndicesAfterRemove(removed: Int) {
+        remapShuffleIndices { i ->
+            when {
+                i == removed -> null
+                i > removed -> i - 1
+                else -> i
+            }
+        }
+    }
+
+    private fun remapQueueIndicesAfterInsert(insertAt: Int) {
+        remapShuffleIndices { i -> if (i >= insertAt) i + 1 else i }
+    }
+
+    private fun remapShuffleIndices(transform: (Int) -> Int?) {
+        if (shuffleHistory.isNotEmpty()) {
+            val next = ArrayDeque<Int>(shuffleHistory.size)
+            for (i in shuffleHistory) {
+                val mapped = transform(i) ?: continue
+                next.addLast(mapped)
+            }
+            shuffleHistory.clear()
+            shuffleHistory.addAll(next)
+        }
+        preparedShuffleNext = preparedShuffleNext?.let(transform)
     }
 
     fun startPersonalFm(onStarted: () -> Unit = {}) {
@@ -542,6 +615,7 @@ class PlaylistCoordinator(
     fun clearQueue() {
         sleepTimer?.cancel()
         flushSample()
+        listenReporter.flush()
         cancelLoads()
         urlCache.clear()
         unplayableUntil.clear()
@@ -680,6 +754,7 @@ class PlaylistCoordinator(
 
     fun release() {
         flushSample()
+        listenReporter.flush()
         cancelLoads()
         tickerJob?.cancel()
         persistentFocus.release()
@@ -726,6 +801,16 @@ class PlaylistCoordinator(
                     quality = audioQualityStore.current(),
                     positionMs = pos,
                 )
+                listenReporter.tick(
+                    playing = exoPlayer.isPlaying && !ui.loadPending,
+                    track = ui.currentTrack,
+                    durationMs = dur,
+                    positionMs = pos,
+                    quality = audioQualityStore.current(),
+                    sourcePlaylistId = ui.sourcePlaylistId,
+                    sourcePlaylistTitle = ui.sourcePlaylistTitle,
+                    playMode = ncmPlayMode(playbackMode, radioActive),
+                )
             }
         }
     }
@@ -741,6 +826,7 @@ class PlaylistCoordinator(
         exoPlayer.pause()
         exoPlayer.playWhenReady = false
         flushSample()
+        listenReporter.flush()
         _ui.update {
             it.copy(
                 isPlaying = false,
@@ -799,6 +885,7 @@ class PlaylistCoordinator(
             suppressAutoAdvanceOnce = false
             return
         }
+        listenReporter.onCompleted()
         if (sleepTimer?.onTrackEnded() == true) return
         if (holdAutoAdvance) {
             pendingAdvanceAfterHold = true
@@ -982,37 +1069,15 @@ class PlaylistCoordinator(
                                 add(async { lyricRepository.prefetch(t.id, cookie) })
                             }
                         }
-                        // 邻曲 + 当前：预热 like 状态（有完整红心歌单缓存则跳过网络）
-                        if (cookie.isNotEmpty()) {
-                            val likeTargets = buildList {
-                                current?.let { add(it) }
-                                addAll(neighbors)
-                            }.distinctBy { it.id }
-                            val needCheck = likeTargets.filter {
-                                likedPlaylistRepository.isLiked(it.id) == null
-                            }
-                            if (needCheck.isNotEmpty()) {
-                                add(
-                                    async {
-                                        runCatching {
-                                            val json = userClient.songLikeCheck(
-                                                needCheck.map { it.id },
-                                                cookie,
-                                            )
-                                            val likedIds =
-                                                NcmLibraryParse.likedIdsFromLikeCheck(json)
-                                            likedPlaylistRepository.recordLikeStatuses(
-                                                needCheck,
-                                                likedIds,
-                                            )
-                                        }
-                                    },
-                                )
-                            }
-                        }
                     }
                     jobs.awaitAll()
                 }
+                likedPlaylistRepository.prefetchLikeStatuses(
+                    buildList {
+                        current?.let { add(it) }
+                        addAll(neighbors)
+                    },
+                )
 
                 for (t in neighbors) {
                     if (isUnplayable(t.id)) continue
@@ -1091,6 +1156,7 @@ class PlaylistCoordinator(
         ) {
             flushSample()
         }
+        listenReporter.flushIfTrackChanged(track.id)
         val livePrefs = realtimeCacheStore.current()
         if (livePrefs.liveDownloadEnabled) {
             realtimeCache.notifyRealtimePlayStarted(track.id, nextQuality)
@@ -1455,47 +1521,22 @@ class PlaylistCoordinator(
         val ui = _ui.value
         val track = ui.currentTrack ?: return
         val local = map[track.id]?.audioUri ?: return
+        urlCache[track.id] = CachedUrl(local, System.currentTimeMillis())
         val playing = exoPlayer.currentMediaItem?.localConfiguration?.uri?.toString()
         if (playing == local) {
-            urlCache[track.id] = CachedUrl(local, System.currentTimeMillis())
             if (exoPlayer.playWhenReady || ui.playWhenReady) {
                 maybeNoticeCacheAccel(track, local)
             }
-            return
         }
-        if (!ui.hasQueue || ui.index !in ui.queue.indices) return
-        val pos = exoPlayer.currentPosition.coerceAtLeast(0L).let { cur ->
-            if (cur > 0L) cur else ui.positionMs
-        }
-        val play = exoPlayer.playWhenReady || ui.playWhenReady
-        loadAndPlayIndex(
-            idx = ui.index,
-            isRetry = false,
-            resumeAtMs = pos,
-            resumePlayWhenReady = play,
-        )
+        // 这首正在播时不要换成本地文件：setMediaItem 会打断正在出声的解码器。
     }
 
     private fun switchCurrentToRealtimeCacheIfNeeded() {
         val ui = _ui.value
         val track = ui.currentTrack ?: return
         val local = realtimeCache.playUri(track.id, audioQualityStore.current()) ?: return
-        val playing = exoPlayer.currentMediaItem?.localConfiguration?.uri?.toString()
-        if (playing == local) {
-            urlCache[track.id] = CachedUrl(local, System.currentTimeMillis())
-            return
-        }
-        if (!ui.hasQueue || ui.index !in ui.queue.indices) return
-        val pos = exoPlayer.currentPosition.coerceAtLeast(0L).let { cur ->
-            if (cur > 0L) cur else ui.positionMs
-        }
-        val play = exoPlayer.playWhenReady || ui.playWhenReady
-        loadAndPlayIndex(
-            idx = ui.index,
-            isRetry = false,
-            resumeAtMs = pos,
-            resumePlayWhenReady = play,
-        )
+        urlCache[track.id] = CachedUrl(local, System.currentTimeMillis())
+        // 只记下缓存地址，当前这条在线流继续播；下次进这首再走本地。
     }
 
     private fun sampleTick(
@@ -1631,6 +1672,13 @@ class PlaylistCoordinator(
         var n = current
         while (n == current) n = Random.nextInt(0, size)
         return n
+    }
+
+    private fun ncmPlayMode(mode: PlaybackMode, radio: Boolean): String = when {
+        radio -> "fm"
+        mode == PlaybackMode.SHUFFLE -> "random"
+        mode == PlaybackMode.REPEAT_ONE -> "single_loop"
+        else -> "list_loop"
     }
 
     private fun canSeekNext(): Boolean {

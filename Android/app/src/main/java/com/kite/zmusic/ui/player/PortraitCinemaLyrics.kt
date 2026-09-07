@@ -11,8 +11,10 @@ import androidx.compose.foundation.gestures.ScrollableDefaults
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -78,7 +80,8 @@ private val PortraitSelectSelectedTextFallback = Color(0xFFFFFFFF)
 /**
  * 竖屏歌词：LazyColumn 全列表 + 与横屏同套「滚动进入浏览态」。
  * - 跟滚：播放行居中
- * - 首滑进入浏览；浏览中可自由滚、点选 seek
+ * - 首滑进入浏览；浏览中可自由滚
+ * - 单击：仅预选行及其上下各一行内跳到预选句，其余单击退回黑胶
  * - 长按进入选句：全量列表 + 方块多选（无弹窗）
  * - 闲置回跟滚；侧句 Crossfade 刷新
  */
@@ -86,6 +89,9 @@ private val PortraitSelectSelectedTextFallback = Color(0xFFFFFFFF)
 @Composable
 fun PortraitCinemaLyrics(
     lines: List<LrcLine>,
+    companions: List<LrcLine?> = emptyList(),
+    originalOnTop: Boolean = true,
+    showCompanionOnOthers: Boolean = true,
     positionMs: Long,
     trackDurationMs: Long,
     playingStyle: LyricRoleStyle = LyricRoleStyle.PlayingDefault,
@@ -109,6 +115,8 @@ fun PortraitCinemaLyrics(
     onSeekToMs: (Long) -> Unit,
     onCollapse: () -> Unit,
     onBandCoords: ((LayoutCoordinates) -> Unit)? = null,
+    /** 为 false 时逐字钉在 [positionMs]，不按墙钟往前唱（暂停 / 缓冲 / 拖动）。 */
+    clockRunning: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val contentA = contentAlpha.coerceIn(0f, 1f)
@@ -148,7 +156,11 @@ fun PortraitCinemaLyrics(
     val selectFrozen = selectOpen || selectMorphing
 
     val timing = lyricAnimTiming(lines, positionMs, trackDurationMs)
-    val animActive = lyricAnimActiveIndex(lines, positionMs, trackDurationMs)
+    val animActive = if (clockRunning) {
+        lyricAnimActiveIndex(lines, positionMs, trackDurationMs)
+    } else {
+        lyricActiveIndex(lines, positionMs)
+    }
     val playFocus = lyricFocusIndex(lines, animActive)
     val live = lyricIsLive(lines, animActive, playFocus)
     val animMs = timing.durationMs
@@ -177,6 +189,12 @@ fun PortraitCinemaLyrics(
         .coerceIn(PlayerDisplayPrefs.LINE_SPACING_MIN, PlayerDisplayPrefs.LINE_SPACING_MAX)
         .dp
     val slotHeight = maxOf(38f * playFs, 26f * playedFs, 26f * unplayedFs).dp + linePad * 2
+    val anyCompanion = companions.any { it != null }
+    val playingDual = anyCompanion
+    val othersDual = anyCompanion && showCompanionOnOthers
+    val transExtra = (20f * playFs).dp + 4.dp
+    val playSlotHeight = if (playingDual) slotHeight + transExtra else slotHeight
+    val sideSlotHeight = if (othersDual) playSlotHeight else slotHeight
 
     val playingColor = playingStyle.resolvedColorFor(LyricStyleRole.Playing)
     val playedColor = playedStyle.resolvedColorFor(LyricStyleRole.Played)
@@ -229,7 +247,7 @@ fun PortraitCinemaLyrics(
     val visualPlayFocus =
         if (selectFrozen && selectFrozenFocus >= 0) selectFrozenFocus else playFocus
 
-    val slotHeightPx = with(density) { slotHeight.roundToPx() }
+    val slotHeightPx = with(density) { playSlotHeight.roundToPx() }
     val browseCenterIndex by remember {
         derivedStateOf { listState.browseCenterLyricIndex(visualPlayFocus) }
     }
@@ -240,11 +258,11 @@ fun PortraitCinemaLyrics(
             .graphicsLayer { this.alpha = contentA }
             .onGloballyPositioned { onBandCoords?.invoke(it) },
     ) {
-        val desiredBand = slotHeight * visibleCount
-        val normalBand = minOf(desiredBand, maxHeight).coerceAtLeast(slotHeight)
+        val desiredBand = playSlotHeight + sideSlotHeight * (visibleCount - 1).coerceAtLeast(0)
+        val normalBand = minOf(desiredBand, maxHeight).coerceAtLeast(playSlotHeight)
         // 全程按 selectT 插值：无视 around / 垂直偏移（selectT→1），禁止结构突变
         val bandHeight = androidx.compose.ui.unit.lerp(normalBand, maxHeight, selectT)
-            .coerceAtLeast(slotHeight)
+            .coerceAtLeast(playSlotHeight)
         val offsetY = (offsetYBase * (1f - selectT)).dp
         // follow 端 pad 锚定 normalBand，避免 band 变高时插值起点跟着跑导致列表跳
         val normalBandPx = with(density) { normalBand.roundToPx() }.coerceAtLeast(1)
@@ -286,6 +304,21 @@ fun PortraitCinemaLyrics(
             dragSession = false
             browsing = false
             scope.launch { scrollToCenteredIndex(playFocusUpdated, animated) }
+        }
+
+        fun confirmBrowseTap(tappedIndex: Int) {
+            val center = browseCenterIndex.coerceIn(0, lines.lastIndex)
+            if (!isBrowseSeekHit(tappedIndex, center)) {
+                onCollapseUpdated()
+                return
+            }
+            val line = lines.getOrNull(center) ?: return
+            browsing = false
+            dragSession = false
+            scope.launch { scrollToCenteredIndex(center, animated = true) }
+            onSeekUpdated(
+                line.timeMs.coerceIn(0L, trackDurationMs.coerceAtLeast(0L)),
+            )
         }
 
         fun hitLyricIndex(localY: Float): Int {
@@ -512,8 +545,14 @@ fun PortraitCinemaLyrics(
                     key = { index, line -> "${line.timeMs}_$index" },
                 ) { index, line ->
                     val isPlayingLine = index == visualPlayFocus
+                    val companion = when {
+                        isPlayingLine -> companions.getOrNull(index)
+                        showCompanionOnOthers -> companions.getOrNull(index)
+                        else -> null
+                    }
+                    val itemSlot = if (isPlayingLine) playSlotHeight else sideSlotHeight
                     val isBrowseCenter =
-                        browsing &&
+                        (browsing || dragSession) &&
                             !selectMorphing &&
                             index == browseCenterIndex &&
                             !isPlayingLine
@@ -531,10 +570,10 @@ fun PortraitCinemaLyrics(
                             .fillMaxWidth()
                             .then(
                                 if (selectMorphing) {
-                                    Modifier.height(slotHeight)
+                                    Modifier.height(itemSlot)
                                 } else {
                                     Modifier
-                                        .heightIn(min = slotHeight)
+                                        .heightIn(min = itemSlot)
                                         .wrapContentHeight()
                                 },
                             )
@@ -561,20 +600,7 @@ fun PortraitCinemaLyrics(
                                         Modifier.combinedClickable(
                                             interactionSource = lineIx,
                                             indication = null,
-                                            onClick = {
-                                                val i = index
-                                                browsing = false
-                                                dragSession = false
-                                                scope.launch {
-                                                    scrollToCenteredIndex(i, animated = true)
-                                                }
-                                                onSeekUpdated(
-                                                    line.timeMs.coerceIn(
-                                                        0L,
-                                                        trackDurationMs.coerceAtLeast(0L),
-                                                    ),
-                                                )
-                                            },
+                                            onClick = { confirmBrowseTap(index) },
                                             onLongClick = {
                                                 followGen++
                                                 dragSession = false
@@ -586,20 +612,7 @@ fun PortraitCinemaLyrics(
                                         Modifier.clickable(
                                             interactionSource = lineIx,
                                             indication = null,
-                                            onClick = {
-                                                val i = index
-                                                browsing = false
-                                                dragSession = false
-                                                scope.launch {
-                                                    scrollToCenteredIndex(i, animated = true)
-                                                }
-                                                onSeekUpdated(
-                                                    line.timeMs.coerceIn(
-                                                        0L,
-                                                        trackDurationMs.coerceAtLeast(0L),
-                                                    ),
-                                                )
-                                            },
+                                            onClick = { confirmBrowseTap(index) },
                                         )
                                     }
                                     else -> Modifier
@@ -609,24 +622,45 @@ fun PortraitCinemaLyrics(
                     ) {
                         @Composable
                         fun FollowBody() {
+                            val pair = orderedLyricPair(line, companion, originalOnTop)
+                            val transStylePlaying = TextStyle(
+                                color = playingColor.copy(
+                                    alpha = (0.55f + 0.45f * emphasis) * 0.84f,
+                                ),
+                                fontFamily = FontFamily.SansSerif,
+                                fontWeight = FontWeight.Medium,
+                                fontStyle = playingStyle.resolvedFontStyle(),
+                                fontSize = (18f * playFs).sp,
+                                lineHeight = (24f * playFs).sp,
+                                letterSpacing = 0.15.sp,
+                                textAlign = TextAlign.Center,
+                            )
                             when {
                                 isPlayingLine -> {
                                     StableCenterLyricText(
                                         focus = visualPlayFocus,
-                                        text = line.text,
+                                        text = pair.first.text,
                                         animMs = animMs,
                                         lineSpanMs = lyricLineSpanMs(
                                             lines,
                                             visualPlayFocus,
                                             trackDurationMs,
                                         ),
-                                        maxLines = 4,
+                                        maxLines = if (pair.second != null) 3 else 4,
                                         overflow = TextOverflow.Ellipsis,
                                         instantAppear = skipPlayingEnter,
-                                        words = line.karaokeWords(positionMs),
+                                        words = pair.first.karaokeWords(),
                                         positionMs = positionMs,
                                         unplayedColor = unplayedColor.copy(alpha = 0.42f),
-                                        tracking = live && !selectFrozen,
+                                        tracking = live && !selectFrozen && clockRunning,
+                                        secondaryText = pair.second?.text,
+                                        secondaryWords = pair.second?.karaokeWords()
+                                            ?: emptyList(),
+                                        secondaryStyle = if (pair.second != null) {
+                                            transStylePlaying
+                                        } else {
+                                            null
+                                        },
                                         style = TextStyle(
                                             color = playingColor.copy(
                                                 alpha = 0.55f + 0.45f * emphasis,
@@ -648,29 +682,22 @@ fun PortraitCinemaLyrics(
                                     )
                                 }
                                 isBrowseCenter -> {
-                                    Text(
-                                        text = line.text,
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(vertical = linePad, horizontal = 10.dp),
-                                        maxLines = 3,
-                                        softWrap = true,
-                                        overflow = TextOverflow.Ellipsis,
-                                        style = TextStyle(
-                                            color = PortraitBrowseSelect.copy(alpha = 0.88f),
-                                            fontFamily = FontFamily.SansSerif,
-                                            fontWeight = FontWeight.SemiBold,
-                                            fontSize = (16f * unplayedFs).sp,
-                                            lineHeight = (24f * unplayedFs).sp,
-                                            letterSpacing = 0.25.sp,
-                                            textAlign = TextAlign.Center,
-                                        ),
+                                    PortraitDualPlainText(
+                                        upper = pair.first.text,
+                                        lower = pair.second?.text,
+                                        color = PortraitBrowseSelect.copy(alpha = 0.88f),
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSizeSp = 16f * unplayedFs,
+                                        lineHeightSp = 24f * unplayedFs,
+                                        verticalPad = linePad,
+                                        horizontalPad = 10.dp,
                                     )
                                 }
                                 else -> {
                                     PortraitScrollSideLine(
                                         lineKey = index,
-                                        text = line.text,
+                                        text = pair.first.text,
+                                        secondaryText = pair.second?.text,
                                         played = played,
                                         distance = distance.coerceAtMost(3),
                                         animMs = animMs,
@@ -688,36 +715,30 @@ fun PortraitCinemaLyrics(
 
                         @Composable
                         fun SelectBody() {
-                            Text(
-                                text = line.text,
-                                style = TextStyle(
-                                    color = if (selected) {
-                                        selectSelectedText.copy(alpha = 0.96f)
-                                    } else {
-                                        unplayedColor.copy(alpha = 0.50f)
-                                    },
-                                    fontFamily = FontFamily.SansSerif,
-                                    fontWeight = if (selected) {
-                                        playingStyle.resolvedFontWeight(LyricStyleRole.Playing)
-                                    } else {
-                                        unplayedStyle.resolvedFontWeight(LyricStyleRole.Unplayed)
-                                    },
-                                    fontStyle = if (selected) {
-                                        playingStyle.resolvedFontStyle()
-                                    } else {
-                                        unplayedStyle.resolvedFontStyle()
-                                    },
-                                    fontSize = (16.5f * if (selected) playFs else unplayedFs).sp,
-                                    lineHeight = (24f * if (selected) playFs else unplayedFs).sp,
-                                    letterSpacing = 0.25.sp,
-                                    textAlign = TextAlign.Center,
-                                ),
-                                maxLines = 2,
-                                softWrap = true,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 10.dp),
+                            val pair = orderedLyricPair(line, companion, originalOnTop)
+                            PortraitDualPlainText(
+                                upper = pair.first.text,
+                                lower = pair.second?.text,
+                                color = if (selected) {
+                                    selectSelectedText.copy(alpha = 0.96f)
+                                } else {
+                                    unplayedColor.copy(alpha = 0.50f)
+                                },
+                                fontWeight = if (selected) {
+                                    playingStyle.resolvedFontWeight(LyricStyleRole.Playing)
+                                } else {
+                                    unplayedStyle.resolvedFontWeight(LyricStyleRole.Unplayed)
+                                },
+                                fontStyle = if (selected) {
+                                    playingStyle.resolvedFontStyle()
+                                } else {
+                                    unplayedStyle.resolvedFontStyle()
+                                },
+                                fontSizeSp = 16.5f * if (selected) playFs else unplayedFs,
+                                lineHeightSp = 24f * if (selected) playFs else unplayedFs,
+                                verticalPad = 0.dp,
+                                horizontalPad = 10.dp,
+                                maxLinesEach = 2,
                             )
                         }
 
@@ -748,6 +769,7 @@ fun PortraitCinemaLyrics(
 private fun PortraitScrollSideLine(
     lineKey: Int,
     text: String,
+    secondaryText: String? = null,
     played: Boolean,
     distance: Int,
     animMs: Int,
@@ -773,32 +795,89 @@ private fun PortraitScrollSideLine(
         label = "portraitSideA",
     )
     Crossfade(
-        targetState = lineKey to text,
+        targetState = Triple(lineKey, text, secondaryText.orEmpty()),
         animationSpec = tween(
             durationMillis = animMs.coerceIn(200, 420),
             easing = LyricSoftEasing,
         ),
         label = "portraitSideCrossfade",
         modifier = Modifier.fillMaxWidth(),
-    ) { (_, shown) ->
-        Text(
-            text = shown,
-            style = TextStyle(
-                color = baseColor.copy(alpha = alpha),
-                fontFamily = FontFamily.SansSerif,
-                fontWeight = style.resolvedFontWeight(role),
-                fontStyle = style.resolvedFontStyle(),
-                fontSize = (15f * fontScale).sp,
-                lineHeight = (24f * fontScale).sp,
-                letterSpacing = 0.25.sp,
-                textAlign = TextAlign.Center,
-            ),
-            maxLines = 3,
-            softWrap = true,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = verticalPad, horizontal = 10.dp),
+    ) { (_, shown, shownSecondary) ->
+        PortraitDualPlainText(
+            upper = shown,
+            lower = shownSecondary.takeIf { it.isNotEmpty() },
+            color = baseColor.copy(alpha = alpha),
+            fontWeight = style.resolvedFontWeight(role),
+            fontStyle = style.resolvedFontStyle(),
+            fontSizeSp = 15f * fontScale,
+            lineHeightSp = 24f * fontScale,
+            verticalPad = verticalPad,
+            horizontalPad = 10.dp,
         )
     }
+}
+
+@Composable
+private fun PortraitDualPlainText(
+    upper: String,
+    lower: String?,
+    color: Color,
+    fontWeight: FontWeight,
+    fontSizeSp: Float,
+    lineHeightSp: Float,
+    verticalPad: Dp,
+    horizontalPad: Dp,
+    fontStyle: FontStyle = FontStyle.Normal,
+    maxLinesEach: Int = 3,
+) {
+    val style = TextStyle(
+        color = color,
+        fontFamily = FontFamily.SansSerif,
+        fontWeight = fontWeight,
+        fontStyle = fontStyle,
+        fontSize = fontSizeSp.sp,
+        lineHeight = lineHeightSp.sp,
+        letterSpacing = 0.25.sp,
+        textAlign = TextAlign.Center,
+    )
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(vertical = verticalPad, horizontal = horizontalPad),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Text(
+            text = upper,
+            style = style,
+            maxLines = maxLinesEach,
+            softWrap = true,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        if (!lower.isNullOrEmpty()) {
+            Text(
+                text = lower,
+                style = style.copy(
+                    fontSize = (fontSizeSp * 0.88f).sp,
+                    lineHeight = (lineHeightSp * 0.88f).sp,
+                    fontWeight = FontWeight.Medium,
+                    color = color.copy(alpha = color.alpha * 0.88f),
+                ),
+                maxLines = maxLinesEach,
+                softWrap = true,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+    }
+}
+
+private fun orderedLyricPair(
+    original: LrcLine,
+    translation: LrcLine?,
+    originalOnTop: Boolean,
+): Pair<LrcLine, LrcLine?> {
+    val trans = translation ?: return original to null
+    return if (originalOnTop) original to trans else trans to original
 }

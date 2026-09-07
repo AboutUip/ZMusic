@@ -184,7 +184,7 @@ fun ArtistScreen(
         track = moreTrack,
         canRemove = false,
         onDismiss = { moreTrack = null },
-        onDownload = { track, options -> launchTrackDownload(scope, app, track, options) },
+        onDownload = { track, options -> launchTrackDownload(app, track, options) },
         onRemove = {},
         showAddToPlaylist = true,
         onOpenArtist = { id, name, cover -> onOpenArtist(id, name, cover) },

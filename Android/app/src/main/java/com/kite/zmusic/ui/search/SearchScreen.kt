@@ -116,7 +116,12 @@ fun SearchScreen(
 ) {
     val app = LocalContext.current.applicationContext as ZMusicApplication
     val vm: SearchViewModel = viewModel(
-        factory = SearchViewModelFactory(sessionRepository, app.searchHistoryRepository, app.searchRepository),
+        factory = SearchViewModelFactory(
+            sessionRepository,
+            app.searchHistoryRepository,
+            app.searchRepository,
+            app.likedPlaylistRepository,
+        ),
     )
     val ui by vm.ui.collectAsStateWithLifecycle()
     val focus = LocalFocusManager.current
@@ -813,7 +818,7 @@ private fun SearchKindPage(
         track = moreTrack,
         canRemove = false,
         onDismiss = { moreTrack = null },
-        onDownload = { track, options -> launchTrackDownload(scope, app, track, options) },
+        onDownload = { track, options -> launchTrackDownload(app, track, options) },
         onRemove = {},
         onOpenArtist = { id, name, cover ->
             onOpenArtist(SearchArtistHit(id, name, cover))

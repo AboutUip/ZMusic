@@ -121,12 +121,15 @@ internal fun TrackCollectionScreen(
     onSubscribe: (() -> Unit)? = null,
     onUnsubscribe: (() -> Unit)? = null,
     onSearch: (() -> Unit)? = null,
+    searchContentDescription: String = "搜索歌单内歌曲",
     onRemoveTrack: ((TrackRow) -> Unit)? = null,
     onRemoveTracks: ((List<TrackRow>, (Boolean) -> Unit) -> Unit)? = null,
     manageBridge: PlaylistManageBridge? = null,
     onOpenCreator: (() -> Unit)? = null,
     onOpenArtist: ((Long, String, String?) -> Unit)? = null,
     overflowDeleteOnly: Boolean = false,
+    showSaveToCloud: Boolean = !overflowDeleteOnly,
+    onOverflowExtras: ((TrackRow) -> List<com.kite.zmusic.ui.common.GlassSheetAction>)? = null,
     removeConfirmTitle: String? = null,
     removeConfirmMessage: String? = null,
     removeSelectedTitle: String? = null,
@@ -158,7 +161,7 @@ internal fun TrackCollectionScreen(
     }
     LaunchedEffect(nearEnd, state.tracks.size, state.complete, state.playlistId, state.creatorId, state.refreshing) {
         if (nearEnd && !state.complete && !state.refreshing && state.tracks.isNotEmpty() &&
-            (state.playlistId > 0L || state.creatorId > 0L)
+            (state.playlistId > 0L || state.creatorId > 0L || state.canPage)
         ) {
             onLoadMore()
         }
@@ -224,6 +227,7 @@ internal fun TrackCollectionScreen(
             extraIcon = extraActionIcon,
             onExtra = if (managing) null else onExtraAction,
             onSearch = if (managing) null else onSearch,
+            searchContentDescription = searchContentDescription,
             onManage = if (manageBridge != null && !managing) {
                 { manageBridge.enter() }
             } else {
@@ -412,7 +416,7 @@ internal fun TrackCollectionScreen(
             title = "下载 ${pending.size} 首",
             onConfirm = { options ->
                 exportTracks = emptyList()
-                scope.launch {
+                app.appScope.launch {
                     manageBridge?.busy = true
                     try {
                         launchTrackDownloads(app, pending, options)
@@ -428,10 +432,11 @@ internal fun TrackCollectionScreen(
         track = moreTrack,
         canRemove = canRemove,
         onDismiss = { moreTrack = null },
-        onDownload = { track, options -> launchTrackDownload(scope, app, track, options) },
+        onDownload = { track, options -> launchTrackDownload(app, track, options) },
         onRemove = { onRemoveTrack?.invoke(it) },
         showDownload = showDownload,
         showAddToPlaylist = showAddToPlaylist,
+        showSaveToCloud = showSaveToCloud && showAddToPlaylist,
         removeConfirmTitle = removeConfirmTitle ?: if (state.isHeartPlaylist) {
             "从我喜欢的音乐移除？"
         } else {
@@ -440,6 +445,7 @@ internal fun TrackCollectionScreen(
         removeConfirmMessage = removeConfirmMessage ?: "这首歌会从当前歌单里拿掉，不会删除已下载的文件。",
         currentPlaylistId = state.playlistId,
         onOpenArtist = overflowArtist,
+        extraActions = moreTrack?.let { t -> onOverflowExtras?.invoke(t) }.orEmpty(),
     )
 }
 
@@ -515,9 +521,7 @@ private fun CollectionHeader(
         }
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
-            val useSelf = state.isHeartPlaylist ||
-                state.isOwnedPlaylist ||
-                state.title.contains("喜欢的音乐")
+            val useSelf = state.isHeartPlaylist || state.isOwnedPlaylist
             val creator = if (useSelf) {
                 selfProfile?.nickname?.takeIf { it.isNotBlank() && it != "null" } ?: "我"
             } else {

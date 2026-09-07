@@ -280,7 +280,7 @@ fun PlaylistSearchScreen(
             track = moreTrack,
             canRemove = canRemove,
             onDismiss = { moreTrack = null },
-            onDownload = { track, options -> launchTrackDownload(scope, app, track, options) },
+            onDownload = { track, options -> launchTrackDownload(app, track, options) },
             onRemove = { vm.removeTrack(it, overlay.owned) },
             removeConfirmTitle = if (overlay.heart) {
                 "从我喜欢的音乐移除？"

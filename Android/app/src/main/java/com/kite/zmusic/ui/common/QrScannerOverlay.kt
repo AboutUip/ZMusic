@@ -161,7 +161,7 @@ fun QrScannerOverlay(
                                     lastReject.set(text)
                                     lastRejectAt.set(android.os.SystemClock.elapsedRealtime())
                                     detected.set(false)
-                                    feedback = "不是社区登录二维码"
+                                    feedback = "无法识别该二维码"
                                 }
                             }
                         } catch (_: Throwable) {

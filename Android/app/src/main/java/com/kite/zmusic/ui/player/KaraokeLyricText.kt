@@ -82,6 +82,12 @@ internal fun wordColor(
     }
 }
 
+/**
+ * 逐字着色用的平滑进度：只在播放源 **位置真正变大** 之后，于两次 UI tick（约 200ms）之间补帧。
+ *
+ * 暂停、缓冲、刚进播放页、同一毫秒反复上报时，源位置不会变大，必须钉在 [positionMs]，
+ * 不能按墙钟把当前句唱完（否则会从中间自动填到句尾，或把首字填两遍）。
+ */
 @Composable
 internal fun rememberSmoothedLyricPositionMs(
     positionMs: Long,
@@ -94,17 +100,46 @@ internal fun rememberSmoothedLyricPositionMs(
             smooth = positionUpdated
             return@LaunchedEffect
         }
-        var originPos = positionUpdated
-        var originFrame = withFrameMillis { it }
+        var lastTick = positionUpdated
+        var lastTickFrame = withFrameMillis { it }
+        var sourceAdvancing = false
+        smooth = lastTick
         while (true) {
             val now = withFrameMillis { it }
             val latest = positionUpdated
-            if (latest != originPos) {
-                originPos = latest
-                originFrame = now
+            when {
+                latest > lastTick -> {
+                    sourceAdvancing = true
+                    lastTick = latest
+                    lastTickFrame = now
+                    // 源已追上或超过补帧：贴合；源仍落后则保住补帧，避免首字填完又被拉回
+                    if (latest >= smooth) smooth = latest
+                }
+                latest < lastTick - LyricClockSeekBackMs -> {
+                    sourceAdvancing = false
+                    lastTick = latest
+                    lastTickFrame = now
+                    smooth = latest
+                }
+                else -> {
+                    val elapsed = now - lastTickFrame
+                    if (!sourceAdvancing || elapsed > LyricClockStallMs) {
+                        sourceAdvancing = false
+                        smooth = latest
+                    } else {
+                        val ahead = lastTick + elapsed.coerceAtMost(LyricClockMaxAheadMs)
+                        if (ahead >= smooth) smooth = ahead
+                    }
+                }
             }
-            smooth = originPos + (now - originFrame)
         }
     }
-    return if (tracking) smooth else positionMs
+    if (!tracking) return positionMs
+    return smooth
 }
+
+/** 播放页进度约 200ms 一跳；超过则视为时钟已停。 */
+private const val LyricClockStallMs = 360L
+/** 补帧最多超前一拍，避免唱过真实位置再被下一跳拉回。 */
+private const val LyricClockMaxAheadMs = 220L
+private const val LyricClockSeekBackMs = 48L

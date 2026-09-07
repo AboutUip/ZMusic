@@ -76,6 +76,8 @@ class PlaybackViewModel(
 
     fun playIndex(index: Int) = bridge.playIndex(index)
 
+    fun playInsertAfterCurrent(track: TrackRow) = bridge.playInsertAfterCurrent(track)
+
     fun clearQueue() = bridge.clearQueue()
 
     fun togglePlayPause() = bridge.togglePlayPause()

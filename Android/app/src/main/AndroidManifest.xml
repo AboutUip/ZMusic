@@ -23,12 +23,31 @@
         android:name="android.hardware.bluetooth"
         android:required="false" />
 
-    <!-- 关于页：打开 QQ 群资料卡（Android 11+ 包可见性） -->
+    <!-- 关于页 QQ 群、播放页分享到微信 / QQ（Android 11+ 包可见性） -->
     <queries>
         <package android:name="com.tencent.mobileqq" />
+        <package android:name="com.tencent.mm" />
+        <package android:name="com.qzone" />
+        <package android:name="com.netease.cloudmusic" />
+        <intent>
+            <action android:name="android.intent.action.SEND" />
+            <data android:mimeType="text/plain" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SEND" />
+            <data android:mimeType="image/*" />
+        </intent>
         <intent>
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="mqqapi" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="orpheus" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="neteasemusic" />
         </intent>
         <intent>
             <action android:name="android.intent.action.VIEW" />

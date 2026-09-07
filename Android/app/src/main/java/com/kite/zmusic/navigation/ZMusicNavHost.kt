@@ -61,6 +61,8 @@ fun ZMusicNavHost(modifier: Modifier = Modifier) {
                     connected
                 },
                 pluginWaitNames = app.pluginEngine.splashPendingNames,
+                pluginReady = { app.pluginEngine.isReady() },
+                accelerate = remember { app.splashAccelStore.current() },
                 onFinished = { connected ->
                     app.appUpdateCoordinator.markSplashFinished()
                     val dest = if (connected) Routes.MainPlaceholder else Routes.ServerConfig

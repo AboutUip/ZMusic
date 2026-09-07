@@ -19,7 +19,10 @@ internal object PlayUrlResolver {
             songUrlV1(userClient, trackId, fbCookie, fallback)?.let { return it }
         }
         val legacy = userClient.songUrl(listOf(trackId), cookie, br = quality.legacyBr)
-        return NcmPlaybackParse.songUrlForId(legacy, trackId)
+        NcmPlaybackParse.songUrlForId(legacy, trackId)?.let { return it }
+        return runCatching {
+            NcmCloudParse.downloadUrl(userClient.songCloudDownload(trackId, cookie), trackId)
+        }.getOrNull()
     }
 
     /** 只拉指定档，不回退。实时缓存按 (歌, 音质) 存，降档会串档。 */

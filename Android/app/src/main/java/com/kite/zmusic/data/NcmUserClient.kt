@@ -4,9 +4,13 @@ import com.kite.zmusic.config.NcmApiConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.asRequestBody
 import org.json.JSONObject
+import java.io.File
 import java.util.concurrent.TimeUnit
 
 /**
@@ -25,6 +29,99 @@ class NcmUserClient(
 
     suspend fun userLevel(cookie: String): JSONObject = withContext(Dispatchers.IO) {
         get("/user/level", mapOf("cookie" to cookie, "timestamp" to ts()))
+    }
+
+    /** 听歌足迹总收听时长；上游可能要求 VIP。 */
+    suspend fun listenDataTotal(cookie: String): JSONObject = withContext(Dispatchers.IO) {
+        get("/listen/data/total", mapOf("cookie" to cookie, "timestamp" to ts()))
+    }
+
+    /** 本周 / 本月收听时长。`type` 为 `week` 或 `month`。 */
+    suspend fun listenDataRealtimeReport(cookie: String, type: String): JSONObject =
+        withContext(Dispatchers.IO) {
+            get(
+                "/listen/data/realtime/report",
+                mapOf(
+                    "type" to type,
+                    "cookie" to cookie,
+                    "timestamp" to ts(),
+                ),
+            )
+        }
+
+    /**
+     * 听歌打卡：更新听歌排行。
+     * [timeSec] 为实际收听秒数；[sourceId] 为歌单或专辑 id，没有则用歌曲 id。
+     */
+    suspend fun scrobble(
+        cookie: String,
+        songId: Long,
+        sourceId: Long,
+        timeSec: Int,
+    ): JSONObject = withContext(Dispatchers.IO) {
+        get(
+            "/scrobble",
+            mapOf(
+                "id" to songId.toString(),
+                "sourceid" to sourceId.toString(),
+                "time" to timeSec.coerceAtLeast(0).toString(),
+                "cookie" to cookie,
+                "timestamp" to ts(),
+            ),
+        )
+    }
+
+    /**
+     * 桌面端 NCBL 打卡；代理内加密。用于官方收听时长记账。
+     */
+    suspend fun scrobbleV1(
+        cookie: String,
+        songId: Long,
+        timeSec: Int,
+        totalSec: Int,
+        sourceId: Long,
+        name: String,
+        artist: String,
+        bitrate: Int,
+        level: String,
+        source: String = "list",
+    ): JSONObject = withContext(Dispatchers.IO) {
+        val q = mutableMapOf(
+            "id" to songId.toString(),
+            "time" to timeSec.coerceAtLeast(1).toString(),
+            "total" to totalSec.coerceAtLeast(timeSec.coerceAtLeast(1)).toString(),
+            "sourceid" to sourceId.toString(),
+            "bitrate" to bitrate.coerceAtLeast(128).toString(),
+            "level" to level,
+            "source" to source.ifBlank { "list" },
+            "cookie" to cookie,
+            "timestamp" to ts(),
+        )
+        if (name.isNotBlank()) q["name"] = name
+        if (artist.isNotBlank()) q["artist"] = artist
+        get("/scrobble/v1", q)
+    }
+
+    /** 提交播放状态（会话 + 进度秒 + 播放模式）。 */
+    suspend fun relayPlayStateSubmit(
+        cookie: String,
+        songId: Long,
+        sessionId: String,
+        progressSec: Int,
+        playMode: String,
+    ): JSONObject = withContext(Dispatchers.IO) {
+        get(
+            "/relay/play/state/submit",
+            mapOf(
+                "id" to songId.toString(),
+                "sessionId" to sessionId,
+                "progress" to progressSec.coerceAtLeast(0).toString(),
+                "playMode" to playMode,
+                "type" to "song",
+                "cookie" to cookie,
+                "timestamp" to ts(),
+            ),
+        )
     }
 
     suspend fun vipInfo(cookie: String, uid: Long? = null): JSONObject = withContext(Dispatchers.IO) {
@@ -894,6 +991,185 @@ class NcmUserClient(
             ),
         )
     }
+
+    suspend fun userCloud(
+        cookie: String,
+        limit: Int = 100,
+        offset: Int = 0,
+    ): JSONObject = withContext(Dispatchers.IO) {
+        get(
+            "/user/cloud",
+            mapOf(
+                "limit" to limit.toString(),
+                "offset" to offset.toString(),
+                "cookie" to cookie,
+                "timestamp" to ts(),
+            ),
+        )
+    }
+
+    suspend fun userCloudDetail(ids: List<Long>, cookie: String): JSONObject =
+        withContext(Dispatchers.IO) {
+            get(
+                "/user/cloud/detail",
+                mapOf(
+                    "id" to ids.joinToString(","),
+                    "cookie" to cookie,
+                    "timestamp" to ts(),
+                ),
+            )
+        }
+
+    suspend fun userCloudDel(ids: List<Long>, cookie: String): JSONObject =
+        withContext(Dispatchers.IO) {
+            get(
+                "/user/cloud/del",
+                mapOf(
+                    "id" to ids.joinToString(","),
+                    "cookie" to cookie,
+                    "timestamp" to ts(),
+                ),
+            )
+        }
+
+    suspend fun cloudMatch(uid: Long, sid: Long, asid: Long, cookie: String): JSONObject =
+        withContext(Dispatchers.IO) {
+            get(
+                "/cloud/match",
+                mapOf(
+                    "uid" to uid.toString(),
+                    "sid" to sid.toString(),
+                    "asid" to asid.toString(),
+                    "cookie" to cookie,
+                    "timestamp" to ts(),
+                ),
+            )
+        }
+
+    suspend fun cloudLyric(uid: Long, sid: Long, cookie: String): JSONObject =
+        withContext(Dispatchers.IO) {
+            get(
+                "/cloud/lyric/get",
+                mapOf(
+                    "uid" to uid.toString(),
+                    "sid" to sid.toString(),
+                    "cookie" to cookie,
+                    "timestamp" to ts(),
+                ),
+            )
+        }
+
+    suspend fun cloudImport(
+        cookie: String,
+        song: String,
+        fileType: String,
+        fileSize: Long,
+        bitrate: Int,
+        md5: String,
+        artist: String? = null,
+        album: String? = null,
+        id: Long = 0L,
+    ): JSONObject = withContext(Dispatchers.IO) {
+        val q = mutableMapOf(
+            "song" to song,
+            "fileType" to fileType,
+            "fileSize" to fileSize.toString(),
+            "bitrate" to bitrate.toString(),
+            "md5" to md5,
+            "cookie" to cookie,
+            "timestamp" to ts(),
+        )
+        if (!artist.isNullOrBlank()) q["artist"] = artist
+        if (!album.isNullOrBlank()) q["album"] = album
+        if (id > 0L) q["id"] = id.toString()
+        get("/cloud/import", q)
+    }
+
+    suspend fun songCloudDownload(id: Long, cookie: String): JSONObject =
+        withContext(Dispatchers.IO) {
+            get(
+                "/song/cloud/download",
+                mapOf(
+                    "id" to id.toString(),
+                    "cookie" to cookie,
+                    "timestamp" to ts(),
+                ),
+            )
+        }
+
+    suspend fun cloudUploadToken(
+        cookie: String,
+        md5: String,
+        fileSize: Long,
+        filename: String,
+    ): JSONObject = withContext(Dispatchers.IO) {
+        get(
+            "/cloud/upload/token",
+            mapOf(
+                "md5" to md5,
+                "fileSize" to fileSize.toString(),
+                "filename" to filename,
+                "cookie" to cookie,
+                "timestamp" to ts(),
+            ),
+        )
+    }
+
+    suspend fun cloudUploadComplete(
+        cookie: String,
+        songId: String,
+        resourceId: String,
+        md5: String,
+        filename: String,
+        song: String? = null,
+        artist: String? = null,
+        album: String? = null,
+    ): JSONObject = withContext(Dispatchers.IO) {
+        val q = mutableMapOf(
+            "songId" to songId,
+            "resourceId" to resourceId,
+            "md5" to md5,
+            "filename" to filename,
+            "cookie" to cookie,
+            "timestamp" to ts(),
+        )
+        if (!song.isNullOrBlank()) q["song"] = song
+        if (!artist.isNullOrBlank()) q["artist"] = artist
+        if (!album.isNullOrBlank()) q["album"] = album
+        get("/cloud/upload/complete", q)
+    }
+
+    suspend fun cloudUploadFile(
+        cookie: String,
+        file: File,
+        filename: String,
+        mime: String,
+    ): JSONObject = withContext(Dispatchers.IO) {
+        val media = mime.ifBlank { "audio/mpeg" }.toMediaType()
+        val body = MultipartBody.Builder()
+            .setType(MultipartBody.FORM)
+            .addFormDataPart("songFile", filename, file.asRequestBody(media))
+            .build()
+        val url = buildUrl("/cloud", mapOf("cookie" to cookie, "timestamp" to ts()))
+        val req = Request.Builder().url(url).post(body).build()
+        client.newCall(req).execute().use { resp ->
+            JSONObject(resp.body?.string().orEmpty().ifBlank { "{}" })
+        }
+    }
+
+    suspend fun putUpload(url: String, file: File, token: String, mime: String): Boolean =
+        withContext(Dispatchers.IO) {
+            val media = mime.ifBlank { "application/octet-stream" }.toMediaType()
+            val req = Request.Builder()
+                .url(url)
+                .put(file.asRequestBody(media))
+                .apply {
+                    if (token.isNotBlank()) header("x-nos-token", token)
+                    header("Content-Type", mime.ifBlank { "audio/mpeg" })
+                }
+                .build()
+            client.newCall(req).execute().use { it.isSuccessful }
+        }
 
     private fun get(path: String, query: Map<String, String>): JSONObject {
         val url = buildUrl(path, query)

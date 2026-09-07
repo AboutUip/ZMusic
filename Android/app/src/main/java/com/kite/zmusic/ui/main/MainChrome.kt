@@ -64,7 +64,6 @@ internal typealias MainControls = com.kite.zmusic.ui.theme.MainControls
 internal typealias TextTheme = com.kite.zmusic.ui.theme.TextTheme
 
 internal val FloatingDockHeight = 64.dp
-internal val FloatingDockCompactHeight = 52.dp
 internal val MiniPlayerStackHeight = 64.dp
 internal val FloatingChromeGap = 10.dp
 internal val FloatingChromeSide = 18.dp

@@ -75,6 +75,7 @@ import com.kite.zmusic.R
 import com.kite.zmusic.ZMusicApplication
 import com.kite.zmusic.data.AppAppearance
 import com.kite.zmusic.data.ChromeGlassStyle
+import com.kite.zmusic.data.MiniQuickSkipAxis
 import com.kite.zmusic.data.ServerConfigRepository
 import com.kite.zmusic.plugin.PluginEngineVersion
 import com.kite.zmusic.ui.common.GlassAlertDialog
@@ -149,6 +150,8 @@ fun SettingsScreen(
     val realtimeCacheVisible = remember { MutableTransitionState(false) }
     val wordLyricVisible = remember { MutableTransitionState(false) }
     val predictiveBackVisible = remember { MutableTransitionState(false) }
+    val splashAccelVisible = remember { MutableTransitionState(false) }
+    val quickSkipVisible = remember { MutableTransitionState(false) }
     val landscapeModeVisible = remember { MutableTransitionState(false) }
     val testPlanVisible = remember { MutableTransitionState(false) }
     val pluginEngineDebugVisible = remember { MutableTransitionState(false) }
@@ -182,6 +185,10 @@ fun SettingsScreen(
         (context.applicationContext as ZMusicApplication).landscapeModeStore
     }
     val landscapeMode by landscapeModeStore.enabled.collectAsStateWithLifecycle()
+    val splashAccelStore = remember { app.splashAccelStore }
+    val splashAccel by splashAccelStore.enabled.collectAsStateWithLifecycle()
+    val miniQuickSkipStore = remember { app.miniQuickSkipStore }
+    val miniQuickSkip by miniQuickSkipStore.state.collectAsStateWithLifecycle()
     val appUpdateStore = remember { app.appUpdateStore }
     val testPlan by appUpdateStore.testPlanFlow.collectAsStateWithLifecycle()
     val pluginDebugStore = remember { app.pluginDebugStore }
@@ -343,6 +350,20 @@ fun SettingsScreen(
                         tint = Color(0xFF5B8DEF),
                         onClick = { wordLyricVisible.targetState = true },
                     )
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(start = 62.dp)
+                            .height(0.5.dp)
+                            .background(MainPalette.Hairline),
+                    )
+                    SettingsRow(
+                        title = "快速切歌",
+                        subtitle = quickSkipSubtitle(miniQuickSkip),
+                        icon = ZIcons.SkipNext,
+                        tint = Color(0xFFC45C7A),
+                        onClick = { quickSkipVisible.targetState = true },
+                    )
                 }
                 Spacer(Modifier.height(22.dp))
                 SettingsGroup(
@@ -455,6 +476,20 @@ fun SettingsScreen(
                         icon = ZIcons.Swipe,
                         tint = Color(0xFF3D7CFF),
                         onClick = { predictiveBackVisible.targetState = true },
+                    )
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(start = 62.dp)
+                            .height(0.5.dp)
+                            .background(MainPalette.Hairline),
+                    )
+                    SettingsRow(
+                        title = "加速启动动画",
+                        subtitle = splashAccelSubtitle(splashAccel),
+                        icon = ZIcons.Speed,
+                        tint = Color(0xFFE07A3D),
+                        onClick = { splashAccelVisible.targetState = true },
                     )
                     Box(
                         Modifier
@@ -669,6 +704,36 @@ fun SettingsScreen(
             )
         }
         SettingsDrillHost(
+            visibleState = quickSkipVisible,
+            landscape = landscape,
+            title = "快速切歌",
+            onBack = { quickSkipVisible.targetState = false },
+        ) {
+            QuickSkipSettingsPage(
+                prefs = miniQuickSkip,
+                onEnabledChange = { next ->
+                    if (next == miniQuickSkip.enabled) return@QuickSkipSettingsPage
+                    miniQuickSkipStore.setEnabled(next)
+                    context.showIslandNotice(
+                        if (next) "已开启快速切歌" else "已关闭快速切歌",
+                    )
+                },
+                onAxisChange = { next ->
+                    if (next == miniQuickSkip.axis) return@QuickSkipSettingsPage
+                    miniQuickSkipStore.setAxis(next)
+                    context.showIslandNotice(
+                        if (next == MiniQuickSkipAxis.Vertical) {
+                            "已切换到上下切歌"
+                        } else {
+                            "已切换到左右切歌"
+                        },
+                    )
+                },
+                contentBottomInset = contentBottomInset,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        SettingsDrillHost(
             visibleState = cacheVisible,
             landscape = landscape,
             title = "下载加速",
@@ -854,6 +919,25 @@ fun SettingsScreen(
                     predictiveBackStore.setEnabled(next)
                     context.showIslandNotice(
                         if (next) "已开启预测性返回" else "已关闭预测性返回",
+                    )
+                },
+                contentBottomInset = contentBottomInset,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        SettingsDrillHost(
+            visibleState = splashAccelVisible,
+            landscape = landscape,
+            title = "加速启动动画",
+            onBack = { splashAccelVisible.targetState = false },
+        ) {
+            SplashAccelSettingsPage(
+                enabled = splashAccel,
+                onEnabledChange = { next ->
+                    if (next == splashAccel) return@SplashAccelSettingsPage
+                    splashAccelStore.setEnabled(next)
+                    context.showIslandNotice(
+                        if (next) "已开启加速启动动画" else "已关闭加速启动动画",
                     )
                 },
                 contentBottomInset = contentBottomInset,

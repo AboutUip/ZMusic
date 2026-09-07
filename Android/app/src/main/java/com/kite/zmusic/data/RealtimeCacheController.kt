@@ -194,6 +194,9 @@ class RealtimeCacheController(
         liveAbandoned = false
         liveTargetKey = key
         liveJob = scope.launch(Dispatchers.IO) {
+            // 等播放器先把当前曲缓冲起来，避免和在线拉流抢带宽。
+            delay(LIVE_CACHE_ARM_MS)
+            if (liveAbandoned || liveTargetKey != key) return@launch
             runCatching { downloadLive(trackId, quality) }
                 .onFailure { Log.w(TAG, "live download failed id=$trackId", it) }
         }
@@ -424,19 +427,51 @@ class RealtimeCacheController(
         val cookie = sessionRepository.session.value?.cookie.orEmpty()
         if (cookie.isBlank()) return
         publishOccupancy(downloading = true)
-        val url = PlayUrlResolver.resolveExact(userClient, trackId, cookie, quality) ?: return
-        if (liveAbandoned || liveTargetKey != key) return
-        val bytes = downloadBytes(url, live = true) ?: return
-        if (bytes.isEmpty()) return
-        if (liveAbandoned || liveTargetKey != key) return
+        val url = PlayUrlResolver.resolveExact(userClient, trackId, cookie, quality)
+        if (url == null) {
+            publishOccupancy(downloading = false)
+            return
+        }
+        if (liveAbandoned || liveTargetKey != key) {
+            publishOccupancy(downloading = false)
+            return
+        }
+        val tmp = File(audioDir, "$key.part")
+        runCatching { if (tmp.exists()) tmp.delete() }
+        val ok = downloadToFile(url, tmp, live = true)
+        if (!ok || !tmp.isFile || tmp.length() <= 0L) {
+            runCatching { tmp.delete() }
+            publishOccupancy(downloading = false)
+            return
+        }
+        if (liveAbandoned || liveTargetKey != key) {
+            runCatching { tmp.delete() }
+            publishOccupancy(downloading = false)
+            return
+        }
         ioMutex.withLock {
-            if (liveAbandoned || liveTargetKey != key) return@withLock
+            if (liveAbandoned || liveTargetKey != key) {
+                runCatching { tmp.delete() }
+                publishOccupancy(downloading = false)
+                return@withLock
+            }
             val prefs = store.current()
-            if (!prefs.liveDownloadEnabled) return@withLock
-            if (!makeRoom(bytes.size.toLong(), key, prefs.limitBytes, prefs.mode)) return@withLock
-            val (name, _) = audioFileOf(trackId, quality.level, bytes)
+            if (!prefs.liveDownloadEnabled) {
+                runCatching { tmp.delete() }
+                publishOccupancy(downloading = false)
+                return@withLock
+            }
+            if (!makeRoom(tmp.length(), key, prefs.limitBytes, prefs.mode)) {
+                runCatching { tmp.delete() }
+                publishOccupancy(downloading = false)
+                return@withLock
+            }
+            val (name, _) = audioFileOf(trackId, quality.level, tmp)
             val dest = File(audioDir, name)
-            dest.writeBytes(bytes)
+            if (!commitTempAudio(tmp, dest)) {
+                publishOccupancy(downloading = false)
+                return@withLock
+            }
             val now = System.currentTimeMillis()
             val listens = pendingListens.remove(key) ?: 1L
             val heard = pendingHeardAt.remove(key) ?: now
@@ -507,16 +542,27 @@ class RealtimeCacheController(
     ): Boolean = withContext(Dispatchers.IO) {
         val url = PlayUrlResolver.resolveExact(userClient, trackId, cookie, quality)
             ?: return@withContext false
-        val bytes = downloadBytes(url) ?: return@withContext false
-        if (bytes.isEmpty()) return@withContext false
+        val tmp = File(audioDir, "${cacheKey(trackId, quality.level)}.part")
+        runCatching { if (tmp.exists()) tmp.delete() }
+        val ok = downloadToFile(url, tmp, live = false)
+        if (!ok || !tmp.isFile || tmp.length() <= 0L) {
+            runCatching { tmp.delete() }
+            return@withContext false
+        }
         ioMutex.withLock {
             val prefs = store.current()
-            if (!prefs.enabled) return@withLock false
+            if (!prefs.enabled) {
+                runCatching { tmp.delete() }
+                return@withLock false
+            }
             val used = files.values.sumOf { it.bytes }
-            if (used + bytes.size > prefs.limitBytes) return@withLock false
-            val (name, _) = audioFileOf(trackId, quality.level, bytes)
+            if (used + tmp.length() > prefs.limitBytes) {
+                runCatching { tmp.delete() }
+                return@withLock false
+            }
+            val (name, _) = audioFileOf(trackId, quality.level, tmp)
             val dest = File(audioDir, name)
-            dest.writeBytes(bytes)
+            if (!commitTempAudio(tmp, dest)) return@withLock false
             val entry = RealtimeCacheFile(
                 trackId = trackId,
                 quality = quality.level,
@@ -654,21 +700,65 @@ class RealtimeCacheController(
         indexFile.writeText(JSONObject().put("files", arr).toString(), Charsets.UTF_8)
     }
 
-    private fun downloadBytes(url: String, live: Boolean = false): ByteArray? {
+    private fun downloadToFile(url: String, dest: File, live: Boolean): Boolean {
+        dest.parentFile?.mkdirs()
         val req = Request.Builder().url(url).get().build()
         val call = client.newCall(req)
         if (live) liveCall = call
-        return runCatching {
+        val ok = runCatching {
             call.execute().use { resp ->
-                if (!resp.isSuccessful) return@use null
-                resp.body?.bytes()
+                if (!resp.isSuccessful) return@use false
+                val body = resp.body ?: return@use false
+                var aborted = false
+                dest.outputStream().use { out ->
+                    body.byteStream().use { input ->
+                        val buf = ByteArray(64 * 1024)
+                        while (true) {
+                            if (live && (liveAbandoned || call.isCanceled())) {
+                                aborted = true
+                                break
+                            }
+                            val n = input.read(buf)
+                            if (n < 0) break
+                            out.write(buf, 0, n)
+                        }
+                        if (!aborted) out.flush()
+                    }
+                }
+                !aborted && dest.isFile && dest.length() > 0L
             }
         }.onFailure {
-            if (call.isCanceled()) return null
-            Log.w(TAG, "http download failed", it)
-        }.getOrNull().also {
-            if (live && liveCall === call) liveCall = null
+            if (!call.isCanceled()) {
+                Log.w(TAG, "http download failed", it)
+            }
+        }.getOrDefault(false)
+        if (live && liveCall === call) liveCall = null
+        if (!ok) runCatching { dest.delete() }
+        return ok
+    }
+
+    private fun commitTempAudio(tmp: File, dest: File): Boolean {
+        runCatching { if (dest.exists()) dest.delete() }
+        if (tmp.renameTo(dest)) return dest.isFile && dest.length() > 0L
+        return runCatching {
+            tmp.copyTo(dest, overwrite = true)
+            tmp.delete()
+            dest.isFile && dest.length() > 0L
+        }.getOrDefault(false).also { ok ->
+            if (!ok) {
+                runCatching { tmp.delete() }
+                runCatching { dest.delete() }
+            }
         }
+    }
+
+    private fun audioFileOf(trackId: Long, quality: String, file: File): Pair<String, String> {
+        val head = ByteArray(12)
+        val n = runCatching {
+            file.inputStream().use { it.read(head) }
+        }.getOrDefault(-1)
+        val probe = if (n > 0) head.copyOf(n) else ByteArray(0)
+        return audioFileOf(trackId, quality, probe)
     }
 
     private fun audioFileOf(trackId: Long, quality: String, bytes: ByteArray): Pair<String, String> {
@@ -690,6 +780,7 @@ class RealtimeCacheController(
 
     companion object {
         private const val TAG = "RealtimeCache"
+        private const val LIVE_CACHE_ARM_MS = 4_000L
         private const val DIR_ROOT = "realtime_cache"
         private const val DIR_SESSIONS = "sessions"
         private const val DIR_AUDIO = "audio"

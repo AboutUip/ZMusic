@@ -1,8 +1,9 @@
-﻿package com.kite.zmusic.ui.player
+package com.kite.zmusic.ui.player
 
 import androidx.compose.animation.AnimatedVisibility as AnimateVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -12,6 +13,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -50,6 +52,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -64,9 +67,12 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kite.zmusic.ZMusicApplication
+import com.kite.zmusic.data.PlayerDisplayPrefs
 import com.kite.zmusic.data.PlaylistSummary
+import com.kite.zmusic.data.TrackExportOptions
 import com.kite.zmusic.data.TrackRow
 import com.kite.zmusic.playback.SleepTimerUi
+import com.kite.zmusic.ui.catalog.launchTrackDownload
 import com.kite.zmusic.ui.common.UrlImage
 import com.kite.zmusic.ui.icons.ZIcons
 import com.kite.zmusic.ui.common.predictiveBackLayer
@@ -83,7 +89,7 @@ private val MorePanelShape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp
 private val MoreRowShape = RoundedCornerShape(14.dp)
 private val MoreCoverShape = RoundedCornerShape(8.dp)
 
-private enum class MorePage { Root, AddToPlaylist, SleepTimer, Translation, OutputDevice }
+private enum class MorePage { Root, AddToPlaylist, Download, SleepTimer, Translation, OutputDevice }
 
 private val MoreDrillSlide = tween<IntOffset>(durationMillis = 320, easing = FastOutSlowInEasing)
 private val MoreDrillFade = tween<Float>(durationMillis = 220)
@@ -101,8 +107,8 @@ fun PortraitMoreSheet(
     onOpenPoster: () -> Unit,
     onOpenSettings: () -> Unit,
     onClose: () -> Unit,
-    lyricPreferTranslation: Boolean,
-    onLyricPreferTranslationChange: (Boolean) -> Unit,
+    displayPrefs: PlayerDisplayPrefs,
+    onDisplayPrefsChange: (PlayerDisplayPrefs) -> Unit,
     hazeState: HazeState? = null,
     excludePlaylistId: Long = 0L,
     visible: Boolean = true,
@@ -203,15 +209,16 @@ fun PortraitMoreSheet(
                 addingId = addingId,
                 sleepTimer = sleepTimer,
                 audioOutputSubtitle = audioOutput.moreSubtitle,
-                lyricPreferTranslation = lyricPreferTranslation,
+                displayPrefs = displayPrefs,
                 hazeState = hazeState,
                 onOpenAddToPlaylist = { page = MorePage.AddToPlaylist },
+                onOpenDownload = { page = MorePage.Download },
                 onOpenSleepTimer = { page = MorePage.SleepTimer },
                 onOpenTranslation = { page = MorePage.Translation },
                 onOpenOutputDevice = { page = MorePage.OutputDevice },
                 onOpenPoster = onOpenPoster,
                 onOpenSettings = onOpenSettings,
-                onLyricPreferTranslationChange = onLyricPreferTranslationChange,
+                onDisplayPrefsChange = onDisplayPrefsChange,
                 onBack = { page = MorePage.Root },
                 onAddingId = { addingId = it },
                 onClose = onClose,
@@ -238,12 +245,15 @@ private fun moreCoverMinFrac(
             }
             MoreSheetChromeH + navInset + MoreNestedHeaderH + list
         }
+        MorePage.Download -> {
+            MoreSheetChromeH + navInset + MoreNestedHeaderH + 72.dp + 56.dp * 6 + 52.dp
+        }
         MorePage.SleepTimer -> maxHeight * (2f / 3f)
         MorePage.OutputDevice -> {
             MoreSheetChromeH + navInset + MoreNestedHeaderH + 72.dp + 56.dp * 6
         }
         MorePage.Translation -> {
-            MoreSheetChromeH + navInset + MoreNestedHeaderH + 148.dp
+            MoreSheetChromeH + navInset + MoreNestedHeaderH + 72.dp + 56.dp * 4 + 28.dp
         }
         MorePage.Root -> maxHeight / 3f
     }
@@ -259,15 +269,16 @@ private fun MorePageStack(
     addingId: Long?,
     sleepTimer: SleepTimerUi,
     audioOutputSubtitle: String,
-    lyricPreferTranslation: Boolean,
+    displayPrefs: PlayerDisplayPrefs,
     hazeState: HazeState?,
     onOpenAddToPlaylist: () -> Unit,
+    onOpenDownload: () -> Unit,
     onOpenSleepTimer: () -> Unit,
     onOpenTranslation: () -> Unit,
     onOpenOutputDevice: () -> Unit,
     onOpenPoster: () -> Unit,
     onOpenSettings: () -> Unit,
-    onLyricPreferTranslationChange: (Boolean) -> Unit,
+    onDisplayPrefsChange: (PlayerDisplayPrefs) -> Unit,
     onBack: () -> Unit,
     onAddingId: (Long?) -> Unit,
     onClose: () -> Unit,
@@ -303,6 +314,13 @@ private fun MorePageStack(
             )
             Spacer(Modifier.height(8.dp))
             MoreActionRow(
+                icon = ZIcons.GetApp,
+                title = "下载",
+                subtitle = "保存到 Download/ZMusic",
+                onClick = onOpenDownload,
+            )
+            Spacer(Modifier.height(8.dp))
+            MoreActionRow(
                 icon = ZIcons.Timer,
                 title = "定时停止",
                 subtitle = sleepTimerRowSubtitle(sleepTimer),
@@ -312,11 +330,7 @@ private fun MorePageStack(
             MoreActionRow(
                 icon = ZIcons.Translate,
                 title = "翻译",
-                subtitle = if (lyricPreferTranslation) {
-                    "已开启，有译文时显示翻译"
-                } else {
-                    "有译文时显示翻译歌词"
-                },
+                subtitle = translationRowSubtitle(displayPrefs),
                 onClick = onOpenTranslation,
             )
             Spacer(Modifier.height(8.dp))
@@ -356,11 +370,11 @@ private fun MorePageStack(
                 targets = targets,
                 addingId = addingId,
                 sleepTimer = sleepTimer,
-                lyricPreferTranslation = lyricPreferTranslation,
+                displayPrefs = displayPrefs,
                 hazeState = hazeState,
                 onBack = onBack,
                 onAddingId = onAddingId,
-                onLyricPreferTranslationChange = onLyricPreferTranslationChange,
+                onDisplayPrefsChange = onDisplayPrefsChange,
                 onClose = onClose,
             )
         }
@@ -396,11 +410,11 @@ private fun MoreNestedCover(
     targets: List<PlaylistSummary>,
     addingId: Long?,
     sleepTimer: SleepTimerUi,
-    lyricPreferTranslation: Boolean,
+    displayPrefs: PlayerDisplayPrefs,
     hazeState: HazeState?,
     onBack: () -> Unit,
     onAddingId: (Long?) -> Unit,
-    onLyricPreferTranslationChange: (Boolean) -> Unit,
+    onDisplayPrefsChange: (PlayerDisplayPrefs) -> Unit,
     onClose: () -> Unit,
 ) {
     val app = LocalContext.current.applicationContext as ZMusicApplication
@@ -446,6 +460,7 @@ private fun MoreNestedCover(
                 Text(
                     text = when (page) {
                         MorePage.AddToPlaylist -> "添加到歌单"
+                        MorePage.Download -> "下载"
                         MorePage.SleepTimer -> "定时停止"
                         MorePage.Translation -> "翻译"
                         MorePage.OutputDevice -> "输出设备"
@@ -520,6 +535,28 @@ private fun MoreNestedCover(
                         }
                     }
                 }
+                MorePage.Download -> {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = track.name,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = TextStyle(
+                            color = MainPalette.Secondary,
+                            fontSize = 13.sp,
+                        ),
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    MoreDownloadPanel(
+                        track = track,
+                        onClose = onClose,
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState())
+                            .padding(bottom = 8.dp),
+                    )
+                }
                 MorePage.SleepTimer -> {
                     Spacer(Modifier.height(12.dp))
                     PortraitSleepTimerPanel(
@@ -544,8 +581,13 @@ private fun MoreNestedCover(
                 MorePage.Translation -> {
                     Spacer(Modifier.height(12.dp))
                     MoreTranslationPanel(
-                        enabled = lyricPreferTranslation,
-                        onEnabledChange = onLyricPreferTranslationChange,
+                        prefs = displayPrefs,
+                        onPrefsChange = onDisplayPrefsChange,
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState())
+                            .padding(bottom = 8.dp),
                     )
                 }
                 MorePage.OutputDevice -> {
@@ -568,28 +610,218 @@ private fun isAddTrackFailure(msg: String): Boolean =
         msg.startsWith("无法") ||
         msg.startsWith("只能")
 
+private fun translationRowSubtitle(prefs: PlayerDisplayPrefs): String = when {
+    !prefs.portraitLyricPreferTranslation -> "有译文时显示翻译歌词"
+    prefs.portraitLyricTranslationCoexist -> "已开启 · 原文与译文并存"
+    else -> "已开启 · 覆盖原歌词"
+}
+
+@Composable
+private fun MoreDownloadPanel(
+    track: TrackRow,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val app = LocalContext.current.applicationContext as ZMusicApplication
+    val initial = remember { app.trackExportRepository.lastOptions() }
+    var quality by remember { mutableStateOf(initial.quality) }
+    var includeCover by remember { mutableStateOf(initial.includeCover) }
+    var includeLyrics by remember { mutableStateOf(initial.includeLyrics) }
+    var includeMetadata by remember { mutableStateOf(initial.includeMetadata) }
+    var busy by remember { mutableStateOf(false) }
+    val switchColors = MainControls.switchColors()
+    Column(
+        modifier,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .clip(MoreRowShape)
+                .background(MainPalette.Card)
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+        ) {
+            Text(
+                text = "音质",
+                style = TextStyle(
+                    color = MainPalette.Ink,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 15.sp,
+                ),
+            )
+            Spacer(Modifier.height(8.dp))
+            AudioQualityGrid(
+                selected = quality,
+                onSelect = { quality = it },
+                compact = true,
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = "${quality.title} · ${quality.caption}",
+                style = TextStyle(
+                    color = MainPalette.Secondary,
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp,
+                ),
+            )
+        }
+        MoreSwitchRow(
+            title = "封面",
+            subtitle = "封面图单独存一份",
+            checked = includeCover,
+            enabled = true,
+            switchColors = switchColors,
+            onCheckedChange = { includeCover = it },
+        )
+        MoreSwitchRow(
+            title = "歌词",
+            subtitle = "原文和翻译各一份 .lrc",
+            checked = includeLyrics,
+            enabled = true,
+            switchColors = switchColors,
+            onCheckedChange = { includeLyrics = it },
+        )
+        MoreSwitchRow(
+            title = "元数据",
+            subtitle = "歌名、歌手、专辑写入 music.json",
+            checked = includeMetadata,
+            enabled = true,
+            switchColors = switchColors,
+            onCheckedChange = { includeMetadata = it },
+        )
+        Spacer(Modifier.height(6.dp))
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(46.dp)
+                .clip(MoreRowShape)
+                .background(MainPalette.Accent)
+                .clickable(
+                    enabled = !busy,
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = {
+                        if (busy) return@clickable
+                        busy = true
+                        val options = TrackExportOptions(
+                            quality = quality,
+                            includeCover = includeCover,
+                            includeLyrics = includeLyrics,
+                            includeMetadata = includeMetadata,
+                        )
+                        app.trackExportRepository.rememberOptions(options)
+                        launchTrackDownload(app, track, options)
+                        onClose()
+                    },
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = "下载",
+                style = TextStyle(
+                    color = Color.White,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 15.sp,
+                ),
+            )
+        }
+    }
+}
+
 @Composable
 private fun MoreTranslationPanel(
-    enabled: Boolean,
-    onEnabledChange: (Boolean) -> Unit,
+    prefs: PlayerDisplayPrefs,
+    onPrefsChange: (PlayerDisplayPrefs) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
+    val transOn = prefs.portraitLyricPreferTranslation
+    val coexist = prefs.portraitLyricTranslationCoexist
+    val coexistEnabled = transOn
+    val pairEnabled = transOn && coexist
     val switchColors = MainControls.switchColors()
+    Column(
+        modifier,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        MoreSwitchRow(
+            title = "显示翻译歌词",
+            subtitle = "开启后，有译文的歌曲按下方方式显示",
+            checked = transOn,
+            enabled = true,
+            switchColors = switchColors,
+            onCheckedChange = { on ->
+                onPrefsChange(prefs.copy(portraitLyricPreferTranslation = on))
+            },
+        )
+        MoreChoiceRow(
+            title = "显示方式",
+            subtitle = if (coexist) "播放中显示原文和译文两行" else "有译文时只显示翻译",
+            labels = listOf("覆盖原歌词", "与原文并存"),
+            selectedIndex = if (coexist) 1 else 0,
+            enabled = coexistEnabled,
+            onSelect = { index ->
+                onPrefsChange(prefs.copy(portraitLyricTranslationCoexist = index == 1))
+            },
+        )
+        MoreChoiceRow(
+            title = "两行顺序",
+            subtitle = if (prefs.portraitLyricOriginalOnTop) "原文在上 · 译文在下" else "译文在上 · 原文在下",
+            labels = listOf("原文在上", "原文在下"),
+            selectedIndex = if (prefs.portraitLyricOriginalOnTop) 0 else 1,
+            enabled = pairEnabled,
+            onSelect = { index ->
+                onPrefsChange(prefs.copy(portraitLyricOriginalOnTop = index == 0))
+            },
+        )
+        MoreSwitchRow(
+            title = "其余歌词显示译文",
+            subtitle = if (prefs.portraitLyricOthersShowTranslation) {
+                "已播和待播行也显示译文"
+            } else {
+                "只有播放中显示译文"
+            },
+            checked = prefs.portraitLyricOthersShowTranslation,
+            enabled = pairEnabled,
+            switchColors = switchColors,
+            onCheckedChange = { on ->
+                onPrefsChange(prefs.copy(portraitLyricOthersShowTranslation = on))
+            },
+        )
+    }
+}
+
+@Composable
+private fun MoreSwitchRow(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    enabled: Boolean,
+    switchColors: androidx.compose.material3.SwitchColors,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    val enT by animateFloatAsState(
+        targetValue = if (enabled) 1f else 0.40f,
+        animationSpec = tween(280, easing = FastOutSlowInEasing),
+        label = "moreSwitchEn",
+    )
     Row(
         Modifier
             .fillMaxWidth()
+            .graphicsLayer { alpha = enT }
             .clip(MoreRowShape)
             .background(MainPalette.Card)
             .clickable(
+                enabled = enabled,
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
-                onClick = { onEnabledChange(!enabled) },
+                onClick = { onCheckedChange(!checked) },
             )
             .padding(horizontal = 14.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
             Text(
-                text = "显示翻译歌词",
+                text = title,
                 style = TextStyle(
                     color = MainPalette.Ink,
                     fontWeight = FontWeight.SemiBold,
@@ -598,7 +830,7 @@ private fun MoreTranslationPanel(
             )
             Spacer(Modifier.height(2.dp))
             Text(
-                text = "开启后，有译文的歌曲只显示翻译，不再显示原文",
+                text = subtitle,
                 style = TextStyle(
                     color = MainPalette.Secondary,
                     fontSize = 12.sp,
@@ -607,10 +839,91 @@ private fun MoreTranslationPanel(
             )
         }
         Switch(
-            checked = enabled,
-            onCheckedChange = onEnabledChange,
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            enabled = enabled,
             colors = switchColors,
         )
+    }
+}
+
+@Composable
+private fun MoreChoiceRow(
+    title: String,
+    subtitle: String,
+    labels: List<String>,
+    selectedIndex: Int,
+    enabled: Boolean,
+    onSelect: (Int) -> Unit,
+) {
+    val enT by animateFloatAsState(
+        targetValue = if (enabled) 1f else 0.40f,
+        animationSpec = tween(280, easing = FastOutSlowInEasing),
+        label = "moreChoiceEn",
+    )
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .graphicsLayer { alpha = enT }
+            .clip(MoreRowShape)
+            .background(MainPalette.Card)
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+    ) {
+        Text(
+            text = title,
+            style = TextStyle(
+                color = MainPalette.Ink,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 15.sp,
+            ),
+        )
+        Spacer(Modifier.height(2.dp))
+        Text(
+            text = subtitle,
+            style = TextStyle(
+                color = MainPalette.Secondary,
+                fontSize = 12.sp,
+                lineHeight = 16.sp,
+            ),
+        )
+        Spacer(Modifier.height(8.dp))
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .height(36.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(MainPalette.TrackOff),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            labels.forEachIndexed { index, label ->
+                val on = index == selectedIndex
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .fillMaxSize()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(
+                            if (on) MainPalette.Accent.copy(alpha = 0.18f) else Color.Transparent,
+                        )
+                        .clickable(
+                            enabled = enabled,
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = { onSelect(index) },
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = label,
+                        style = TextStyle(
+                            color = if (on) MainPalette.Accent else MainPalette.Secondary,
+                            fontWeight = if (on) FontWeight.SemiBold else FontWeight.Medium,
+                            fontSize = 13.sp,
+                        ),
+                    )
+                }
+            }
+        }
     }
 }
 

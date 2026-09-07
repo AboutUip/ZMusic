@@ -62,6 +62,9 @@ internal val LocalPredictiveBackClaimsState = staticCompositionLocalOf {
 internal fun rememberPredictiveBackUi(
     enabled: Boolean,
     onPeekCommit: (Boolean) -> Unit = {},
+    onGestureStart: () -> Unit = {},
+    onGestureProgress: (Float) -> Unit = {},
+    onGestureCancel: () -> Unit = {},
     onBack: () -> Unit,
 ): PredictiveBackUi {
     val ui = remember { PredictiveBackUi() }
@@ -70,6 +73,9 @@ internal fun rememberPredictiveBackUi(
     val id = remember { Any() }
     val onBackUpdated = rememberUpdatedState(onBack)
     val onPeekUpdated = rememberUpdatedState(onPeekCommit)
+    val onGestureStartUpdated = rememberUpdatedState(onGestureStart)
+    val onGestureProgressUpdated = rememberUpdatedState(onGestureProgress)
+    val onGestureCancelUpdated = rememberUpdatedState(onGestureCancel)
     DisposableEffect(enabled) {
         if (enabled) claims.claim(id) else claims.release(id)
         onDispose { claims.release(id) }
@@ -90,6 +96,7 @@ internal fun rememberPredictiveBackUi(
             ZMUSIC_BACK_LOG,
             "start id=${id.hashCode()} stack=${claims.stack.debug()} edge-lock",
         )
+        var started = false
         try {
             events.collect { event ->
                 val edge = lockSwipeEdge(lockedEdge, event.swipeEdge)
@@ -98,6 +105,11 @@ internal fun rememberPredictiveBackUi(
                 val p = event.progress.coerceIn(0f, 1f)
                 ui.progress = p
                 if (p > maxP) maxP = p
+                if (!started) {
+                    started = true
+                    onGestureStartUpdated.value()
+                }
+                onGestureProgressUpdated.value(p)
             }
             val peeked = maxP >= 0.08f
             Log.i(
@@ -109,6 +121,7 @@ internal fun rememberPredictiveBackUi(
             ui.progress = 0f
         } catch (e: CancellationException) {
             Log.i(ZMUSIC_BACK_LOG, "cancel progress=${ui.progress}")
+            onGestureCancelUpdated.value()
             ui.progress = 0f
             ui.swipeEdge = BACK_EDGE_LEFT
             throw e

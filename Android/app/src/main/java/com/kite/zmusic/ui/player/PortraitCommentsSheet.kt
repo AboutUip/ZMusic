@@ -104,6 +104,7 @@ import com.kite.zmusic.ZMusicApplication
 import com.kite.zmusic.data.CommentHugUser
 import com.kite.zmusic.data.NcmJson
 import com.kite.zmusic.data.SongComment
+import com.kite.zmusic.data.SongCommentFloorCache
 import com.kite.zmusic.data.SongCommentsCache
 import com.kite.zmusic.data.SongCommentsSnapshot
 import com.kite.zmusic.ui.common.UrlImage
@@ -133,11 +134,6 @@ private val CommentComposerFill get() = MainPalette.Placeholder
 private val CommentComposerDock get() = MainPalette.Surface
 
 private const val CommentPageSize = 20
-
-private data class CachedFloor(
-    val replies: List<SongComment>,
-    val hasMore: Boolean,
-)
 
 /**
  * `/comment/new`：与 NeteaseCloudMusicApi 一致。
@@ -249,7 +245,7 @@ fun PortraitCommentsSheet(
     val comments = remember { mutableStateListOf<SongComment>() }
     val expandedTextIds: SnapshotStateSet<Long> = remember { mutableStateSetOf() }
     val openFloorIds: SnapshotStateSet<Long> = remember { mutableStateSetOf() }
-    val floorCache = remember { mutableStateMapOf<Long, CachedFloor>() }
+    val floorCache = remember { mutableStateMapOf<Long, SongCommentFloorCache>() }
     var pageNo by remember { mutableIntStateOf(0) }
     var cursor by remember { mutableStateOf<String?>(null) }
     var hasMore by remember { mutableStateOf(true) }
@@ -302,6 +298,7 @@ fun PortraitCommentsSheet(
                 useLegacy = useLegacy,
                 expandedTextIds = expandedTextIds.toSet(),
                 openFloorIds = openFloorIds.toSet(),
+                floors = floorCache.toMap(),
             ),
         )
     }
@@ -322,6 +319,7 @@ fun PortraitCommentsSheet(
         openFloorIds.clear()
         openFloorIds.addAll(snap.openFloorIds)
         floorCache.clear()
+        floorCache.putAll(snap.floors)
     }
 
     fun patchComment(id: Long, transform: (SongComment) -> SongComment) {
@@ -830,7 +828,8 @@ fun PortraitCommentsSheet(
                                 initialReplies = floorCache[item.commentId]?.replies.orEmpty(),
                                 initialRepliesHasMore = floorCache[item.commentId]?.hasMore == true,
                                 onFloorCache = { replies, hasMore ->
-                                    floorCache[item.commentId] = CachedFloor(replies, hasMore)
+                                    floorCache[item.commentId] = SongCommentFloorCache(replies, hasMore)
+                                    persistCommentsCache()
                                 },
                                 onPatchComment = ::patchComment,
                                 onHint = { hint(it) },
@@ -1245,6 +1244,14 @@ private fun CommentRow(
         }
     }
 
+    LaunchedEffect(comment.commentId, initialReplies, initialRepliesHasMore) {
+        if (initialReplies.isEmpty()) return@LaunchedEffect
+        if (replies.size < initialReplies.size) {
+            replies = initialReplies
+            repliesHasMore = initialRepliesHasMore
+        }
+    }
+
     LaunchedEffect(floorRefreshTick) {
         if (floorRefreshTick <= 0) return@LaunchedEffect
         onRepliesOpenChange(true)
@@ -1258,9 +1265,9 @@ private fun CommentRow(
         }
     }
 
-    LaunchedEffect(repliesOpen, comment.commentId) {
+    LaunchedEffect(repliesOpen, comment.commentId, initialReplies.size) {
         if (!repliesOpen) return@LaunchedEffect
-        if (replies.isNotEmpty() || repliesLoading) return@LaunchedEffect
+        if (replies.isNotEmpty() || initialReplies.isNotEmpty() || repliesLoading) return@LaunchedEffect
         loadReplies(reset = true, consumePending = false)
     }
 
@@ -1836,6 +1843,7 @@ private fun CommentRow(
                                         CommentReplyRow(
                                             comment = reply,
                                             justSent = pendingTopReply?.commentId == reply.commentId,
+                                            onOpenUser = onOpenUser,
                                         )
                                     }
                                     when {
@@ -1879,9 +1887,15 @@ private fun CommentRow(
 private fun CommentReplyRow(
     comment: SongComment,
     justSent: Boolean = false,
+    onOpenUser: (Long, String, String?) -> Unit = { _, _, _ -> },
 ) {
     var textExpanded by remember(comment.commentId) { mutableStateOf(false) }
     val maybeLong = comment.content.length > 56
+    val openUser = {
+        if (comment.userId > 0L) {
+            onOpenUser(comment.userId, comment.nickname, comment.avatarUrl)
+        }
+    }
     Row(
         Modifier
             .fillMaxWidth()
@@ -1901,7 +1915,18 @@ private fun CommentReplyRow(
             Modifier
                 .size(28.dp)
                 .clip(CircleShape)
-                .background(CommentAvatarBg),
+                .background(CommentAvatarBg)
+                .then(
+                    if (comment.userId > 0L) {
+                        Modifier.clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = openUser,
+                        )
+                    } else {
+                        Modifier
+                    },
+                ),
         ) {
             UrlImage(
                 url = comment.avatarUrl,
@@ -1919,7 +1944,19 @@ private fun CommentReplyRow(
                     fontWeight = FontWeight.Medium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false),
+                    modifier = Modifier
+                        .weight(1f, fill = false)
+                        .then(
+                            if (comment.userId > 0L) {
+                                Modifier.clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null,
+                                    onClick = openUser,
+                                )
+                            } else {
+                                Modifier
+                            },
+                        ),
                 )
                 Spacer(Modifier.width(6.dp))
                 Text(

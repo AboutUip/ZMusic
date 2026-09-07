@@ -17,7 +17,7 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -84,8 +84,8 @@ private val VinylDim = Color(0xFF8FA8B8)
 private val VinylMotion = CubicBezierEasing(0.4f, 0.0f, 0.2f, 1f)
 
 /** 轴心镂空相对整盘半径（固定，不受中心黑胶半径设置影响）。 */
-private const val SpindleHoleFrac = 0.048f
-private const val CoverFrac = 0.76f
+internal const val SpindleHoleFrac = 0.048f
+internal const val VinylCoverFrac = 0.76f
 /** 默认中心黑胶挖孔（相对整盘）；与 prefs 默认一致 */
 private const val DefaultCoverHoleFrac = 0.20f
 
@@ -140,7 +140,7 @@ fun VinylTransitionStage(
      */
     centerRadiusFrac: Float = DefaultCoverHoleFrac,
     /**
-     * 外圈黑胶倍率：仅缩放黑胶盘面（绕中心）；封面锁定在整体容器的 CoverFrac。
+     * 外圈黑胶倍率：仅缩放黑胶盘面（绕中心）；封面锁定在整体容器的 [VinylCoverFrac]。
      */
     outerScale: Float = 1f,
     plateColors: VinylPlateColors = VinylPlateColors.Black,
@@ -162,8 +162,11 @@ fun VinylTransitionStage(
      * 选歌入场：停止连转后把当前角沿最短路径动画归正到 0°（避免叠层 0° 交接瞬移）。
      */
     settleSpinUpright: Boolean = false,
+    reportExpandCover: Boolean = true,
 ) {
     val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
+    val expand = LocalPlayerExpand.current
+    val allowSpin = expand == null || expand.pastHandoff
     /** 曾低于 STARTED：回前台后若 track 相对落定盘有积压变化，应 snap 而非补动画 */
     val pendingCatchUp = remember { booleanArrayOf(false) }
 
@@ -261,7 +264,9 @@ fun VinylTransitionStage(
     }
 
     BoxWithConstraints(
-        modifier.graphicsLayer { clip = false },
+        modifier
+            .playerExpandHideFull()
+            .graphicsLayer { clip = false },
         contentAlignment = Alignment.Center,
     ) {
         val stageW = constraints.maxWidth.toFloat().coerceAtLeast(1f)
@@ -756,6 +761,16 @@ fun VinylTransitionStage(
             }
         }
 
+        val discSide = minOf(maxWidth, maxHeight)
+        if (reportExpandCover) {
+            Box(
+                Modifier
+                    .size(discSide * VinylCoverFrac)
+                    .align(Alignment.Center)
+                    .playerExpandAnchor(PlayerExpandSlot.FullCover),
+            )
+        }
+
         Box(
             Modifier
                 .fillMaxSize()
@@ -832,6 +847,13 @@ fun VinylTransitionStage(
                     }
                 },
         ) {
+            Box(
+                Modifier
+                    .size(discSide)
+                    .align(Alignment.Center)
+                    .graphicsLayer { clip = false },
+                contentAlignment = Alignment.Center,
+            ) {
             if (showBottom) {
                 key(bottomTrack.id, "bottom") {
                     // 上一首预览/入场覆盖：底层旧盘用冻结角，直到被完全盖住
@@ -867,6 +889,7 @@ fun VinylTransitionStage(
                     spinHolder = topSpinHolder,
                     onSpinDegChange = { writeTopSpin(it) },
                     spinning = spinning &&
+                        allowSpin &&
                         !showBottom &&
                         !dragging &&
                         exiting.isEmpty() &&
@@ -876,6 +899,7 @@ fun VinylTransitionStage(
                     centerRadiusFrac = centerRadiusFrac,
                     outerScale = outerScale,
                     plateColors = plateColors,
+                    reportExpandCover = false,
                     modifier = Modifier
                         .fillMaxSize()
                         .zIndex(1f)
@@ -911,6 +935,7 @@ fun VinylTransitionStage(
                     )
                 }
             }
+            }
         }
     }
 }
@@ -933,6 +958,7 @@ internal fun VinylDiscFace(
     onSpinDegChange: ((Float) -> Unit)? = null,
     /** 选歌叠层等交接场景关闭样式过渡，避免从 0 动画到用户设置造成闪一下 */
     animateStyleChanges: Boolean = true,
+    reportExpandCover: Boolean = false,
 ) {
     val coverTTarget = if (fullCover) 1f else 0f
     val coverTAnimated by animateFloatAsState(
@@ -943,8 +969,11 @@ internal fun VinylDiscFace(
         ),
         label = "vinylFullCover",
     )
-    val coverT = if (animateStyleChanges) coverTAnimated else coverTTarget
-    // 外圈：只缩放黑胶盘面（绕中心）；封面尺寸锁定在整体容器的 CoverFrac
+    val expand = LocalPlayerExpand.current
+    val liveStyle = animateStyleChanges &&
+        (expand == null || !expand.mounted || expand.visualProgress >= 1f)
+    val coverT = if (liveStyle) coverTAnimated else coverTTarget
+    // 外圈：只缩放黑胶盘面（绕中心）；封面尺寸锁定在整体容器的 VinylCoverFrac
     val outerTarget = outerScale.coerceIn(0.5f, 1.6f)
     val outerAnimated by animateFloatAsState(
         targetValue = outerTarget,
@@ -954,9 +983,9 @@ internal fun VinylDiscFace(
         ),
         label = "vinylOuterScale",
     )
-    val outer = if (animateStyleChanges) outerAnimated else outerTarget
+    val outer = if (liveStyle) outerAnimated else outerTarget
     // 中心挖孔相对整体容器（封面不随 outer 变），轴心在盘面本地坐标补偿 outer 缩放以保持绝对大小
-    val coverHoleFrac = (centerRadiusFrac / CoverFrac).coerceIn(0.08f, 0.95f) * (1f - coverT)
+    val coverHoleFrac = (centerRadiusFrac / VinylCoverFrac).coerceIn(0.08f, 0.95f) * (1f - coverT)
     val spindleFrac = (SpindleHoleFrac / outer.coerceAtLeast(0.01f))
         .coerceIn(0.02f, 0.35f) * (1f - coverT)
 
@@ -988,15 +1017,22 @@ internal fun VinylDiscFace(
         }
     }
 
+    val showVinylShadow = liveStyle
     Box(
         modifier
             .graphicsLayer { clip = false }
-            .shadow(
-                elevation = 10.dp,
-                shape = CircleShape,
-                clip = false,
-                ambientColor = Color.Black.copy(alpha = 0.40f),
-                spotColor = Color.Black.copy(alpha = 0.28f),
+            .then(
+                if (showVinylShadow) {
+                    Modifier.shadow(
+                        elevation = 10.dp,
+                        shape = VinylCircleShape,
+                        clip = false,
+                        ambientColor = Color.Black.copy(alpha = 0.40f),
+                        spotColor = Color.Black.copy(alpha = 0.28f),
+                    )
+                } else {
+                    Modifier
+                },
             ),
         contentAlignment = Alignment.Center,
     ) {
@@ -1030,10 +1066,17 @@ internal fun VinylDiscFace(
             // 封面：只跟整体容器走，不受 outer 影响
             Box(
                 Modifier
-                    .fillMaxSize(CoverFrac)
+                    .fillMaxSize(VinylCoverFrac)
+                    .then(
+                        if (reportExpandCover) {
+                            Modifier.playerExpandAnchor(PlayerExpandSlot.FullCover)
+                        } else {
+                            Modifier
+                        },
+                    )
                     .clip(
                         if (coverHoleFrac < 0.012f) {
-                            CircleShape
+                            VinylCircleShape
                         } else {
                             VinylAnnulusShape(holeFrac = coverHoleFrac)
                         },
@@ -1069,6 +1112,24 @@ internal fun VinylDiscFace(
     }
 }
 
+/** 内接正圆：父级若不是正方形，CircleShape 会裁成椭圆。 */
+internal object VinylCircleShape : Shape {
+    override fun createOutline(
+        size: Size,
+        layoutDirection: LayoutDirection,
+        density: Density,
+    ): Outline {
+        val r = min(size.width, size.height) * 0.5f
+        val cx = size.width * 0.5f
+        val cy = size.height * 0.5f
+        return Outline.Generic(
+            Path().apply {
+                addOval(Rect(cx - r, cy - r, cx + r, cy + r))
+            },
+        )
+    }
+}
+
 /** 圆环裁剪：外圆保留、中心镂空，露出下层黑胶纹理。 */
 internal data class VinylAnnulusShape(
     private val holeFrac: Float,
@@ -1099,6 +1160,7 @@ internal fun VinylDiscPlate(
     modifier: Modifier = Modifier,
     spindleHoleFrac: Float = SpindleHoleFrac,
     colors: VinylPlateColors = VinylPlateColors.Black,
+    drawRim: Boolean = true,
 ) {
     Canvas(modifier) {
         val c = Offset(size.width / 2f, size.height / 2f)
@@ -1126,12 +1188,14 @@ internal fun VinylDiscPlate(
                 radius = r,
                 center = c,
             )
-            drawCircle(
-                color = colors.rim.copy(alpha = 0.12f),
-                radius = r * 0.985f,
-                center = c,
-                style = Stroke(width = r * 0.018f),
-            )
+            if (drawRim) {
+                drawCircle(
+                    color = colors.rim.copy(alpha = 0.12f),
+                    radius = r * 0.985f,
+                    center = c,
+                    style = Stroke(width = r * 0.018f),
+                )
+            }
             val innerStart = if (holeR > 0.5f) (holeR / r) + 0.012f else 0.04f
             val ringCount = 22
             // 深色纹路在浅底上需提高不透明度，否则几乎看不见
@@ -1153,7 +1217,7 @@ internal fun VinylDiscPlate(
                     style = Stroke(width = if (rr < r * DefaultCoverHoleFrac) 0.9f else 1.1f),
                 )
             }
-            if (holeR > 0.5f) {
+            if (drawRim && holeR > 0.5f) {
                 drawCircle(
                     color = colors.holeLight.copy(
                         alpha = 0.10f * (holeR / (r * SpindleHoleFrac)).coerceIn(0f, 1f),

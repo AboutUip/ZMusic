@@ -220,6 +220,8 @@ internal fun LandscapeProjectionLyrics(
     onLyricBandCoords: ((LayoutCoordinates) -> Unit)? = null,
     /** 为 true 时禁止跟滚/回中，避免歌词样式开场瞬间「绝对居中」跳一下 */
     scrollFrozen: Boolean = false,
+    /** 为 false 时逐字钉在 [positionMs]，不按墙钟往前唱（暂停 / 缓冲 / 拖动 / 冻结）。 */
+    clockRunning: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     if (lines.isEmpty()) {
@@ -238,7 +240,11 @@ internal fun LandscapeProjectionLyrics(
         return
     }
     val timing = lyricAnimTiming(lines, positionMs, trackDurationMs)
-    val animActive = lyricAnimActiveIndex(lines, positionMs, trackDurationMs)
+    val animActive = if (clockRunning) {
+        lyricAnimActiveIndex(lines, positionMs, trackDurationMs)
+    } else {
+        lyricActiveIndex(lines, positionMs)
+    }
     val playFocus = lyricFocusIndex(lines, animActive)
     val live = lyricIsLive(lines, animActive, playFocus)
     val playFs = playingStyle.sanitizedFontScale()
@@ -490,6 +496,19 @@ internal fun LandscapeProjectionLyrics(
         dragSession = false
         browsing = false
         scope.launch { scrollToPlayFocus(animated) }
+    }
+
+    fun confirmBrowseTap(tappedIndex: Int) {
+        val center = browseCenterIndex.coerceIn(0, lines.lastIndex)
+        if (!isBrowseSeekHit(tappedIndex, center)) {
+            exitBrowseAndFollow()
+            return
+        }
+        val line = lines.getOrNull(center) ?: return
+        browsing = false
+        dragSession = false
+        scope.launch { scrollToCenteredIndex(center, animated = true) }
+        onSeekToMs(line.timeMs)
     }
 
     /** 选句退出：等 morph 稳定后一趟回正，再退浏览态 */
@@ -882,7 +901,7 @@ internal fun LandscapeProjectionLyrics(
                             val isPlayingLine = index == visualPlayFocus
                             val isBrowseCenter =
                                 !inSelect &&
-                                    browsing &&
+                                    (browsing || dragSession) &&
                                     !resumeSettling &&
                                     index == browseCenterIndex &&
                                     !isPlayingLine
@@ -911,13 +930,15 @@ internal fun LandscapeProjectionLyrics(
                                 lineSpacing = 0.dp,
                                 slotHeight = rowHeight,
                                 animMs = animMs,
-                                browsing = browsing || selectMode,
+                                browsing = browsing || dragSession || selectMode,
                                 selected = selected,
                                 selectStyleT = selectT,
                                 fixedSelectRow = selectT > 0.15f,
                                 freezeLineTransitions = inSelect || resumeSettling,
-                                instantAppear = resumeSettling && index == playFocus,
+                                instantAppear = (!clockRunning && isPlayingLine) ||
+                                    (resumeSettling && index == playFocus),
                                 positionMs = positionMs,
+                                clockRunning = clockRunning,
                                 playingStyle = playingStyle,
                                 playedStyle = playedStyle,
                                 unplayedStyle = unplayedStyle,
@@ -928,15 +949,7 @@ internal fun LandscapeProjectionLyrics(
                                     selectInteractive -> null
                                     !browsing -> null
                                     else -> {
-                                        {
-                                            val i = index
-                                            browsing = false
-                                            dragSession = false
-                                            scope.launch {
-                                                scrollToCenteredIndex(i, animated = true)
-                                            }
-                                            onSeekToMs(line.timeMs)
-                                        }
+                                        { confirmBrowseTap(index) }
                                     }
                                 },
                                 // 跟滚态长按由父级 pointerInput 统一命中；浏览态仍走行内长按
@@ -984,6 +997,7 @@ internal fun LandscapeScrollLyricLine(
     freezeLineTransitions: Boolean = false,
     instantAppear: Boolean = false,
     positionMs: Long = 0L,
+    clockRunning: Boolean = false,
     playingStyle: LyricRoleStyle = LyricRoleStyle.PlayingDefault,
     playedStyle: LyricRoleStyle = LyricRoleStyle.PlayedDefault,
     unplayedStyle: LyricRoleStyle = LyricRoleStyle.UnplayedDefault,
@@ -1106,6 +1120,7 @@ internal fun LandscapeScrollLyricLine(
                 playingStyle = playingStyle,
                 unplayedStyle = unplayedStyle,
                 positionMs = positionMs,
+                clockRunning = clockRunning,
             )
             return@Box
         }
@@ -1224,6 +1239,7 @@ internal fun LandscapeCenterLyricLine(
     playingStyle: LyricRoleStyle = LyricRoleStyle.PlayingDefault,
     unplayedStyle: LyricRoleStyle = LyricRoleStyle.UnplayedDefault,
     positionMs: Long = 0L,
+    clockRunning: Boolean = false,
 ) {
     val emphasis by animateFloatAsState(
         targetValue = if (live) 1f else 0f,
@@ -1294,10 +1310,10 @@ internal fun LandscapeCenterLyricLine(
             overflow = if (st > 0.5f) TextOverflow.Ellipsis else TextOverflow.Clip,
             instantAppear = instantAppear,
             freezeTransitions = freezeTransitions,
-            words = lines.getOrNull(focus)?.karaokeWords(positionMs).orEmpty(),
+            words = lines.getOrNull(focus)?.karaokeWords().orEmpty(),
             positionMs = positionMs,
             unplayedColor = selectUnplayed.copy(alpha = 0.46f),
-            tracking = live && st < 0.5f,
+            tracking = live && st < 0.5f && clockRunning,
             style = TextStyle(
                 color = textColor,
                 fontFamily = FontFamily.SansSerif,
@@ -1412,14 +1428,13 @@ internal fun LandscapeSideLyricLine(
 }
 
 /**
- * 横屏标题信息块：歌名 / 制作人 / 歌单。
+ * 横屏标题信息块：歌名 / 歌手。
+ * 歌手沿用原歌单行样式（字号、字距、颜色档），不再展示歌单名。
  * 每一行按自身宽度独立算目标 X，[Animatable] 同步滑动，切换对齐不再只有标题在动。
  */
 @Composable
 internal fun LandscapeAlignedSongMeta(
     track: TrackRow,
-    sourceTitle: String?,
-    onSourceClick: (() -> Unit)?,
     onArtistClick: (() -> Unit)? = null,
     onRevealControls: () -> Unit,
     titleAlign: TitleAlignMode,
@@ -1427,10 +1442,8 @@ internal fun LandscapeAlignedSongMeta(
     titleOffsetYDp: Float,
     titleNameColor: Color,
     titleArtistColor: Color,
-    titleSourceColor: Color,
     titleNameFontScale: Float,
     titleArtistFontScale: Float,
-    titleSourceFontScale: Float,
     chromeSidePad: Dp,
     vinylCenterX: Dp,
     lyricsCenterX: Dp,
@@ -1441,7 +1454,6 @@ internal fun LandscapeAlignedSongMeta(
     modifier: Modifier = Modifier,
 ) {
     val density = LocalDensity.current
-    val srcIx = remember { MutableInteractionSource() }
     val artistIx = remember { MutableInteractionSource() }
     val onMetaBoundsUpdated by rememberUpdatedState(onMetaVisualBoundsInRoot)
     val lineBounds = remember { mutableStateMapOf<Int, Rect>() }
@@ -1513,76 +1525,42 @@ internal fun LandscapeAlignedSongMeta(
                 ),
                 maxLines = 2,
                 onVisualBoundsInRoot = { reportLineBounds(0, it) },
+                expandSlot = PlayerExpandSlot.FullTitle,
+                modifier = Modifier.playerExpandHideFull(),
             )
             Spacer(Modifier.height(5.dp))
             AlignedMetaLine(
-                text = track.artists.uppercase(),
+                text = track.artists,
                 textAlign = textAlign,
                 titleAlign = titleAlign,
                 targetXForWidth = ::targetXForWidth,
                 style = TextStyle(
                     color = titleArtistColor,
                     fontFamily = FontFamily.Monospace,
-                    fontSize = (TitleLineStyle.BASE_ARTIST_SP * titleArtistFontScale).sp,
-                    letterSpacing = 1.8.sp,
+                    fontSize = (TitleLineStyle.BASE_SOURCE_SP * titleArtistFontScale).sp,
+                    letterSpacing = 0.55.sp,
                     textAlign = textAlign,
                 ),
                 maxLines = 1,
                 onVisualBoundsInRoot = { reportLineBounds(1, it) },
-                modifier = Modifier.then(
-                    if (onArtistClick != null) {
-                        Modifier.clickable(
-                            interactionSource = artistIx,
-                            indication = null,
-                            onClick = {
-                                onRevealControls()
-                                onArtistClick()
-                            },
-                        )
-                    } else {
-                        Modifier
-                    },
-                ),
-            )
-            if (!sourceTitle.isNullOrBlank()) {
-                Spacer(Modifier.height(6.dp))
-                AlignedMetaLine(
-                    text = sourceTitle,
-                    textAlign = textAlign,
-                    titleAlign = titleAlign,
-                    targetXForWidth = ::targetXForWidth,
-                    style = TextStyle(
-                        color = titleSourceColor,
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = (TitleLineStyle.BASE_SOURCE_SP * titleSourceFontScale).sp,
-                        letterSpacing = 0.55.sp,
-                        textAlign = textAlign,
-                    ),
-                    maxLines = 1,
-                    onVisualBoundsInRoot = { reportLineBounds(2, it) },
-                    modifier = Modifier.then(
-                        if (onSourceClick != null) {
+                expandSlot = PlayerExpandSlot.FullArtist,
+                modifier = Modifier
+                    .playerExpandHideFull()
+                    .then(
+                        if (onArtistClick != null) {
                             Modifier.clickable(
-                                interactionSource = srcIx,
+                                interactionSource = artistIx,
                                 indication = null,
                                 onClick = {
                                     onRevealControls()
-                                    onSourceClick()
+                                    onArtistClick()
                                 },
                             )
                         } else {
                             Modifier
                         },
                     ),
-                )
-            }
-        }
-    }
-
-    LaunchedEffect(sourceTitle.isNullOrBlank()) {
-        if (sourceTitle.isNullOrBlank() && lineBounds.containsKey(2)) {
-            lineBounds.remove(2)
-            publishVisualUnion()
+            )
         }
     }
 }
@@ -1596,6 +1574,7 @@ internal fun AlignedMetaLine(
     style: TextStyle,
     maxLines: Int,
     onVisualBoundsInRoot: ((Rect) -> Unit)? = null,
+    expandSlot: PlayerExpandSlot? = null,
     modifier: Modifier = Modifier,
 ) {
     var widthPx by remember { mutableFloatStateOf(0f) }
@@ -1603,6 +1582,8 @@ internal fun AlignedMetaLine(
     var placed by remember { mutableStateOf(false) }
     val target = targetXForWidth(widthPx)
     val onBoundsUpdated by rememberUpdatedState(onVisualBoundsInRoot)
+    val expand = LocalPlayerExpand.current
+    val slot = expandSlot
 
     LaunchedEffect(target, widthPx, titleAlign, text) {
         if (widthPx <= 0.5f) return@LaunchedEffect
@@ -1628,11 +1609,24 @@ internal fun AlignedMetaLine(
         textAlign = textAlign,
         modifier = modifier
             .graphicsLayer { alpha = if (placed) 1f else 0f }
-            .offset { IntOffset(x.value.roundToInt(), 0) }
+            .layout { measurable, constraints ->
+                val placeable = measurable.measure(constraints.copy(minWidth = 0))
+                val xOff = if (placed) {
+                    x.value
+                } else {
+                    targetXForWidth(placeable.width.toFloat())
+                }
+                layout(placeable.width, placeable.height) {
+                    placeable.place(xOff.roundToInt(), 0)
+                }
+            }
             .wrapContentWidth(align = Alignment.Start)
             .onSizeChanged { widthPx = it.width.toFloat() }
             .onGloballyPositioned { coords ->
                 onBoundsUpdated?.invoke(coords.boundsInRoot())
+                if (slot != null) {
+                    expand?.report(slot, coords.windowAabb())
+                }
             },
     )
 }

@@ -26,6 +26,10 @@ internal fun LazyListState.browseCenterLyricIndex(fallback: Int): Int {
     }?.index ?: fallback
 }
 
+/** 浏览态单击：只有点在预选行及其上下各一行内才确认跳转。 */
+internal fun isBrowseSeekHit(tappedIndex: Int, preselectIndex: Int): Boolean =
+    abs(tappedIndex - preselectIndex) <= 1
+
 /**
  * 将 [index] 滚到视口绝对垂直中心（与横屏跟滚同一套几何）。
  * [followGen] / [currentFollowGen] 用于手势打断进行中的跟滚。

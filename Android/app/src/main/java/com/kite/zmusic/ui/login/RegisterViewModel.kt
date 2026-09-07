@@ -10,11 +10,13 @@ import com.kite.zmusic.data.NcmAuthClient
 import com.kite.zmusic.data.NcmEndpointMissingException
 import com.kite.zmusic.data.NcmJson
 import com.kite.zmusic.data.SessionRepository
+import com.kite.zmusic.data.ncm.NcmLog
 import com.kite.zmusic.util.Md5Util
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import org.json.JSONObject
 
 class RegisterViewModel(
     private val sessionRepository: SessionRepository,
@@ -38,10 +40,17 @@ class RegisterViewModel(
     var captchaCooldownSec by mutableStateOf(0)
         private set
 
+    var wantsQrFallback by mutableStateOf(false)
+        private set
+
     private var captchaCooldownJob: Job? = null
 
     fun dismissError() {
         bannerError = null
+    }
+
+    fun consumeQrFallback() {
+        wantsQrFallback = false
     }
 
     fun reset() {
@@ -55,6 +64,7 @@ class RegisterViewModel(
         nickname = ""
         captchaSending = false
         captchaCooldownSec = 0
+        wantsQrFallback = false
     }
 
     fun onPhoneChanged() {
@@ -75,19 +85,24 @@ class RegisterViewModel(
             busy = true
             bannerError = null
             try {
+                NcmLog.i("register exist phone=${NcmLog.maskPhone(p)}")
                 val existJson = api.cellphoneExistenceCheck(p)
+                NcmLog.i("register exist ${NcmLog.summarize(existJson)} body=${NcmLog.json(existJson)}")
                 when (NcmJson.phoneAlreadyRegistered(existJson)) {
                     true -> {
                         bannerError = "该手机号已注册，请返回登录"
+                        NcmLog.w("register exist already-registered")
                         return@launch
                     }
                     null -> {
                         bannerError = NcmJson.userFacingMessage(existJson, "无法检测该手机号是否已注册")
+                        NcmLog.w("register exist unknown banner=$bannerError")
                         return@launch
                     }
                     false -> Unit
                 }
             } catch (e: Exception) {
+                NcmLog.e("register exist throw", e)
                 bannerError = NcmJson.userFacingThrowable(e, "检测失败")
                 return@launch
             } finally {
@@ -115,16 +130,21 @@ class RegisterViewModel(
             busy = true
             bannerError = null
             try {
+                NcmLog.i("register verify phone=${NcmLog.maskPhone(p)} captchaLen=${code.length}")
                 val j = api.captchaVerify(p, code)
+                NcmLog.i("register verify ${NcmLog.summarize(j)} body=${NcmLog.json(j)}")
                 val codeNum = NcmJson.apiCode(j)
                 if (codeNum == 200) {
                     onOk()
                 } else {
                     bannerError = NcmJson.userFacingMessage(j, "验证码不正确")
+                    NcmLog.w("register verify fail banner=$bannerError")
                 }
             } catch (_: NcmEndpointMissingException) {
+                NcmLog.w("register verify endpoint missing, continue")
                 onOk()
             } catch (e: Exception) {
+                NcmLog.e("register verify throw", e)
                 bannerError = NcmJson.userFacingThrowable(e, "校验失败")
             } finally {
                 busy = false
@@ -136,7 +156,10 @@ class RegisterViewModel(
      * `/register/cellphone` 文档只约定注册/改密，不保证返回 cookie。
      * 有凭证则直接登录；否则走 [onNeedSmsLogin]。
      */
-    fun register(onLoggedIn: () -> Unit, onNeedSmsLogin: (phone: String) -> Unit) {
+    fun register(
+        onLoggedIn: () -> Unit,
+        onNeedSmsLogin: (phone: String) -> Unit,
+    ) {
         viewModelScope.launch {
             if (busy) return@launch
             val p = phone.trim()
@@ -162,6 +185,10 @@ class RegisterViewModel(
             busy = true
             bannerError = null
             try {
+                NcmLog.i(
+                    "register phone=${NcmLog.maskPhone(p)} captchaLen=${code.length} " +
+                        "nickLen=${nick.length}",
+                )
                 val md5 = Md5Util.md5Hex(pwd)
                 val j = api.registerCellphone(
                     phone = p,
@@ -169,18 +196,27 @@ class RegisterViewModel(
                     password = md5,
                     nickname = nick,
                 )
+                NcmLog.i("register resp ${NcmLog.summarize(j)} body=${NcmLog.json(j)}")
+                if (offerQrFallback(j)) {
+                    NcmLog.i("register -> qr")
+                    return@launch
+                }
                 if (NcmJson.apiCode(j) != 200) {
                     bannerError = NcmJson.userFacingMessage(j, "注册失败")
+                    NcmLog.w("register fail banner=$bannerError")
                     return@launch
                 }
                 val cookie = NcmJson.extractCookie(j)
                 if (!cookie.isNullOrEmpty()) {
+                    NcmLog.i("register ok cookieNames=${NcmLog.cookieNames(cookie)}")
                     sessionRepository.persist(cookie, NcmJson.displayLabelFromLogin(j) ?: nick)
                     onLoggedIn()
                     return@launch
                 }
+                NcmLog.w("register 200 no cookie, fallback sms")
                 onNeedSmsLogin(p)
             } catch (e: Exception) {
+                NcmLog.e("register throw", e)
                 bannerError = NcmJson.userFacingThrowable(e, "注册失败")
             } finally {
                 busy = false
@@ -194,13 +230,21 @@ class RegisterViewModel(
         bannerError = null
         var sentOk = false
         try {
+            NcmLog.i("register captchaSent phone=${NcmLog.maskPhone(phone)}")
             val j = api.captchaSent(phone)
+            NcmLog.i("register captchaSent ${NcmLog.summarize(j)} body=${NcmLog.json(j)}")
+            if (offerQrFallback(j)) {
+                NcmLog.i("register captchaSent -> qr")
+                return
+            }
             if (NcmJson.apiCode(j) != 200) {
                 bannerError = NcmJson.userFacingMessage(j, "发送失败")
+                NcmLog.w("register captchaSent fail banner=$bannerError")
             } else {
                 sentOk = true
             }
         } catch (e: Exception) {
+            NcmLog.e("register captchaSent throw", e)
             bannerError = NcmJson.userFacingThrowable(e, "发送失败")
         } finally {
             captchaSending = false
@@ -216,6 +260,12 @@ class RegisterViewModel(
             }
             onSent()
         }
+    }
+
+    private fun offerQrFallback(json: JSONObject): Boolean {
+        if (!NcmJson.needsQrFallback(json)) return false
+        wantsQrFallback = true
+        return true
     }
 
     override fun onCleared() {

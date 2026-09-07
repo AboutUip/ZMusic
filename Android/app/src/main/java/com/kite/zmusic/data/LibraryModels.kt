@@ -10,6 +10,8 @@ data class UserProfileBrief(
     val signature: String?,
     val level: Int?,
     val listenSongs: Long?,
+    /** 网易云听歌足迹总收听时长；查不到则为 null，个人页不再回退成「首」。 */
+    val listenDurationMs: Long? = null,
     val backgroundUrl: String? = null,
     val vipKind: VipKind = VipKind.None,
     val vipIconUrl: String? = null,

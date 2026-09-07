@@ -63,6 +63,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -194,6 +195,44 @@ internal fun landscapeSideSheetSlideX(
     endPadPx: Float,
 ): Float = (1f - progress.coerceIn(0f, 1f)) * (panelWidthPx + endPadPx)
 
+/** 进出场跟展开进度走：布局位移会更新锚点，飞层才能跟着底栏一起动。 */
+@Composable
+private fun LandscapeExpandLinkedLayer(
+    chromeT: Float,
+    barSlidePx: Float,
+    uiScale: Float,
+    origin: TransformOrigin,
+    slideFromBottom: Boolean,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    val expand = LocalPlayerExpand.current
+    val density = LocalDensity.current
+    val expandT = if (expand != null && expand.mounted) {
+        expand.visualProgress
+    } else {
+        1f
+    }
+    val t = (chromeT * expandT).coerceIn(0f, 1f)
+    val y = if (slideFromBottom) {
+        with(density) { ((1f - t) * barSlidePx).toDp() }
+    } else {
+        0.dp
+    }
+    Box(
+        modifier
+            .offset(y = y)
+            .graphicsLayer {
+                scaleX = uiScale
+                scaleY = uiScale
+                transformOrigin = origin
+            }
+            .alpha(t),
+    ) {
+        content()
+    }
+}
+
 @Composable
 internal fun LandscapePlayerBody(
     track: TrackRow,
@@ -208,8 +247,6 @@ internal fun LandscapePlayerBody(
     onSkipNext: () -> Unit,
     onSkipPrev: () -> Unit,
     durationMs: Long,
-    sourceTitle: String?,
-    onSourceClick: (() -> Unit)?,
     onArtistClick: (() -> Unit)? = null,
     sliderDragging: Boolean,
     sliderValue: Float,
@@ -243,8 +280,9 @@ internal fun LandscapePlayerBody(
     val rotationLocked = com.kite.zmusic.ui.orientation.SessionRotationLockStore.locked
     val systemAutoRotate =
         com.kite.zmusic.ui.orientation.rememberSystemAutoRotateEnabled()
-    // 沉浸默认隐藏；仅纯点击唤出，滑动不唤出（常显时恒定展开）
-    var controlsVisible by remember { mutableStateOf(displayPrefs.transportAlwaysVisible) }
+    val playerExpand = LocalPlayerExpand.current
+    // 横屏进播放页先亮底栏，飞层才有播放键 / 进度落点；空闲后再沉浸。竖屏播放页本身常显底栏。
+    var controlsVisible by remember { mutableStateOf(true) }
     var settingsOpen by remember { mutableStateOf(false) }
     val settingsTransferDismissGate = remember { PlayerDisplayTransferDismissGate() }
     var scoreOpen by remember { mutableStateOf(false) }
@@ -309,6 +347,7 @@ internal fun LandscapePlayerBody(
     var draftTitleName by remember { mutableStateOf(TitleLineStyle.NameDefault) }
     var draftTitleArtist by remember { mutableStateOf(TitleLineStyle.ArtistDefault) }
     var draftTitleSource by remember { mutableStateOf(TitleLineStyle.SourceDefault) }
+    var backgroundEditorOpen by remember { mutableStateOf(false) }
     var playerRootCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
     var lyricsBandCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
     var songMetaVisualBoundsInRoot by remember { mutableStateOf<Rect?>(null) }
@@ -333,6 +372,7 @@ internal fun LandscapePlayerBody(
         !lyricSelectOpen &&
         !lyricStyleEditorOpen &&
         !titleStyleEditorOpen &&
+        !backgroundEditorOpen &&
         !vinylSongPickOpen
     val density = LocalDensity.current
     val uiScale = displayPrefs.uiScale.coerceIn(PlayerDisplayPrefs.UI_MIN, PlayerDisplayPrefs.UI_MAX)
@@ -346,8 +386,20 @@ internal fun LandscapePlayerBody(
     }
 
     // 0 = 沉浸（黑胶放大）→ 1 = 控件可见（黑胶缩小让位）；Animatable 可中途改目标打断
-    val chrome = remember { Animatable(if (transportPinned) 1f else 0f) }
+    val chrome = remember { Animatable(1f) }
     LaunchedEffect(showBar) {
+        if (showBar) {
+            val expand = playerExpand
+            val entering = expand != null &&
+                expand.mounted &&
+                expand.targetOpen &&
+                !expand.pastHandoff
+            if (entering) {
+                // 进场锁在亮栏位，避免底栏滑入把黑胶 / 播放键落点带走。
+                chrome.snapTo(1f)
+                return@LaunchedEffect
+            }
+        }
         chrome.animateTo(
             targetValue = if (showBar) 1f else 0f,
             animationSpec = tween(durationMillis = 360, easing = FastOutSlowInEasing),
@@ -376,6 +428,7 @@ internal fun LandscapePlayerBody(
                 !scoreOpen &&
                 !lyricStyleEditorOpen &&
                 !titleStyleEditorOpen &&
+                !backgroundEditorOpen &&
                 !vinylSongPickOpen
             ) {
                 controlsVisible = true
@@ -408,7 +461,8 @@ internal fun LandscapePlayerBody(
                     !editorVinylCentered &&
                     !lyricSelectOpen &&
                     !lyricStyleEditorOpen &&
-                    !titleStyleEditorOpen
+                    !titleStyleEditorOpen &&
+                    !backgroundEditorOpen
                 ) {
                     controlsVisible = true
                 }
@@ -426,6 +480,7 @@ internal fun LandscapePlayerBody(
             editorVinylCentered ||
             lyricStyleEditorOpen ||
             titleStyleEditorOpen ||
+            backgroundEditorOpen ||
             scoreOpen ||
             vinylSongPickOpen
 
@@ -515,7 +570,9 @@ internal fun LandscapePlayerBody(
                 !settingsOpen &&
                 !editorVinylCentered &&
                 !lyricSelectOpen &&
-                !scoreOpen
+                !scoreOpen &&
+                !titleStyleEditorOpen &&
+                !backgroundEditorOpen
             ) {
                 controlsVisible = true
             }
@@ -574,7 +631,8 @@ internal fun LandscapePlayerBody(
                 !editorVinylCentered &&
                 !lyricSelectOpen &&
                 !scoreOpen &&
-                !lyricStyleEditorOpen
+                !lyricStyleEditorOpen &&
+                !backgroundEditorOpen
             ) {
                 controlsVisible = true
             }
@@ -635,7 +693,8 @@ internal fun LandscapePlayerBody(
                 !lyricSelectOpen &&
                 !scoreOpen &&
                 !lyricStyleEditorOpen &&
-                !titleStyleEditorOpen
+                !titleStyleEditorOpen &&
+                !backgroundEditorOpen
             ) {
                 controlsVisible = true
             }
@@ -699,7 +758,7 @@ internal fun LandscapePlayerBody(
                 if (lyricSelectEverOpen) {
                     lyricSelectEverOpen = false
                     if (transportPinned && !settingsOpen && !editorVinylCentered && !scoreOpen &&
-                        !lyricStyleEditorOpen && !titleStyleEditorOpen
+                        !lyricStyleEditorOpen && !titleStyleEditorOpen && !backgroundEditorOpen
                     ) {
                         controlsVisible = true
                     }
@@ -712,6 +771,22 @@ internal fun LandscapePlayerBody(
         onDisplayPrefsFlush()
         settingsOpen = false
         // 常显 chrome 改由 settingsPanel 收完后再亮，见 LaunchedEffect(settingsOpen)
+    }
+
+    fun closeCustomBackgroundEditor() {
+        onDisplayPrefsFlush()
+        backgroundEditorOpen = false
+    }
+
+    fun openCustomBackgroundEditor() {
+        if (vinylColorEditorOpen || editorVinylCentered || lyricSelectOpen ||
+            scoreOpen || scoreVinylCentered || scoreFlight != null ||
+            lyricStyleEditorOpen || titleStyleEditorOpen ||
+            vinylSongPickOpen || pickerVinylCentered
+        ) {
+            return
+        }
+        backgroundEditorOpen = true
     }
 
     fun commitLyricStyleDraft() {
@@ -763,7 +838,7 @@ internal fun LandscapePlayerBody(
     fun openLyricStyleEditor() {
         if (vinylColorEditorOpen || editorVinylCentered || lyricSelectOpen ||
             scoreOpen || scoreVinylCentered || scoreFlight != null || titleStyleEditorOpen ||
-            vinylSongPickOpen || pickerVinylCentered
+            vinylSongPickOpen || pickerVinylCentered || backgroundEditorOpen
         ) {
             return
         }
@@ -803,7 +878,7 @@ internal fun LandscapePlayerBody(
     fun openTitleStyleEditor() {
         if (vinylColorEditorOpen || editorVinylCentered || lyricSelectOpen ||
             scoreOpen || scoreVinylCentered || scoreFlight != null || lyricStyleEditorOpen ||
-            vinylSongPickOpen || pickerVinylCentered
+            vinylSongPickOpen || pickerVinylCentered || backgroundEditorOpen
         ) {
             return
         }
@@ -825,7 +900,7 @@ internal fun LandscapePlayerBody(
         titleStyleSnapshot = TitleStyleSnapshot(
             name = track.name,
             artists = track.artists,
-            sourceTitle = sourceTitle,
+            sourceTitle = null,
             sourceLeftDp = srcLeft,
             sourceTopDp = srcTop,
             sourceWidthDp = srcW.coerceAtLeast(48.dp),
@@ -843,7 +918,7 @@ internal fun LandscapePlayerBody(
     fun openScore() {
         if (editorVinylCentered || vinylColorEditorOpen || lyricSelectOpen || settingsOpen ||
             scoreFlight != null || lyricStyleEditorOpen || titleStyleEditorOpen ||
-            vinylSongPickOpen || pickerVinylCentered
+            vinylSongPickOpen || pickerVinylCentered || backgroundEditorOpen
         ) {
             return
         }
@@ -877,7 +952,7 @@ internal fun LandscapePlayerBody(
         scoreVinylCentered = false
         suppressVinylEnter = false
         if (transportPinned && !settingsOpen && !editorVinylCentered && !lyricSelectOpen &&
-            !lyricStyleEditorOpen && !titleStyleEditorOpen
+            !lyricStyleEditorOpen && !titleStyleEditorOpen && !backgroundEditorOpen
         ) {
             controlsVisible = true
         }
@@ -898,7 +973,7 @@ internal fun LandscapePlayerBody(
         // 收回设置与播放条（忽略常显）；保留黑胶 X，Y 由编辑态强制垂直居中
         if (lyricSelectOpen || scoreOpen || scoreVinylCentered ||
             lyricStyleEditorOpen || titleStyleEditorOpen ||
-            vinylSongPickOpen || pickerVinylCentered
+            vinylSongPickOpen || pickerVinylCentered || backgroundEditorOpen
         ) {
             return
         }
@@ -921,7 +996,7 @@ internal fun LandscapePlayerBody(
     @Suppress("UNUSED_PARAMETER")
     fun openLyricSelect(index: Int) {
         if (vinylColorEditorOpen || editorVinylCentered || scoreOpen || scoreVinylCentered ||
-            lyricStyleEditorOpen || vinylSongPickOpen || pickerVinylCentered
+            lyricStyleEditorOpen || vinylSongPickOpen || pickerVinylCentered || backgroundEditorOpen
         ) {
             return
         }
@@ -938,7 +1013,7 @@ internal fun LandscapePlayerBody(
         if (editorVinylCentered || vinylColorEditorOpen || lyricSelectOpen ||
             scoreOpen || scoreVinylCentered || scoreFlight != null ||
             lyricStyleEditorOpen || titleStyleEditorOpen ||
-            vinylSongPickOpen || pickerVinylCentered
+            vinylSongPickOpen || pickerVinylCentered || backgroundEditorOpen
         ) {
             return
         }
@@ -951,7 +1026,7 @@ internal fun LandscapePlayerBody(
         if (vinylSongPickOpen || pickerVinylCentered) return
         if (editorVinylCentered || vinylColorEditorOpen || lyricSelectOpen || settingsOpen ||
             scoreOpen || scoreVinylCentered || scoreFlight != null ||
-            lyricStyleEditorOpen || titleStyleEditorOpen
+            lyricStyleEditorOpen || titleStyleEditorOpen || backgroundEditorOpen
         ) {
             return
         }
@@ -1032,7 +1107,7 @@ internal fun LandscapePlayerBody(
     fun revealControls() {
         if (settingsOpen || forceVinylYCentered || vinylColorEditorOpen ||
             lyricSelectOpen || scoreOpen || lyricStyleEditorOpen || titleStyleEditorOpen ||
-            vinylSongPickOpen
+            vinylSongPickOpen || backgroundEditorOpen
         ) {
             return
         }
@@ -1047,6 +1122,10 @@ internal fun LandscapePlayerBody(
         }
         if (lyricSelectOpen) {
             if (lyricSelectOutsideArmed) closeLyricSelect()
+            return
+        }
+        if (backgroundEditorOpen) {
+            closeCustomBackgroundEditor()
             return
         }
         if (lyricStyleEditorOpen) {
@@ -1096,6 +1175,9 @@ internal fun LandscapePlayerBody(
                 lyricStylePanel.snapTo(0f)
                 lyricStyleSnapshot = null
             }
+            if (backgroundEditorOpen) {
+                backgroundEditorOpen = false
+            }
             if (titleStyleEditorOpen || titleStyleT > 0.001f) {
                 reopenSettingsAfterTitleStyle = false
                 titleStyleEditorOpen = false
@@ -1141,6 +1223,9 @@ internal fun LandscapePlayerBody(
     BackHandler(enabled = lyricSelectOpen || lyricSelectT > 0.001f) {
         closeLyricSelect()
     }
+    BackHandler(enabled = backgroundEditorOpen) {
+        closeCustomBackgroundEditor()
+    }
     BackHandler(enabled = lyricStyleEditorOpen || lyricStyleT > 0.001f) {
         closeLyricStyleEditor()
     }
@@ -1160,6 +1245,7 @@ internal fun LandscapePlayerBody(
             !lyricSelectOpen &&
             !lyricStyleEditorOpen &&
             !titleStyleEditorOpen &&
+            !backgroundEditorOpen &&
             !scoreOpen &&
             !scoreVinylCentered &&
             !vinylSongPickOpen &&
@@ -1168,6 +1254,17 @@ internal fun LandscapePlayerBody(
         if (!settingsTransferDismissGate.requestDismissTop()) {
             closeSettings()
         }
+    }
+
+    LaunchedEffect(playerExpand) {
+        val expand = playerExpand ?: return@LaunchedEffect
+        snapshotFlow { expand.targetOpen && expand.pastHandoff }
+            .distinctUntilChanged()
+            .collect { handedOff ->
+                if (handedOff && controlsVisible && !transportPinned) {
+                    idleBump++
+                }
+            }
     }
 
     LaunchedEffect(
@@ -1181,10 +1278,12 @@ internal fun LandscapePlayerBody(
         lyricSelectOpen,
         lyricStyleEditorOpen,
         titleStyleEditorOpen,
+        backgroundEditorOpen,
         vinylSongPickOpen,
     ) {
         if (settingsOpen || scoreOpen || transportPinned || forceVinylYCentered ||
-            lyricSelectOpen || lyricStyleEditorOpen || titleStyleEditorOpen || vinylSongPickOpen
+            lyricSelectOpen || lyricStyleEditorOpen || titleStyleEditorOpen ||
+            vinylSongPickOpen || backgroundEditorOpen
         ) {
             return@LaunchedEffect
         }
@@ -1218,10 +1317,15 @@ internal fun LandscapePlayerBody(
         val rootMaxH = maxHeight
         val rowGap = 4.dp
         val leftColW = (rootMaxW - rowGap) * 0.36f
-        val discBaseForPad = (leftColW * 0.92f).coerceIn(132.dp, 252.dp)
+        val vinylColH = (rootMaxH - 6.dp).coerceAtLeast(1.dp)
+        val discBudgetForPad = minOf(leftColW, vinylColH)
+        val discBaseForPad = (discBudgetForPad * 0.92f).coerceIn(
+            minOf(132.dp, discBudgetForPad),
+            minOf(252.dp, discBudgetForPad),
+        )
         val discExpandedForPad = (discBaseForPad * 1.14f)
-            .coerceAtMost(leftColW * 0.99f)
-            .coerceAtMost(286.dp)
+            .coerceAtMost(discBudgetForPad * 0.99f)
+            .coerceAtMost(minOf(286.dp, discBudgetForPad))
         val songMetaTopPad = ((leftColW - discExpandedForPad) / 2).coerceAtLeast(6.dp)
 
         // 空白手势只包内容/叠层；右上 chrome 与底栏是兄弟节点，
@@ -1241,6 +1345,7 @@ internal fun LandscapePlayerBody(
                             lyricSelectOpen || lyricSelectT > 0.001f -> {
                                 if (lyricSelectOutsideArmed) closeLyricSelect()
                             }
+                            backgroundEditorOpen -> closeCustomBackgroundEditor()
                             lyricStyleEditorOpen || lyricStyleT > 0.001f ->
                                 closeLyricStyleEditor()
                             titleStyleEditorOpen || titleStyleT > 0.001f ->
@@ -1266,7 +1371,10 @@ internal fun LandscapePlayerBody(
             ),
             label = "vinylAbsCenterOuter",
         )
-        val discCompactForPad = (discBaseForPad * 0.86f).coerceAtLeast(118.dp)
+        val discCompactForPad = (discBaseForPad * 0.86f).coerceIn(
+            minOf(118.dp, discBudgetForPad),
+            discBudgetForPad,
+        )
         val discForLyric = lerpDp(
             lerpDp(discExpandedForPad, discCompactForPad, chromeT),
             discExpandedForPad,
@@ -1349,11 +1457,18 @@ internal fun LandscapePlayerBody(
                     .graphicsLayer { clip = false },
                 contentAlignment = Alignment.TopEnd,
             ) {
-                val discBase = (maxWidth * 0.92f).coerceIn(132.dp, 252.dp)
+                val discBudget = minOf(maxWidth, maxHeight)
+                val discBase = (discBudget * 0.92f).coerceIn(
+                    minOf(132.dp, discBudget),
+                    minOf(252.dp, discBudget),
+                )
                 val discExpanded = (discBase * 1.14f)
-                    .coerceAtMost(maxWidth * 0.99f)
-                    .coerceAtMost(286.dp)
-                val discCompact = (discBase * 0.86f).coerceAtLeast(118.dp)
+                    .coerceAtMost(discBudget * 0.99f)
+                    .coerceAtMost(minOf(286.dp, discBudget))
+                val discCompact = (discBase * 0.86f).coerceIn(
+                    minOf(118.dp, discBudget),
+                    discBudget,
+                )
                 val absT by animateFloatAsState(
                     targetValue = if (displayPrefs.vinylAbsoluteCenter || forceVinylYCentered) 1f else 0f,
                     animationSpec = tween(
@@ -1390,6 +1505,10 @@ internal fun LandscapePlayerBody(
                         chromePad.toPx() * 0.35f) * (1f - absT)
                 }
                 val bottomPadPx = with(density) { vinylBottomPad.toPx() }
+                val vinylShiftY = with(density) {
+                    (layoutShiftY - bottomPadPx * 0.5f).toDp()
+                }
+                val vinylVisualSide = disc * (vinylScale * vinylSizeScale)
                 // 上一首入场：相对「实际静止中心」（含水平偏移 / 缩放）整盘离开左栏左缘
                 val prevEnterSlidePx = with(density) {
                     val centerFromLeft =
@@ -1401,6 +1520,15 @@ internal fun LandscapePlayerBody(
 
                 @Composable
                 fun VinylDisc(mod: Modifier) {
+                    val destPlate = displayPrefs.vinylPlateColors()
+                    val animatedPlate = rememberAnimatedVinylPlateColors(destPlate)
+                    val expand = LocalPlayerExpand.current
+                    val plateForStage =
+                        if (expand != null && expand.mounted && !expand.pastHandoff) {
+                            destPlate
+                        } else {
+                            animatedPlate
+                        }
                     VinylTransitionStage(
                         track = track,
                         peekNext = peekNextTrack,
@@ -1411,6 +1539,7 @@ internal fun LandscapePlayerBody(
                         gesturesEnabled = !settingsOpen && !forceVinylYCentered &&
                             !scoreOpen && scoreFlight == null &&
                             !lyricStyleEditorOpen && !titleStyleEditorOpen &&
+                            !backgroundEditorOpen &&
                             !vinylSongPickOpen,
                         onTransitionRunningChange = { vinylBusy = it },
                         onCommitSkip = { dir ->
@@ -1421,20 +1550,20 @@ internal fun LandscapePlayerBody(
                             }
                         },
                         onSettledTrackChange = { vinylSettledTrack = it },
-                        modifier = mod.onGloballyPositioned { coords ->
-                            val b = coords.boundsInRoot()
-                            mainVinylCenterRoot = Offset(
-                                b.left + b.width / 2f,
-                                b.top + b.height / 2f,
-                            )
-                            mainVinylSizePx = minOf(b.width, b.height)
-                        },
+                        modifier = mod
+                            .playerExpandAnchor(PlayerExpandSlot.FullVinyl)
+                            .onGloballyPositioned { coords ->
+                                val b = coords.boundsInRoot()
+                                mainVinylCenterRoot = Offset(
+                                    b.left + b.width / 2f,
+                                    b.top + b.height / 2f,
+                                )
+                                mainVinylSizePx = minOf(b.width, b.height)
+                            },
                         fullCover = displayPrefs.vinylFullCover,
                         centerRadiusFrac = displayPrefs.vinylCenterRadiusFrac,
                         outerScale = vinylOuterScale,
-                        plateColors = rememberAnimatedVinylPlateColors(
-                            displayPrefs.vinylPlateColors(),
-                        ),
+                        plateColors = plateForStage,
                         prevEnterSlidePx = prevEnterSlidePx,
                         suppressEnterTransition = suppressVinylEnter,
                         gestureDamping = displayPrefs.vinylGestureDamping,
@@ -1453,7 +1582,8 @@ internal fun LandscapePlayerBody(
                     !editorVinylCentered &&
                     !lyricSelectOpen &&
                     !lyricStyleEditorOpen &&
-                    !titleStyleEditorOpen
+                    !titleStyleEditorOpen &&
+                    !backgroundEditorOpen
                 val pluginEngine =
                     (LocalContext.current.applicationContext as ZMusicApplication).pluginEngine
                 // Entering：无叠层，主盘清晰居中；Stacking 起叠层盘在蒙版上接替，主盘隐藏
@@ -1469,7 +1599,7 @@ internal fun LandscapePlayerBody(
                 // 交接期禁止交叉淡入：主盘瞬时显隐，由交接盘不透明盖住
                 val pickMainAlpha = if (hideMainForPickTarget) 0f else 1f
 
-                // 单一黑胶：宿主尺寸固定，整体/外圈均绕圆心缩放，避免改 size 导致圆心漂移
+                // 宿主宽度固定；盘面边长写入 layout（含整体大小），展开锚点才能吃到横屏个性化。
                 Box(
                     Modifier
                         .fillMaxSize()
@@ -1485,17 +1615,12 @@ internal fun LandscapePlayerBody(
                     ) {
                         VinylDisc(
                             Modifier
-                                .offset(x = ox, y = oy)
+                                .offset(x = ox, y = oy + vinylShiftY)
                                 .graphicsLayer {
-                                    // 原 bottom padding 会把缩放原点抬离圆心；改为平移，原点保持盘心
-                                    translationY = layoutShiftY - bottomPadPx * 0.5f
-                                    scaleX = vinylScale * vinylSizeScale
-                                    scaleY = vinylScale * vinylSizeScale
-                                    transformOrigin = TransformOrigin.Center
                                     clip = false
                                     alpha = pickMainAlpha
                                 }
-                                .size(disc)
+                                .requiredSize(vinylVisualSide)
                                 .then(
                                     Modifier.vinylLightTapGestures(
                                         onLongPress = {
@@ -1558,6 +1683,8 @@ internal fun LandscapePlayerBody(
                 unplayedStyle = displayPrefs.lyricUnplayedStyle,
                 onLyricBandCoords = { lyricsBandCoords = it },
                 scrollFrozen = lyricStyleSnapshot != null,
+                clockRunning = isPlaying && playWhenReady && !buffering && !loadPending &&
+                    !sliderDragging && lyricStyleSnapshot == null,
                 modifier = Modifier
                     .weight(0.64f)
                     .fillMaxHeight()
@@ -1569,22 +1696,18 @@ internal fun LandscapePlayerBody(
             )
         }
 
-        // 标题信息层：歌名 / 制作人 / 歌单；水平对齐可切换且可打断
+        // 标题信息层：歌名 / 歌手；水平对齐可切换且可打断
         LandscapeAlignedSongMeta(
             track = track,
-            sourceTitle = sourceTitle,
-            onSourceClick = onSourceClick,
             onArtistClick = onArtistClick,
             onRevealControls = { revealControls() },
             titleAlign = displayPrefs.titleAlign,
             songMetaTopPad = songMetaTopPad,
             titleOffsetYDp = displayPrefs.titleOffsetYDp,
             titleNameColor = displayPrefs.titleNameColor(),
-            titleArtistColor = displayPrefs.titleArtistColor(),
-            titleSourceColor = displayPrefs.titleSourceColor(),
+            titleArtistColor = displayPrefs.titleSourceColor(),
             titleNameFontScale = displayPrefs.titleNameStyle.sanitizedFontScale(),
-            titleArtistFontScale = displayPrefs.titleArtistStyle.sanitizedFontScale(),
-            titleSourceFontScale = displayPrefs.titleSourceStyle.sanitizedFontScale(),
+            titleArtistFontScale = displayPrefs.titleSourceStyle.sanitizedFontScale(),
             chromeSidePad = chromeSidePad,
             vinylCenterX = vinylCenterX,
             lyricsCenterX = lyricsCenterX,
@@ -1607,7 +1730,7 @@ internal fun LandscapePlayerBody(
                         closeSettings()
                     }
                 },
-                enabled = settingsOpen,
+                enabled = settingsOpen && !backgroundEditorOpen,
                 modifier = Modifier
                     .fillMaxSize()
                     .zIndex(8f)
@@ -1634,6 +1757,7 @@ internal fun LandscapePlayerBody(
                     onOpenVinylColorEditor = { openVinylColorEditor() },
                     onOpenLyricStyleEditor = { openLyricStyleEditor() },
                     onOpenTitleStyleEditor = { openTitleStyleEditor() },
+                    onOpenCustomBackgroundEditor = { openCustomBackgroundEditor() },
                     hazeNonce = hazeNonce,
                     enableRealtimeHaze = true,
                     showPanelBorder = true,
@@ -1948,6 +2072,18 @@ internal fun LandscapePlayerBody(
 
         } // blankGestures：播放内容 + 设置/曲谱等叠层
 
+        CustomBackgroundEditorOverlay(
+            open = backgroundEditorOpen,
+            prefs = displayPrefs,
+            sampleTrack = track,
+            onPrefsChange = onDisplayPrefsChange,
+            onDismiss = { closeCustomBackgroundEditor() },
+            landscape = true,
+            modifier = Modifier
+                .fillMaxSize()
+                .zIndex(50f),
+        )
+
         if (showBar || chromeT > 0.001f) {
             val transportDocked = displayPrefs.transportDocked
             val insetDp = displayPrefs.transportBottomInsetDp
@@ -1963,19 +2099,20 @@ internal fun LandscapePlayerBody(
             } else {
                 RoundedCornerShape(14.dp)
             }
-            Box(
-                Modifier
+            LandscapeExpandLinkedLayer(
+                chromeT = chromeT,
+                barSlidePx = barSlidePx,
+                uiScale = uiScale,
+                origin = TransformOrigin(0.5f, 1f),
+                slideFromBottom = true,
+                modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .zIndex(40f)
-                    .graphicsLayer {
-                        translationY = (1f - chromeT) * barSlidePx
-                        scaleX = uiScale
-                        scaleY = uiScale
-                        transformOrigin = TransformOrigin(0.5f, 1f)
-                    }
-                    // alpha()：淡出到 0 时不命中，避免挡住下方空白手势 / 设置层
-                    .alpha(chromeT)
+                    .zIndex(40f),
+            ) {
+            Box(
+                Modifier
+                    .fillMaxWidth()
                     .padding(
                         start = chromeSidePad,
                         end = chromeSidePad,
@@ -2051,19 +2188,21 @@ internal fun LandscapePlayerBody(
                     },
                 )
             }
+            }
 
             // 右上：退出 | 旋转锁定 | 设置（叠在 OutsideDismiss 之上，保证可点）
-            Row(
-                Modifier
+            LandscapeExpandLinkedLayer(
+                chromeT = chromeT,
+                barSlidePx = barSlidePx,
+                uiScale = uiScale,
+                origin = TransformOrigin(1f, 0f),
+                slideFromBottom = false,
+                modifier = Modifier
                     .align(Alignment.TopEnd)
                     .zIndex(40f)
-                    .padding(top = songMetaTopPad, end = chromeSidePad)
-                    .graphicsLayer {
-                        scaleX = uiScale
-                        scaleY = uiScale
-                        transformOrigin = TransformOrigin(1f, 0f)
-                    }
-                    .alpha(chromeT),
+                    .padding(top = songMetaTopPad, end = chromeSidePad),
+            ) {
+            Row(
                 horizontalArrangement = Arrangement.spacedBy(NowPlayingChromeIconGap),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -2087,6 +2226,7 @@ internal fun LandscapePlayerBody(
                         openSettings()
                     },
                 )
+            }
             }
         }
 

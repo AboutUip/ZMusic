@@ -204,12 +204,21 @@ internal fun StableCenterLyricText(
     positionMs: Long = 0L,
     unplayedColor: Color? = null,
     tracking: Boolean = false,
+    /** 并存译文：与主句同一入场层，切句两行一起抬起。 */
+    secondaryText: String? = null,
+    secondaryWords: List<LyricWord> = emptyList(),
+    secondaryStyle: TextStyle? = null,
+    secondaryMaxLines: Int = 3,
 ) {
+    val pairKey = secondaryText.orEmpty()
     var shownFocus by remember {
         mutableIntStateOf(if (instantAppear || freezeTransitions) focus else -1)
     }
     var shownText by remember {
         mutableStateOf(if (instantAppear || freezeTransitions) text else "")
+    }
+    var shownSecondary by remember {
+        mutableStateOf(if (instantAppear || freezeTransitions) pairKey else "")
     }
     val enterAlpha = remember {
         Animatable(if (instantAppear || freezeTransitions) 1f else 0f)
@@ -218,16 +227,17 @@ internal fun StableCenterLyricText(
     val density = LocalDensity.current
     // 入场时长仅在切句时采样；勿把 animMs/lineSpanMs 放进 key，
     // 否则 lead 窗口切到真实行时会重启 Effect，把未走完的 lift 瞬间 snap 成位置突变。
-    LaunchedEffect(focus, text, instantAppear, freezeTransitions) {
+    LaunchedEffect(focus, text, pairKey, instantAppear, freezeTransitions) {
         if (freezeTransitions) {
             shownFocus = focus
             shownText = text
+            shownSecondary = pairKey
             enterAlpha.snapTo(1f)
             enterLift.snapTo(0f)
             return@LaunchedEffect
         }
         // 同句：入场进行中或已结束都不要打断
-        if (focus == shownFocus && shownText == text) {
+        if (focus == shownFocus && shownText == text && shownSecondary == pairKey) {
             return@LaunchedEffect
         }
         val phaseMs = animMs.coerceIn(220, 420)
@@ -236,6 +246,7 @@ internal fun StableCenterLyricText(
         if (shownFocus < 0 && instantAppear) {
             shownFocus = focus
             shownText = text
+            shownSecondary = pairKey
             enterAlpha.snapTo(1f)
             enterLift.snapTo(0f)
             return@LaunchedEffect
@@ -243,6 +254,7 @@ internal fun StableCenterLyricText(
         // 切句只播入场：先等出场再入场会把耗时拉成两倍，相对提前量会明显滞后。
         shownFocus = focus
         shownText = text
+        shownSecondary = pairKey
         enterAlpha.snapTo(0f)
         enterLift.snapTo(liftPx)
         coroutineScope {
@@ -261,7 +273,35 @@ internal fun StableCenterLyricText(
             alpha = enterAlpha.value
             translationY = enterLift.value
         }
-    if (words.isNotEmpty() && unplayedColor != null) {
+    val pairStyle = secondaryStyle
+    if (!secondaryText.isNullOrEmpty() && pairStyle != null) {
+        Column(
+            layerModifier,
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            LyricPlainOrKaraoke(
+                text = shownText,
+                words = words,
+                positionMs = positionMs,
+                style = style,
+                unplayedColor = unplayedColor,
+                tracking = tracking && !freezeTransitions,
+                maxLines = maxLines,
+                overflow = overflow,
+            )
+            LyricPlainOrKaraoke(
+                text = shownSecondary,
+                words = secondaryWords,
+                positionMs = positionMs,
+                style = pairStyle,
+                unplayedColor = unplayedColor,
+                tracking = tracking && !freezeTransitions,
+                maxLines = secondaryMaxLines,
+                overflow = overflow,
+            )
+        }
+    } else if (words.isNotEmpty() && unplayedColor != null) {
         KaraokeLyricText(
             words = words,
             positionMs = positionMs,
@@ -281,6 +321,41 @@ internal fun StableCenterLyricText(
             overflow = overflow,
             style = style,
             modifier = layerModifier,
+        )
+    }
+}
+
+@Composable
+private fun LyricPlainOrKaraoke(
+    text: String,
+    words: List<LyricWord>,
+    positionMs: Long,
+    style: TextStyle,
+    unplayedColor: Color?,
+    tracking: Boolean,
+    maxLines: Int,
+    overflow: TextOverflow,
+) {
+    if (words.isNotEmpty() && unplayedColor != null) {
+        KaraokeLyricText(
+            words = words,
+            positionMs = positionMs,
+            playingColor = style.color,
+            unplayedColor = unplayedColor,
+            tracking = tracking,
+            style = style,
+            modifier = Modifier.fillMaxWidth(),
+            maxLines = maxLines,
+            overflow = overflow,
+        )
+    } else {
+        Text(
+            text = text,
+            maxLines = maxLines,
+            softWrap = true,
+            overflow = overflow,
+            style = style,
+            modifier = Modifier.fillMaxWidth(),
         )
     }
 }

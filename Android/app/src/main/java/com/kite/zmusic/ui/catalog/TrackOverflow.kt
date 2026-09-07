@@ -13,6 +13,7 @@ import com.kite.zmusic.ZMusicApplication
 import com.kite.zmusic.data.PlaylistSummary
 import com.kite.zmusic.data.TrackArtist
 import com.kite.zmusic.data.TrackExportException
+import com.kite.zmusic.data.TrackExportLog
 import com.kite.zmusic.data.TrackExportOptions
 import com.kite.zmusic.data.TrackRow
 import com.kite.zmusic.ui.artist.resolveTrackArtists
@@ -22,8 +23,10 @@ import com.kite.zmusic.ui.common.GlassSheetAction
 import com.kite.zmusic.ui.notice.showIslandNotice
 import com.kite.zmusic.plugin.PluginSurfaces
 import com.kite.zmusic.plugin.PluginUiTarget
-import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 @Composable
 internal fun TrackOverflowMenu(
@@ -37,6 +40,8 @@ internal fun TrackOverflowMenu(
     removeConfirmMessage: String = "这首歌会从当前歌单里拿掉，不会删除已下载的文件。",
     currentPlaylistId: Long = 0L,
     showAddToPlaylist: Boolean = true,
+    showSaveToCloud: Boolean = showAddToPlaylist,
+    extraActions: List<GlassSheetAction> = emptyList(),
     onOpenArtist: ((Long, String, String?) -> Unit)? = null,
 ) {
     var confirmRemove by remember(track?.id) { mutableStateOf(false) }
@@ -153,6 +158,30 @@ internal fun TrackOverflowMenu(
                             },
                         )
                     }
+                    if (showSaveToCloud) {
+                        add(
+                            GlassSheetAction("保存到云盘") {
+                                scope.launch {
+                                    val msg = app.cloudDiskRepository.importPublicTrack(current)
+                                    context.showIslandNotice(msg, current.coverUrl)
+                                    onDismiss()
+                                }
+                            },
+                        )
+                    }
+                    extraActions.forEach { action ->
+                        add(
+                            GlassSheetAction(
+                                label = action.label,
+                                destructive = action.destructive,
+                                coverUrl = action.coverUrl,
+                                showCover = action.showCover,
+                            ) {
+                                action.onClick()
+                                onDismiss()
+                            },
+                        )
+                    }
                     if (onOpenArtist != null) {
                         add(
                             GlassSheetAction("查看歌手") {
@@ -207,14 +236,17 @@ internal fun TrackOverflowMenu(
     }
 }
 
+private val trackExportIslandLock = Mutex()
+
 internal fun launchTrackDownload(
-    scope: CoroutineScope,
     app: ZMusicApplication,
     track: TrackRow,
     options: TrackExportOptions,
 ) {
-    scope.launch {
-        downloadOneTrack(app, track, options)
+    app.appScope.launch {
+        trackExportIslandLock.withLock {
+            downloadOneTrack(app, track, options)
+        }
     }
 }
 
@@ -224,16 +256,50 @@ internal suspend fun launchTrackDownloads(
     options: TrackExportOptions,
 ) {
     if (tracks.isEmpty()) return
-    var ok = 0
-    tracks.forEachIndexed { i, track ->
-        app.islandNoticeCenter.show("正在下载 ${i + 1}/${tracks.size}", track.coverUrl)
-        if (downloadOneTrack(app, track, options, notify = false)) ok++
+    trackExportIslandLock.withLock {
+        var ok = 0
+        try {
+            tracks.forEachIndexed { i, track ->
+                if (downloadOneTrack(
+                        app,
+                        track,
+                        options,
+                        notify = false,
+                        index = i + 1,
+                        totalTracks = tracks.size,
+                    )
+                ) {
+                    ok++
+                }
+            }
+        } finally {
+            app.islandNoticeCenter.clearSticky()
+        }
+        app.islandNoticeCenter.show(
+            if (ok == tracks.size) "已保存 ${ok} 首到 Download/ZMusic"
+            else "已保存 ${ok}/${tracks.size} 首",
+            tracks.lastOrNull()?.coverUrl,
+        )
     }
-    app.islandNoticeCenter.show(
-        if (ok == tracks.size) "已保存 ${ok} 首到 Download/ZMusic"
-        else "已保存 ${ok}/${tracks.size} 首",
-        tracks.lastOrNull()?.coverUrl,
-    )
+}
+
+private fun exportStickyMessage(
+    name: String,
+    received: Long,
+    total: Long,
+    index: Int,
+    totalTracks: Int,
+): String {
+    val head = if (totalTracks > 1) {
+        "正在下载 $index/$totalTracks · $name"
+    } else {
+        "正在下载 $name"
+    }
+    if (total > 0L) {
+        val pct = ((received * 100L) / total).toInt().coerceIn(0, 100)
+        return "$head · $pct%"
+    }
+    return head
 }
 
 private suspend fun downloadOneTrack(
@@ -241,25 +307,63 @@ private suspend fun downloadOneTrack(
     track: TrackRow,
     options: TrackExportOptions,
     notify: Boolean = true,
+    index: Int = 1,
+    totalTracks: Int = 1,
 ): Boolean {
-    if (notify) {
-        app.islandNoticeCenter.show("正在下载 ${track.name}", track.coverUrl)
-    }
+    TrackExportLog.i(
+        "ui start id=${track.id} name=${track.name} q=${options.quality.level} " +
+            "cover=${options.includeCover} lyrics=${options.includeLyrics} " +
+            "meta=${options.includeMetadata}",
+    )
     val cookie = app.sessionRepository.session.value?.cookie.orEmpty()
     if (cookie.isBlank()) {
+        TrackExportLog.w("ui no cookie id=${track.id}")
         app.islandNoticeCenter.show("请先登录", track.coverUrl)
         return false
     }
-    return runCatching { app.trackExportRepository.export(track, cookie, options) }
-        .onSuccess {
-            if (notify) {
-                app.islandNoticeCenter.show("已保存到 Download/ZMusic", track.coverUrl)
-            }
+    val notices = app.islandNoticeCenter
+    var lastPct = -1
+    fun publish(received: Long, total: Long) {
+        val pct = if (total > 0L) {
+            ((received * 100L) / total).toInt().coerceIn(0, 100)
+        } else {
+            -1
         }
-        .onFailure { e ->
-            val msg = (e as? TrackExportException)?.message?.takeIf { it.isNotBlank() }
-                ?: "下载失败"
-            app.islandNoticeCenter.show(msg, track.coverUrl)
+        if (pct == lastPct) return
+        lastPct = pct
+        notices.setSticky(
+            exportStickyMessage(track.name, received, total, index, totalTracks),
+            track.coverUrl,
+        )
+    }
+    notices.setSticky(
+        exportStickyMessage(track.name, 0L, 0L, index, totalTracks),
+        track.coverUrl,
+    )
+    return try {
+        val folder = app.trackExportRepository.export(
+            track,
+            cookie,
+            options,
+            onAudioProgress = { received, total -> publish(received, total) },
+        )
+        TrackExportLog.i("ui ok id=${track.id} folder=$folder")
+        if (notify) {
+            notices.clearSticky()
+            notices.show("已保存到 Download/ZMusic", track.coverUrl)
         }
-        .isSuccess
+        true
+    } catch (e: CancellationException) {
+        notices.clearSticky()
+        throw e
+    } catch (e: Exception) {
+        val msg = (e as? TrackExportException)?.message?.takeIf { it.isNotBlank() }
+            ?: "下载失败"
+        TrackExportLog.e("ui fail id=${track.id} notice=$msg", e)
+        if (notify) {
+            notices.clearSticky()
+            notices.show(msg, track.coverUrl)
+        }
+        false
+    }
 }

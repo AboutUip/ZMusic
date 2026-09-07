@@ -374,13 +374,7 @@ fun TitleStyleEditorOverlay(
                             onChange = onDraftNameChange,
                         )
                         TitleLineStyleSection(
-                            title = "制作人",
-                            line = TitleStyleLine.Artist,
-                            style = draftArtist,
-                            onChange = onDraftArtistChange,
-                        )
-                        TitleLineStyleSection(
-                            title = "歌单",
+                            title = "歌手",
                             line = TitleStyleLine.Source,
                             style = draftSource,
                             onChange = onDraftSourceChange,
@@ -423,7 +417,6 @@ fun TitleStyleCloneLayer(
     val morphT = if (targetSlot != null) titleStyleMorphT(t) else 0f
     val scale = uiScale.coerceIn(PlayerDisplayPrefs.UI_MIN, PlayerDisplayPrefs.UI_MAX)
     val nameSp = draftName.resolvedFontSizeSp(TitleStyleLine.Name) * scale
-    val artistSp = draftArtist.resolvedFontSizeSp(TitleStyleLine.Artist) * scale
     val sourceSp = draftSource.resolvedFontSizeSp(TitleStyleLine.Source) * scale
 
     // 轻弧线：中段上抬，避免直线平移的机械感
@@ -495,34 +488,18 @@ fun TitleStyleCloneLayer(
                 textAlign = textAlign,
             )
             Text(
-                text = snapshot.artists.uppercase(),
+                text = snapshot.artists,
                 style = TextStyle(
-                    color = draftArtist.resolvedColorFor(TitleStyleLine.Artist),
+                    color = draftSource.resolvedColorFor(TitleStyleLine.Source),
                     fontFamily = FontFamily.Monospace,
-                    fontSize = artistSp.sp,
-                    letterSpacing = 1.8.sp,
+                    fontSize = sourceSp.sp,
+                    letterSpacing = 0.55.sp,
                     textAlign = textAlign,
                 ),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 textAlign = textAlign,
             )
-            if (!snapshot.sourceTitle.isNullOrBlank()) {
-                Spacer(Modifier.height(1.dp * scale))
-                Text(
-                    text = snapshot.sourceTitle,
-                    style = TextStyle(
-                        color = draftSource.resolvedColorFor(TitleStyleLine.Source),
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = sourceSp.sp,
-                        letterSpacing = 0.55.sp,
-                        textAlign = textAlign,
-                    ),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    textAlign = textAlign,
-                )
-            }
         }
     }
 }

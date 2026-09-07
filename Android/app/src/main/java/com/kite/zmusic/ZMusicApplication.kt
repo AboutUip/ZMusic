@@ -54,6 +54,8 @@ class ZMusicApplication : Application() {
     val persistentPlaybackStore: PersistentPlaybackStore get() = container.persistentPlaybackStore
     val predictiveBackStore get() = container.predictiveBackStore
     val landscapeModeStore get() = container.landscapeModeStore
+    val splashAccelStore get() = container.splashAccelStore
+    val miniQuickSkipStore get() = container.miniQuickSkipStore
     val lyricRenderStore: LyricRenderStore get() = container.lyricRenderStore
     val lyricOverlayStore: LyricOverlayStore get() = container.lyricOverlayStore
     val chromeGlassStore: ChromeGlassStore get() = container.chromeGlassStore
@@ -83,6 +85,7 @@ class ZMusicApplication : Application() {
     val catalogRepository get() = container.catalogRepository
     val commentsRepository get() = container.commentsRepository
     val searchRepository get() = container.searchRepository
+    val cloudDiskRepository get() = container.cloudDiskRepository
     val artistRepository get() = container.artistRepository
     val userRepository get() = container.userRepository
     val networkMode get() = container.networkMode
@@ -95,7 +98,7 @@ class ZMusicApplication : Application() {
 
     private lateinit var queueSync: PlaybackQueueSync
     private lateinit var lyricOverlayController: LyricOverlayController
-    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    internal val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     override fun onCreate() {
         super.onCreate()
@@ -163,7 +166,8 @@ class ZMusicApplication : Application() {
             combine(
                 playbackBridge.ui,
                 likedPlaylistRepository.snapshot,
-            ) { ui, _ ->
+                likedPlaylistRepository.likeStatus,
+            ) { ui, _, _ ->
                 val liked = ui.currentTrack?.let { likedPlaylistRepository.isLiked(it.id) }
                 PluginPlaybackSnapshot.from(ui, liked)
             }.collect { snap ->

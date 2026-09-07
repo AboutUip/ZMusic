@@ -249,6 +249,12 @@ class PlaybackBridge(
 
     fun playIndex(index: Int) = runOnCoordinator { it.playIndex(index) }
 
+    /** 插到当前曲后面并立刻播放；无队列时单曲起播。 */
+    fun playInsertAfterCurrent(track: TrackRow) {
+        musicWillPlay?.invoke()
+        runOnCoordinator { it.playInsertAfterCurrent(track) }
+    }
+
     /** 歌单缓存补全后同步扩展当前播放队列（同源 playlistId）。 */
     fun expandQueueFromSourcePlaylist(playlistId: Long, tracks: List<TrackRow>) {
         if (_ui.value.intelligenceActive) return

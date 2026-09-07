@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -29,7 +28,6 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -38,7 +36,6 @@ import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.util.VelocityTracker
-import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
@@ -50,7 +47,6 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.unit.sp
 import com.kite.zmusic.plugin.PluginDebugProbe
 import com.kite.zmusic.ui.icons.ZIcons
@@ -69,16 +65,12 @@ fun FloatingTabDock(
     onDestination: (MainDestination) -> Unit,
     onDragByTabs: (Float) -> Unit,
     onDragSettled: (velocityTabsPerSec: Float, startPage: Int) -> Unit,
-    compactProgress: () -> Float,
     backdrop: Backdrop,
     modifier: Modifier = Modifier,
     landscape: Boolean = false,
     showProbeTab: Boolean = false,
     onOpenProbe: () -> Unit = {},
 ) {
-    val density = LocalDensity.current
-    val expandedHpx = with(density) { FloatingDockHeight.roundToPx() }
-    val compactHpx = with(density) { FloatingDockCompactHeight.roundToPx() }
     val shape = RoundedCornerShape(percent = 50)
     val wellShape = RoundedCornerShape(percent = 50)
     val destCount = MainDestination.entries.size
@@ -96,17 +88,8 @@ fun FloatingTabDock(
                     else -> 320.dp
                 },
             )
-            .mainLiquidGlass(backdrop, shape)
-            .layout { measurable, constraints ->
-                val p = compactProgress().coerceIn(0f, 1f)
-                val h = (expandedHpx + (compactHpx - expandedHpx) * p).roundToInt().coerceAtLeast(0)
-                val placeable = measurable.measure(
-                    constraints.copy(minHeight = h, maxHeight = h),
-                )
-                layout(placeable.width, h) {
-                    placeable.placeRelative(0, 0)
-                }
-            },
+            .fillMaxHeight()
+            .mainLiquidGlass(backdrop, shape),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -120,7 +103,6 @@ fun FloatingTabDock(
                 showProbeTab = showProbeTab,
                 itemW = itemW,
                 itemWpx = itemWpx,
-                compactProgress = compactProgress,
                 backdrop = backdrop,
                 wellShape = wellShape,
                 onDestination = onDestination,
@@ -141,7 +123,6 @@ private fun DockSelectionLayer(
     showProbeTab: Boolean,
     itemW: Dp,
     itemWpx: Float,
-    compactProgress: () -> Float,
     backdrop: Backdrop,
     wellShape: RoundedCornerShape,
     onDestination: (MainDestination) -> Unit,
@@ -177,7 +158,6 @@ private fun DockSelectionLayer(
                 icon = ZIcons.dock(dest),
                 selection = selection,
                 index = index,
-                compactProgress = compactProgress,
                 modifier = Modifier.weight(1f).fillMaxHeight(),
             )
         }
@@ -187,7 +167,6 @@ private fun DockSelectionLayer(
                 icon = ZIcons.BugReport,
                 selection = selection,
                 index = destCount,
-                compactProgress = compactProgress,
                 modifier = Modifier.weight(1f).fillMaxHeight(),
             )
         }
@@ -245,14 +224,11 @@ private fun DockItem(
     icon: ImageVector,
     selection: Float,
     index: Int,
-    compactProgress: () -> Float,
     modifier: Modifier = Modifier,
 ) {
-    val progress = compactProgress().coerceIn(0f, 1f)
     val proximity = (1f - abs(selection - index)).coerceIn(0f, 1f)
     val selected = proximity > 0.5f
     val tint = lerp(TextTheme.DockInactive, TextTheme.DockActive, proximity)
-    val labelH = lerp(14.dp, 0.dp, progress)
     Column(
         modifier.semantics {
             role = Role.Tab
@@ -268,20 +244,15 @@ private fun DockItem(
             tint = tint,
             modifier = Modifier.size(22.dp),
         )
-        if (progress < 0.92f) {
-            Text(
-                text = label,
-                style = TextStyle(
-                    color = tint,
-                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-                    fontSize = 10.sp,
-                    letterSpacing = 0.2.sp,
-                ),
-                modifier = Modifier
-                    .padding(top = 2.dp)
-                    .height(labelH)
-                    .alpha((1f - progress).coerceIn(0f, 1f)),
-            )
-        }
+        Text(
+            text = label,
+            style = TextStyle(
+                color = tint,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                fontSize = 10.sp,
+                letterSpacing = 0.2.sp,
+            ),
+            modifier = Modifier.padding(top = 2.dp),
+        )
     }
 }

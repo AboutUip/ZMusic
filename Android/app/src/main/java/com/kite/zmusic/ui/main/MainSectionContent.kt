@@ -61,6 +61,7 @@ fun MainSectionContent(
             isLandscape = isLandscape,
             contentBottomInset = contentBottomInset,
             onOpenOverlay = onOpenOverlay,
+            onPlaySong = onPlaySong,
             modifier = pageMod,
         )
         return
@@ -106,10 +107,11 @@ private fun OfflineSectionPage(
     isLandscape: Boolean,
     contentBottomInset: Dp,
     onOpenOverlay: (MainOverlay) -> Unit,
+    onPlaySong: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val padH = mainContentPadH(isLandscape)
-    val openCommunityLogin = rememberCommunityLoginOpener()
+    val openCommunityLogin = rememberCommunityLoginOpener(onPlaySong = onPlaySong)
     Column(modifier.fillMaxSize()) {
         if (!isLandscape) {
             val headerMod = Modifier

@@ -59,7 +59,7 @@ data class VinylCustomPreset(
 )
 
 /**
- * 竖屏自定义背景预设位。
+ * 播放页自定义背景预设位（横/竖屏各一套文件与偏好）。
  * - [locked]=true 且有图：可启用
  * - 未锁定：可编辑，不可作为真实背景启用
  */
@@ -258,7 +258,7 @@ enum class TitleColorSlot {
     }
 }
 
-/** 歌名 / 制作人 / 歌单一行的颜色与字号样式。 */
+/** 歌名 / 歌手 / 历史歌单一行的颜色与字号样式。 */
 data class TitleLineStyle(
     val colorSlot: TitleColorSlot = TitleColorSlot.DEFAULT,
     val preset0Argb: Int = 0xFFF8FAFC.toInt(),
@@ -438,15 +438,15 @@ data class PlayerDisplayPrefs(
      * 竖屏 / 横屏各自一份偏好，互不影响。
      */
     val keepScreenOn: Boolean = false,
-    /** 标题信息（歌名/制作人/歌单）水平对齐 */
+    /** 标题信息（歌名/歌手）水平对齐 */
     val titleAlign: TitleAlignMode = TitleAlignMode.VINYL,
     /** 标题垂直偏移（dp），负上正下；叠在默认上边距之上 */
     val titleOffsetYDp: Float = 0f,
     /** 歌名颜色样式 */
     val titleNameStyle: TitleLineStyle = TitleLineStyle.NameDefault,
-    /** 制作人颜色样式 */
+    /** 制作人颜色样式（保留读写，横屏歌手改走 [titleSourceStyle]） */
     val titleArtistStyle: TitleLineStyle = TitleLineStyle.ArtistDefault,
-    /** 歌单/来源颜色样式 */
+    /** 横屏歌手颜色样式（原歌单行档位，配置键不变） */
     val titleSourceStyle: TitleLineStyle = TitleLineStyle.SourceDefault,
     /**
      * 黑胶手势阻尼（切歌灵敏度）：默认 0.5 与历史阈值一致；
@@ -459,11 +459,11 @@ data class PlayerDisplayPrefs(
     val lyricPlayedStyle: LyricRoleStyle = LyricRoleStyle.PlayedDefault,
     /** 横屏「未播放」歌词样式 */
     val lyricUnplayedStyle: LyricRoleStyle = LyricRoleStyle.UnplayedDefault,
-    /** 竖屏：自定义背景总开关 */
+    /** 自定义背景总开关（横/竖屏各一份偏好） */
     val customBackgroundEnabled: Boolean = false,
-    /** 竖屏：5 档背景预设 */
+    /** 5 档背景预设（横/竖屏文件与偏好隔离） */
     val backgroundPresets: List<PlayerBackgroundPreset> = defaultBackgroundPresets(),
-    /** 竖屏：当前选用的背景预设位 0..4（仅 usable 时真正铺底） */
+    /** 当前选用的背景预设位 0..4（仅 usable 时真正铺底） */
     val backgroundPresetIndex: Int = 0,
     /**
      * 竖屏歌词页背景透明度：0 .. 1。
@@ -489,10 +489,16 @@ data class PlayerDisplayPrefs(
     /** 清屏范围：最底部工具栏 */
     val portraitLyricAutoClearToolbar: Boolean = true,
     /**
-     * 竖屏：有翻译歌词时只显示译文，不再显示原文。
-     * 无译文的歌曲仍走原歌词。
+     * 竖屏：有翻译歌词时显示译文。
+     * 无译文的歌曲仍走原歌词。默认覆盖原文；[portraitLyricTranslationCoexist] 为并存。
      */
     val portraitLyricPreferTranslation: Boolean = false,
+    /** 竖屏翻译：与原文并存（默认 false = 覆盖原歌词） */
+    val portraitLyricTranslationCoexist: Boolean = false,
+    /** 并存时原文在上（false 则原文在下） */
+    val portraitLyricOriginalOnTop: Boolean = true,
+    /** 并存时其余行也显示译文；关闭则只有播放中显示译文 */
+    val portraitLyricOthersShowTranslation: Boolean = true,
     /** 竖屏：封面态进度条上方显示预览歌词 */
     val portraitPreviewLyricEnabled: Boolean = false,
     /** 预览歌词行数（含当前播放行）：1 .. 3 */
@@ -1013,6 +1019,18 @@ class PlayerDisplayPrefsStore(
                 KEY_PORTRAIT_LYRIC_PREFER_TRANSLATION,
                 false,
             ),
+            portraitLyricTranslationCoexist = prefs.safeBoolean(
+                KEY_PORTRAIT_LYRIC_TRANSLATION_COEXIST,
+                false,
+            ),
+            portraitLyricOriginalOnTop = prefs.safeBoolean(
+                KEY_PORTRAIT_LYRIC_ORIGINAL_ON_TOP,
+                true,
+            ),
+            portraitLyricOthersShowTranslation = prefs.safeBoolean(
+                KEY_PORTRAIT_LYRIC_OTHERS_SHOW_TRANSLATION,
+                true,
+            ),
             portraitPreviewLyricEnabled = prefs.safeBoolean(
                 KEY_PORTRAIT_PREVIEW_LYRIC_ENABLED,
                 false,
@@ -1117,6 +1135,18 @@ class PlayerDisplayPrefsStore(
                     KEY_PORTRAIT_LYRIC_PREFER_TRANSLATION,
                     v.portraitLyricPreferTranslation,
                 )
+                .putBoolean(
+                    KEY_PORTRAIT_LYRIC_TRANSLATION_COEXIST,
+                    v.portraitLyricTranslationCoexist,
+                )
+                .putBoolean(
+                    KEY_PORTRAIT_LYRIC_ORIGINAL_ON_TOP,
+                    v.portraitLyricOriginalOnTop,
+                )
+                .putBoolean(
+                    KEY_PORTRAIT_LYRIC_OTHERS_SHOW_TRANSLATION,
+                    v.portraitLyricOthersShowTranslation,
+                )
                 .putBoolean(KEY_PORTRAIT_PREVIEW_LYRIC_ENABLED, v.portraitPreviewLyricEnabled)
                 .putInt(KEY_PORTRAIT_PREVIEW_LYRIC_COUNT, v.portraitPreviewLyricCount)
                 .putInt(KEY_PORTRAIT_PREVIEW_LYRIC_PLAYING_ARGB, v.portraitPreviewLyricPlayingArgb)
@@ -1203,6 +1233,12 @@ class PlayerDisplayPrefsStore(
             "portrait_lyric_auto_clear_toolbar"
         private const val KEY_PORTRAIT_LYRIC_PREFER_TRANSLATION =
             "portrait_lyric_prefer_translation"
+        private const val KEY_PORTRAIT_LYRIC_TRANSLATION_COEXIST =
+            "portrait_lyric_translation_coexist"
+        private const val KEY_PORTRAIT_LYRIC_ORIGINAL_ON_TOP =
+            "portrait_lyric_original_on_top"
+        private const val KEY_PORTRAIT_LYRIC_OTHERS_SHOW_TRANSLATION =
+            "portrait_lyric_others_show_translation"
         private const val KEY_PORTRAIT_PREVIEW_LYRIC_ENABLED = "portrait_preview_lyric_enabled"
         private const val KEY_PORTRAIT_PREVIEW_LYRIC_COUNT = "portrait_preview_lyric_count"
         private const val KEY_PORTRAIT_PREVIEW_LYRIC_PLAYING_ARGB =

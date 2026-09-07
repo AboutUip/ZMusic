@@ -38,6 +38,8 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Slider
@@ -83,6 +85,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kite.zmusic.data.PlayerBackgroundPreset
 import com.kite.zmusic.data.PlayerDisplayPrefs
+import com.kite.zmusic.data.TitleAlignMode
 import com.kite.zmusic.data.TrackRow
 import com.kite.zmusic.ui.chrome.wallpaperCanvasPlacement
 import com.kite.zmusic.ui.theme.TextTheme
@@ -98,8 +101,11 @@ private val BgEditorRowBg = Color.Black.copy(alpha = 0.42f)
 private val BgEditorCurve = CubicBezierEasing(0.16f, 1.02f, 0.3f, 1f)
 private val BgEditorShadow = Shadow(color = Color.Black.copy(alpha = 0.7f), blurRadius = 10f)
 
-internal fun playerBackgroundDir(context: Context): File =
-    File(context.filesDir, "player_backgrounds").also { it.mkdirs() }
+internal fun playerBackgroundDir(context: Context, landscape: Boolean = false): File =
+    File(
+        context.filesDir,
+        if (landscape) "player_backgrounds_landscape" else "player_backgrounds",
+    ).also { it.mkdirs() }
 
 /** 清理某预设位的旧背景文件（含历史固定名与带时间戳的新名）。 */
 private fun clearPresetBackgroundFiles(dir: File, index: Int, keep: File? = null) {
@@ -116,9 +122,10 @@ internal suspend fun copyBackgroundImageToPreset(
     context: Context,
     uri: Uri,
     index: Int,
+    landscape: Boolean = false,
 ): String? = withContext(Dispatchers.IO) {
     runCatching {
-        val dir = playerBackgroundDir(context)
+        val dir = playerBackgroundDir(context, landscape)
         // 每次新文件名：同路径覆盖时 Bitmap/Compose 会继续显示旧图
         val out = File(dir, "preset_${index}_${System.currentTimeMillis()}.jpg")
         context.contentResolver.openInputStream(uri)?.use { input ->
@@ -231,6 +238,15 @@ fun PlayerCustomBackgroundLayer(
                     .background(Color.Black.copy(alpha = 0.28f * t)),
             )
         }
+        val expand = LocalPlayerExpand.current
+        val expandP = if (expand != null && expand.mounted) expand.visualProgress else 1f
+        if (expand != null && expand.mounted && expandP < PlayerExpandHandoff) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(expandCardFromColor().copy(alpha = (1f - expandP).coerceIn(0f, 1f))),
+            )
+        }
     }
 }
 
@@ -283,6 +299,7 @@ fun CustomBackgroundEditorOverlay(
     onPrefsChange: (PlayerDisplayPrefs) -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
+    landscape: Boolean = false,
 ) {
     val progress = remember { Animatable(0f) }
     LaunchedEffect(open) {
@@ -324,7 +341,7 @@ fun CustomBackgroundEditorOverlay(
     ) { uri ->
         if (uri == null || draft.locked) return@rememberLauncherForActivityResult
         scope.launch {
-            val path = copyBackgroundImageToPreset(context, uri, editIndex) ?: return@launch
+            val path = copyBackgroundImageToPreset(context, uri, editIndex, landscape) ?: return@launch
             val updated = draft.copy(imagePath = path, locked = false)
             draft = updated
             // 未锁定也写入 prefs：预览/缩略图立即刷新，且路径变更触发重新解码
@@ -546,7 +563,7 @@ fun CustomBackgroundEditorOverlay(
                     onClick = {
                         scope.launch {
                             withContext(Dispatchers.IO) {
-                                clearPresetBackgroundFiles(playerBackgroundDir(context), editIndex)
+                                clearPresetBackgroundFiles(playerBackgroundDir(context, landscape), editIndex)
                             }
                             draft = PlayerBackgroundPreset()
                             draftOx = 0.5f
@@ -595,18 +612,32 @@ fun CustomBackgroundEditorOverlay(
 
             Spacer(Modifier.height(12.dp))
 
-            // ── 下方预览区：真实机身比例 + 预览坐标系内等比联动（无 graphicsLayer 整页缩放） ──
-            PortraitBackgroundPreview(
-                path = draft.imagePath.takeIf { it.isNotBlank() },
-                offsetX = draftOx,
-                offsetY = draftOy,
-                scale = draftScale,
-                sampleTrack = sampleTrack,
-                displayPrefs = prefs,
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth(),
-            )
+            // ── 下方预览区：真机比例构图；横竖屏各自按播放页布局占位 ──
+            if (landscape) {
+                LandscapeBackgroundPreview(
+                    path = draft.imagePath.takeIf { it.isNotBlank() },
+                    offsetX = draftOx,
+                    offsetY = draftOy,
+                    scale = draftScale,
+                    sampleTrack = sampleTrack,
+                    displayPrefs = prefs,
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                )
+            } else {
+                PortraitBackgroundPreview(
+                    path = draft.imagePath.takeIf { it.isNotBlank() },
+                    offsetX = draftOx,
+                    offsetY = draftOy,
+                    scale = draftScale,
+                    sampleTrack = sampleTrack,
+                    displayPrefs = prefs,
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                )
+            }
         }
     }
 }
@@ -703,6 +734,312 @@ private fun BgSliderRow(
             colors = colors,
             modifier = Modifier.height(28.dp),
         )
+    }
+}
+
+@Composable
+private fun LandscapeBackgroundPreview(
+    path: String?,
+    offsetX: Float,
+    offsetY: Float,
+    scale: Float,
+    sampleTrack: TrackRow?,
+    displayPrefs: PlayerDisplayPrefs,
+    modifier: Modifier = Modifier,
+) {
+    val configuration = LocalConfiguration.current
+    val density = LocalDensity.current
+    val screenW = configuration.screenWidthDp.dp.coerceAtLeast(1.dp)
+    val screenH = configuration.screenHeightDp.dp.coerceAtLeast(1.dp)
+    val vinylSizeScale = displayPrefs.vinylSizeScale
+        .coerceIn(PlayerDisplayPrefs.VINYL_SIZE_SCALE_MIN, PlayerDisplayPrefs.VINYL_SIZE_SCALE_MAX)
+    val vinylOuterScale = displayPrefs.vinylOuterScale
+        .coerceIn(PlayerDisplayPrefs.VINYL_OUTER_SCALE_MIN, PlayerDisplayPrefs.VINYL_OUTER_SCALE_MAX)
+    val vinylOffsetXDp = displayPrefs.vinylOffsetXDp
+        .coerceIn(PlayerDisplayPrefs.VINYL_OFFSET_MIN, PlayerDisplayPrefs.VINYL_OFFSET_MAX)
+    val vinylOffsetYDp = displayPrefs.vinylOffsetYDp
+        .coerceIn(PlayerDisplayPrefs.VINYL_OFFSET_Y_MIN, PlayerDisplayPrefs.VINYL_OFFSET_Y_MAX)
+    val lyricOffsetXDp = displayPrefs.lyricOffsetXDp
+        .coerceIn(PlayerDisplayPrefs.LYRIC_OFFSET_MIN, PlayerDisplayPrefs.LYRIC_OFFSET_MAX)
+    val titleOffsetYDp = displayPrefs.titleOffsetYDp
+        .coerceIn(PlayerDisplayPrefs.TITLE_OFFSET_Y_MIN, PlayerDisplayPrefs.TITLE_OFFSET_Y_MAX)
+    val prefsUiScale = displayPrefs.uiScale
+        .coerceIn(PlayerDisplayPrefs.UI_MIN, PlayerDisplayPrefs.UI_MAX)
+    val nameFontScale = displayPrefs.titleNameStyle.sanitizedFontScale()
+    val artistFontScale = displayPrefs.titleSourceStyle.sanitizedFontScale()
+    val titleAlign = displayPrefs.titleAlign
+    val centerTitle = titleAlign == TitleAlignMode.VINYL ||
+        titleAlign == TitleAlignMode.CENTER ||
+        titleAlign == TitleAlignMode.LYRICS
+    val plate = displayPrefs.vinylPlateColors()
+    val nameColor = displayPrefs.titleNameColor()
+    val artistColor = displayPrefs.titleSourceColor()
+
+    BoxWithConstraints(modifier, contentAlignment = Alignment.Center) {
+        val frameAspect = screenW / screenH
+        val fitByHeight = maxHeight * frameAspect <= maxWidth
+        val previewW = if (fitByHeight) maxHeight * frameAspect else maxWidth
+        val previewH = if (fitByHeight) maxHeight else maxWidth / frameAspect
+        val uiScale = (previewW / screenW).coerceAtLeast(0.01f)
+        val frameShape = RoundedCornerShape((16f * uiScale).coerceAtLeast(8f).dp)
+        val chromeSidePad = 28.dp * uiScale
+        val rowGap = 4.dp * uiScale
+        val leftColW = (previewW - rowGap) * 0.36f
+        val discBudget = minOf(leftColW, previewH)
+        val discBase = (discBudget * 0.92f).coerceIn(
+            minOf(132.dp * uiScale, discBudget),
+            minOf(252.dp * uiScale, discBudget),
+        )
+        val discExpanded = (discBase * 1.14f)
+            .coerceAtMost(discBudget * 0.99f)
+            .coerceAtMost(minOf(286.dp * uiScale, discBudget))
+        val vinylSide = (discExpanded * vinylSizeScale).coerceAtMost(discBudget)
+        val vinylCx = leftColW - discExpanded / 2 + vinylOffsetXDp.dp * uiScale
+        val lyricsColStart = leftColW + rowGap
+        val lyricsColWidth = (previewW - leftColW - rowGap - 4.dp * uiScale).coerceAtLeast(0.dp)
+        val lyricsCenterX = lyricsColStart + lyricsColWidth / 2 + lyricOffsetXDp.dp * uiScale
+        val screenCenterX = previewW / 2
+        val titleMaxWidth = (discExpanded * 1.08f).coerceAtMost(previewW * 0.52f)
+        val songMetaTopPad = ((leftColW - discExpanded) / 2).coerceAtLeast(6.dp * uiScale)
+        val titleStartX = when (titleAlign) {
+            TitleAlignMode.LEFT -> chromeSidePad
+            TitleAlignMode.VINYL -> (vinylCx - titleMaxWidth / 2).coerceAtLeast(0.dp)
+            TitleAlignMode.CENTER -> (screenCenterX - titleMaxWidth / 2).coerceAtLeast(0.dp)
+            TitleAlignMode.LYRICS -> (lyricsCenterX - titleMaxWidth / 2).coerceAtLeast(0.dp)
+        }
+        val navPad = with(density) {
+            WindowInsets.navigationBars.getBottom(this).toDp()
+        } * uiScale
+
+        Box(
+            Modifier
+                .size(previewW, previewH)
+                .clip(frameShape)
+                .border(1.dp, Color.White.copy(alpha = 0.22f), frameShape)
+                .background(Color(0xFF0A0C12)),
+        ) {
+            if (!path.isNullOrBlank()) {
+                LocalPathImage(
+                    path = path,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            scaleX = scale
+                            scaleY = scale
+                            translationX = (offsetX - 0.5f) * size.width * 0.55f
+                            translationY = (offsetY - 0.5f) * size.height * 0.55f
+                        },
+                    contentScale = ContentScale.Fit,
+                )
+            } else {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.horizontalGradient(
+                                listOf(Color(0xFF151820), Color(0xFF090B12)),
+                            ),
+                        ),
+                )
+            }
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.22f)))
+
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        scaleX = prefsUiScale
+                        scaleY = prefsUiScale
+                        transformOrigin = TransformOrigin(0.5f, 0.5f)
+                        clip = false
+                    },
+            ) {
+                Column(
+                    Modifier
+                        .align(Alignment.TopStart)
+                        .padding(top = songMetaTopPad)
+                        .offset(x = titleStartX, y = titleOffsetYDp.dp * uiScale)
+                        .widthIn(max = titleMaxWidth),
+                    horizontalAlignment = if (centerTitle) Alignment.CenterHorizontally else Alignment.Start,
+                ) {
+                    Text(
+                        text = sampleTrack?.name.orEmpty().ifBlank { "预览" },
+                        style = TextStyle(
+                            color = nameColor,
+                            fontFamily = FontFamily.SansSerif,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = (16f * uiScale * nameFontScale).sp,
+                            textAlign = if (centerTitle) TextAlign.Center else TextAlign.Start,
+                            shadow = BgEditorShadow,
+                        ),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = sampleTrack?.artists.orEmpty().ifBlank { "歌手" },
+                        style = TextStyle(
+                            color = artistColor.copy(alpha = 0.78f),
+                            fontFamily = FontFamily.SansSerif,
+                            fontWeight = FontWeight.Medium,
+                            fontSize = (12f * uiScale * artistFontScale).sp,
+                            textAlign = if (centerTitle) TextAlign.Center else TextAlign.Start,
+                            shadow = BgEditorShadow,
+                        ),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Row(
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = songMetaTopPad, end = chromeSidePad),
+                    horizontalArrangement = Arrangement.spacedBy(NowPlayingChromeIconGap * uiScale),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    repeat(3) {
+                        Box(
+                            Modifier
+                                .size(
+                                    width = NowPlayingChromeIconWidth * uiScale,
+                                    height = NowPlayingChromeIconHeight * uiScale,
+                                )
+                                .clip(RoundedCornerShape(10.dp * uiScale))
+                                .background(Color.White.copy(alpha = 0.12f)),
+                        )
+                    }
+                }
+                if (sampleTrack != null) {
+                    Box(
+                        Modifier
+                            .align(Alignment.CenterStart)
+                            .offset(
+                                x = (vinylCx - vinylSide / 2).coerceAtLeast(0.dp),
+                                y = vinylOffsetYDp.dp * uiScale,
+                            )
+                            .size(vinylSide),
+                    ) {
+                        VinylDiscFace(
+                            track = sampleTrack,
+                            spinDeg = 0f,
+                            spinning = false,
+                            fullCover = displayPrefs.vinylFullCover,
+                            centerRadiusFrac = displayPrefs.vinylCenterRadiusFrac,
+                            outerScale = vinylOuterScale,
+                            plateColors = plate,
+                            modifier = Modifier.fillMaxSize(),
+                            animateStyleChanges = false,
+                        )
+                    }
+                }
+                Column(
+                    Modifier
+                        .align(Alignment.CenterEnd)
+                        .padding(end = chromeSidePad)
+                        .offset(x = lyricOffsetXDp.dp * uiScale)
+                        .width(lyricsColWidth.coerceAtMost(previewW * 0.52f)),
+                    verticalArrangement = Arrangement.spacedBy(10.dp * uiScale),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    repeat(3) { i ->
+                        Box(
+                            Modifier
+                                .fillMaxWidth(if (i == 1) 0.86f else 0.62f)
+                                .height(if (i == 1) 14.dp * uiScale else 11.dp * uiScale)
+                                .clip(RoundedCornerShape(6.dp * uiScale))
+                                .background(
+                                    Color.White.copy(alpha = if (i == 1) 0.42f else 0.16f),
+                                ),
+                        )
+                    }
+                }
+                LandscapeTransportStub(
+                    uiScale = uiScale,
+                    chromeSidePad = chromeSidePad,
+                    navBottom = navPad,
+                    docked = displayPrefs.transportDocked,
+                    bottomInsetDp = displayPrefs.transportBottomInsetDp,
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun LandscapeTransportStub(
+    uiScale: Float,
+    chromeSidePad: androidx.compose.ui.unit.Dp,
+    navBottom: androidx.compose.ui.unit.Dp,
+    docked: Boolean,
+    bottomInsetDp: Float,
+    modifier: Modifier = Modifier,
+) {
+    val inset = bottomInsetDp
+        .takeIf { it.isFinite() }
+        ?.coerceIn(
+            PlayerDisplayPrefs.TRANSPORT_BOTTOM_INSET_MIN,
+            PlayerDisplayPrefs.TRANSPORT_BOTTOM_INSET_MAX,
+        ) ?: 16f
+    val bottomPad = if (docked) 0.dp else inset.dp * uiScale
+    val shape = if (docked) {
+        RoundedCornerShape(topStart = 14.dp * uiScale, topEnd = 14.dp * uiScale)
+    } else {
+        RoundedCornerShape(14.dp * uiScale)
+    }
+    val glass = Color.Black.copy(alpha = 0.22f)
+    val mark = Color.White.copy(alpha = 0.55f)
+    val dim = Color.White.copy(alpha = 0.22f)
+    Box(
+        modifier
+            .fillMaxWidth()
+            .padding(
+                start = chromeSidePad,
+                end = chromeSidePad,
+                bottom = bottomPad + navBottom.coerceAtMost(10.dp * uiScale),
+            )
+            .clip(shape)
+            .background(glass)
+            .padding(horizontal = 14.dp * uiScale, vertical = 8.dp * uiScale),
+    ) {
+        Column(Modifier.fillMaxWidth()) {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(4.dp * uiScale)
+                    .clip(RoundedCornerShape(2.dp * uiScale))
+                    .background(Color.White.copy(alpha = 0.18f)),
+            )
+            Spacer(Modifier.height(8.dp * uiScale))
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                repeat(2) {
+                    Box(
+                        Modifier
+                            .size(18.dp * uiScale)
+                            .clip(CircleShape)
+                            .background(dim),
+                    )
+                }
+                Box(
+                    Modifier
+                        .size(28.dp * uiScale)
+                        .clip(CircleShape)
+                        .background(mark),
+                )
+                repeat(2) {
+                    Box(
+                        Modifier
+                            .size(18.dp * uiScale)
+                            .clip(CircleShape)
+                            .background(dim),
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -841,10 +1178,12 @@ private fun PortraitBackgroundPreview(
                         Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center,
                     ) {
-                        val base = maxWidth
-                            .coerceAtMost(312.dp * uiScale)
-                            .coerceAtLeast(200.dp * uiScale)
-                        val side = base * vinylSizeScale
+                        val budget = minOf(maxWidth, maxHeight)
+                        val base = minOf(budget, 312.dp * uiScale).let { cap ->
+                            val floor = 200.dp * uiScale
+                            if (budget >= floor) cap.coerceAtLeast(minOf(floor, budget)) else cap
+                        }
+                        val side = (base * vinylSizeScale).coerceAtMost(budget)
                         Box(
                             Modifier
                                 .size(side)

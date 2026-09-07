@@ -106,7 +106,7 @@ fun HomeScreen(
         widthDp >= 600 -> 3
         else -> 3
     }
-    val openCommunityLogin = rememberCommunityLoginOpener()
+    val openCommunityLogin = rememberCommunityLoginOpener(onPlaySong = onPlaySong)
 
     val onBanner: (HomeBanner) -> Unit = { b ->
         when (b.targetType) {

@@ -201,7 +201,7 @@ internal fun LandscapeCenterLyricLine(
             animMs = animMs,
             lineSpanMs = span,
             words = if (wordByWord) {
-                lines.getOrNull(focus)?.karaokeWords(positionMs).orEmpty()
+                lines.getOrNull(focus)?.karaokeWords().orEmpty()
             } else {
                 emptyList()
             },

@@ -12,6 +12,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -21,13 +22,15 @@ import org.json.JSONObject
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
+import com.kite.zmusic.ui.notice.showIslandNotice
 
 /**
  * 「我喜欢的音乐」缓存：
  * - 展示序用心形歌单 `/playlist/detail` 的 trackIds（与官方 App 一致）
  * - `/likelist` 只做红心集合（官方文档标明无序），不能当列表顺序
  * - 进页只拉前 [PlaylistTrackLoader.FIRST_BATCH] 首，下滑再按页补
- * - like / 取消 like 立即改本地，稍后用 `/likelist` + 歌单 trackIds 对齐
+ * - like / 取消 like 立即改本地，`/like` 后台确认（失败重试），单曲红心另有磁盘缓存
  */
 class LikedPlaylistRepository(
     context: Context,
@@ -63,11 +66,17 @@ class LikedPlaylistRepository(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val ioMutex = Mutex()
     private val cacheFile = File(appContext.filesDir, "zmusic_liked_playlist.json")
+    private val statusFile = File(appContext.filesDir, "zmusic_liked_status.json")
 
     private val _snapshot = MutableStateFlow<Snapshot?>(null)
     val snapshot: StateFlow<Snapshot?> = _snapshot.asStateFlow()
 
     private val _checkedLikes = MutableStateFlow<Map<Long, Boolean>>(emptyMap())
+    val likeStatus: StateFlow<Map<Long, Boolean>> = _checkedLikes.asStateFlow()
+    private val likeEpoch = ConcurrentHashMap<Long, Int>()
+    private val likeLocks = ConcurrentHashMap<Long, Mutex>()
+    private val generation = AtomicInteger(0)
+    private var statusPersistJob: Job? = null
 
     private val syncScheduled = AtomicBoolean(false)
     private val networkWarmed = AtomicBoolean(false)
@@ -84,11 +93,24 @@ class LikedPlaylistRepository(
 
     init {
         scope.launch(Dispatchers.IO) {
-            val disk = loadFromDisk() ?: return@launch
+            val status = loadLikeStatusFromDisk()
+            val disk = loadFromDisk()
             ioMutex.withLock {
-                if (_snapshot.value != null) return@withLock
                 restorePendingFromFile()
-                _snapshot.value = disk
+                if (_snapshot.value == null && disk != null) {
+                    _snapshot.value = disk
+                }
+                val positives = _snapshot.value?.likedIds?.associateWith { true }.orEmpty()
+                val merged = LinkedHashMap<Long, Boolean>(positives.size + status.size + 8)
+                positives.forEach { (id, liked) -> merged[id] = liked }
+                status.forEach { (id, liked) -> merged[id] = liked }
+                _checkedLikes.value.forEach { (id, liked) -> merged[id] = liked }
+                while (merged.size > STATUS_MAX) {
+                    val oldest = merged.keys.firstOrNull() ?: break
+                    merged.remove(oldest)
+                }
+                _checkedLikes.value = merged
+                persistLikeStatusSoon()
             }
         }
     }
@@ -96,52 +118,127 @@ class LikedPlaylistRepository(
     fun peek(): Snapshot? = _snapshot.value
 
     /**
-     * 是否喜欢：
-     * - 在 `/likelist` 或本地待同步喜欢里 → true
-     * - 已有全量 id 且不在内 → false
-     * - 尚未拉到全量 → 单曲检查缓存 / null
+     * 是否喜欢：待同步与单曲缓存优先；红心歌单只提供「在列表里 → true」。
+     * 不在 `/likelist` 里不能当成 false，否则搜索/别人歌单会先闪未喜欢。
      */
     fun isLiked(trackId: Long): Boolean? {
         if (pendingAdds.containsKey(trackId)) return true
         if (pendingRemoves.contains(trackId)) return false
         val snap = _snapshot.value
-        if (snap != null) {
-            if (snap.likedIds.contains(trackId)) return true
-            if (snap.allLikedIds.isNotEmpty() || snap.complete) return false
-            return _checkedLikes.value[trackId]
-        }
+        if (snap != null && snap.likedIds.contains(trackId)) return true
         return _checkedLikes.value[trackId]
     }
 
     fun recordLikeStatus(track: TrackRow, liked: Boolean) {
+        if (track.id <= 0L) return
         if (liked && pendingRemoves.contains(track.id)) return
         if (!liked && pendingAdds.containsKey(track.id)) return
-        _checkedLikes.value = _checkedLikes.value + (track.id to liked)
-        val snap = _snapshot.value ?: run {
-            if (liked) applyLocalLike(track, liked = true, scheduleSync = false)
-            return
-        }
-        val inTracks = snap.tracks.any { it.id == track.id }
-        if (liked && !inTracks) {
-            applyLocalLike(track, liked = true, scheduleSync = false)
-            return
-        }
-        if (snap.likedIds.contains(track.id) == liked && (liked == inTracks || !liked)) return
-        applyLocalLike(track, liked = liked, scheduleSync = false)
+        mergeCheckedLikes(mapOf(track.id to liked))
     }
 
     fun recordLikeStatuses(tracks: List<TrackRow>, likedIds: Set<Long>) {
         if (tracks.isEmpty()) return
-        val merge = tracks.associate { it.id to likedIds.contains(it.id) }
-        _checkedLikes.value = _checkedLikes.value + merge
-        if (_snapshot.value == null) return
-        for (t in tracks) {
-            val liked = likedIds.contains(t.id)
-            val snap = _snapshot.value ?: return
-            if (snap.likedIds.contains(t.id) != liked) {
-                applyLocalLike(t, liked = liked, scheduleSync = false)
+        val eligible = tracks.filter { t ->
+            t.id > 0L &&
+                !pendingAdds.containsKey(t.id) &&
+                !pendingRemoves.contains(t.id)
+        }
+        if (eligible.isEmpty()) return
+        mergeCheckedLikes(eligible.associate { it.id to likedIds.contains(it.id) })
+    }
+
+    /**
+     * 对尚未缓存的曲目批量 `/song/like/check`，true / false 都写入磁盘。
+     * 已有结论或本地待同步的跳过。
+     */
+    fun prefetchLikeStatuses(tracks: List<TrackRow>) {
+        val session = sessionRepository.session.value ?: return
+        if (session.isGuest) return
+        val cookie = session.cookie
+        if (cookie.isBlank()) return
+        val need = tracks.filter { it.id > 0L && isLiked(it.id) == null }.distinctBy { it.id }
+        if (need.isEmpty()) return
+        val gen = generation.get()
+        scope.launch(Dispatchers.IO) {
+            need.chunked(LIKE_CHECK_BATCH).forEach { batch ->
+                if (!isActive || generation.get() != gen) return@launch
+                if (sessionRepository.session.value?.cookie != cookie) return@launch
+                val still = batch.filter { isLiked(it.id) == null }
+                if (still.isEmpty()) return@forEach
+                runCatching {
+                    val json = userClient.songLikeCheck(still.map { it.id }, cookie)
+                    val likedIds = NcmLibraryParse.tryLikedIdsFromLikeCheck(json) ?: return@runCatching
+                    if (generation.get() != gen) return@runCatching
+                    if (sessionRepository.session.value?.cookie != cookie) return@runCatching
+                    recordLikeStatuses(still, likedIds)
+                }.onFailure { Log.w(TAG, "prefetch like status failed", it) }
             }
         }
+    }
+
+    /**
+     * 点击后立刻 [applyLocalLike]，再交给仓库在独立协程里确认。
+     * 离开播放页也不会取消重试；失败才回滚并灵动岛。
+     */
+    fun submitLike(track: TrackRow, liked: Boolean, cookie: String) {
+        if (cookie.isBlank() || track.id <= 0L) return
+        val expectedEpoch = likeEpoch[track.id] ?: 0
+        val gen = generation.get()
+        scope.launch(Dispatchers.IO) {
+            val ok = pushLike(track, liked, cookie, expectedEpoch)
+            if (ok || generation.get() != gen) return@launch
+            if ((likeEpoch[track.id] ?: 0) != expectedEpoch) return@launch
+            applyLocalLike(track, liked = !liked, scheduleSync = false)
+            withContext(Dispatchers.Main.immediate) {
+                appContext.showIslandNotice(
+                    if (liked) "喜欢失败" else "取消喜欢失败",
+                    track.coverUrl,
+                )
+            }
+        }
+    }
+
+    /**
+     * 后台确认 `/like`。调用方应先 [applyLocalLike]。
+     * 最多尝试 [LIKE_ATTEMPTS] 次；中途用户再次点击则视为本轮成功（由新一轮负责）。
+     */
+    suspend fun pushLike(track: TrackRow, liked: Boolean, cookie: String): Boolean {
+        val expectedEpoch = likeEpoch[track.id] ?: 0
+        return pushLike(track, liked, cookie, expectedEpoch)
+    }
+
+    private suspend fun pushLike(
+        track: TrackRow,
+        liked: Boolean,
+        cookie: String,
+        expectedEpoch: Int,
+    ): Boolean {
+        if (cookie.isBlank() || track.id <= 0L) return false
+        val lock = lockFor(track.id)
+        return lock.withLock {
+            if ((likeEpoch[track.id] ?: 0) != expectedEpoch) return@withLock true
+            repeat(LIKE_ATTEMPTS) { attempt ->
+                if ((likeEpoch[track.id] ?: 0) != expectedEpoch) return@withLock true
+                if (sessionRepository.session.value?.cookie != cookie) return@withLock true
+                val ok = runCatching {
+                    NcmJson.apiCode(userClient.likeSong(track.id, liked, cookie)) == 200
+                }.getOrDefault(false)
+                if (ok) {
+                    if ((likeEpoch[track.id] ?: 0) == expectedEpoch) {
+                        mergeCheckedLikes(mapOf(track.id to liked))
+                    }
+                    return@withLock true
+                }
+                if (attempt < LIKE_ATTEMPTS - 1) delay(400L * (attempt + 1))
+            }
+            (likeEpoch[track.id] ?: 0) != expectedEpoch
+        }
+    }
+
+    private fun lockFor(trackId: Long): Mutex {
+        likeLocks[trackId]?.let { return it }
+        val created = Mutex()
+        return likeLocks.putIfAbsent(trackId, created) ?: created
     }
 
     fun prefetchOnAppReady() {
@@ -170,7 +267,12 @@ class LikedPlaylistRepository(
         liked: Boolean,
         scheduleSync: Boolean = true,
     ): Snapshot? {
-        _checkedLikes.value = _checkedLikes.value + (track.id to liked)
+        if (scheduleSync) {
+            likeEpoch.compute(track.id) { _, v -> (v ?: 0) + 1 }
+        }
+        mergeCheckedLikes(mapOf(track.id to liked), persist = false)
+        statusPersistJob?.cancel()
+        scope.launch(Dispatchers.IO) { persistLikeStatusFile() }
         val current = _snapshot.value
         if (current == null && !liked) {
             if (scheduleSync) scheduleDeferredSync()
@@ -221,6 +323,7 @@ class LikedPlaylistRepository(
     }
 
     fun clear() {
+        generation.incrementAndGet()
         syncJob?.cancel()
         syncJob = null
         syncScheduled.set(false)
@@ -235,8 +338,13 @@ class LikedPlaylistRepository(
         lastLikeListOk = false
         _snapshot.value = null
         _checkedLikes.value = emptyMap()
+        likeEpoch.clear()
+        likeLocks.clear()
+        statusPersistJob?.cancel()
+        statusPersistJob = null
         scope.launch(Dispatchers.IO) {
             runCatching { if (cacheFile.exists()) cacheFile.delete() }
+            runCatching { if (statusFile.exists()) statusFile.delete() }
         }
     }
 
@@ -393,7 +501,7 @@ class LikedPlaylistRepository(
                 displayIds = orderedIds,
             )
             _snapshot.value = snap
-            _checkedLikes.value = _checkedLikes.value + mergedIds.associateWith { true }
+            mergeCheckedLikes(mergedIds.associateWith { true })
             withContext(Dispatchers.IO) { persistToDisk(snap) }
             if (playlistId > 0L) {
                 if (!snap.complete) {
@@ -618,6 +726,7 @@ class LikedPlaylistRepository(
     }
 
     private fun persistToDisk(snap: Snapshot) {
+        val gen = generation.get()
         runCatching {
             val arr = JSONArray()
             snap.tracks.forEach { t ->
@@ -648,6 +757,7 @@ class LikedPlaylistRepository(
                     pendingRemoves.forEach { arrIds.put(it) }
                 })
                 .put("tracks", arr)
+            if (generation.get() != gen) return@runCatching
             cacheFile.writeText(root.toString(), Charsets.UTF_8)
         }.onFailure { Log.w(TAG, "persist liked playlist failed", it) }
     }
@@ -668,8 +778,6 @@ class LikedPlaylistRepository(
     }
 
     private fun restorePendingFromDisk(root: JSONObject, tracks: List<TrackRow>) {
-        pendingAdds.clear()
-        pendingRemoves.clear()
         val byId = tracks.associateBy { it.id }
         val addArr = root.optJSONArray("pendingAdds")
         if (addArr != null) {
@@ -677,6 +785,7 @@ class LikedPlaylistRepository(
                 val o = addArr.optJSONObject(i) ?: continue
                 val id = o.optLong("id", 0L)
                 if (id <= 0L) continue
+                if (pendingAdds.containsKey(id) || pendingRemoves.contains(id)) continue
                 pendingAdds[id] = NcmLibraryParse.trackFromCacheJson(o) ?: continue
             }
         }
@@ -684,7 +793,7 @@ class LikedPlaylistRepository(
         if (addIds != null) {
             for (i in 0 until addIds.length()) {
                 val id = addIds.optLong(i, 0L)
-                if (id <= 0L || pendingAdds.containsKey(id)) continue
+                if (id <= 0L || pendingAdds.containsKey(id) || pendingRemoves.contains(id)) continue
                 byId[id]?.let { pendingAdds[id] = it }
             }
         }
@@ -692,13 +801,71 @@ class LikedPlaylistRepository(
         if (removeIds != null) {
             for (i in 0 until removeIds.length()) {
                 val id = removeIds.optLong(i, 0L)
-                if (id > 0L) pendingRemoves.add(id)
+                if (id > 0L && !pendingAdds.containsKey(id)) pendingRemoves.add(id)
             }
         }
+    }
+
+    private fun mergeCheckedLikes(patch: Map<Long, Boolean>, persist: Boolean = true) {
+        if (patch.isEmpty()) return
+        val merged = LinkedHashMap<Long, Boolean>(_checkedLikes.value.size + patch.size)
+        _checkedLikes.value.forEach { (id, liked) -> merged[id] = liked }
+        patch.forEach { (id, liked) ->
+            merged.remove(id)
+            merged[id] = liked
+        }
+        while (merged.size > STATUS_MAX) {
+            val oldest = merged.keys.firstOrNull() ?: break
+            merged.remove(oldest)
+        }
+        _checkedLikes.value = merged
+        if (persist) persistLikeStatusSoon()
+    }
+
+    private fun persistLikeStatusSoon() {
+        statusPersistJob?.cancel()
+        statusPersistJob = scope.launch(Dispatchers.IO) {
+            delay(80)
+            persistLikeStatusFile()
+        }
+    }
+
+    private fun loadLikeStatusFromDisk(): Map<Long, Boolean> {
+        if (!statusFile.exists()) return emptyMap()
+        return runCatching {
+            val root = JSONObject(statusFile.readText(Charsets.UTF_8))
+            val items = root.optJSONObject("items") ?: return@runCatching emptyMap()
+            buildMap {
+                val keys = items.keys()
+                while (keys.hasNext()) {
+                    val key = keys.next()
+                    val id = key.toLongOrNull() ?: continue
+                    if (id > 0L) put(id, items.optBoolean(key))
+                }
+            }
+        }.getOrDefault(emptyMap())
+    }
+
+    private fun persistLikeStatusFile() {
+        val gen = generation.get()
+        runCatching {
+            val items = JSONObject()
+            _checkedLikes.value.forEach { (id, liked) ->
+                items.put(id.toString(), liked)
+            }
+            if (generation.get() != gen) return@runCatching
+            statusFile.writeText(
+                JSONObject().put("v", 1).put("items", items).toString(),
+                Charsets.UTF_8,
+            )
+        }.onFailure { Log.w(TAG, "persist like status failed", it) }
     }
 
     companion object {
         private const val TAG = "LikedPlaylistRepo"
         private const val DEBOUNCE_MS = 2_000L
+        private const val LIKE_ATTEMPTS = 3
+        private const val LIKE_CHECK_BATCH = 40
+        private const val STATUS_MAX = 5_000
     }
 }

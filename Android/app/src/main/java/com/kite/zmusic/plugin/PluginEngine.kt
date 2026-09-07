@@ -314,6 +314,9 @@ class PluginEngine(
         deferred.await()
     }
 
+    /** 启动页加速闸门：尚未 settle 的插件会挡住提前进门。 */
+    fun isReady(): Boolean = synchronized(lock) { ready.isCompleted }
+
     fun stateOf(id: String): PluginJsState? {
         sessions[id]?.let { return it.state }
         synchronized(lock) {

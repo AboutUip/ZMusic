@@ -117,7 +117,7 @@ fun LoginScreen(
             )
         }
 
-        if (isBusy && !qrActive) {
+        if (isBusy && !qrActive && !vm.qrRescue) {
             Box(
                 Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center,
@@ -129,14 +129,33 @@ fun LoginScreen(
                 )
             }
         }
+
+        if (vm.qrRescue) {
+            NeteaseLoginQrOverlay(
+                loginUrl = vm.qrLoginUrl,
+                hint = vm.qrHint,
+                onRefresh = { vm.loadQrSession() },
+                onDismiss = { vm.dismissQrRescue() },
+            )
+        }
+    }
+
+    LaunchedEffect(registerVm.wantsQrFallback) {
+        if (registerVm.wantsQrFallback) {
+            registerVm.consumeQrFallback()
+            registerOpen = false
+            vm.beginQrFallback()
+        }
     }
 
     LaunchedEffect(qrActive) {
         if (qrActive && vm.qrImageBase64 == null) vm.loadQrSession()
     }
 
-    LaunchedEffect(qrImg, qrActive) {
-        if (qrActive && qrImg != null) vm.runQrPolling(onLoggedIn)
+    LaunchedEffect(qrImg, qrActive, vm.qrRescue, vm.qrLoginUrl) {
+        if ((qrActive || vm.qrRescue) && (qrImg != null || vm.qrLoginUrl.isNotEmpty())) {
+            vm.runQrPolling(onLoggedIn)
+        }
     }
 }
 

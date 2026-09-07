@@ -3,6 +3,11 @@ package com.kite.zmusic.data
 /**
  * 歌曲评论内存缓存：同一首歌再次打开评论直接复用，不强制重拉。
  */
+internal data class SongCommentFloorCache(
+    val replies: List<SongComment>,
+    val hasMore: Boolean,
+)
+
 internal data class SongCommentsSnapshot(
     val songId: Long,
     val sortType: Int,
@@ -14,6 +19,7 @@ internal data class SongCommentsSnapshot(
     val useLegacy: Boolean,
     val expandedTextIds: Set<Long> = emptySet(),
     val openFloorIds: Set<Long> = emptySet(),
+    val floors: Map<Long, SongCommentFloorCache> = emptyMap(),
 )
 
 internal object SongCommentsCache {
