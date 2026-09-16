@@ -31,6 +31,68 @@ class NcmUserClient(
         get("/user/level", mapOf("cookie" to cookie, "timestamp" to ts()))
     }
 
+    /** 登录后更新昵称 / 签名 / 性别 / 生日 / 地区。字段需一次带齐。 */
+    suspend fun userUpdate(
+        cookie: String,
+        nickname: String,
+        signature: String,
+        gender: Int,
+        birthdayMs: Long,
+        province: Int,
+        city: Int,
+    ): JSONObject = withContext(Dispatchers.IO) {
+        get(
+            "/user/update",
+            mapOf(
+                "nickname" to nickname,
+                "signature" to signature,
+                "gender" to gender.coerceIn(0, 2).toString(),
+                "birthday" to birthdayMs.coerceAtLeast(0L).toString(),
+                "province" to province.coerceAtLeast(0).toString(),
+                "city" to city.coerceAtLeast(0).toString(),
+                "cookie" to cookie,
+                "timestamp" to ts(),
+            ),
+        )
+    }
+
+    suspend fun nicknameCheck(nickname: String, cookie: String): JSONObject =
+        withContext(Dispatchers.IO) {
+            get(
+                "/nickname/check",
+                mapOf(
+                    "nickname" to nickname,
+                    "cookie" to cookie,
+                    "timestamp" to ts(),
+                ),
+            )
+        }
+
+    /** 更新头像：multipart 字段名为 `imgFile`。 */
+    suspend fun avatarUpload(
+        cookie: String,
+        file: File,
+        imgSize: Int = 300,
+    ): JSONObject = withContext(Dispatchers.IO) {
+        val media = "image/jpeg".toMediaType()
+        val body = MultipartBody.Builder()
+            .setType(MultipartBody.FORM)
+            .addFormDataPart("imgFile", file.name.ifBlank { "avatar.jpg" }, file.asRequestBody(media))
+            .build()
+        val url = buildUrl(
+            "/avatar/upload",
+            mapOf(
+                "imgSize" to imgSize.coerceIn(64, 1024).toString(),
+                "cookie" to cookie,
+                "timestamp" to ts(),
+            ),
+        )
+        val req = Request.Builder().url(url).post(body).build()
+        client.newCall(req).execute().use { resp ->
+            JSONObject(resp.body?.string().orEmpty().ifBlank { "{}" })
+        }
+    }
+
     /** 听歌足迹总收听时长；上游可能要求 VIP。 */
     suspend fun listenDataTotal(cookie: String): JSONObject = withContext(Dispatchers.IO) {
         get("/listen/data/total", mapOf("cookie" to cookie, "timestamp" to ts()))
@@ -380,6 +442,43 @@ class NcmUserClient(
         get(
             "/song/detail",
             mapOf("ids" to idStr, "cookie" to cookie, "timestamp" to ts()),
+        )
+    }
+
+    /** 音乐百科简要信息（block page，结构不稳定）。 */
+    suspend fun songWikiSummary(id: Long, cookie: String): JSONObject = withContext(Dispatchers.IO) {
+        get(
+            "/song/wiki/summary",
+            mapOf("id" to id.toString(), "cookie" to cookie, "timestamp" to ts()),
+        )
+    }
+
+    /** RN 百科页创作信息（作词 / 作曲 / 编曲）。 */
+    suspend fun songCreators(id: Long, cookie: String): JSONObject = withContext(Dispatchers.IO) {
+        get(
+            "/song/creators",
+            mapOf("id" to id.toString(), "cookie" to cookie, "timestamp" to ts()),
+        )
+    }
+
+    /** RN 百科主位置；代理未部署该模块时会失败，调用方忽略。 */
+    suspend fun songWikiInfo(id: Long, cookie: String): JSONObject = withContext(Dispatchers.IO) {
+        get(
+            "/song/wiki/info",
+            mapOf(
+                "id" to id.toString(),
+                "positionCode" to "songWikiMainPosition",
+                "cookie" to cookie,
+                "timestamp" to ts(),
+            ),
+        )
+    }
+
+    /** 登录后的歌曲简要百科。 */
+    suspend fun ugcSongGet(id: Long, cookie: String): JSONObject = withContext(Dispatchers.IO) {
+        get(
+            "/ugc/song/get",
+            mapOf("id" to id.toString(), "cookie" to cookie, "timestamp" to ts()),
         )
     }
 

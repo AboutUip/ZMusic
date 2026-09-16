@@ -58,6 +58,7 @@ fun chromeWallpaperSurface(
         is MainOverlay.Mv,
         -> destination.wallpaperSurface()
         MainOverlay.Settings -> ChromeWallpaperSurface.Settings
+        MainOverlay.ProfileEdit -> ChromeWallpaperSurface.Profile
         MainOverlay.Search, MainOverlay.CreativeWorkshop -> ChromeWallpaperSurface.Search
         MainOverlay.Daily, MainOverlay.Fm, MainOverlay.Charts, MainOverlay.CachedSongs,
         MainOverlay.CloudDisk, MainOverlay.CloudDiskSearch, is MainOverlay.CloudMatch,

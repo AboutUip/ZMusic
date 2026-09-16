@@ -269,6 +269,7 @@ fun NowPlayingSettingsIconButton(
 
 /**
  * 退出全屏播放：向下尖角（类似「>」顺时针 90°），夹角略开于直角以便辨认。
+ * [pointingUp] 为 true 时改为 `<` 顺时针 90° 的向上尖角（百科页返回黑胶）。
  * [chromeBackground] 为 false 时仅保留图标，不绘制圆角矩形底。
  */
 @Composable
@@ -276,6 +277,8 @@ fun NowPlayingDismissIconButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     chromeBackground: Boolean = true,
+    tint: Color = IconTint,
+    pointingUp: Boolean = false,
 ) {
     val icon: @Composable () -> Unit = {
         Canvas(Modifier.size(18.dp)) {
@@ -285,18 +288,20 @@ fun NowPlayingDismissIconButton(
             // 相对竖直各偏 ~48° → 尖角约 96°，比锐利 chevron 更舒展
             val halfRad = Math.toRadians(48.0)
             val arm = size.minDimension * 0.34f
-            val tipY = cy + arm * 0.42f
-            val topY = tipY - arm * cos(halfRad).toFloat()
+            val tipYRaw = cy + arm * 0.42f
+            val topYRaw = tipYRaw - arm * cos(halfRad).toFloat()
+            val tipY = if (pointingUp) size.height - tipYRaw else tipYRaw
+            val topY = if (pointingUp) size.height - topYRaw else topYRaw
             val dx = arm * sin(halfRad).toFloat()
             drawLine(
-                color = IconTint,
+                color = tint,
                 start = Offset(cx - dx, topY),
                 end = Offset(cx, tipY),
                 strokeWidth = sw,
                 cap = StrokeCap.Round,
             )
             drawLine(
-                color = IconTint,
+                color = tint,
                 start = Offset(cx + dx, topY),
                 end = Offset(cx, tipY),
                 strokeWidth = sw,

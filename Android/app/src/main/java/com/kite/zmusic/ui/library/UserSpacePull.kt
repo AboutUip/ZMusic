@@ -15,7 +15,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.changedToUp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.util.VelocityTracker
@@ -51,26 +50,12 @@ internal fun spaceSceneProgress(t: Float): Float {
 }
 
 /**
- * 昵称 / 签名 / 资料行分槽离场，回退原路入场。
- * [slot] 0 昵称，1 签名+标签，2 关注粉丝等指标。
+ * 资料文字跟飞层头像：星座长出前收干净，回退原路入场。
  */
-internal fun spaceIdentitySlot(t: Float, slot: Int): Float {
-    val start = 0.03f + slot * 0.08f
-    val span = 0.26f
+internal fun spaceIdentityCluster(t: Float): Float {
     return FastOutSlowInEasing.transform(
-        ((t.coerceIn(0f, 1f) - start) / span).coerceIn(0f, 1f),
+        (t.coerceIn(0f, 1f) / 0.16f).coerceIn(0f, 1f),
     )
-}
-
-internal fun Modifier.spaceIdentityLeave(progress: Float, slot: Int): Modifier {
-    return graphicsLayer {
-        val u = spaceIdentitySlot(progress, slot)
-        alpha = 1f - u
-        translationY = u * (14f + slot * 12f)
-        val s = 1f - u * 0.05f
-        scaleX = s
-        scaleY = s
-    }
 }
 
 /** Dock / 横屏栏：跟列表后段一起收，避免一拉就先掉一层壳。 */

@@ -187,6 +187,35 @@ internal fun PortraitPreviewLyrics(
     val visualFocus = focusAnim.value
     val start = floor(visualFocus.toDouble()).toInt() - 1
     val end = ceil(visualFocus.toDouble()).toInt() + showCount
+    val live = lyricIsLive(lines, animActive, focus)
+    val playLine = lines[focus]
+    val playPair = previewOrderedPair(
+        original = playLine,
+        translation = companions.getOrNull(focus),
+        originalOnTop = originalOnTop,
+    )
+    val playStyle = TextStyle(
+        color = playingColor,
+        fontFamily = FontFamily.SansSerif,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = playFs.sp,
+        lineHeight = (playFs * 1.28f).sp,
+        textAlign = textAlign,
+    )
+    val playTransStyle = playStyle.copy(
+        fontSize = (playFs * 0.88f).sp,
+        lineHeight = (playFs * 1.28f * 0.88f).sp,
+        fontWeight = FontWeight.Medium,
+        color = playingColor.copy(alpha = playingColor.alpha * 0.88f),
+    )
+    val playSlot = focus - visualFocus
+    val playFadeTop = if (playSlot < 0f) (playSlot + 1f).coerceIn(0f, 1f) else 1f
+    val playFadeBot = if (playSlot > showCount - 1f) {
+        (showCount - playSlot).coerceIn(0f, 1f)
+    } else {
+        1f
+    }
+    val playAlpha = playFadeTop * playFadeBot
 
     Box(
         rootMod
@@ -199,6 +228,7 @@ internal fun PortraitPreviewLyrics(
         },
     ) {
         for (index in start..end) {
+            if (index == focus) continue
             val line = lines.getOrNull(index) ?: continue
             val text = line.text.trim()
             if (text.isEmpty()) continue
@@ -212,36 +242,23 @@ internal fun PortraitPreviewLyrics(
             }
             val alpha = fadeTop * fadeBot
             if (alpha < 0.02f) continue
-            val isPlayingLine = index == focus
-            val companion = when {
-                isPlayingLine -> companions.getOrNull(index)
-                showCompanionOnOthers -> companions.getOrNull(index)
-                else -> null
-            }
+            val companion = if (showCompanionOnOthers) companions.getOrNull(index) else null
             val pair = previewOrderedPair(line, companion, originalOnTop)
-            val fontSp = if (isPlayingLine) playFs else upcomingFs
-            val color = if (isPlayingLine) playingColor else upcomingColor
             val style = TextStyle(
-                color = color,
+                color = upcomingColor,
                 fontFamily = FontFamily.SansSerif,
-                fontWeight = if (isPlayingLine) FontWeight.SemiBold else FontWeight.Normal,
-                fontSize = fontSp.sp,
-                lineHeight = (fontSp * 1.28f).sp,
+                fontWeight = FontWeight.Normal,
+                fontSize = upcomingFs.sp,
+                lineHeight = (upcomingFs * 1.28f).sp,
                 textAlign = textAlign,
             )
             val transStyle = style.copy(
-                fontSize = (fontSp * 0.88f).sp,
-                lineHeight = (fontSp * 1.28f * 0.88f).sp,
+                fontSize = (upcomingFs * 0.88f).sp,
+                lineHeight = (upcomingFs * 1.28f * 0.88f).sp,
                 fontWeight = FontWeight.Medium,
-                color = color.copy(alpha = color.alpha * 0.88f),
+                color = upcomingColor.copy(alpha = upcomingColor.alpha * 0.88f),
             )
             val y = yOf(slot)
-            val words = if (isPlayingLine) pair.first.karaokeWords() else emptyList()
-            val secondaryWords = if (isPlayingLine) {
-                pair.second?.karaokeWords().orEmpty()
-            } else {
-                emptyList()
-            }
             key(index) {
                 Box(
                     Modifier
@@ -256,18 +273,74 @@ internal fun PortraitPreviewLyrics(
                         lower = pair.second,
                         upperStyle = style,
                         lowerStyle = transStyle,
-                        isPlaying = isPlayingLine,
-                        words = words,
-                        secondaryWords = secondaryWords,
-                        positionMs = positionMs,
+                        isPlaying = false,
+                        words = emptyList(),
+                        secondaryWords = emptyList(),
+                        positionMs = 0L,
                         playingColor = playingColor,
                         karaokeUnplayed = karaokeUnplayed,
-                        clockRunning = clockRunning,
+                        clockRunning = false,
                     )
                 }
             }
         }
+        // 播放行单独挂载：切句只换文案，不销毁逐字时钟。
+        // 精美切句已经在整列 translationY 上完成，不要再走歌词页的入场抬起。
+        if (playLine.text.trim().isNotEmpty()) {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .graphicsLayer {
+                        translationY = yOf(playSlot)
+                        this.alpha = playAlpha
+                    },
+            ) {
+                PreviewPlayingKaraokeHost(
+                    upper = playPair.first,
+                    lower = playPair.second,
+                    upperStyle = playStyle,
+                    lowerStyle = playTransStyle,
+                    positionMs = positionMs,
+                    playingColor = playingColor,
+                    karaokeUnplayed = karaokeUnplayed,
+                    clockRunning = live && clockRunning,
+                )
+            }
+        }
     }
+}
+
+@Composable
+private fun PreviewPlayingKaraokeHost(
+    upper: LrcLine,
+    lower: LrcLine?,
+    upperStyle: TextStyle,
+    lowerStyle: TextStyle,
+    positionMs: Long,
+    playingColor: Color,
+    karaokeUnplayed: Color,
+    clockRunning: Boolean,
+) {
+    val smoothPos = rememberSmoothedLyricPositionMs(positionMs, clockRunning)
+    val words = remember(upper.timeMs, upper.text, upper.words) {
+        upper.karaokeWords()
+    }
+    val secondaryWords = remember(lower?.timeMs, lower?.text, lower?.words) {
+        lower?.karaokeWords().orEmpty()
+    }
+    PreviewLyricPairColumn(
+        upper = upper,
+        lower = lower,
+        upperStyle = upperStyle,
+        lowerStyle = lowerStyle,
+        isPlaying = true,
+        words = words,
+        secondaryWords = secondaryWords,
+        positionMs = smoothPos,
+        playingColor = playingColor,
+        karaokeUnplayed = karaokeUnplayed,
+        clockRunning = false,
+    )
 }
 
 @Composable

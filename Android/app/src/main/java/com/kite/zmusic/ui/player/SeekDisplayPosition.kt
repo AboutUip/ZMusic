@@ -21,7 +21,12 @@ private const val SeekJumpMaxMs = 480
 /** 小于此差值视为跟播步进，瞬时贴合，不播跳转动画。 */
 private const val SeekFollowEpsilonMs = 480f
 
+/** 进度 UI 超过此时长没跟上（后台 / 离屏），下一次直接贴合，不走跳转动画。 */
+internal const val ProgressStaleUiGapMs = 800L
+
 private val SeekJumpEasing = CubicBezierEasing(0.22f, 0.8f, 0.28f, 1f)
+
+internal fun progressElapsedRealtimeMs(): Long = android.os.SystemClock.elapsedRealtime()
 
 private fun seekJumpDurationMs(distanceMs: Float): Int =
     (180f + distanceMs / 40f).toInt().coerceIn(SeekJumpMinMs, SeekJumpMaxMs)
@@ -31,6 +36,7 @@ private fun seekJumpDurationMs(distanceMs: Float): Int =
  * - 同曲小步进：瞬时跟随
  * - 拖进度条：跟手贴合，松手后不再从旧点 / 0 重播一遍
  * - 切歌、歌词点选等大幅跳转：动画过渡到目标
+ * - 后台回前台等 UI 长时间没跟上：直接贴合，不播跳转动画
  */
 @Composable
 fun rememberSeekDisplayPositionMs(
@@ -43,6 +49,7 @@ fun rememberSeekDisplayPositionMs(
     val anim = remember { Animatable(positionMs.toFloat().coerceAtLeast(0f)) }
     var boundTrackId by remember { mutableLongStateOf(trackId) }
     var holdAfterScrub by remember { mutableStateOf(false) }
+    var lastApplyElapsed by remember { mutableLongStateOf(progressElapsedRealtimeMs()) }
     val scrubRef = rememberUpdatedState(scrubPositionMs)
 
     LaunchedEffect(seeking) {
@@ -54,7 +61,13 @@ fun rememberSeekDisplayPositionMs(
     }
 
     LaunchedEffect(trackId, positionMs, loadPending, seeking) {
-        if (seeking) return@LaunchedEffect
+        val now = progressElapsedRealtimeMs()
+        if (seeking) {
+            lastApplyElapsed = now
+            return@LaunchedEffect
+        }
+        val stale = now - lastApplyElapsed >= ProgressStaleUiGapMs
+        lastApplyElapsed = now
 
         val target = positionMs.toFloat().coerceAtLeast(0f)
         val from = anim.value
@@ -73,6 +86,11 @@ fun rememberSeekDisplayPositionMs(
             ) {
                 return@LaunchedEffect
             }
+            anim.snapTo(target)
+            return@LaunchedEffect
+        }
+
+        if (stale) {
             anim.snapTo(target)
             return@LaunchedEffect
         }

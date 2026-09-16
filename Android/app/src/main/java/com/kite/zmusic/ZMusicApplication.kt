@@ -95,6 +95,7 @@ class ZMusicApplication : Application() {
     val pluginDebugStore get() = container.pluginDebugStore
     val workshopAuthStore get() = container.workshopAuthStore
     val workshopRepository get() = container.workshopRepository
+    val listenTogether get() = container.listenTogether
 
     private lateinit var queueSync: PlaybackQueueSync
     private lateinit var lyricOverlayController: LyricOverlayController
@@ -137,6 +138,7 @@ class ZMusicApplication : Application() {
         val offline = container.networkMode.state.value.phase == NetworkPhase.Offline
         container.pluginEngine.setHostFacts(currentPluginHostFacts())
         container.pluginEngine.start(offline = offline)
+        container.listenTogether.start()
         registerActivityLifecycleCallbacks(PluginForegroundCallbacks())
         appScope.launch {
             container.networkMode.state

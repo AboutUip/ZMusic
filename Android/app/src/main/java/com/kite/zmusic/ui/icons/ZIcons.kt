@@ -18,6 +18,7 @@ import androidx.compose.material.icons.rounded.LibraryAddCheck
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.LockOpen
 import androidx.compose.material.icons.rounded.Lyrics
+import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.ChevronRight
@@ -118,6 +119,7 @@ object ZIcons {
     val Lock: ImageVector get() = Icons.Rounded.Lock
     val LockOpen: ImageVector get() = Icons.Rounded.LockOpen
     val Lyrics: ImageVector get() = Icons.Rounded.Lyrics
+    val Menu: ImageVector get() = Icons.Rounded.Menu
     val Favorite: ImageVector get() = Icons.Rounded.Favorite
     val More: ImageVector get() = Icons.Rounded.MoreVert
     val MoreHoriz: ImageVector get() = Icons.Rounded.MoreHoriz

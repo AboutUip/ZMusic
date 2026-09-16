@@ -166,7 +166,7 @@ internal fun CatalogCollectionPage(
         ),
     )
     when (overlay) {
-        MainOverlay.Search, MainOverlay.Settings, MainOverlay.CreativeWorkshop,
+        MainOverlay.Search, MainOverlay.Settings, MainOverlay.ProfileEdit, MainOverlay.CreativeWorkshop,
         MainOverlay.CloudDisk, MainOverlay.CloudDiskSearch, is MainOverlay.CloudMatch,
         is MainOverlay.PlaylistSearch, is MainOverlay.Mv,
         is MainOverlay.Artist, is MainOverlay.ArtistAlbums, is MainOverlay.ArtistMvs,

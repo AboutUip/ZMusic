@@ -46,6 +46,9 @@ internal object NcmLibraryParse {
             backgroundUrl = bg,
             vipKind = vipKind,
             gender = profile.optInt("gender", 0),
+            birthdayMs = profileTimestampMs(profile, "birthday"),
+            province = profile.optInt("province", 0),
+            city = profile.optInt("city", 0),
             follows = nonNegLong(profile, "follows"),
             followeds = nonNegLong(profile, "followeds"),
             expertTags = tags,
@@ -762,6 +765,17 @@ internal object NcmLibraryParse {
     private fun nonNegLong(obj: JSONObject, key: String): Long? {
         if (!obj.has(key) || obj.isNull(key)) return null
         return obj.optLong(key, -1L).takeIf { it >= 0L }
+    }
+
+    private fun profileTimestampMs(obj: JSONObject, key: String): Long {
+        if (!obj.has(key) || obj.isNull(key)) return 0L
+        val raw = when (val v = obj.opt(key)) {
+            is Number -> v.toLong()
+            is String -> v.trim().toLongOrNull() ?: 0L
+            else -> 0L
+        }
+        if (raw <= 0L) return 0L
+        return if (raw < 10_000_000_000L) raw * 1000L else raw
     }
 
     private fun stringList(arr: JSONArray?): List<String> {

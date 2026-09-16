@@ -187,6 +187,7 @@ import androidx.compose.ui.unit.lerp as lerpDp
  * 空白区域手势：
  * - 纯点击（相对按下点位移未超 touchSlop）→ [onTap]
  * - 单次按住并明确下拖超过阈值 → [onSwipeDown]；为 null 时不认领下滑（留给歌词列表滚动）
+ * - 明确上拖超过同一阈值 → [onSwipeUp]（不跟手，与下滑退出对称）
  * - 回调经 [rememberUpdatedState] 更新，避免动画重组重启 pointerInput
  * - 位移相对「按下坐标」计算
  * - 按下即可跟踪（不要求 unconsumed）：子级 clickable 常在 down 时 consume
@@ -197,11 +198,15 @@ internal fun Modifier.nowPlayingBlankGestures(
     dismissThresholdPx: Float,
     onTap: (() -> Unit)?,
     onSwipeDown: (() -> Unit)?,
+    onSwipeUp: (() -> Unit)? = null,
 ): Modifier = composed {
     val tapRef = rememberUpdatedState(onTap)
-    val swipeRef = rememberUpdatedState(onSwipeDown)
-    val swipeEnabled = onSwipeDown != null
-    Modifier.pointerInput(dismissThresholdPx, swipeEnabled) {
+    val swipeDownRef = rememberUpdatedState(onSwipeDown)
+    val swipeUpRef = rememberUpdatedState(onSwipeUp)
+    val downEnabled = onSwipeDown != null
+    val upEnabled = onSwipeUp != null
+    val swipeEnabled = downEnabled || upEnabled
+    Modifier.pointerInput(dismissThresholdPx, downEnabled, upEnabled) {
         val touchSlop = viewConfiguration.touchSlop
         val longPressMs = viewConfiguration.longPressTimeoutMillis
         awaitEachGesture {
@@ -222,6 +227,7 @@ internal fun Modifier.nowPlayingBlankGestures(
                 val dy = change.position.y - start.y
                 val movedEnough = abs(dx) > touchSlop || abs(dy) > touchSlop
                 val verticalIntent = abs(dy) > touchSlop && abs(dy) >= abs(dx) * 0.65f
+                val upDy = -dy
 
                 if (!dismissed && !yieldedToChild) {
                     if (!swipeEnabled && verticalIntent) {
@@ -231,21 +237,25 @@ internal fun Modifier.nowPlayingBlankGestures(
                         yieldedToChild = true
                     } else if (childConsumed && movedEnough) {
                         val maybeDismiss =
-                            swipeEnabled && dy > touchSlop && dy >= abs(dx) * 0.85f
+                            (downEnabled && dy > touchSlop && dy >= abs(dx) * 0.85f) ||
+                                (upEnabled && upDy > touchSlop && upDy >= abs(dx) * 0.85f)
                         if (!maybeDismiss) yieldedToChild = true
                     }
 
-                    if (
-                        !yieldedToChild &&
-                        swipeEnabled &&
-                        !childConsumed &&
-                        dy > dismissSlop &&
-                        dy > abs(dx) * 1.6f &&
-                        dy >= dismissThresholdPx
-                    ) {
+                    val fireDown =
+                        downEnabled &&
+                            dy > dismissSlop &&
+                            dy > abs(dx) * 1.6f &&
+                            dy >= dismissThresholdPx
+                    val fireUp =
+                        upEnabled &&
+                            upDy > dismissSlop &&
+                            upDy > abs(dx) * 1.6f &&
+                            upDy >= dismissThresholdPx
+                    if (!yieldedToChild && !childConsumed && (fireDown || fireUp)) {
                         change.consume()
                         dismissed = true
-                        swipeRef.value?.invoke()
+                        if (fireDown) swipeDownRef.value?.invoke() else swipeUpRef.value?.invoke()
                         while (true) {
                             val rest = awaitPointerEvent(PointerEventPass.Main)
                             val c = rest.changes.find { it.id == pointerId }

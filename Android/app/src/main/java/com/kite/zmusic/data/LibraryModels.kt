@@ -20,6 +20,10 @@ data class UserProfileBrief(
     val nextPlayCount: Long? = null,
     /** 0 保密 / 1 男 / 2 女，与 `/user/update` 约定一致。 */
     val gender: Int = 0,
+    /** Unix 毫秒；未设置则为 0。 */
+    val birthdayMs: Long = 0L,
+    val province: Int = 0,
+    val city: Int = 0,
     val follows: Long? = null,
     val followeds: Long? = null,
     val expertTags: List<String> = emptyList(),

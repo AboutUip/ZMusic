@@ -11,6 +11,7 @@ import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -35,12 +36,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.kite.zmusic.data.ChromeGlassMode
 import com.kite.zmusic.data.MiniQuickSkipAxis
 import com.kite.zmusic.data.MiniQuickSkipPrefs
 import com.kite.zmusic.data.TrackRow
@@ -49,6 +52,7 @@ import com.kite.zmusic.plugin.PluginUiTarget
 import com.kite.zmusic.ui.common.UrlImage
 import com.kite.zmusic.ui.common.UrlImageCache
 import com.kite.zmusic.ui.icons.ZIcons
+import com.kite.zmusic.ui.main.LocalChromeGlassStyle
 import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.theme.TextTheme
 import com.kite.zmusic.ui.main.mainLiquidGlass
@@ -111,7 +115,7 @@ fun MiniPlayerBar(
         }
     }
 
-    Row(
+    Box(
         modifier
             .playerExpandAnchor(PlayerExpandSlot.MiniBar)
             .then(
@@ -124,10 +128,15 @@ fun MiniPlayerBar(
                     )
                 },
             )
-            .mainLiquidGlass(backdrop, shape)
-            .padding(horizontal = 8.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .clip(shape),
     ) {
+        MiniPlayerLandingChrome(backdrop = backdrop, shape = shape)
+        Row(
+            Modifier
+                .fillMaxSize()
+                .padding(horizontal = 8.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
         Row(
             Modifier
                 .weight(1f)
@@ -289,6 +298,38 @@ fun MiniPlayerBar(
                 modifier = Modifier.size(22.dp),
             )
         }
+        }
+    }
+}
+
+@Composable
+private fun BoxScope.MiniPlayerLandingChrome(
+    backdrop: Backdrop,
+    shape: RoundedCornerShape,
+) {
+    val expand = LocalPlayerExpand.current
+    val reveal = expand?.miniChromeReveal ?: 1f
+    val mode = LocalChromeGlassStyle.current.mode
+    val landing = expandCardFromColor()
+    if (mode == ChromeGlassMode.Solid) {
+        Box(
+            Modifier
+                .matchParentSize()
+                .background(lerp(landing, MainPalette.Surface, reveal)),
+        )
+        return
+    }
+    Box(
+        Modifier
+            .matchParentSize()
+            .mainLiquidGlass(backdrop, shape),
+    )
+    if (reveal < 0.999f) {
+        Box(
+            Modifier
+                .matchParentSize()
+                .background(landing.copy(alpha = 1f - reveal)),
+        )
     }
 }
 
@@ -309,17 +350,25 @@ private fun MiniPlayerProgress(
     val bufferingRef = rememberUpdatedState(buffering)
     val durationRef = rememberUpdatedState(durationMs)
     val initialRef = rememberUpdatedState(initialPositionMs)
+    var lastApplyElapsed by remember { mutableLongStateOf(progressElapsedRealtimeMs()) }
     LaunchedEffect(trackId, positions) {
         val seed = initialRef.value.toFloat().coerceAtLeast(0f)
         if (seed > 48f && anim.value <= 48f) {
             anim.snapTo(seed)
         }
         positions.collect { positionMs ->
+            val now = progressElapsedRealtimeMs()
+            val stale = now - lastApplyElapsed >= ProgressStaleUiGapMs
+            lastApplyElapsed = now
             val target = positionMs.toFloat().coerceAtLeast(0f)
             val from = anim.value
             val trackChanged = trackId != boundTrackId
             if (trackChanged) boundTrackId = trackId
             val holding = loadPendingRef.value || bufferingRef.value
+            if (stale) {
+                anim.snapTo(target)
+                return@collect
+            }
             if (miniProgressWrapToStart(from, target, durationRef.value, trackChanged)) {
                 anim.animateTo(
                     targetValue = target,

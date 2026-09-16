@@ -13,7 +13,6 @@ import com.kite.zmusic.data.TrackRow
 internal enum class NcmShareTarget {
     WeChatMoments,
     WeChatFriend,
-    Qzone,
     QqFriend,
     CopyLink,
 }
@@ -22,7 +21,6 @@ internal object NcmShare {
     private const val TAG = "ZMusicShare"
     private const val PKG_WECHAT = "com.tencent.mm"
     private const val PKG_QQ = "com.tencent.mobileqq"
-    private const val PKG_QZONE = "com.qzone"
 
     fun songPageUrl(songId: Long): String? {
         if (songId <= 0L) return null
@@ -69,18 +67,6 @@ internal object NcmShare {
                 "com.tencent.mobileqq.activity.JumpActivity",
                 "com.tencent.mobileqq.activity.qfileJumpActivity",
             )
-            NcmShareTarget.Qzone -> launchImage(
-                context,
-                imageUri,
-                PKG_QZONE,
-                "com.qzonex.module.operation.ui.QZonePublishMoodActivity",
-            ) || launchImage(
-                context,
-                imageUri,
-                PKG_QQ,
-                "cooperation.qzone.QzoneShareActivity",
-                "cooperation.qzone.QzoneJumpActivity",
-            )
             NcmShareTarget.CopyLink -> false
         }
         Log.i(TAG, "sendImage target=$target launched=$launched")
@@ -94,12 +80,6 @@ internal object NcmShare {
                 }
             NcmShareTarget.QqFriend ->
                 if (!isInstalled(context, PKG_QQ)) {
-                    NcmShareResult.MissingApp("QQ")
-                } else {
-                    NcmShareResult.Failed
-                }
-            NcmShareTarget.Qzone ->
-                if (!isInstalled(context, PKG_QZONE) && !isInstalled(context, PKG_QQ)) {
                     NcmShareResult.MissingApp("QQ")
                 } else {
                     NcmShareResult.Failed

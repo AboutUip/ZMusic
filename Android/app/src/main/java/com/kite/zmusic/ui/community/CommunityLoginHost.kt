@@ -58,6 +58,7 @@ import androidx.core.content.ContextCompat
 import com.kite.zmusic.ZMusicApplication
 import com.kite.zmusic.data.CommunityLoginConfig
 import com.kite.zmusic.data.CommunityLoginPreview
+import com.kite.zmusic.data.ZMusicListenLink
 import com.kite.zmusic.data.ZMusicSongLink
 import com.kite.zmusic.ui.common.GlassAlertDialog
 import com.kite.zmusic.ui.common.QrScannerOverlay
@@ -99,10 +100,26 @@ fun rememberCommunityLoginOpener(
     var previewJob by remember { mutableStateOf<Job?>(null) }
     var showChoice by remember { mutableStateOf(false) }
     var pendingSong by remember { mutableStateOf<PendingSongScan?>(null) }
+    var pendingListenId by remember { mutableStateOf<String?>(null) }
+    var pendingListenNeedLogin by remember { mutableStateOf(false) }
 
     fun toast(msg: String) = context.showIslandNotice(msg)
 
     fun handleQr(raw: String): Boolean {
+        val listenId = ZMusicListenLink.parse(raw)
+        if (listenId != null) {
+            previewJob?.cancel()
+            phase = CommunityLoginPhase.Hidden
+            if (!app.workshopAuthStore.hasToken()) {
+                app.listenTogether.rememberPendingJoin(listenId)
+                pendingListenId = listenId
+                pendingListenNeedLogin = true
+            } else {
+                pendingListenId = listenId
+                pendingListenNeedLogin = false
+            }
+            return true
+        }
         val songId = ZMusicSongLink.parse(raw)
         if (songId != null) {
             previewJob?.cancel()
@@ -256,8 +273,13 @@ fun rememberCommunityLoginOpener(
                                 when {
                                     ack.ok -> {
                                         toast(
-                                            if (!ack.appToken.isNullOrBlank()) "已确认，创意工坊可用"
-                                            else "已授权",
+                                            if (!ack.appToken.isNullOrBlank()) {
+                                                if (app.listenTogether.ui.value.pendingJoinId != null) {
+                                                    "已确认，正在加入一起听"
+                                                } else {
+                                                    "已确认，创意工坊可用"
+                                                }
+                                            } else "已授权",
                                         )
                                         phase = CommunityLoginPhase.Hidden
                                     }
@@ -331,6 +353,42 @@ fun rememberCommunityLoginOpener(
             },
             onDismiss = { pendingSong = null },
         )
+    }
+
+    pendingListenId?.let { roomId ->
+        if (pendingListenNeedLogin) {
+            GlassAlertDialog(
+                title = "先登录社区",
+                message = "加入一起听需要先登录过社区，和创意工坊是同一套确认。",
+                confirmLabel = "去登录",
+                onConfirm = {
+                    pendingListenNeedLogin = false
+                    pendingListenId = null
+                    if (offerWebsite) showChoice = true else openScanner()
+                },
+                onDismiss = {
+                    pendingListenNeedLogin = false
+                    pendingListenId = null
+                },
+            )
+        } else {
+            GlassAlertDialog(
+                title = "加入一起听？",
+                message = "加入后会同步播放、暂停和切歌，进度按各自时钟对齐。",
+                confirmLabel = "加入",
+                onConfirm = {
+                    pendingListenId = null
+                    scope.launch {
+                        val ok = app.listenTogether.join(roomId)
+                        if (!ok && !app.workshopAuthStore.hasToken()) {
+                            toast("加入一起听需要先登录社区")
+                            if (offerWebsite) showChoice = true else openScanner()
+                        }
+                    }
+                },
+                onDismiss = { pendingListenId = null },
+            )
+        }
     }
 
     if (offerWebsite && showChoice) {

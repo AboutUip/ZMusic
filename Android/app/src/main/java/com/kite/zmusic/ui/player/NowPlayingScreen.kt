@@ -149,6 +149,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kite.zmusic.ZMusicApplication
+import com.kite.zmusic.ui.community.rememberCommunityLoginOpener
 import com.kite.zmusic.data.AudioQuality
 import com.kite.zmusic.data.LrcLine
 import com.kite.zmusic.data.LyricRoleStyle
@@ -200,6 +201,8 @@ fun NowPlayingScreen(
     onSkipPrev: () -> Unit,
     onCyclePlaybackMode: () -> Unit,
     onOpenSourcePlaylist: (() -> Unit)? = null,
+    onPlayInsertSong: (Long) -> Unit = {},
+    onOpenPlaylist: (Long, String, String?) -> Unit = { _, _, _ -> },
     onOpenArtist: (() -> Unit)? = null,
     onOpenUser: (Long, String, String?) -> Unit = { _, _, _ -> },
     onPlayQueueIndex: (Int) -> Unit = {},
@@ -288,6 +291,13 @@ fun NowPlayingScreen(
 
     val app = context.applicationContext as ZMusicApplication
     val audioQuality by app.audioQualityStore.quality.collectAsStateWithLifecycle()
+    val workshopAuth by app.workshopAuthStore.session.collectAsStateWithLifecycle()
+    val listenUi by app.listenTogether.ui.collectAsStateWithLifecycle()
+    val openCommunityLogin = rememberCommunityLoginOpener(
+        offerWebsite = true,
+        onPlaySong = onPlayInsertSong,
+    )
+    var pendingOpenListen by remember { mutableStateOf(false) }
     var queueDemand by remember { mutableIntStateOf(0) }
     LaunchedEffect(state.sourcePlaylistId) { queueDemand = 0 }
     fun needQueueThrough(index: Int) {
@@ -441,6 +451,10 @@ fun NowPlayingScreen(
     var portraitCommentsOpen by remember { mutableStateOf(false) }
     val portraitCommentsPanel = remember { Animatable(0f) }
     val portraitCommentsSheetFrac = remember { Animatable(2f / 3f) }
+    var portraitListenOpen by remember { mutableStateOf(false) }
+    val portraitListenPanel = remember { Animatable(0f) }
+    var portraitWikiOpen by remember { mutableStateOf(false) }
+    val portraitWikiPanel = remember { Animatable(0f) }
     LaunchedEffect(portraitSettingsOpen) {
         if (portraitSettingsOpen) {
             portraitSheetFrac.snapTo(1f / 3f)
@@ -557,6 +571,38 @@ fun NowPlayingScreen(
             )
         }
     }
+    LaunchedEffect(portraitListenOpen) {
+        if (portraitListenOpen) {
+            portraitListenPanel.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(
+                    durationMillis = 420,
+                    easing = CubicBezierEasing(0.16f, 1.02f, 0.3f, 1f),
+                ),
+            )
+        } else {
+            portraitListenPanel.animateTo(
+                targetValue = 0f,
+                animationSpec = tween(
+                    durationMillis = 360,
+                    easing = CubicBezierEasing(0.4f, 0f, 0.2f, 1f),
+                ),
+            )
+        }
+    }
+    LaunchedEffect(portraitWikiOpen) {
+        if (portraitWikiOpen) {
+            portraitWikiPanel.animateTo(
+                targetValue = 1f,
+                animationSpec = CommentSheetOpenSpec,
+            )
+        } else if (portraitWikiPanel.value > 0f) {
+            portraitWikiPanel.animateTo(
+                targetValue = 0f,
+                animationSpec = CommentSheetCloseSpec,
+            )
+        }
+    }
     DisposableEffect(onHoldAutoAdvanceChange) {
         onDispose { onHoldAutoAdvanceChange(false) }
     }
@@ -595,11 +641,15 @@ fun NowPlayingScreen(
         portraitCommentsOpen = false
         portraitMoreOpen = false
         portraitShareOpen = false
+        portraitListenOpen = false
+        portraitWikiOpen = false
     }
     // 退出歌词页后清零：否则 token 残留会在下次进入时触发从头动画滚
     LaunchedEffect(portraitLyricsOpen) {
         if (!portraitLyricsOpen) {
             portraitLyricSelectResumeToken = 0
+        } else {
+            portraitWikiOpen = false
         }
     }
     val portraitSettingsT = portraitSettingsPanel.value
@@ -608,6 +658,8 @@ fun NowPlayingScreen(
     val portraitShareT = portraitSharePanel.value
     val portraitMoreT = portraitMorePanel.value
     val portraitCommentsT = portraitCommentsPanel.value
+    val portraitListenT = portraitListenPanel.value
+    val portraitWikiT = portraitWikiPanel.value
     val portraitLyricSelectT = portraitLyricSelectPanel.value
     fun closePortraitSettings() {
         flushPortraitDisplayPrefs()
@@ -628,11 +680,55 @@ fun NowPlayingScreen(
     fun closePortraitComments() {
         portraitCommentsOpen = false
     }
+    fun closePortraitListen() {
+        portraitListenOpen = false
+    }
     fun closePortraitLyricSelect() {
         portraitLyricSelectOpen = false
     }
     fun closePortraitMore() {
         portraitMoreOpen = false
+    }
+    fun closePortraitWiki() {
+        portraitWikiOpen = false
+    }
+    fun openPortraitWiki() {
+        closePortraitSettings()
+        closePortraitScore()
+        closePortraitQuality()
+        closePortraitShare()
+        closePortraitLyricSelect()
+        closePortraitComments()
+        closePortraitListen()
+        closePortraitMore()
+        portraitPosterOpen = false
+        portraitBackgroundEditorOpen = false
+        portraitLyricStyleEditorOpen = false
+        portraitLyricsOpen = false
+        portraitWikiOpen = true
+    }
+
+    LaunchedEffect(
+        portraitSettingsOpen,
+        portraitScoreOpen,
+        portraitQualityOpen,
+        portraitShareOpen,
+        portraitCommentsOpen,
+        portraitListenOpen,
+        portraitMoreOpen,
+        portraitPosterOpen,
+        portraitBackgroundEditorOpen,
+        portraitLyricStyleEditorOpen,
+        portraitLyricSelectOpen,
+    ) {
+        if (!portraitWikiOpen) return@LaunchedEffect
+        if (portraitSettingsOpen || portraitScoreOpen || portraitQualityOpen ||
+            portraitShareOpen || portraitCommentsOpen || portraitListenOpen || portraitMoreOpen ||
+            portraitPosterOpen || portraitBackgroundEditorOpen ||
+            portraitLyricStyleEditorOpen || portraitLyricSelectOpen
+        ) {
+            portraitWikiOpen = false
+        }
     }
 
     // 进入横屏：拆除全部竖屏叠层（含 Animatable），避免透明 OutsideDismiss 残留吞单击
@@ -645,8 +741,10 @@ fun NowPlayingScreen(
         portraitQualityOpen = false
         portraitShareOpen = false
         portraitCommentsOpen = false
+        portraitListenOpen = false
         portraitLyricSelectOpen = false
         portraitMoreOpen = false
+        portraitWikiOpen = false
         portraitLyricSelectSelected.clear()
         portraitLyricSelectResumeToken = 0
         portraitBackgroundEditorOpen = false
@@ -658,9 +756,11 @@ fun NowPlayingScreen(
         portraitSharePanel.snapTo(0f)
         portraitMorePanel.snapTo(0f)
         portraitCommentsPanel.snapTo(0f)
+        portraitListenPanel.snapTo(0f)
         portraitCommentsSheetFrac.snapTo(2f / 3f)
         portraitLyricSelectPanel.snapTo(0f)
         portraitLyricStylePanel.snapTo(0f)
+        portraitWikiPanel.snapTo(0f)
     }
 
     fun openPortraitLyricSelect() {
@@ -674,6 +774,7 @@ fun NowPlayingScreen(
         closePortraitQuality()
         closePortraitShare()
         closePortraitComments()
+        closePortraitListen()
         closePortraitMore()
         portraitLyricSelectSelected.clear()
         portraitLyricsOpen = true
@@ -685,6 +786,7 @@ fun NowPlayingScreen(
         closePortraitShare()
         closePortraitLyricSelect()
         closePortraitComments()
+        closePortraitListen()
         closePortraitMore()
         portraitScoreOpen = true
     }
@@ -695,6 +797,7 @@ fun NowPlayingScreen(
         closePortraitShare()
         closePortraitLyricSelect()
         closePortraitComments()
+        closePortraitListen()
         closePortraitMore()
         portraitQualityOpen = true
     }
@@ -704,6 +807,7 @@ fun NowPlayingScreen(
         closePortraitQuality()
         closePortraitLyricSelect()
         closePortraitComments()
+        closePortraitListen()
         closePortraitMore()
         portraitShareOpen = true
     }
@@ -713,6 +817,7 @@ fun NowPlayingScreen(
         closePortraitShare()
         closePortraitLyricSelect()
         closePortraitComments()
+        closePortraitListen()
         closePortraitMore()
         portraitSettingsOpen = true
     }
@@ -723,8 +828,43 @@ fun NowPlayingScreen(
         closePortraitQuality()
         closePortraitShare()
         closePortraitLyricSelect()
+        closePortraitListen()
         closePortraitMore()
         portraitCommentsOpen = true
+    }
+    fun openPortraitListen() {
+        closePortraitSettings()
+        closePortraitScore()
+        closePortraitQuality()
+        closePortraitShare()
+        closePortraitLyricSelect()
+        closePortraitComments()
+        closePortraitMore()
+        portraitListenOpen = true
+    }
+
+    fun requestPortraitListen() {
+        closePortraitMore()
+        if (workshopAuth == null) {
+            pendingOpenListen = true
+            openCommunityLogin()
+        } else {
+            openPortraitListen()
+        }
+    }
+
+    LaunchedEffect(workshopAuth) {
+        if (pendingOpenListen && workshopAuth != null) {
+            pendingOpenListen = false
+            openPortraitListen()
+        }
+    }
+
+    LaunchedEffect(listenUi.inRoom, isLandscape) {
+        if (!isLandscape && listenUi.inRoom && pendingOpenListen) {
+            pendingOpenListen = false
+            openPortraitListen()
+        }
     }
 
     LaunchedEffect(online) {
@@ -740,6 +880,7 @@ fun NowPlayingScreen(
         closePortraitQuality()
         closePortraitShare()
         closePortraitComments()
+        closePortraitListen()
         closePortraitLyricSelect()
         closePortraitMore()
         portraitPosterFrozenPositionMs = lyricPos
@@ -753,6 +894,7 @@ fun NowPlayingScreen(
         closePortraitQuality()
         closePortraitShare()
         closePortraitComments()
+        closePortraitListen()
         closePortraitLyricSelect()
         portraitMoreOpen = true
     }
@@ -924,6 +1066,12 @@ fun NowPlayingScreen(
             closePortraitComments()
         }
     }
+    BackHandler(enabled = !isLandscape && portraitListenOpen) {
+        closePortraitListen()
+    }
+    BackHandler(enabled = !isLandscape && portraitWikiOpen) {
+        closePortraitWiki()
+    }
 
     // 打开歌词样式：先确保歌词页铺开并量到 band，再钉克隆
     val portraitDensity = LocalDensity.current
@@ -1093,6 +1241,8 @@ fun NowPlayingScreen(
         onDismiss = onDismiss,
         onOpenArtist = onOpenArtist,
         onOpenUser = onOpenUser,
+        onPlayInsertSong = onPlayInsertSong,
+        onOpenPlaylist = onOpenPlaylist,
         onPlayQueueIndex = onPlayQueueIndex,
         onNeedQueueThrough = ::needQueueThrough,
         trackLiked = trackLiked,
@@ -1116,7 +1266,9 @@ fun NowPlayingScreen(
         portraitQualityOpen = portraitQualityOpen,
         portraitShareOpen = portraitShareOpen,
         portraitCommentsOpen = portraitCommentsOpen,
+        portraitListenOpen = portraitListenOpen,
         portraitMoreOpen = portraitMoreOpen,
+        portraitWikiOpen = portraitWikiOpen,
         portraitPosterOpen = portraitPosterOpen,
         portraitPosterFrozenPositionMs = portraitPosterFrozenPositionMs,
         portraitBackgroundEditorOpen = portraitBackgroundEditorOpen,
@@ -1128,6 +1280,8 @@ fun NowPlayingScreen(
         portraitQualityT = portraitQualityT,
         portraitShareT = portraitShareT,
         portraitCommentsT = portraitCommentsT,
+        portraitListenT = portraitListenT,
+        portraitWikiT = portraitWikiT,
         portraitMoreT = portraitMoreT,
         portraitLyricSelectT = portraitLyricSelectT,
         portraitLyricStyleT = portraitLyricStyleT,
@@ -1177,6 +1331,8 @@ fun NowPlayingScreen(
         closePortraitQuality = ::closePortraitQuality,
         closePortraitShare = ::closePortraitShare,
         closePortraitComments = ::closePortraitComments,
+        closePortraitListen = ::closePortraitListen,
+        closePortraitWiki = ::closePortraitWiki,
         closePortraitMore = ::closePortraitMore,
         closePortraitLyricSelect = ::closePortraitLyricSelect,
         closePortraitPoster = ::closePortraitPoster,
@@ -1186,6 +1342,10 @@ fun NowPlayingScreen(
         openPortraitQuality = ::openPortraitQuality,
         openPortraitShare = ::openPortraitShare,
         openPortraitComments = ::openPortraitComments,
+        openPortraitListen = ::openPortraitListen,
+        requestPortraitListen = ::requestPortraitListen,
+        openCommunityLogin = openCommunityLogin,
+        openPortraitWiki = ::openPortraitWiki,
         openPortraitSettings = ::openPortraitSettings,
         openPortraitPoster = ::openPortraitPoster,
         openPortraitLyricSelect = ::openPortraitLyricSelect,

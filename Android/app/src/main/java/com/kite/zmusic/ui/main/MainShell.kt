@@ -174,6 +174,16 @@ fun MainShell(
             context.showIslandNotice("搜索需要网络")
             return
         }
+        if (!online && next is MainOverlay.ProfileEdit) {
+            context.showIslandNotice("编辑资料需要网络")
+            return
+        }
+        if (!online && next is MainOverlay.UserRelations) {
+            context.showIslandNotice(
+                if (next.fans) "查看粉丝需要网络" else "查看关注需要网络",
+            )
+            return
+        }
         if (phase == NetworkPhase.Offline &&
             next !is MainOverlay.CachedSongs &&
             next !is MainOverlay.Settings &&
@@ -1249,6 +1259,7 @@ fun MainShell(
                         playback = playback,
                         landscape = landscape,
                         onDismiss = { closeFullPlayer() },
+                        onPlayInsertSong = { songId -> playLinkedSong(songId) },
                         onOpenSourcePlaylist = { id, title, cover ->
                             pushOverlay(MainOverlay.Playlist(id, title, cover))
                             closeFullPlayer()
@@ -1482,6 +1493,7 @@ private fun FullPlayerSlot(
     playback: PlaybackViewModel,
     landscape: Boolean,
     onDismiss: () -> Unit,
+    onPlayInsertSong: (Long) -> Unit,
     onOpenSourcePlaylist: (Long, String, String?) -> Unit,
     onOpenArtist: (Long, String, String?) -> Unit,
     onOpenUser: (Long, String, String?) -> Unit,
@@ -1524,6 +1536,8 @@ private fun FullPlayerSlot(
         onHoldAutoAdvanceChange = playback::setHoldAutoAdvance,
         modifier = Modifier.fillMaxSize(),
         landscapeStartInset = 0.dp,
+        onPlayInsertSong = onPlayInsertSong,
+        onOpenPlaylist = onOpenSourcePlaylist,
         onOpenSourcePlaylist = st.sourcePlaylistId?.let { plId ->
             {
                 val title = st.sourcePlaylistTitle ?: "歌单"

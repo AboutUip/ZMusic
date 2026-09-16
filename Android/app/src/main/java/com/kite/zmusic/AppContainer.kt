@@ -244,4 +244,17 @@ class AppContainer(app: Application) {
         notices = islandNoticeCenter,
         cacheDir = java.io.File(app.cacheDir, "workshop"),
     )
+    private val listenTogetherClient = com.kite.zmusic.listen.ListenTogetherClient(
+        http = workshopHttp,
+        community = communityServerStore,
+        auth = workshopAuthStore,
+    )
+    val listenTogether = com.kite.zmusic.listen.ListenTogetherController(
+        client = listenTogetherClient,
+        auth = workshopAuthStore,
+        playback = playbackBridge,
+        songs = songRepository,
+        session = sessionRepository,
+        notices = islandNoticeCenter,
+    )
 }

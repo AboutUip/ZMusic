@@ -11,6 +11,8 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -29,25 +31,22 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshots.SnapshotStateSet
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.kite.zmusic.ZMusicApplication
 import com.kite.zmusic.data.AudioQuality
 import com.kite.zmusic.data.LrcLine
@@ -89,6 +88,8 @@ internal fun NowPlayingScreenLayers(
     onDismiss: () -> Unit,
     onOpenArtist: (() -> Unit)?,
     onOpenUser: (Long, String, String?) -> Unit = { _, _, _ -> },
+    onPlayInsertSong: (Long) -> Unit = {},
+    onOpenPlaylist: (Long, String, String?) -> Unit = { _, _, _ -> },
     onPlayQueueIndex: (Int) -> Unit,
     onNeedQueueThrough: (Int) -> Unit,
     trackLiked: Boolean,
@@ -112,7 +113,9 @@ internal fun NowPlayingScreenLayers(
     portraitQualityOpen: Boolean,
     portraitShareOpen: Boolean,
     portraitCommentsOpen: Boolean,
+    portraitListenOpen: Boolean,
     portraitMoreOpen: Boolean,
+    portraitWikiOpen: Boolean,
     portraitPosterOpen: Boolean,
     portraitPosterFrozenPositionMs: Long,
     portraitBackgroundEditorOpen: Boolean,
@@ -124,6 +127,8 @@ internal fun NowPlayingScreenLayers(
     portraitQualityT: Float,
     portraitShareT: Float,
     portraitCommentsT: Float,
+    portraitListenT: Float,
+    portraitWikiT: Float,
     portraitMoreT: Float,
     portraitLyricSelectT: Float,
     portraitLyricStyleT: Float,
@@ -173,6 +178,8 @@ internal fun NowPlayingScreenLayers(
     closePortraitQuality: () -> Unit,
     closePortraitShare: () -> Unit,
     closePortraitComments: () -> Unit,
+    closePortraitListen: () -> Unit,
+    closePortraitWiki: () -> Unit,
     closePortraitMore: () -> Unit,
     closePortraitLyricSelect: () -> Unit,
     closePortraitPoster: () -> Unit,
@@ -182,6 +189,10 @@ internal fun NowPlayingScreenLayers(
     openPortraitQuality: () -> Unit,
     openPortraitShare: () -> Unit,
     openPortraitComments: () -> Unit,
+    openPortraitListen: () -> Unit,
+    requestPortraitListen: () -> Unit,
+    openCommunityLogin: () -> Unit,
+    openPortraitWiki: () -> Unit,
     openPortraitSettings: () -> Unit,
     openPortraitPoster: () -> Unit,
     openPortraitLyricSelect: () -> Unit,
@@ -431,6 +442,7 @@ internal fun NowPlayingScreenLayers(
                     onOpenQuality = { openPortraitQuality() },
                     onOpenComments = { openPortraitComments() },
                     onOpenShare = { openPortraitShare() },
+                    onOpenWiki = { openPortraitWiki() },
                     settingsOpen = portraitSettingsOpen,
                     scoreOpen = portraitScoreOpen,
                     qualityOpen = portraitQualityOpen,
@@ -441,10 +453,12 @@ internal fun NowPlayingScreenLayers(
                         portraitQualityOpen ||
                         portraitShareOpen ||
                         portraitCommentsOpen ||
+                        portraitListenOpen ||
                         portraitMoreOpen ||
                         portraitPosterOpen ||
                         portraitBackgroundEditorOpen ||
-                        portraitLyricStyleEditorOpen,
+                        portraitLyricStyleEditorOpen ||
+                        portraitWikiOpen,
                     onCloseSettings = { closePortraitSettings() },
                     onCloseScore = { closePortraitScore() },
                     onCloseQuality = { closePortraitQuality() },
@@ -780,6 +794,46 @@ internal fun NowPlayingScreenLayers(
             }
         }
 
+        if (!isLandscape && (portraitListenT > 0.001f || portraitListenOpen)) {
+            val density = LocalDensity.current
+            NowPlayingSettingsOutsideDismiss(
+                onDismiss = { closePortraitListen() },
+                enabled = portraitListenOpen || portraitListenT > 0.05f,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { alpha = portraitListenT },
+            )
+            BoxWithConstraints(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .fillMaxHeight(),
+            ) {
+                val screenH = constraints.maxHeight.toFloat().coerceAtLeast(1f)
+                val statusTopPx = with(density) {
+                    WindowInsets.statusBars.asPaddingValues().calculateTopPadding().toPx()
+                }
+                val maxSheetH = (screenH - statusTopPx).coerceAtLeast(screenH * 0.5f)
+                val sheetHPx = maxSheetH * (2f / 3f)
+                val sheetHDp = with(density) { sheetHPx.toDp() }
+                PortraitListenTogetherSheet(
+                    onClose = { closePortraitListen() },
+                    onNeedLogin = { requestPortraitListen() },
+                    onScanJoin = { openCommunityLogin() },
+                    hazeState = settingsHazeState,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .height(sheetHDp)
+                        .graphicsLayer {
+                            transformOrigin = TransformOrigin(0.5f, 1f)
+                            translationY = (1f - portraitListenT) * sheetHPx
+                            alpha = portraitListenT
+                        },
+                )
+            }
+        }
+
         // 竖屏：自定义背景全屏编辑器（沉浸铺满，样式对齐设置面板）
         if (!isLandscape) {
             CustomBackgroundEditorOverlay(
@@ -842,6 +896,7 @@ internal fun NowPlayingScreenLayers(
                         closePortraitMore()
                         openPortraitPoster()
                     },
+                    onOpenListenTogether = { requestPortraitListen() },
                     onOpenSettings = {
                         closePortraitMore()
                         openPortraitSettings()
@@ -967,24 +1022,32 @@ internal fun NowPlayingScreenLayers(
             )
         }
 
-        // 顶部 HUD：竖屏保留；横屏极淡，像器物铭牌
-        if (!isLandscape || state.buffering) {
-            Box(
+        // 竖屏黑胶：上滑盖住百科（不跟手）；横屏 / 歌词页不进入
+        if (!isLandscape && (portraitWikiT > 0.001f || portraitWikiOpen)) {
+            val wikiCookie = app.sessionRepository.session.value?.cookie.orEmpty()
+            BoxWithConstraints(
                 Modifier
-                    .fillMaxWidth()
-                    .align(Alignment.TopCenter)
-                    .padding(top = if (isLandscape) 10.dp else 8.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = if (state.buffering) "···" else "NOW PLAYING",
-                    style = TextStyle(
-                        color = LyricDim.copy(alpha = if (isLandscape) 0.18f else 0.3f),
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 7.sp,
-                        letterSpacing = if (isLandscape) 1.6.sp else 2.sp,
-                        textAlign = TextAlign.Center,
+                    .fillMaxSize()
+                    .clipToBounds()
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = {},
                     ),
+            ) {
+                val h = constraints.maxHeight.toFloat().coerceAtLeast(1f)
+                PortraitSongWikiOverlay(
+                    track = track,
+                    cookie = wikiCookie,
+                    dismissSwipeThresholdPx = dismissSwipeThresholdPx,
+                    onClose = closePortraitWiki,
+                    onPlayInsertSong = onPlayInsertSong,
+                    onOpenPlaylist = onOpenPlaylist,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            translationY = (1f - portraitWikiT) * h
+                        },
                 )
             }
         }

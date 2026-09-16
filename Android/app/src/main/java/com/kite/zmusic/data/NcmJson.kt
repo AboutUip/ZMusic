@@ -167,6 +167,21 @@ internal object NcmJson {
         }
     }
 
+    fun nicknameDuplicated(json: JSONObject): Boolean {
+        val data = json.optJSONObject("data") ?: json
+        listOf(data, json).forEach { obj ->
+            if (obj.has("duplicated") && !obj.isNull("duplicated")) {
+                return when (val v = obj.opt("duplicated")) {
+                    is Boolean -> v
+                    is Number -> v.toInt() != 0
+                    is String -> v.equals("true", true) || v == "1"
+                    else -> false
+                }
+            }
+        }
+        return false
+    }
+
     /**
      * 从接口 JSON 取出可展示给用户的短句。
      * 丢弃含 URL、IP、userId、原始 HTTP 堆栈的字段。

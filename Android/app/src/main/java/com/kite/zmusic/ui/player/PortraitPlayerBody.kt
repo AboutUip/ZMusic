@@ -233,6 +233,7 @@ internal fun PortraitPlayerBody(
     onCloseQuality: (() -> Unit)? = null,
     onCloseComments: (() -> Unit)? = null,
     onCloseShare: (() -> Unit)? = null,
+    onOpenWiki: (() -> Unit)? = null,
     displayPrefs: PlayerDisplayPrefs = PlayerDisplayPrefs(),
     peekNextTrack: TrackRow? = null,
     peekPrevTrack: TrackRow? = null,
@@ -378,6 +379,11 @@ internal fun PortraitPlayerBody(
                     qualityOpen -> onCloseQuality
                     shareOpen -> onCloseShare
                     else -> onDismiss
+                },
+                // 仅黑胶模式；有面板时不抢上滑。不跟手，阈值与下滑退出对称。
+                onSwipeUp = when {
+                    lyricSelectOpen || selectT > 0.001f || lyricsExpanded || panelHold -> null
+                    else -> onOpenWiki
                 },
             ),
     ) {

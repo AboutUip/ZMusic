@@ -278,6 +278,7 @@ private fun LibraryHomeLandscape(
     onMorePlaylist: (PlaylistSummary) -> Unit,
     onCreatePlaylist: () -> Unit,
     onOpenLikedArtists: () -> Unit,
+    onOpenFans: () -> Unit,
     collectionKind: LibraryCollectionKind,
     onCollectionKind: (LibraryCollectionKind) -> Unit,
     onOpenAlbum: (CollectedAlbum) -> Unit,
@@ -351,6 +352,7 @@ private fun LibraryHomeLandscape(
                         spaceProgress = spaceProgress,
                         onEnterSpace = { pullState.open() },
                         onOpenFollows = onOpenLikedArtists,
+                        onOpenFans = onOpenFans,
                         onAvatarPositioned = onAvatarPositioned,
                         modifier = Modifier
                             .fillMaxWidth()
@@ -413,6 +415,7 @@ private fun ProfileLandscapeBanner(
     spaceProgress: Float,
     onEnterSpace: () -> Unit,
     onOpenFollows: () -> Unit,
+    onOpenFans: () -> Unit,
     onAvatarPositioned: (Offset, Float) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -470,26 +473,41 @@ private fun ProfileLandscapeBanner(
                     ),
                 )
                 Spacer(Modifier.width(14.dp))
-                Column(Modifier.weight(1f)) {
+                Column(
+                    Modifier
+                        .weight(1f)
+                        .then(
+                            if (spaceProgress > SpaceAvatarHandoffProgress) {
+                                Modifier.graphicsLayer { alpha = 0f }
+                            } else {
+                                Modifier
+                            },
+                        ),
+                ) {
                     ProfileNameRow(
                         profile = p,
                         onPhoto = hasPhoto,
                         titleSize = 20.sp,
-                        modifier = Modifier.spaceIdentityLeave(spaceProgress, 0),
                     )
                     ProfileIdentityMeta(
                         profile = p,
                         onPhoto = hasPhoto,
-                        spaceProgress = spaceProgress,
                         center = false,
                         compact = true,
                         onOpenFollows = onOpenFollows,
+                        onOpenFans = onOpenFans,
                     )
                 }
                 Spacer(Modifier.width(12.dp))
                 Box(
                     Modifier
-                        .spaceIdentityLeave(spaceProgress, 1)
+                        .then(
+                            if (spaceProgress > SpaceAvatarHandoffProgress) {
+                                Modifier.graphicsLayer { alpha = 0f }
+                            } else {
+                                Modifier
+                            },
+                        )
                         .clip(RoundedCornerShape(20.dp))
                         .background(
                             if (hasPhoto) Color.White.copy(alpha = 0.94f)
@@ -578,6 +596,15 @@ fun LibraryScreen(
         onOpenOverlay(MainOverlay.Album(album.id, album.name))
     }
 
+    fun openFans() {
+        val p = ui.profile ?: return
+        if (ui.isGuest || p.userId <= 0L) {
+            context.showIslandNotice("请先登录")
+            return
+        }
+        onOpenOverlay(MainOverlay.UserRelations(p.userId, p.nickname, fans = true))
+    }
+
     LaunchedEffect(pullState) {
         snapshotFlow {
             val raw = pullState.progress
@@ -647,6 +674,7 @@ fun LibraryScreen(
                     createOpen = true
                 },
                 onOpenLikedArtists = { onOpenOverlay(MainOverlay.LikedArtists) },
+                onOpenFans = ::openFans,
                 collectionKind = collectionKind,
                 onCollectionKind = { collectionKind = it },
                 onOpenAlbum = ::openAlbum,
@@ -668,10 +696,23 @@ fun LibraryScreen(
                     createOpen = true
                 },
                 onOpenLikedArtists = { onOpenOverlay(MainOverlay.LikedArtists) },
+                onOpenFans = ::openFans,
                 collectionKind = collectionKind,
                 onCollectionKind = { collectionKind = it },
                 onOpenAlbum = ::openAlbum,
                 onLoadMoreAlbums = vm::loadMoreAlbums,
+            )
+        }
+        val moreAlpha = (1f - spaceProgress / 0.14f).coerceIn(0f, 1f)
+        if (ui.profile != null && !ui.isGuest && moreAlpha > 0.04f) {
+            ProfileMoreButton(
+                onClick = { onOpenOverlay(MainOverlay.ProfileEdit) },
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .statusBarsPadding()
+                    .padding(top = 8.dp, end = padH)
+                    .zIndex(8f)
+                    .graphicsLayer { alpha = moreAlpha },
             )
         }
         UserSpaceOverlay(
@@ -682,10 +723,14 @@ fun LibraryScreen(
             subcount = ui.subcount,
             customBgPath = customBgPath,
             backgroundUrl = ui.profile?.backgroundUrl,
+            onPhoto = profileChrome ||
+                !customBgPath.isNullOrBlank() ||
+                !ui.profile?.backgroundUrl.isNullOrBlank(),
             avatarStart = avatarStart,
             avatarStartSize = avatarStartSize,
             reveal = pullState,
             onClose = { pullState.close() },
+            onOpenFans = ::openFans,
             onPickBackground = {
                 pickBg.launch(
                     PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
@@ -859,6 +904,7 @@ private fun LibraryHomePortrait(
     onMorePlaylist: (PlaylistSummary) -> Unit,
     onCreatePlaylist: () -> Unit,
     onOpenLikedArtists: () -> Unit,
+    onOpenFans: () -> Unit,
     collectionKind: LibraryCollectionKind,
     onCollectionKind: (LibraryCollectionKind) -> Unit,
     onOpenAlbum: (CollectedAlbum) -> Unit,
@@ -978,6 +1024,7 @@ private fun LibraryHomePortrait(
                         hideAvatar = spaceProgress > SpaceAvatarHandoffProgress,
                         showSpaceHint = false,
                         onOpenFollows = onOpenLikedArtists,
+                        onOpenFans = onOpenFans,
                         avatarModifier = Modifier.onGloballyPositioned { coords ->
                             if (spaceProgress <= SpaceAvatarHandoffProgress) {
                                 onAvatarPositioned(
@@ -1187,6 +1234,7 @@ private fun ProfileIdentity(
     hideAvatar: Boolean = false,
     showSpaceHint: Boolean = false,
     onOpenFollows: () -> Unit = {},
+    onOpenFans: () -> Unit = {},
     avatarModifier: Modifier = Modifier,
 ) {
     Box(
@@ -1246,21 +1294,30 @@ private fun ProfileIdentity(
                         }
                     ),
                 )
-                Spacer(Modifier.height(12.dp))
-                ProfileNameRow(
-                    profile = p,
-                    onPhoto = onPhoto,
-                    modifier = Modifier
-                        .widthIn(max = 280.dp)
-                        .spaceIdentityLeave(spaceProgress, 0),
-                )
-                ProfileIdentityMeta(
-                    profile = p,
-                    onPhoto = onPhoto,
-                    spaceProgress = spaceProgress,
-                    center = true,
-                    onOpenFollows = onOpenFollows,
-                )
+                Column(
+                    Modifier.then(
+                        if (hideAvatar) {
+                            Modifier.graphicsLayer { alpha = 0f }
+                        } else {
+                            Modifier
+                        },
+                    ),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Spacer(Modifier.height(12.dp))
+                    ProfileNameRow(
+                        profile = p,
+                        onPhoto = onPhoto,
+                        modifier = Modifier.widthIn(max = 280.dp),
+                    )
+                    ProfileIdentityMeta(
+                        profile = p,
+                        onPhoto = onPhoto,
+                        center = true,
+                        onOpenFollows = onOpenFollows,
+                        onOpenFans = onOpenFans,
+                    )
+                }
             }
         }
         if (showSpaceHint) {
@@ -1356,6 +1413,7 @@ private data class IdentityStat(
     val value: String,
     val label: String = "",
     val opensFollows: Boolean = false,
+    val opensFans: Boolean = false,
 )
 
 private fun identityTagsOf(profile: UserProfileBrief): List<IdentityTag> {
@@ -1387,7 +1445,11 @@ private fun identityStatsOf(profile: UserProfileBrief): List<IdentityStat> {
     if (profile.follows != null || profile.artistFollows > 0L) {
         stats += IdentityStat(formatPlayCount(followTotal), "关注", opensFollows = true)
     }
-    profile.followeds?.let { stats += IdentityStat(formatPlayCount(it), "粉丝") }
+    stats += IdentityStat(
+        value = profile.followeds?.let { formatPlayCount(it) } ?: "—",
+        label = "粉丝",
+        opensFans = true,
+    )
     profile.level?.let { stats += IdentityStat("Lv.$it") }
     profile.listenDurationMs?.let { ms ->
         val (value, unit) = formatListenDuration(ms)
@@ -1397,7 +1459,7 @@ private fun identityStatsOf(profile: UserProfileBrief): List<IdentityStat> {
 }
 
 @Composable
-private fun ProfileNameRow(
+internal fun ProfileNameRow(
     profile: UserProfileBrief,
     onPhoto: Boolean,
     modifier: Modifier = Modifier,
@@ -1430,13 +1492,13 @@ private fun ProfileNameRow(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ProfileIdentityMeta(
+internal fun ProfileIdentityMeta(
     profile: UserProfileBrief,
     onPhoto: Boolean,
-    spaceProgress: Float,
     center: Boolean,
     compact: Boolean = false,
     onOpenFollows: () -> Unit = {},
+    onOpenFans: () -> Unit = {},
 ) {
     val tags = remember(profile) { identityTagsOf(profile) }
     val stats = remember(profile) { identityStatsOf(profile) }
@@ -1446,8 +1508,7 @@ private fun ProfileIdentityMeta(
         Row(
             modifier = Modifier
                 .padding(top = 8.dp)
-                .then(if (center) Modifier.widthIn(max = 300.dp) else Modifier)
-                .spaceIdentityLeave(spaceProgress, 1),
+                .then(if (center) Modifier.widthIn(max = 300.dp) else Modifier),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(
                 6.dp,
@@ -1479,8 +1540,7 @@ private fun ProfileIdentityMeta(
         FlowRow(
             modifier = Modifier
                 .padding(top = 8.dp)
-                .then(if (center) Modifier.widthIn(max = 320.dp) else Modifier)
-                .spaceIdentityLeave(spaceProgress, 1),
+                .then(if (center) Modifier.widthIn(max = 320.dp) else Modifier),
             horizontalArrangement = Arrangement.spacedBy(
                 6.dp,
                 if (center) Alignment.CenterHorizontally else Alignment.Start,
@@ -1509,33 +1569,31 @@ private fun ProfileIdentityMeta(
     }
     if (stats.isNotEmpty()) {
         Row(
-            modifier = Modifier
-                .padding(top = 12.dp)
-                .spaceIdentityLeave(spaceProgress, 2),
+            modifier = Modifier.padding(top = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             stats.forEach { stat ->
-                if (stat.opensFollows && stat.label.isNotEmpty()) {
-                    Text(
-                        text = "${stat.value} ${stat.label}",
-                        style = identityStatStyle(onPhoto),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.clickable(
+                val onStatClick = when {
+                    stat.opensFollows -> onOpenFollows
+                    stat.opensFans -> onOpenFans
+                    else -> null
+                }
+                Text(
+                    text = if (stat.label.isEmpty()) stat.value else "${stat.value} ${stat.label}",
+                    style = identityStatStyle(onPhoto),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = if (onStatClick != null && stat.label.isNotEmpty()) {
+                        Modifier.clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
-                            onClick = onOpenFollows,
-                        ),
-                    )
-                } else {
-                    Text(
-                        text = if (stat.label.isEmpty()) stat.value else "${stat.value} ${stat.label}",
-                        style = identityStatStyle(onPhoto),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
+                            onClick = onStatClick,
+                        )
+                    } else {
+                        Modifier
+                    },
+                )
             }
         }
     }

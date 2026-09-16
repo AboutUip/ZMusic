@@ -1,5 +1,8 @@
 package com.kite.zmusic.data
 
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+
 /**
  * 单曲查询：详情、歌手解析、红心核对。Compose 不要直接打这些接口。
  */
@@ -35,5 +38,33 @@ class SongRepository(
         val json = userClient.likeSong(id, like, cookie)
         val ok = NcmJson.apiCode(json) == 200
         return CatalogApiAck(ok, if (ok) "" else NcmJson.userFacingMessage(json, "操作失败"))
+    }
+
+    internal suspend fun wiki(songId: Long, cookie: String): SongWikiPage {
+        if (songId <= 0L) return SongWikiPage()
+        return coroutineScope {
+            val summary = async {
+                runCatching { userClient.songWikiSummary(songId, cookie) }.getOrNull()
+            }
+            val creators = async {
+                runCatching { userClient.songCreators(songId, cookie) }.getOrNull()
+            }
+            val wikiInfo = async {
+                runCatching { userClient.songWikiInfo(songId, cookie) }.getOrNull()
+            }
+            val ugc = async {
+                if (cookie.isBlank()) null
+                else runCatching { userClient.ugcSongGet(songId, cookie) }.getOrNull()
+            }
+            val summaryJson = summary.await()
+            val creatorsJson = creators.await()
+            val wikiInfoJson = wikiInfo.await()
+            val ugcJson = ugc.await()
+            val page = SongWikiParse.merge(summaryJson, ugcJson, creatorsJson, wikiInfoJson)
+            if (page.isEmpty && summaryJson == null && creatorsJson == null) {
+                error("百科加载失败")
+            }
+            page
+        }
     }
 }

@@ -126,11 +126,6 @@ internal fun PortraitShareSheet(
                     onClick = { onPick(NcmShareTarget.WeChatFriend) },
                 )
                 ShareBrandAction(
-                    drawableRes = R.drawable.ic_share_qzone,
-                    label = "QQ空间",
-                    onClick = { onPick(NcmShareTarget.Qzone) },
-                )
-                ShareBrandAction(
                     drawableRes = R.drawable.ic_share_qq,
                     label = "QQ好友",
                     onClick = { onPick(NcmShareTarget.QqFriend) },

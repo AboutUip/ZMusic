@@ -15,6 +15,7 @@ sealed class MainOverlay {
     data object CreativeWorkshop : MainOverlay()
     data object Search : MainOverlay()
     data object Settings : MainOverlay()
+    data object ProfileEdit : MainOverlay()
     data class Playlist(
         val id: Long,
         val title: String,
@@ -85,6 +86,7 @@ sealed class MainOverlay {
         CreativeWorkshop -> "creative-workshop"
         Search -> "search"
         Settings -> "settings"
+        ProfileEdit -> "profile-edit"
         is Playlist -> "playlist-$id"
         is PlaylistSearch -> "playlist-search-$playlistId"
         is Album -> "album-$id"

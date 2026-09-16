@@ -7,6 +7,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -49,16 +50,18 @@ internal fun KaraokeLyricText(
         verticalArrangement = Arrangement.Center,
         maxLines = maxLines.coerceAtLeast(1),
     ) {
-        words.forEach { word ->
-            val color = wordColor(word, pos, playingColor, unplayedColor)
-            Text(
-                text = word.text,
-                color = color,
-                style = style.copy(color = color),
-                maxLines = 1,
-                softWrap = false,
-                overflow = overflow,
-            )
+        words.forEachIndexed { index, word ->
+            key(index, word.timeMs, word.text) {
+                val color = wordColor(word, pos, playingColor, unplayedColor)
+                Text(
+                    text = word.text,
+                    color = color,
+                    style = style.copy(color = color),
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = overflow,
+                )
+            }
         }
     }
 }

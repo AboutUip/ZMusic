@@ -48,6 +48,7 @@ import com.kite.zmusic.ui.common.predictiveBackLayer
 import com.kite.zmusic.ui.common.rememberPredictiveBackUi
 import com.kite.zmusic.ui.library.LikedArtistsScreen
 import com.kite.zmusic.ui.library.LikedArtistsSearchScreen
+import com.kite.zmusic.ui.library.ProfileEditScreen
 import com.kite.zmusic.ui.mv.MvPlayerScreen
 import com.kite.zmusic.ui.offline.OfflineEmptyPage
 import com.kite.zmusic.ui.search.SearchScreen
@@ -242,6 +243,12 @@ private fun CatalogOverlayPage(
                 contentBottomInset = contentBottomInset,
                 onBack = onBack,
                 onLogout = onLogout,
+            )
+        }
+        MainOverlay.ProfileEdit -> {
+            ProfileEditScreen(
+                contentBottomInset = contentBottomInset,
+                onBack = onBack,
             )
         }
         MainOverlay.CreativeWorkshop -> {

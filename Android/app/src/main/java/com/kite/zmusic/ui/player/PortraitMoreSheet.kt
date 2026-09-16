@@ -105,6 +105,7 @@ private val MoreSheetChromeH = 42.dp
 fun PortraitMoreSheet(
     track: TrackRow,
     onOpenPoster: () -> Unit,
+    onOpenListenTogether: () -> Unit,
     onOpenSettings: () -> Unit,
     onClose: () -> Unit,
     displayPrefs: PlayerDisplayPrefs,
@@ -217,6 +218,7 @@ fun PortraitMoreSheet(
                 onOpenTranslation = { page = MorePage.Translation },
                 onOpenOutputDevice = { page = MorePage.OutputDevice },
                 onOpenPoster = onOpenPoster,
+                onOpenListenTogether = onOpenListenTogether,
                 onOpenSettings = onOpenSettings,
                 onDisplayPrefsChange = onDisplayPrefsChange,
                 onBack = { page = MorePage.Root },
@@ -277,6 +279,7 @@ private fun MorePageStack(
     onOpenTranslation: () -> Unit,
     onOpenOutputDevice: () -> Unit,
     onOpenPoster: () -> Unit,
+    onOpenListenTogether: () -> Unit,
     onOpenSettings: () -> Unit,
     onDisplayPrefsChange: (PlayerDisplayPrefs) -> Unit,
     onBack: () -> Unit,
@@ -325,6 +328,13 @@ private fun MorePageStack(
                 title = "定时停止",
                 subtitle = sleepTimerRowSubtitle(sleepTimer),
                 onClick = onOpenSleepTimer,
+            )
+            Spacer(Modifier.height(8.dp))
+            MoreActionRow(
+                icon = ZIcons.Handshake,
+                title = "一起听",
+                subtitle = "邀请朋友同步听歌",
+                onClick = onOpenListenTogether,
             )
             Spacer(Modifier.height(8.dp))
             MoreActionRow(

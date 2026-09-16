@@ -15,6 +15,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
+import java.io.File
 
 data class LibraryHomeSnapshot(
     val loading: Boolean = false,
@@ -269,6 +270,67 @@ class LibraryHomeRepository(
         }
         val (albums, total, more) = NcmHomeParse.collectedAlbumPage(json, AlbumPage)
         albumCollection.replacePage(albums, total, more)
+    }
+
+    suspend fun updateSelfProfile(
+        nickname: String,
+        signature: String,
+        gender: Int,
+        birthdayMs: Long,
+    ): CatalogApiAck {
+        val session = sessionRepository.session.value
+            ?: return CatalogApiAck(false, "未登录")
+        val current = _snapshot.value.profile
+        val json = runCatching {
+            userClient.userUpdate(
+                cookie = session.cookie,
+                nickname = nickname.trim(),
+                signature = signature,
+                gender = gender,
+                birthdayMs = birthdayMs,
+                province = current?.province ?: 0,
+                city = current?.city ?: 0,
+            )
+        }.getOrElse {
+            return CatalogApiAck(false, NcmJson.userFacingThrowable(it, "保存失败"))
+        }
+        if (NcmJson.apiCode(json) != 200) {
+            return CatalogApiAck(false, NcmJson.userFacingMessage(json, "保存失败"))
+        }
+        runCatching { refresh(force = true) }
+        return CatalogApiAck(true, "")
+    }
+
+    suspend fun checkNicknameAvailable(nickname: String): CatalogApiAck {
+        val session = sessionRepository.session.value
+            ?: return CatalogApiAck(false, "未登录")
+        val json = runCatching {
+            userClient.nicknameCheck(nickname.trim(), session.cookie)
+        }.getOrElse {
+            return CatalogApiAck(true, "")
+        }
+        if (NcmJson.apiCode(json) != 200) {
+            return CatalogApiAck(false, NcmJson.userFacingMessage(json, "昵称不可用"))
+        }
+        if (NcmJson.nicknameDuplicated(json)) {
+            return CatalogApiAck(false, "这个昵称已被占用")
+        }
+        return CatalogApiAck(true, "")
+    }
+
+    suspend fun uploadSelfAvatar(file: File): CatalogApiAck {
+        val session = sessionRepository.session.value
+            ?: return CatalogApiAck(false, "未登录")
+        val json = runCatching {
+            userClient.avatarUpload(session.cookie, file)
+        }.getOrElse {
+            return CatalogApiAck(false, NcmJson.userFacingThrowable(it, "头像更新失败"))
+        }
+        if (NcmJson.apiCode(json) != 200) {
+            return CatalogApiAck(false, NcmJson.userFacingMessage(json, "头像更新失败"))
+        }
+        runCatching { refresh(force = true) }
+        return CatalogApiAck(true, "")
     }
 
     private data class HomeFetch(

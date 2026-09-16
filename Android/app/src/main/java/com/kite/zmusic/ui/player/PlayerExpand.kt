@@ -2,6 +2,7 @@ package com.kite.zmusic.ui.player
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -110,6 +111,11 @@ private val PlayerExpandCloseSpec = tween<Float>(
     durationMillis = 300,
     easing = PlayerExpandCloseEase,
 )
+/** 迷你条落到纯色位后再淡入液态 / 磨砂；可被再次展开打断。 */
+private val MiniChromeRevealSpec = tween<Float>(
+    durationMillis = 240,
+    easing = FastOutSlowInEasing,
+)
 
 internal const val PlayerExpandMiniHide = 0.001f
 internal const val PlayerExpandFlightStart = 0.001f
@@ -135,6 +141,8 @@ internal class PlayerExpandState(
     initiallyOpen: Boolean = false,
 ) {
     private val anim = Animatable(if (initiallyOpen) 1f else 0f)
+    /** 0 = 离场纯色盖住迷你条；1 = 用户选的液态 / 磨砂 / 纯色。 */
+    private val chromeRevealAnim = Animatable(if (initiallyOpen) 0f else 1f)
     private var override by mutableStateOf<Float?>(null)
     private var job: Job? = null
     private var gen = 0
@@ -186,6 +194,9 @@ internal class PlayerExpandState(
 
     val visualProgress: Float
         get() = override ?: anim.value
+
+    val miniChromeReveal: Float
+        get() = chromeRevealAnim.value
 
     val hideMiniShared: Boolean
         get() = visualProgress > PlayerExpandMiniHide
@@ -321,6 +332,7 @@ internal class PlayerExpandState(
         val my = ++gen
         job?.cancel()
         job = scope.launch {
+            chromeRevealAnim.stop()
             if (visualProgress < 0.02f) {
                 withFrameNanos { }
                 withFrameNanos { }
@@ -342,6 +354,9 @@ internal class PlayerExpandState(
             anim.stop()
             anim.snapTo(from)
             anim.animateTo(1f, PlayerExpandOpenSpec)
+            if (my == gen) {
+                chromeRevealAnim.snapTo(0f)
+            }
         }
     }
 
@@ -350,6 +365,8 @@ internal class PlayerExpandState(
         val my = ++gen
         job?.cancel()
         job = scope.launch {
+            chromeRevealAnim.stop()
+            chromeRevealAnim.snapTo(0f)
             val from = visualProgress
             override = null
             anim.stop()
@@ -357,6 +374,7 @@ internal class PlayerExpandState(
             anim.animateTo(0f, PlayerExpandCloseSpec)
             if (my == gen && !targetOpen && anim.value < 0.001f) {
                 mounted = false
+                chromeRevealAnim.animateTo(1f, MiniChromeRevealSpec)
             }
         }
     }
@@ -369,6 +387,8 @@ internal class PlayerExpandState(
         job = scope.launch {
             anim.stop()
             anim.snapTo(0f)
+            chromeRevealAnim.stop()
+            chromeRevealAnim.snapTo(1f)
             if (my == gen) mounted = false
         }
     }

@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -27,6 +28,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
@@ -132,10 +134,12 @@ internal fun UserSpaceOverlay(
     subcount: SubcountBrief?,
     customBgPath: String?,
     backgroundUrl: String? = null,
+    onPhoto: Boolean = false,
     avatarStart: Offset,
     avatarStartSize: Float,
     reveal: UserSpaceRevealState,
     onClose: () -> Unit,
+    onOpenFans: () -> Unit = {},
     onPickBackground: () -> Unit,
     onClearBackground: () -> Unit,
     modifier: Modifier = Modifier.fillMaxSize(),
@@ -213,19 +217,35 @@ internal fun UserSpaceOverlay(
             morphT = pager.morphT,
         )
 
+        val identityCluster = spaceIdentityCluster(t)
+        if (identityCluster < 0.999f) {
+            SpaceIdentityFlight(
+                profile = profile,
+                onPhoto = onPhoto,
+                landscape = landscape,
+                cluster = identityCluster,
+                avatarX = avatarX,
+                avatarY = avatarY,
+                circleNow = circleNow,
+                onOpenFans = onOpenFans,
+            )
+        }
+
         ProfileAvatar(
             profile = profile,
             size = with(density) { startCircle.toDp() },
             placeholderSp = 32.sp,
-            modifier = Modifier.graphicsLayer {
-                translationX = avatarX
-                translationY = avatarY
-                val scale = circleNow / startCircle
-                scaleX = scale
-                scaleY = scale
-                transformOrigin = TransformOrigin(0f, 0f)
-                clip = false
-            },
+            modifier = Modifier
+                .zIndex(4f)
+                .graphicsLayer {
+                    translationX = avatarX
+                    translationY = avatarY
+                    val scale = circleNow / startCircle
+                    scaleX = scale
+                    scaleY = scale
+                    transformOrigin = TransformOrigin(0f, 0f)
+                    clip = false
+                },
         )
 
         if (opened) {
@@ -317,6 +337,57 @@ internal fun UserSpaceOverlay(
     }
 }
 
+
+@Composable
+private fun SpaceIdentityFlight(
+    profile: UserProfileBrief,
+    onPhoto: Boolean,
+    landscape: Boolean,
+    cluster: Float,
+    avatarX: Float,
+    avatarY: Float,
+    circleNow: Float,
+    onOpenFans: () -> Unit = {},
+) {
+    val density = LocalDensity.current
+    val gapPx = with(density) { (if (landscape) 14.dp else 12.dp).toPx() }
+    Column(
+        Modifier
+            .zIndex(2f)
+            .then(if (landscape) Modifier.widthIn(max = 360.dp) else Modifier.fillMaxWidth())
+            .graphicsLayer {
+                alpha = 1f - cluster
+                if (landscape) {
+                    translationX = avatarX + circleNow + gapPx + cluster * 36f
+                    translationY = avatarY + cluster * 10f
+                    transformOrigin = TransformOrigin(0f, 0.3f)
+                } else {
+                    translationY = avatarY + circleNow + gapPx + cluster * 32f
+                    transformOrigin = TransformOrigin(0.5f, 0f)
+                }
+                val s = 1f - cluster * 0.06f
+                scaleX = s
+                scaleY = s
+                clip = false
+            }
+            .then(if (landscape) Modifier else Modifier.padding(horizontal = 20.dp)),
+        horizontalAlignment = if (landscape) Alignment.Start else Alignment.CenterHorizontally,
+    ) {
+        ProfileNameRow(
+            profile = profile,
+            onPhoto = onPhoto,
+            titleSize = if (landscape) 20.sp else null,
+            modifier = if (landscape) Modifier else Modifier.widthIn(max = 280.dp),
+        )
+        ProfileIdentityMeta(
+            profile = profile,
+            onPhoto = onPhoto,
+            center = !landscape,
+            compact = landscape,
+            onOpenFans = onOpenFans,
+        )
+    }
+}
 
 @Composable
 private fun UserSpaceBackdrop(
