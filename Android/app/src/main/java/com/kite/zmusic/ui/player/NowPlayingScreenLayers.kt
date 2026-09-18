@@ -32,9 +32,13 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateSet
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -43,6 +47,7 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
@@ -58,6 +63,7 @@ import com.kite.zmusic.plugin.PluginLookPresent
 import com.kite.zmusic.playback.PlaybackUiState
 import com.kite.zmusic.ui.notice.showIslandNotice
 import com.kite.zmusic.ui.theme.TextTheme
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 import kotlinx.coroutines.CoroutineScope
@@ -203,6 +209,14 @@ internal fun NowPlayingScreenLayers(
 ) {
     val context = LocalContext.current
     val expand = LocalPlayerExpand.current
+    val listenUi by app.listenTogether.ui.collectAsStateWithLifecycle()
+    val listenChatOpen = !isLandscape && portraitCommentsOpen && listenUi.inRoom
+    LaunchedEffect(listenChatOpen) {
+        app.listenTogether.setChatForeground(listenChatOpen)
+    }
+    DisposableEffect(Unit) {
+        onDispose { app.listenTogether.setChatForeground(false) }
+    }
     val expandLook = PlayerExpandLook.from(
         prefs = if (isLandscape) displayPrefs else portraitDisplayPrefs,
         landscape = isLandscape,
@@ -443,6 +457,8 @@ internal fun NowPlayingScreenLayers(
                     onOpenComments = { openPortraitComments() },
                     onOpenShare = { openPortraitShare() },
                     onOpenWiki = { openPortraitWiki() },
+                    onOpenUser = onOpenUser,
+                    onOpenListenTogether = { openPortraitListen() },
                     settingsOpen = portraitSettingsOpen,
                     scoreOpen = portraitScoreOpen,
                     qualityOpen = portraitQualityOpen,
@@ -672,9 +688,12 @@ internal fun NowPlayingScreenLayers(
             }
         }
 
-        // 竖屏分享：与音源同壳层进出场；固定打开 1/3
+        // 竖屏分享：wrap 内容高度，用实测高度滑入，避免底部假空隙
         if (!isLandscape && (portraitShareT > 0.001f || portraitShareOpen)) {
             val density = LocalDensity.current
+            val fallbackHPx = with(density) { rememberPortraitShareSheetHeight().toPx() }
+            var measuredHPx by remember { mutableFloatStateOf(0f) }
+            val sheetHPx = measuredHPx.takeIf { it > 1f } ?: fallbackHPx
             NowPlayingSettingsOutsideDismiss(
                 onDismiss = { closePortraitShare() },
                 enabled = portraitShareOpen || portraitShareT > 0.05f,
@@ -682,62 +701,48 @@ internal fun NowPlayingScreenLayers(
                     .fillMaxSize()
                     .graphicsLayer { alpha = portraitShareT },
             )
-            BoxWithConstraints(
-                Modifier
+            PortraitShareSheet(
+                onPick = { target ->
+                    closePortraitShare()
+                    if (target == NcmShareTarget.CopyLink) {
+                        when (NcmShare.send(context, track, target)) {
+                            NcmShareResult.Copied -> context.showIslandNotice("已复制链接")
+                            NcmShareResult.NoLink -> context.showIslandNotice("当前歌曲无法分享")
+                            else -> context.showIslandNotice("复制失败")
+                        }
+                        return@PortraitShareSheet
+                    }
+                    if (track.id <= 0L) {
+                        context.showIslandNotice("当前歌曲无法分享")
+                        return@PortraitShareSheet
+                    }
+                    portraitSheetScope.launch {
+                        context.showIslandNotice("正在生成分享图")
+                        val uri = ShareSongPoster.prepareShareUri(app, track)
+                        if (uri == null) {
+                            context.showIslandNotice("分享图生成失败")
+                            return@launch
+                        }
+                        when (val result = NcmShare.sendImage(context, uri, target)) {
+                            NcmShareResult.Opened -> Unit
+                            NcmShareResult.Failed -> context.showIslandNotice("分享失败")
+                            is NcmShareResult.MissingApp ->
+                                context.showIslandNotice("未安装${result.appName}")
+                            else -> context.showIslandNotice("分享失败")
+                        }
+                    }
+                },
+                hazeState = settingsHazeState,
+                modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .fillMaxHeight(),
-            ) {
-                val screenH = constraints.maxHeight.toFloat().coerceAtLeast(1f)
-                val statusTopPx = with(density) {
-                    WindowInsets.statusBars.asPaddingValues().calculateTopPadding().toPx()
-                }
-                val maxSheetH = (screenH - statusTopPx).coerceAtLeast(screenH * 0.5f)
-                val sheetHPx = maxSheetH / 3f
-                val sheetHDp = with(density) { sheetHPx.toDp() }
-                PortraitShareSheet(
-                    onPick = { target ->
-                        closePortraitShare()
-                        if (target == NcmShareTarget.CopyLink) {
-                            when (NcmShare.send(context, track, target)) {
-                                NcmShareResult.Copied -> context.showIslandNotice("已复制链接")
-                                NcmShareResult.NoLink -> context.showIslandNotice("当前歌曲无法分享")
-                                else -> context.showIslandNotice("复制失败")
-                            }
-                            return@PortraitShareSheet
-                        }
-                        if (track.id <= 0L) {
-                            context.showIslandNotice("当前歌曲无法分享")
-                            return@PortraitShareSheet
-                        }
-                        portraitSheetScope.launch {
-                            context.showIslandNotice("正在生成分享图")
-                            val uri = ShareSongPoster.prepareShareUri(app, track)
-                            if (uri == null) {
-                                context.showIslandNotice("分享图生成失败")
-                                return@launch
-                            }
-                            when (val result = NcmShare.sendImage(context, uri, target)) {
-                                NcmShareResult.Opened -> Unit
-                                NcmShareResult.Failed -> context.showIslandNotice("分享失败")
-                                is NcmShareResult.MissingApp ->
-                                    context.showIslandNotice("未安装${result.appName}")
-                                else -> context.showIslandNotice("分享失败")
-                            }
-                        }
+                    .onSizeChanged { measuredHPx = it.height.toFloat() }
+                    .graphicsLayer {
+                        transformOrigin = TransformOrigin(0.5f, 1f)
+                        translationY = (1f - portraitShareT) * sheetHPx
+                        alpha = portraitShareT
                     },
-                    hazeState = settingsHazeState,
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        .height(sheetHDp)
-                        .graphicsLayer {
-                            transformOrigin = TransformOrigin(0.5f, 1f)
-                            translationY = (1f - portraitShareT) * sheetHPx
-                            alpha = portraitShareT
-                        },
-                )
-            }
+            )
         }
 
         // 竖屏评论：与曲谱同壳层进出场；固定打开 2/3，上箭头扩全屏（不可拖拽改高）
@@ -763,6 +768,33 @@ internal fun NowPlayingScreenLayers(
                 val sheetHPx = (portraitCommentsSheetFrac.value * maxSheetH)
                     .coerceIn(maxSheetH * (2f / 3f), maxSheetH)
                 val sheetHDp = with(density) { sheetHPx.toDp() }
+                if (listenUi.inRoom) {
+                    PortraitListenChatSheet(
+                        openProgress = portraitCommentsT,
+                        sheetFrac = portraitCommentsSheetFrac.value,
+                        onExpandFullscreen = {
+                            portraitSheetScope.launch {
+                                portraitCommentsSheetFrac.animateCommentSheetFrac(1f)
+                            }
+                        },
+                        onCollapseToTwoThirds = {
+                            portraitSheetScope.launch {
+                                portraitCommentsSheetFrac.animateCommentSheetFrac(2f / 3f)
+                            }
+                        },
+                        hazeState = settingsHazeState,
+                        onOpenUser = onOpenUser,
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .height(sheetHDp)
+                            .graphicsLayer {
+                                transformOrigin = TransformOrigin(0.5f, 1f)
+                                translationY = (1f - portraitCommentsT) * sheetHPx
+                                alpha = portraitCommentsT
+                            },
+                    )
+                } else {
                 PortraitCommentsSheet(
                     songId = track.id,
                     cookie = commentCookie,
@@ -791,6 +823,7 @@ internal fun NowPlayingScreenLayers(
                             alpha = portraitCommentsT
                         },
                 )
+                }
             }
         }
 

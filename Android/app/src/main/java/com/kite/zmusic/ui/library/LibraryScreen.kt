@@ -52,6 +52,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -105,6 +106,8 @@ import com.kite.zmusic.ZMusicApplication
 import com.kite.zmusic.data.ChromeWallpaperSurface
 import com.kite.zmusic.data.CollectedAlbum
 import com.kite.zmusic.data.PlaylistSummary
+import com.kite.zmusic.data.RecentCollectionStore
+import com.kite.zmusic.data.preferRecent
 import com.kite.zmusic.plugin.PluginCollections
 import com.kite.zmusic.plugin.PluginLookPresent
 import com.kite.zmusic.data.SessionRepository
@@ -282,32 +285,11 @@ private fun LibraryHomeLandscape(
     collectionKind: LibraryCollectionKind,
     onCollectionKind: (LibraryCollectionKind) -> Unit,
     onOpenAlbum: (CollectedAlbum) -> Unit,
-    onLoadMoreAlbums: () -> Unit,
+    onViewMoreCollection: (albums: Boolean) -> Unit,
+    recentPlaylistIds: List<Long>,
+    recentAlbumIds: List<Long>,
 ) {
     val listState = rememberLazyListState()
-    val nearEnd by remember {
-        derivedStateOf {
-            val last = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-            val total = listState.layoutInfo.totalItemsCount
-            total > 1 && last >= total - 2
-        }
-    }
-    LaunchedEffect(
-        nearEnd,
-        collectionKind,
-        ui.albums.size,
-        ui.albumsHasMore,
-        ui.albumsLoadingMore,
-    ) {
-        if (collectionKind == LibraryCollectionKind.Album &&
-            nearEnd &&
-            ui.albumsHasMore &&
-            !ui.albumsLoadingMore &&
-            ui.albums.isNotEmpty()
-        ) {
-            onLoadMoreAlbums()
-        }
-    }
     val hasPhoto = LocalChromeWallpaperPainted.current ||
         !customBgPath.isNullOrBlank() ||
         !ui.profile?.backgroundUrl.isNullOrBlank()
@@ -391,7 +373,6 @@ private fun LibraryHomeLandscape(
                             albumsTotal = ui.albumsTotal,
                             albumsHasMore = ui.albumsHasMore,
                             albumsLoading = ui.albumsLoading,
-                            albumsLoadingMore = ui.albumsLoadingMore,
                             albumsError = ui.albumsError,
                             isGuest = ui.isGuest,
                             collectionKind = collectionKind,
@@ -400,6 +381,9 @@ private fun LibraryHomeLandscape(
                             onMorePlaylist = onMorePlaylist,
                             onCreatePlaylist = onCreatePlaylist,
                             onOpenAlbum = onOpenAlbum,
+                            onViewMoreCollection = onViewMoreCollection,
+                            recentPlaylistIds = recentPlaylistIds,
+                            recentAlbumIds = recentAlbumIds,
                         )
                 }
             }
@@ -572,6 +556,8 @@ fun LibraryScreen(
     var confirmDelete by remember { mutableStateOf<PlaylistSummary?>(null) }
     var confirmUnsub by remember { mutableStateOf<PlaylistSummary?>(null) }
     var collectionKind by remember { mutableStateOf(LibraryCollectionKind.Playlist) }
+    val recentPlaylistIds by app.recentCollectionStore.playlistIds.collectAsStateWithLifecycle()
+    val recentAlbumIds by app.recentCollectionStore.albumIds.collectAsStateWithLifecycle()
     val uid = ui.profile?.userId ?: 0L
     var customBgPath by remember(uid) { mutableStateOf(app.userSpaceBackgroundStore.pathFor(uid)) }
     val wallpaperStored by app.chromeWallpaperStore.state.collectAsStateWithLifecycle()
@@ -580,6 +566,7 @@ fun LibraryScreen(
     val heroBgPath = if (profileChrome) null else (PluginLookPresent.profilePath() ?: customBgPath)
 
     fun openPlaylist(pl: PlaylistSummary) {
+        app.recentCollectionStore.touchPlaylist(pl.id)
         onOpenOverlay(
             MainOverlay.Playlist(
                 id = pl.id,
@@ -593,7 +580,12 @@ fun LibraryScreen(
     }
 
     fun openAlbum(album: CollectedAlbum) {
+        app.recentCollectionStore.touchAlbum(album.id)
         onOpenOverlay(MainOverlay.Album(album.id, album.name))
+    }
+
+    fun openCollectionAll(albums: Boolean) {
+        onOpenOverlay(MainOverlay.LibraryCollectionAll(albums = albums))
     }
 
     fun openFans() {
@@ -678,7 +670,9 @@ fun LibraryScreen(
                 collectionKind = collectionKind,
                 onCollectionKind = { collectionKind = it },
                 onOpenAlbum = ::openAlbum,
-                onLoadMoreAlbums = vm::loadMoreAlbums,
+                onViewMoreCollection = ::openCollectionAll,
+                recentPlaylistIds = recentPlaylistIds,
+                recentAlbumIds = recentAlbumIds,
             )
         } else {
             LibraryHomePortrait(
@@ -700,7 +694,9 @@ fun LibraryScreen(
                 collectionKind = collectionKind,
                 onCollectionKind = { collectionKind = it },
                 onOpenAlbum = ::openAlbum,
-                onLoadMoreAlbums = vm::loadMoreAlbums,
+                onViewMoreCollection = ::openCollectionAll,
+                recentPlaylistIds = recentPlaylistIds,
+                recentAlbumIds = recentAlbumIds,
             )
         }
         val moreAlpha = (1f - spaceProgress / 0.14f).coerceIn(0f, 1f)
@@ -908,7 +904,9 @@ private fun LibraryHomePortrait(
     collectionKind: LibraryCollectionKind,
     onCollectionKind: (LibraryCollectionKind) -> Unit,
     onOpenAlbum: (CollectedAlbum) -> Unit,
-    onLoadMoreAlbums: () -> Unit,
+    onViewMoreCollection: (albums: Boolean) -> Unit,
+    recentPlaylistIds: List<Long>,
+    recentAlbumIds: List<Long>,
 ) {
     val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val screenH = LocalConfiguration.current.screenHeightDp.dp
@@ -937,29 +935,6 @@ private fun LibraryHomePortrait(
         }
     }
     SideEffect { pullState.atTop = atTop }
-    val nearEnd by remember {
-        derivedStateOf {
-            val last = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-            val total = listState.layoutInfo.totalItemsCount
-            total > 1 && last >= total - 2
-        }
-    }
-    LaunchedEffect(
-        nearEnd,
-        collectionKind,
-        ui.albums.size,
-        ui.albumsHasMore,
-        ui.albumsLoadingMore,
-    ) {
-        if (collectionKind == LibraryCollectionKind.Album &&
-            nearEnd &&
-            ui.albumsHasMore &&
-            !ui.albumsLoadingMore &&
-            ui.albums.isNotEmpty()
-        ) {
-            onLoadMoreAlbums()
-        }
-    }
 
     val p = spaceProgress.coerceIn(0f, 1f)
     val pulling = p > 0.001f
@@ -1089,7 +1064,6 @@ private fun LibraryHomePortrait(
                             albumsTotal = ui.albumsTotal,
                             albumsHasMore = ui.albumsHasMore,
                             albumsLoading = ui.albumsLoading,
-                            albumsLoadingMore = ui.albumsLoadingMore,
                             albumsError = ui.albumsError,
                             isGuest = ui.isGuest,
                             collectionKind = collectionKind,
@@ -1098,6 +1072,9 @@ private fun LibraryHomePortrait(
                             onMorePlaylist = onMorePlaylist,
                             onCreatePlaylist = onCreatePlaylist,
                             onOpenAlbum = onOpenAlbum,
+                            onViewMoreCollection = onViewMoreCollection,
+                            recentPlaylistIds = recentPlaylistIds,
+                            recentAlbumIds = recentAlbumIds,
                         )
                     }
                 }
@@ -1574,26 +1551,28 @@ internal fun ProfileIdentityMeta(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             stats.forEach { stat ->
-                val onStatClick = when {
-                    stat.opensFollows -> onOpenFollows
-                    stat.opensFans -> onOpenFans
-                    else -> null
+                key(stat.label, stat.opensFollows, stat.opensFans) {
+                    val onStatClick = when {
+                        stat.opensFollows -> onOpenFollows
+                        stat.opensFans -> onOpenFans
+                        else -> null
+                    }
+                    Text(
+                        text = if (stat.label.isEmpty()) stat.value else "${stat.value} ${stat.label}",
+                        style = identityStatStyle(onPhoto),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = if (onStatClick != null && stat.label.isNotEmpty()) {
+                            Modifier.clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = onStatClick,
+                            )
+                        } else {
+                            Modifier
+                        },
+                    )
                 }
-                Text(
-                    text = if (stat.label.isEmpty()) stat.value else "${stat.value} ${stat.label}",
-                    style = identityStatStyle(onPhoto),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = if (onStatClick != null && stat.label.isNotEmpty()) {
-                        Modifier.clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = onStatClick,
-                        )
-                    } else {
-                        Modifier
-                    },
-                )
             }
         }
     }
@@ -1610,6 +1589,17 @@ internal fun ProfileAvatar(
         colors = listOf(MainPalette.Accent.copy(alpha = 0.85f), Color(0xFFFF8A80)),
     )
     val hang = ProfileAvatarBadgeHang
+    // 按 userId 稳住展示 URL：刷新短暂空值 / 同图换参时不闪占位底。
+    var shownUrl by remember(profile.userId) { mutableStateOf(profile.avatarUrl) }
+    SideEffect {
+        val next = profile.avatarUrl
+        when {
+            next.isNullOrBlank() -> Unit
+            shownUrl.isNullOrBlank() -> shownUrl = next
+            UrlImageCache.sameImageIdentity(shownUrl, next) -> Unit
+            else -> shownUrl = next
+        }
+    }
     Box(
         modifier
             .size(size + hang)
@@ -1625,7 +1615,7 @@ internal fun ProfileAvatar(
                 .background(MainPalette.Placeholder),
             contentAlignment = Alignment.Center,
         ) {
-            val url = profile.avatarUrl
+            val url = shownUrl
             if (!url.isNullOrBlank()) {
                 UrlImage(
                     url = url,
@@ -1633,6 +1623,7 @@ internal fun ProfileAvatar(
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop,
                     maxPx = UrlImageCache.THUMB_MAX_PX,
+                    showPlaceholder = false,
                 )
             } else {
                 Text(
@@ -1741,7 +1732,6 @@ private fun LibraryPlaylistBody(
     albumsTotal: Int,
     albumsHasMore: Boolean,
     albumsLoading: Boolean,
-    albumsLoadingMore: Boolean,
     albumsError: String?,
     isGuest: Boolean,
     collectionKind: LibraryCollectionKind,
@@ -1750,12 +1740,32 @@ private fun LibraryPlaylistBody(
     onMorePlaylist: (PlaylistSummary) -> Unit,
     onCreatePlaylist: () -> Unit,
     onOpenAlbum: (CollectedAlbum) -> Unit,
+    onViewMoreCollection: (albums: Boolean) -> Unit,
+    recentPlaylistIds: List<Long>,
+    recentAlbumIds: List<Long>,
 ) {
     val liked = playlists.filter { it.isHeartPlaylist && it.isOwned }
     val created = playlists.filter { it.isOwned && !it.isHeartPlaylist }
     val collected = playlists.filter { !it.isOwned }
+    val rankedCollected = remember(collected, recentPlaylistIds) {
+        collected.preferRecent(recentPlaylistIds) { it.id }
+    }
+    val rankedAlbums = remember(albums, recentAlbumIds) {
+        albums.preferRecent(recentAlbumIds) { it.id }
+    }
+    val previewLimit = RecentCollectionStore.PREVIEW_LIMIT
+    val playlistPreview = rankedCollected.take(previewLimit)
+    val albumPreview = rankedAlbums.take(previewLimit)
+    val albumCount = when {
+        albumsTotal > 0 -> albumsTotal
+        else -> albums.size
+    }
+    val playlistCanMore = rankedCollected.size > previewLimit
+    val albumCanMore = albumCount > previewLimit || (albumsHasMore && albums.size >= previewLimit)
     val scope = rememberCoroutineScope()
     val pager = remember(scope) { CollectionPagerState(scope, collectionKind.ordinal.toFloat()) }
+    val showingAlbums = pager.offset >= 0.5f
+    val canMore = if (showingAlbums) albumCanMore else playlistCanMore
 
     PlaylistSectionColumn(
         region = PluginCollections.LIBRARY_LIKED,
@@ -1778,13 +1788,22 @@ private fun LibraryPlaylistBody(
     LibrarySectionTitle(
         text = "收藏",
         trailing = {
-            CollectionKindSwitch(
-                progress = pager.offset,
-                onSelect = { kind ->
-                    pager.goTo(kind.ordinal.toFloat())
-                    onCollectionKind(kind)
-                },
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                CollectionKindSwitch(
+                    progress = pager.offset,
+                    onSelect = { kind ->
+                        pager.goTo(kind.ordinal.toFloat())
+                        onCollectionKind(kind)
+                    },
+                )
+                Spacer(Modifier.width(8.dp))
+                CollectionViewMoreChip(
+                    enabled = canMore,
+                    onClick = {
+                        onViewMoreCollection(pager.offset >= 0.5f)
+                    },
+                )
+            }
         },
     )
     CollectionSwipePages(
@@ -1807,7 +1826,7 @@ private fun LibraryPlaylistBody(
                     )
                     LibraryCollectionItems(
                         region = PluginCollections.LIBRARY_COLLECTED_PLAYLISTS,
-                        entries = collected.map { pl ->
+                        entries = playlistPreview.map { pl ->
                             LibraryCollectionEntry(
                                 title = pl.name,
                                 subtitle = "${pl.trackCount} 首 · 播放 ${formatPlayCount(pl.playCount)}",
@@ -1817,22 +1836,87 @@ private fun LibraryPlaylistBody(
                             )
                         },
                     )
+                    if (playlistCanMore) {
+                        CollectionViewMoreRow(
+                            onClick = { onViewMoreCollection(false) },
+                        )
+                    }
                 }
             }
         },
         album = {
             CollectedAlbumPane(
-                albums = albums,
-                total = albumsTotal,
-                hasMore = albumsHasMore,
+                albums = albumPreview,
+                total = albumCount,
                 loading = albumsLoading,
-                loadingMore = albumsLoadingMore,
                 error = albumsError,
                 isGuest = isGuest,
+                canViewMore = albumCanMore,
                 onOpen = onOpenAlbum,
+                onViewMore = { onViewMoreCollection(true) },
             )
         },
     )
+}
+
+@Composable
+private fun CollectionViewMoreChip(
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+    modifier: Modifier = Modifier,
+) {
+    Text(
+        text = "查看更多",
+        style = TextStyle(
+            color = if (enabled) MainPalette.Accent else MainPalette.Hint.copy(alpha = 0.55f),
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+        ),
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .then(
+                if (enabled) {
+                    Modifier.clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onClick,
+                    )
+                } else {
+                    Modifier
+                },
+            )
+            .padding(horizontal = 6.dp, vertical = 6.dp),
+    )
+}
+
+@Composable
+private fun CollectionViewMoreRow(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier
+            .fillMaxWidth()
+            .padding(top = 10.dp, bottom = 2.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .wallpaperItemChrome(RoundedCornerShape(12.dp), MainPalette.Placeholder)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick,
+            )
+            .padding(vertical = 12.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = "查看更多",
+            style = TextStyle(
+                color = MainPalette.Accent,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+            ),
+        )
+    }
 }
 
 @Composable
@@ -2004,12 +2088,12 @@ private fun CollectionKindSwitch(
 private fun CollectedAlbumPane(
     albums: List<CollectedAlbum>,
     total: Int,
-    hasMore: Boolean,
     loading: Boolean,
-    loadingMore: Boolean,
     error: String?,
     isGuest: Boolean,
+    canViewMore: Boolean,
     onOpen: (CollectedAlbum) -> Unit,
+    onViewMore: () -> Unit,
 ) {
     when {
         isGuest && albums.isEmpty() -> LibrarySectionEmpty("登录后查看收藏的专辑")
@@ -2057,21 +2141,8 @@ private fun CollectedAlbumPane(
                         )
                     },
                 )
-                if (loadingMore) {
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 12.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        CircularProgressIndicator(
-                            color = MainPalette.Accent.copy(alpha = 0.7f),
-                            strokeWidth = 2.dp,
-                            modifier = Modifier.size(18.dp),
-                        )
-                    }
-                } else if (hasMore) {
-                    Spacer(Modifier.height(8.dp))
+                if (canViewMore) {
+                    CollectionViewMoreRow(onClick = onViewMore)
                 }
             }
         }

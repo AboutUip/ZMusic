@@ -20,6 +20,15 @@ data class ListenMember(
     val host: Boolean,
 )
 
+data class ListenChatMsg(
+    val id: Long,
+    val uid: String,
+    val nickname: String,
+    val avatarUrl: String,
+    val text: String,
+    val at: Long,
+)
+
 data class ListenRoomSnapshot(
     val id: String,
     val hostUid: String,
@@ -30,7 +39,32 @@ data class ListenRoomSnapshot(
     val serverNow: Long,
     val closed: Boolean,
     val qrText: String,
+    val chat: List<ListenChatMsg> = emptyList(),
 )
+
+data class ListenPeer(
+    val uid: String,
+    val nickname: String,
+    val avatarUrl: String,
+)
+
+data class ListenInvite(
+    val id: String,
+    val roomId: String,
+    val from: ListenPeer,
+    val to: ListenPeer,
+    val status: String,
+    val expiresAt: Long,
+    val expiresIn: Long,
+)
+
+data class ListenInviteBox(
+    val incoming: ListenInvite? = null,
+    val outgoing: ListenInvite? = null,
+)
+
+fun listenInviteIsRejected(status: String): Boolean =
+    status == "declined" || status == "timeout"
 
 data class ListenTogetherUi(
     val room: ListenRoomSnapshot? = null,
@@ -38,10 +72,19 @@ data class ListenTogetherUi(
     val busy: Boolean = false,
     val draftSeats: Int = 2,
     val pendingJoinId: String? = null,
+    val lastReadChatId: Long = 0L,
+    val chatToast: ListenChatMsg? = null,
+    val matching: Boolean = false,
+    val matchPeer: ListenPeer? = null,
+    val incomingInvite: ListenInvite? = null,
+    val rejectedInvite: ListenInvite? = null,
+    val outgoingPending: Boolean = false,
 ) {
     val inRoom: Boolean get() = room != null && !room.closed
     val hosting: Boolean get() = inRoom && room?.hostUid == selfUid
     val memberCount: Int get() = room?.members?.size ?: 0
+    val unreadChat: Int
+        get() = listenUnreadChatCount(room?.chat.orEmpty(), selfUid, lastReadChatId)
 }
 
 object ListenTogetherClock {
@@ -71,9 +114,85 @@ object ListenTogetherClock {
 
     fun shouldApply(nextHlc: Long, appliedHlc: Long): Boolean = nextHlc > appliedHlc
 
+    /**
+     * 谁改了听谁的：自己的回声不落地，更旧的时钟丢弃。
+     * 同 HLC 且本机还没跟上时允许再对齐一次。
+     */
+    fun takeRemoteClock(
+        remoteHlc: Long,
+        appliedHlc: Long,
+        isMine: Boolean,
+        mismatch: Boolean,
+        applyingRemote: Boolean,
+    ): Boolean {
+        if (isMine) return false
+        if (remoteHlc < appliedHlc) return false
+        if (remoteHlc > appliedHlc) return true
+        return mismatch && !applyingRemote
+    }
+
+    fun playerNeedsClock(
+        clock: ListenPlaybackClock,
+        localTrackId: Long,
+        localPlaying: Boolean,
+    ): Boolean {
+        if (clock.trackId <= 0L) return false
+        if (localTrackId != clock.trackId) return true
+        return localPlaying != clock.playing
+    }
+
     fun isSeekJump(previous: Long, expectedElapsed: Long, next: Long): Boolean {
         val expected = (previous + expectedElapsed.coerceAtLeast(0L)).coerceAtLeast(0L)
         val delta = kotlin.math.abs(next - expected)
         return delta > SEEK_JUMP_MS
     }
+}
+
+/** 播放页头像簇：客人在后，发起人永远叠在最前（右侧最上）。 */
+data class ListenAvatarLayout(
+    val behind: List<ListenMember>,
+    val host: ListenMember?,
+    val waitingSlot: Boolean,
+    val overflow: Int,
+)
+
+fun listenAvatarLayout(
+    members: List<ListenMember>,
+    maxBehind: Int = 2,
+): ListenAvatarLayout {
+    val host = members.firstOrNull { it.host } ?: members.firstOrNull()
+    if (host == null) {
+        return ListenAvatarLayout(emptyList(), null, false, 0)
+    }
+    val guests = members.filter { it.uid != host.uid }
+    val cap = maxBehind.coerceAtLeast(0)
+    val behind = guests.take(cap)
+    val overflow = (guests.size - behind.size).coerceAtLeast(0)
+    return ListenAvatarLayout(
+        behind = behind,
+        host = host,
+        waitingSlot = members.size <= 1,
+        overflow = overflow,
+    )
+}
+
+fun ListenMember.ncmUserId(): Long? =
+    uid.trim().toLongOrNull()?.takeIf { it > 0L }
+
+fun listenUnreadChatCount(
+    chat: List<ListenChatMsg>,
+    selfUid: String,
+    lastReadId: Long,
+): Int {
+    val self = selfUid.trim()
+    return chat.count { it.uid != self && it.id > lastReadId }
+}
+
+fun listenChatBubbleText(text: String, maxRunes: Int = 20): String {
+    val t = text.trim()
+    if (t.isEmpty() || maxRunes <= 0) return ""
+    val n = t.codePointCount(0, t.length)
+    if (n <= maxRunes) return t
+    val end = t.offsetByCodePoints(0, maxRunes)
+    return t.substring(0, end) + "..."
 }

@@ -354,6 +354,13 @@ internal fun LandscapePlayerBody(
     var idleBump by remember { mutableIntStateOf(0) }
     var vinylSkipDir by remember { mutableStateOf(VinylSkipDirection.Next) }
     var vinylBusy by remember { mutableStateOf(false) }
+    /** 关闭陪伴后仍保留层直到屏上弹幕飞完 */
+    var danmakuLayerActive by remember {
+        mutableStateOf(displayPrefs.danmakuCompanionEnabled)
+    }
+    LaunchedEffect(displayPrefs.danmakuCompanionEnabled) {
+        if (displayPrefs.danmakuCompanionEnabled) danmakuLayerActive = true
+    }
     var lyricResumeToken by remember { mutableIntStateOf(0) }
     var lyricSelectOpen by remember { mutableStateOf(false) }
     var lyricSelectOutsideArmed by remember { mutableStateOf(false) }
@@ -437,15 +444,19 @@ internal fun LandscapePlayerBody(
     }
     val settingsT = settingsPanel.value
 
-    // 曲谱：与设置同曲线展开；黑胶 Y 居中与弹窗同开同收，全程有动画
+    // 曲谱：与设置同开同收，立刻滑入；磨砂不绑黑胶居中（居中只是并行动画）
     val scorePanel = remember { Animatable(0f) }
     val scoreCoverAnim = remember { Animatable(0f) }
     LaunchedEffect(scoreOpen) {
         if (scoreOpen) {
+            hazeNonce++
             scorePanel.animateTo(
                 targetValue = 1f,
                 animationSpec = tween(durationMillis = 460, easing = settingsCurve),
             )
+            // 黑胶居中后再挂一次磨砂，清掉位移途中的采样；不挡展开
+            delay(vinylCenterMs.toLong())
+            if (scoreOpen) hazeNonce++
         } else {
             scoreCoverExpanded = false
             scorePanel.animateTo(
@@ -1567,6 +1578,7 @@ internal fun LandscapePlayerBody(
                         prevEnterSlidePx = prevEnterSlidePx,
                         suppressEnterTransition = suppressVinylEnter,
                         gestureDamping = displayPrefs.vinylGestureDamping,
+                        spinPeriodMs = displayPrefs.vinylSpinPeriodMs(),
                         settleSpinUpright = vinylSongPickOpen || pickerVinylCentered,
                     )
                 }
@@ -1722,6 +1734,29 @@ internal fun LandscapePlayerBody(
         } // uiScale 内容层
         } // hazeSource：仅播放内容作磨砂源（chrome 提到叠层之上，避免被 OutsideDismiss 盖住）
 
+        if (danmakuLayerActive && track.id > 0L) {
+            LandscapeDanmakuOverlay(
+                songId = track.id,
+                density = displayPrefs.danmakuDensity,
+                region = displayPrefs.danmakuRegion,
+                speed = displayPrefs.danmakuSpeed,
+                scale = displayPrefs.danmakuScale,
+                playing = playWhenReady,
+                enabled = displayPrefs.danmakuCompanionEnabled,
+                // 扑克选歌：停发并由更高 zIndex 层盖住，屏上弹幕继续飞完
+                obscured = vinylSongPickT > 0.001f,
+                hazeState = settingsHazeState,
+                onFullyIdle = {
+                    if (!displayPrefs.danmakuCompanionEnabled) {
+                        danmakuLayerActive = false
+                    }
+                },
+                modifier = Modifier
+                    .fillMaxSize()
+                    .zIndex(6f),
+            )
+        }
+
         // 设置层：命中层仅在打开意图时启用；收起过程不吞右上角设置
         if (settingsT > 0.001f || settingsOpen) {
             NowPlayingSettingsOutsideDismiss(
@@ -1839,6 +1874,8 @@ internal fun LandscapePlayerBody(
                         openGeneration = scoreOpenGeneration,
                         onApproachEnd = onNeedQueueThrough,
                         hazeState = settingsHazeState,
+                        hazeNonce = hazeNonce,
+                        enableRealtimeHaze = true,
                         modifier = Modifier
                             .fillMaxSize()
                             .graphicsLayer {
@@ -2066,7 +2103,9 @@ internal fun LandscapePlayerBody(
                     }
                 },
                 onApproachEnd = onNeedQueueThrough,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .zIndex(7f),
             )
         }
 

@@ -11,6 +11,7 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -20,14 +21,12 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
@@ -48,12 +47,14 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kite.zmusic.data.LyricOverlayPrefs
 import com.kite.zmusic.ui.icons.ZIcons
 import com.kite.zmusic.ui.theme.MainColors
 import com.kite.zmusic.ui.theme.MainPalette
+import kotlin.math.roundToInt
 
 internal val OverlayColorPresets = intArrayOf(
     0xFFFFFFFF.toInt(),
@@ -68,15 +69,16 @@ internal val OverlayColorPresets = intArrayOf(
     0xFFEC4141.toInt(),
 )
 
-private val SectionAnim = tween<Float>(durationMillis = 220, easing = FastOutSlowInEasing)
-private val SectionExpand = expandVertically(animationSpec = tween(220, easing = FastOutSlowInEasing))
-private val SectionShrink = shrinkVertically(animationSpec = tween(200, easing = FastOutSlowInEasing))
+private val FolderAnim = tween<Float>(durationMillis = 220, easing = FastOutSlowInEasing)
+private val FolderExpand = expandVertically(animationSpec = tween(220, easing = FastOutSlowInEasing))
+private val FolderShrink = shrinkVertically(animationSpec = tween(200, easing = FastOutSlowInEasing))
 
 @Composable
 internal fun LyricOverlaySettingsPanel(
     prefs: LyricOverlayPrefs,
     onChange: (LyricOverlayPrefs) -> Unit,
     onCenterHorizontally: () -> Unit,
+    compact: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val switchColors = SwitchDefaults.colors(
@@ -97,9 +99,7 @@ internal fun LyricOverlaySettingsPanel(
         modifier
             .clip(RoundedCornerShape(14.dp))
             .background(Color(0xF2141418))
-            .heightIn(max = 260.dp)
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 10.dp, vertical = 8.dp),
+            .padding(horizontal = if (compact) 6.dp else 10.dp, vertical = 8.dp),
     ) {
         SettingsFolder(
             title = "歌词",
@@ -121,7 +121,7 @@ internal fun LyricOverlaySettingsPanel(
                 },
             )
             Label("窗内对齐")
-            AlignPicker(selected = prefs.textAlign) { onChange(prefs.copy(textAlign = it)) }
+            AlignPicker(selected = prefs.textAlign, compact = compact) { onChange(prefs.copy(textAlign = it)) }
             Label("字号 ${prefs.fontSizeSp.toInt()} sp")
             Slider(
                 value = prefs.fontSizeSp,
@@ -145,13 +145,13 @@ internal fun LyricOverlaySettingsPanel(
             onToggle = { openFolder = if (openFolder == OverlayFolder.Window) null else OverlayFolder.Window },
         ) {
             ActionRow("窗口居中", ZIcons.AlignHorizontalCenter, onCenterHorizontally)
-            SwitchRow("悬浮窗背景", prefs.windowBackground, switchColors) {
+            SwitchRow("悬浮窗背景", prefs.windowBackground, switchColors, compact) {
                 onChange(prefs.copy(windowBackground = it))
             }
             AnimatedVisibility(
                 visible = prefs.windowBackground,
-                enter = fadeIn(SectionAnim) + SectionExpand,
-                exit = fadeOut(SectionAnim) + SectionShrink,
+                enter = fadeIn(FolderAnim) + FolderExpand,
+                exit = fadeOut(FolderAnim) + FolderShrink,
             ) {
                 Column {
                     val blurPct = (prefs.blurRadiusPx * 100f / LyricOverlayPrefs.BLUR_MAX).toInt()
@@ -164,28 +164,29 @@ internal fun LyricOverlaySettingsPanel(
                     )
                 }
             }
-            SwitchRow("歌词背景", prefs.lyricBackground, switchColors) {
+            SwitchRow("歌词背景", prefs.lyricBackground, switchColors, compact) {
                 onChange(prefs.copy(lyricBackground = it))
             }
-            SwitchRow("动态宽度", prefs.dynamicWidth, switchColors) {
+            SwitchRow("动态宽度", prefs.dynamicWidth, switchColors, compact) {
                 onChange(prefs.copy(dynamicWidth = it))
             }
             AnimatedVisibility(
                 visible = !prefs.dynamicWidth,
-                enter = fadeIn(SectionAnim) + SectionExpand,
-                exit = fadeOut(SectionAnim) + SectionShrink,
+                enter = fadeIn(FolderAnim) + FolderExpand,
+                exit = fadeOut(FolderAnim) + FolderShrink,
             ) {
                 Column {
-                    Label("宽度 ${prefs.widthDp} dp")
+                    Label("宽度 ${prefs.widthPercent}%")
                     Slider(
-                        value = prefs.widthDp.toFloat(),
-                        onValueChange = { onChange(prefs.copy(widthDp = it.toInt())) },
-                        valueRange = LyricOverlayPrefs.WIDTH_MIN_DP.toFloat()..LyricOverlayPrefs.WIDTH_MAX_DP.toFloat(),
+                        value = prefs.widthPercent.toFloat(),
+                        onValueChange = { onChange(prefs.copy(widthPercent = it.roundToInt())) },
+                        valueRange = LyricOverlayPrefs.WIDTH_PERCENT_MIN.toFloat()..LyricOverlayPrefs.WIDTH_PERCENT_MAX.toFloat(),
+                        steps = LyricOverlayPrefs.WIDTH_PERCENT_MAX - LyricOverlayPrefs.WIDTH_PERCENT_MIN - 1,
                         colors = sliderColors,
                     )
                 }
             }
-            SwitchRow("侵入状态栏 / 摄像头", prefs.ignoreCutout, switchColors) {
+            SwitchRow("侵入状态栏 / 摄像头", prefs.ignoreCutout, switchColors, compact) {
                 onChange(prefs.copy(ignoreCutout = it))
             }
         }
@@ -239,8 +240,8 @@ private fun SettingsFolder(
         }
         AnimatedVisibility(
             visible = expanded,
-            enter = fadeIn(SectionAnim) + SectionExpand,
-            exit = fadeOut(SectionAnim) + SectionShrink,
+            enter = fadeIn(FolderAnim) + FolderExpand,
+            exit = fadeOut(FolderAnim) + FolderShrink,
         ) {
             Column(Modifier.padding(bottom = 8.dp)) { content() }
         }
@@ -277,6 +278,8 @@ private fun ActionRow(
         Text(
             text = title,
             style = TextStyle(color = Color.White, fontSize = 13.sp),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
         Icon(icon, contentDescription = title, tint = Color.White, modifier = Modifier.size(18.dp))
@@ -288,6 +291,7 @@ private fun SwitchRow(
     title: String,
     checked: Boolean,
     colors: androidx.compose.material3.SwitchColors,
+    compact: Boolean,
     onCheckedChange: (Boolean) -> Unit,
 ) {
     Row(
@@ -298,10 +302,16 @@ private fun SwitchRow(
     ) {
         Text(
             text = title,
-            style = TextStyle(color = Color.White, fontSize = 13.sp),
+            style = TextStyle(color = Color.White, fontSize = if (compact) 12.sp else 13.sp),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
-        Switch(checked = checked, onCheckedChange = onCheckedChange, colors = colors)
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            colors = colors,
+        )
     }
 }
 
@@ -320,6 +330,8 @@ private fun StepperRow(
         Text(
             text = title,
             style = TextStyle(color = Color.White, fontSize = 13.sp),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
         StepperButton(ZIcons.Remove, "减少") { onChange(value - 1) }
@@ -358,11 +370,12 @@ private fun StepperButton(icon: ImageVector, label: String, onClick: () -> Unit)
 @Composable
 private fun AlignPicker(
     selected: Int,
+    compact: Boolean,
     onSelect: (Int) -> Unit,
 ) {
     Row(
         Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 8.dp),
     ) {
         AlignChip(ZIcons.FormatAlignLeft, "左对齐", selected == LyricOverlayPrefs.ALIGN_LEFT) {
             onSelect(LyricOverlayPrefs.ALIGN_LEFT)
@@ -410,7 +423,12 @@ private fun ColorRow(
     Column(Modifier.padding(vertical = 4.dp)) {
         Text(title, style = TextStyle(color = Color(0xCCFFFFFF), fontSize = 12.sp))
         Spacer(Modifier.height(6.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
             OverlayColorPresets.forEach { argb ->
                 val on = argb == selected
                 Box(

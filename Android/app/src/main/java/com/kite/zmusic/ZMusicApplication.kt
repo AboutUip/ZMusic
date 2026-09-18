@@ -50,12 +50,14 @@ class ZMusicApplication : Application() {
     val communityServerStore get() = container.communityServerStore
     val communityLoginRepository get() = container.communityLoginRepository
     val audioQualityStore: AudioQualityStore get() = container.audioQualityStore
+    val tunePrefsStore get() = container.tunePrefsStore
     val audioOutputController get() = container.audioOutputController
     val persistentPlaybackStore: PersistentPlaybackStore get() = container.persistentPlaybackStore
     val predictiveBackStore get() = container.predictiveBackStore
     val landscapeModeStore get() = container.landscapeModeStore
     val splashAccelStore get() = container.splashAccelStore
     val miniQuickSkipStore get() = container.miniQuickSkipStore
+    val recentCollectionStore get() = container.recentCollectionStore
     val lyricRenderStore: LyricRenderStore get() = container.lyricRenderStore
     val lyricOverlayStore: LyricOverlayStore get() = container.lyricOverlayStore
     val chromeGlassStore: ChromeGlassStore get() = container.chromeGlassStore
@@ -209,6 +211,7 @@ class ZMusicApplication : Application() {
         override fun onActivityStarted(activity: android.app.Activity) {
             if (started++ == 0) {
                 pluginEngine.setHostFacts(currentPluginHostFacts().copy(foreground = true))
+                listenTogether.setAppForeground(true)
             }
         }
 
@@ -220,6 +223,7 @@ class ZMusicApplication : Application() {
             if (--started <= 0) {
                 started = 0
                 pluginEngine.setHostFacts(currentPluginHostFacts().copy(foreground = false))
+                listenTogether.setAppForeground(false)
             }
         }
 

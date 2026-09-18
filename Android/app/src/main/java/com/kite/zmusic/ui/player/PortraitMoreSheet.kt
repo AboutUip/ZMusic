@@ -71,6 +71,7 @@ import com.kite.zmusic.data.PlayerDisplayPrefs
 import com.kite.zmusic.data.PlaylistSummary
 import com.kite.zmusic.data.TrackExportOptions
 import com.kite.zmusic.data.TrackRow
+import com.kite.zmusic.data.tuneRowSubtitle
 import com.kite.zmusic.playback.SleepTimerUi
 import com.kite.zmusic.ui.catalog.launchTrackDownload
 import com.kite.zmusic.ui.common.UrlImage
@@ -89,7 +90,7 @@ private val MorePanelShape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp
 private val MoreRowShape = RoundedCornerShape(14.dp)
 private val MoreCoverShape = RoundedCornerShape(8.dp)
 
-private enum class MorePage { Root, AddToPlaylist, Download, SleepTimer, Translation, OutputDevice }
+private enum class MorePage { Root, AddToPlaylist, Download, SleepTimer, Tune, Translation, OutputDevice }
 
 private val MoreDrillSlide = tween<IntOffset>(durationMillis = 320, easing = FastOutSlowInEasing)
 private val MoreDrillFade = tween<Float>(durationMillis = 220)
@@ -142,6 +143,7 @@ fun PortraitMoreSheet(
     var addingId by remember { mutableStateOf<Long?>(null) }
     val sleepTimer by app.playbackBridge.sleepTimer.collectAsStateWithLifecycle()
     val audioOutput by app.audioOutputController.state.collectAsStateWithLifecycle()
+    val tunePrefs by app.tunePrefsStore.prefs.collectAsStateWithLifecycle()
     val navInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val dragHandleVertical by rememberUpdatedState(onDragHandleVertical)
     val dragHandleEnd by rememberUpdatedState(onDragHandleEnd)
@@ -210,11 +212,13 @@ fun PortraitMoreSheet(
                 addingId = addingId,
                 sleepTimer = sleepTimer,
                 audioOutputSubtitle = audioOutput.moreSubtitle,
+                tuneSubtitle = tuneRowSubtitle(tunePrefs),
                 displayPrefs = displayPrefs,
                 hazeState = hazeState,
                 onOpenAddToPlaylist = { page = MorePage.AddToPlaylist },
                 onOpenDownload = { page = MorePage.Download },
                 onOpenSleepTimer = { page = MorePage.SleepTimer },
+                onOpenTune = { page = MorePage.Tune },
                 onOpenTranslation = { page = MorePage.Translation },
                 onOpenOutputDevice = { page = MorePage.OutputDevice },
                 onOpenPoster = onOpenPoster,
@@ -251,6 +255,7 @@ private fun moreCoverMinFrac(
             MoreSheetChromeH + navInset + MoreNestedHeaderH + 72.dp + 56.dp * 6 + 52.dp
         }
         MorePage.SleepTimer -> maxHeight * (2f / 3f)
+        MorePage.Tune -> maxHeight * (2f / 3f)
         MorePage.OutputDevice -> {
             MoreSheetChromeH + navInset + MoreNestedHeaderH + 72.dp + 56.dp * 6
         }
@@ -271,11 +276,13 @@ private fun MorePageStack(
     addingId: Long?,
     sleepTimer: SleepTimerUi,
     audioOutputSubtitle: String,
+    tuneSubtitle: String,
     displayPrefs: PlayerDisplayPrefs,
     hazeState: HazeState?,
     onOpenAddToPlaylist: () -> Unit,
     onOpenDownload: () -> Unit,
     onOpenSleepTimer: () -> Unit,
+    onOpenTune: () -> Unit,
     onOpenTranslation: () -> Unit,
     onOpenOutputDevice: () -> Unit,
     onOpenPoster: () -> Unit,
@@ -349,6 +356,13 @@ private fun MorePageStack(
                 title = "输出设备",
                 subtitle = audioOutputSubtitle,
                 onClick = onOpenOutputDevice,
+            )
+            Spacer(Modifier.height(8.dp))
+            MoreActionRow(
+                icon = ZIcons.GraphicEq,
+                title = "调音",
+                subtitle = tuneSubtitle,
+                onClick = onOpenTune,
             )
             Spacer(Modifier.height(8.dp))
             MoreActionRow(
@@ -472,6 +486,7 @@ private fun MoreNestedCover(
                         MorePage.AddToPlaylist -> "添加到歌单"
                         MorePage.Download -> "下载"
                         MorePage.SleepTimer -> "定时停止"
+                        MorePage.Tune -> "调音"
                         MorePage.Translation -> "翻译"
                         MorePage.OutputDevice -> "输出设备"
                         MorePage.Root -> "更多"
@@ -583,6 +598,14 @@ private fun MoreNestedCover(
                             context.showIslandNotice("已取消定时停止", track.coverUrl)
                         },
                         onWaitChange = { app.playbackBridge.setSleepTimerWaitForTrackEnd(it) },
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth(),
+                    )
+                }
+                MorePage.Tune -> {
+                    Spacer(Modifier.height(12.dp))
+                    PortraitTunePanel(
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxWidth(),

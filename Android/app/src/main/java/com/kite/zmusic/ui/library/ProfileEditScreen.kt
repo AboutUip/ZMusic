@@ -59,7 +59,6 @@ import com.kite.zmusic.ui.common.UrlImage
 import com.kite.zmusic.ui.common.UrlImageCache
 import com.kite.zmusic.ui.icons.ZIcons
 import com.kite.zmusic.ui.main.MainPalette
-import com.kite.zmusic.ui.main.mainChromePlate
 import com.kite.zmusic.ui.main.wallpaperItemChrome
 import com.kite.zmusic.ui.notice.showIslandNotice
 import java.io.File
@@ -435,10 +434,11 @@ private fun ProfileEditChip(
     val shape = RoundedCornerShape(12.dp)
     Box(
         modifier
-            .clip(shape)
             .then(
                 if (selected) {
-                    Modifier.background(MainPalette.Accent.copy(alpha = 0.16f))
+                    Modifier
+                        .clip(shape)
+                        .background(MainPalette.Accent.copy(alpha = 0.16f))
                 } else {
                     Modifier.wallpaperItemChrome(shape)
                 },
@@ -471,7 +471,6 @@ private fun ProfileEditRow(
     Row(
         Modifier
             .fillMaxWidth()
-            .clip(shape)
             .wallpaperItemChrome(shape, MainPalette.Card)
             .clickable(
                 enabled = enabled,
@@ -507,7 +506,8 @@ internal fun ProfileMoreButton(
     Box(
         modifier
             .size(width = 44.dp, height = 36.dp)
-            .mainChromePlate(shape)
+            .clip(shape)
+            .background(MainPalette.Surface.copy(alpha = 0.82f))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,

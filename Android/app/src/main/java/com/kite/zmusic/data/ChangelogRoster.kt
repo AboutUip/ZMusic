@@ -1,16 +1,13 @@
 package com.kite.zmusic.data
 
-enum class ChangelogItemType {
-    Add,
-    Support,
-    Improve,
-    Fix,
-}
-
 data class ChangelogItem(
-    val type: ChangelogItemType,
+    /** 任意动词标签（删除 / 调整 / 支持…）；旧数据可能是 add/support/fix */
+    val type: String,
     val text: String,
-)
+) {
+    val label: String
+        get() = ChangelogRoster.displayLabel(type)
+}
 
 data class ChangelogEntry(
     val id: String,
@@ -33,10 +30,23 @@ data class ChangelogDocument(
 
 /**
  * 更新日志字段：version / kind / notice / items[{type,text}]。
- * 远程目录走 XAIOP 树。
+ * type 为任意标签；社区按「某某了某某」解析写入。远程目录走 XAIOP 树。
  */
 object ChangelogRoster {
     const val DefaultTitle = "ZMusic更新预览"
+
+    fun displayLabel(type: String): String {
+        val raw = type.trim()
+        if (raw.isEmpty()) return "说明"
+        return when (raw.lowercase()) {
+            "add", "new" -> "新增"
+            "support", "feat", "feature" -> "支持"
+            "improve", "opt", "optimize" -> "优化"
+            "fix", "bugfix" -> "修复"
+            "note" -> "说明"
+            else -> raw
+        }
+    }
 
     fun filter(entries: List<ChangelogEntry>, query: String): List<ChangelogEntry> {
         val q = normalizeQuery(query)
@@ -88,20 +98,12 @@ object ChangelogRoster {
         val out = ArrayList<ChangelogItem>(arr.size)
         for (item in arr) {
             val o = item as? Map<*, *> ?: continue
-            val type = parseType(catalogString(o["type"])) ?: continue
+            val type = catalogString(o["type"])
             val text = catalogString(o["text"])
-            if (text.isEmpty()) continue
+            if (type.isEmpty() || text.isEmpty()) continue
             out += ChangelogItem(type = type, text = text)
         }
         return out
-    }
-
-    private fun parseType(raw: String): ChangelogItemType? = when (raw.trim().lowercase()) {
-        "add", "new" -> ChangelogItemType.Add
-        "support", "feat", "feature" -> ChangelogItemType.Support
-        "improve", "opt", "optimize" -> ChangelogItemType.Improve
-        "fix", "bugfix" -> ChangelogItemType.Fix
-        else -> null
     }
 
     internal fun normalizeVersion(raw: String): String =
@@ -109,5 +111,4 @@ object ChangelogRoster {
             .removePrefix("V")
             .removePrefix("v")
             .trim()
-
 }

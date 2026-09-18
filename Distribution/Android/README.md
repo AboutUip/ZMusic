@@ -4,7 +4,7 @@ Release binaries are copied into the shared repo folder:
 
 ```text
 artifacts/
-  android/   ← APK / AAB (this script)
+  android/   ← ZMusic-Android-Version-{version}-Release.apk  (debug 为 Test)
   windows/   ← ZMusic-Setup.exe / MSI
 ```
 

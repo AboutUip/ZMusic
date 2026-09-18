@@ -25,6 +25,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -78,6 +80,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.kite.zmusic.data.DanmakuRegion
 import com.kite.zmusic.data.PlayerDisplayPrefs
 import com.kite.zmusic.data.PreviewLyricAlign
 import com.kite.zmusic.data.TitleAlignMode
@@ -845,7 +848,7 @@ fun NowPlayingSettingsSheet(
                                 SettingsActionRow(
                                     title = "背景调控",
                                     subtitle = if (prefs.customBackgroundEnabled) {
-                                        "5 预设 · 上传 / 定位 / 锁定"
+                                        "5 预设 · 图片 / GIF / 静音视频"
                                     } else {
                                         "先开启自定义背景"
                                     },
@@ -1147,6 +1150,16 @@ fun NowPlayingSettingsSheet(
                                     onPrefsChange(prefs.copy(vinylFullCover = it))
                                 },
                             )
+                            SettingsSliderRow(
+                                title = "黑胶转速",
+                                valueLabel = String.format("%.1f×", prefs.vinylSpinSpeed),
+                                value = prefs.vinylSpinSpeed,
+                                valueRange = PlayerDisplayPrefs.VINYL_SPIN_SPEED_MIN..
+                                    PlayerDisplayPrefs.VINYL_SPIN_SPEED_MAX,
+                                onValueChange = {
+                                    onPrefsChange(prefs.copy(vinylSpinSpeed = it))
+                                },
+                            )
                         }
                         SettingsAlpha(rowAlpha(SettingsPreviewKey.VinylSize)) {
                             SettingsSliderRow(
@@ -1248,7 +1261,7 @@ fun NowPlayingSettingsSheet(
                             SettingsActionRow(
                                 title = "背景调控",
                                 subtitle = if (prefs.customBackgroundEnabled) {
-                                    "5 预设 · 上传 / 定位 / 锁定"
+                                    "5 预设 · 图片 / GIF / 静音视频"
                                 } else {
                                     "先开启自定义背景"
                                 },
@@ -1283,6 +1296,69 @@ fun NowPlayingSettingsSheet(
                                 checked = prefs.keepScreenOn,
                                 colors = switchColors,
                                 onCheckedChange = { onPrefsChange(prefs.copy(keepScreenOn = it)) },
+                            )
+                        }
+                    }
+                }
+
+                SettingsCategory(title = "弹幕", titleAlpha = dim) {
+                    SettingsAlpha(dim) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            SettingsSwitchRow(
+                                title = "弹幕陪伴",
+                                subtitle = "用高赞评论做单向弹幕，关时仍可看当前参数",
+                                checked = prefs.danmakuCompanionEnabled,
+                                colors = switchColors,
+                                onCheckedChange = {
+                                    onPrefsChange(prefs.copy(danmakuCompanionEnabled = it))
+                                },
+                            )
+                            SettingsSliderRow(
+                                title = "弹幕密度",
+                                valueLabel = prefs.danmakuDensity.toString(),
+                                value = prefs.danmakuDensity.toFloat(),
+                                valueRange = PlayerDisplayPrefs.DANMAKU_DENSITY_MIN.toFloat()..
+                                    PlayerDisplayPrefs.DANMAKU_DENSITY_MAX.toFloat(),
+                                steps = PlayerDisplayPrefs.DANMAKU_DENSITY_MAX -
+                                    PlayerDisplayPrefs.DANMAKU_DENSITY_MIN - 1,
+                                enabled = prefs.danmakuCompanionEnabled,
+                                onValueChange = {
+                                    onPrefsChange(
+                                        prefs.copy(
+                                            danmakuDensity = it.roundToInt().coerceIn(
+                                                PlayerDisplayPrefs.DANMAKU_DENSITY_MIN,
+                                                PlayerDisplayPrefs.DANMAKU_DENSITY_MAX,
+                                            ),
+                                        ),
+                                    )
+                                },
+                            )
+                            SettingsDanmakuRegionRow(
+                                selected = prefs.danmakuRegion,
+                                enabled = prefs.danmakuCompanionEnabled,
+                                onSelect = { onPrefsChange(prefs.copy(danmakuRegion = it)) },
+                            )
+                            SettingsSliderRow(
+                                title = "流速",
+                                valueLabel = String.format("%.1f×", prefs.danmakuSpeed),
+                                value = prefs.danmakuSpeed,
+                                valueRange = PlayerDisplayPrefs.DANMAKU_SPEED_MIN..
+                                    PlayerDisplayPrefs.DANMAKU_SPEED_MAX,
+                                enabled = prefs.danmakuCompanionEnabled,
+                                onValueChange = {
+                                    onPrefsChange(prefs.copy(danmakuSpeed = it))
+                                },
+                            )
+                            SettingsSliderRow(
+                                title = "弹幕大小",
+                                valueLabel = String.format("%.0f%%", prefs.danmakuScale * 100f),
+                                value = prefs.danmakuScale,
+                                valueRange = PlayerDisplayPrefs.DANMAKU_SCALE_MIN..
+                                    PlayerDisplayPrefs.DANMAKU_SCALE_MAX,
+                                enabled = prefs.danmakuCompanionEnabled,
+                                onValueChange = {
+                                    onPrefsChange(prefs.copy(danmakuScale = it))
+                                },
                             )
                         }
                     }
@@ -1469,6 +1545,16 @@ fun NowPlayingSettingsSheet(
                                 colors = switchColors,
                                 onCheckedChange = {
                                     onPrefsChange(prefs.copy(vinylFullCover = it))
+                                },
+                            )
+                            SettingsSliderRow(
+                                title = "黑胶转速",
+                                valueLabel = String.format("%.1f×", prefs.vinylSpinSpeed),
+                                value = prefs.vinylSpinSpeed,
+                                valueRange = PlayerDisplayPrefs.VINYL_SPIN_SPEED_MIN..
+                                    PlayerDisplayPrefs.VINYL_SPIN_SPEED_MAX,
+                                onValueChange = {
+                                    onPrefsChange(prefs.copy(vinylSpinSpeed = it))
                                 },
                             )
                             SettingsSliderRow(
@@ -2116,6 +2202,84 @@ private fun SettingsAutoClearTargetsRow(
                         maxLines = 1,
                     )
                 }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun SettingsDanmakuRegionRow(
+    selected: DanmakuRegion,
+    onSelect: (DanmakuRegion) -> Unit,
+    enabled: Boolean = true,
+) {
+    val chrome = LocalSettingsChrome.current
+    val modes = DanmakuRegion.entries
+    val labels = listOf("顶部", "上半屏", "下半屏", "底部", "全屏")
+    val enT by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (enabled) 1f else 0.40f,
+        animationSpec = tween(280, easing = FastOutSlowInEasing),
+        label = "danmakuRegionEn",
+    )
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .graphicsLayer { alpha = enT }
+            .clip(RowShape)
+            .background(chrome.rowBg)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+    ) {
+        Text(
+            text = "弹幕区域",
+            style = TextStyle(
+                color = chrome.label,
+                fontFamily = FontFamily.SansSerif,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 15.sp,
+            ),
+        )
+        Spacer(Modifier.height(2.dp))
+        Text(
+            text = "单选出现范围",
+            style = TextStyle(
+                color = chrome.hint,
+                fontFamily = FontFamily.SansSerif,
+                fontSize = 12.sp,
+                lineHeight = 16.sp,
+            ),
+        )
+        Spacer(Modifier.height(8.dp))
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            modes.forEachIndexed { index, mode ->
+                val on = mode == selected
+                Box(
+                    Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(
+                            if (on) chrome.accent.copy(alpha = 0.22f) else MainPalette.TrackOff,
+                        )
+                        .clickable(
+                            enabled = enabled,
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = { onSelect(mode) },
+                        )
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                ) {
+                    Text(
+                        text = labels[index],
+                        style = TextStyle(
+                            color = if (on) chrome.accent else chrome.hint,
+                            fontFamily = FontFamily.SansSerif,
+                            fontWeight = if (on) FontWeight.SemiBold else FontWeight.Medium,
+                            fontSize = 13.sp,
+                        ),
+                    )
                 }
             }
         }

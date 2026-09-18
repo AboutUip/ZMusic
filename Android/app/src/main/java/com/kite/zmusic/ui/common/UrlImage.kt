@@ -35,18 +35,25 @@ fun rememberUrlImageBitmap(
 ): ImageBitmap? {
     val context = LocalContext.current
     val urlKey = UrlImageCache.normalizeKey(url).orEmpty()
-    var bitmap by remember(urlKey, maxPx) {
-        mutableStateOf(
-            urlKey.takeIf { it.isNotEmpty() }?.let { UrlImageCache.memoryGet(it, maxPx) },
-        )
+    // 不按 urlKey 重置：个人页刷新换参、Lazy 复用时先留旧图，避免闪占位。
+    var heldKey by remember { mutableStateOf("") }
+    var heldBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
+
+    val memoryHit = if (urlKey.isNotEmpty()) {
+        UrlImageCache.memoryGet(urlKey, maxPx)
+    } else {
+        null
     }
+
     LaunchedEffect(urlKey, maxPx) {
         if (urlKey.isEmpty()) {
-            bitmap = null
+            heldKey = ""
+            heldBitmap = null
             return@LaunchedEffect
         }
-        UrlImageCache.memoryGet(urlKey, maxPx)?.let {
-            bitmap = it
+        UrlImageCache.memoryGet(urlKey, maxPx)?.let { hit ->
+            heldKey = urlKey
+            heldBitmap = hit
             return@LaunchedEffect
         }
         if (UrlImageCache.isLocalMediaUri(urlKey)) {
@@ -58,7 +65,8 @@ fun rememberUrlImageBitmap(
             }
             if (local != null) {
                 UrlImageCache.memoryPut(urlKey, local, maxPx)
-                bitmap = local
+                heldKey = urlKey
+                heldBitmap = local
             }
             return@LaunchedEffect
         }
@@ -74,7 +82,8 @@ fun rememberUrlImageBitmap(
         }
         if (fromDisk != null) {
             UrlImageCache.memoryPut(urlKey, fromDisk, maxPx)
-            bitmap = fromDisk
+            heldKey = urlKey
+            heldBitmap = fromDisk
             return@LaunchedEffect
         }
         val fromNet = withContext(Dispatchers.IO) {
@@ -93,10 +102,18 @@ fun rememberUrlImageBitmap(
         }
         if (fromNet != null) {
             UrlImageCache.memoryPut(urlKey, fromNet, maxPx)
-            bitmap = fromNet
+            heldKey = urlKey
+            heldBitmap = fromNet
         }
     }
-    return bitmap
+
+    return when {
+        urlKey.isEmpty() -> null
+        memoryHit != null -> memoryHit
+        heldKey == urlKey -> heldBitmap
+        heldBitmap != null -> heldBitmap
+        else -> null
+    }
 }
 
 /** 不依赖 Coil，用 OkHttp 拉取图片（与工程现有网络栈一致）。键为 URL，与 [UrlImageCache] 一致。 */

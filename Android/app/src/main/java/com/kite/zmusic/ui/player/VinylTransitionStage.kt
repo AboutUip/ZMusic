@@ -5,7 +5,6 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -158,6 +157,8 @@ fun VinylTransitionStage(
      * 值越高阈值越低、越灵敏。
      */
     gestureDamping: Float = 0.5f,
+    /** 连转一周毫秒数；1.0× = 28000。调速从当前角接着转。 */
+    spinPeriodMs: Int = PlayerDisplayPrefs.VINYL_SPIN_PERIOD_DEFAULT_MS,
     /**
      * 选歌入场：停止连转后把当前角沿最短路径动画归正到 0°（避免叠层 0° 交接瞬移）。
      */
@@ -881,20 +882,21 @@ fun VinylTransitionStage(
             }
 
             key(topTrack.id, "top") {
-                VinylDiscFace(
-                    track = topTrack,
-                    spinDeg = topSpinDeg,
-                    spinGen = topSpinGen,
-                    spinEpoch = topSpinEpoch,
-                    spinHolder = topSpinHolder,
-                    onSpinDegChange = { writeTopSpin(it) },
-                    spinning = spinning &&
-                        allowSpin &&
-                        !showBottom &&
-                        !dragging &&
-                        exiting.isEmpty() &&
-                        abs(displayX) < 2f &&
-                        abs(topScale.value - 1f) < 0.02f,
+                    VinylDiscFace(
+                        track = topTrack,
+                        spinDeg = topSpinDeg,
+                        spinGen = topSpinGen,
+                        spinEpoch = topSpinEpoch,
+                        spinHolder = topSpinHolder,
+                        onSpinDegChange = { writeTopSpin(it) },
+                        spinPeriodMs = spinPeriodMs,
+                        spinning = spinning &&
+                            allowSpin &&
+                            !showBottom &&
+                            !dragging &&
+                            exiting.isEmpty() &&
+                            abs(displayX) < 2f &&
+                            abs(topScale.value - 1f) < 0.02f,
                     fullCover = fullCover,
                     centerRadiusFrac = centerRadiusFrac,
                     outerScale = outerScale,
@@ -959,6 +961,8 @@ internal fun VinylDiscFace(
     /** 选歌叠层等交接场景关闭样式过渡，避免从 0 动画到用户设置造成闪一下 */
     animateStyleChanges: Boolean = true,
     reportExpandCover: Boolean = false,
+    /** 连转一周毫秒数；调速即时生效，不 snap 角度。 */
+    spinPeriodMs: Int = PlayerDisplayPrefs.VINYL_SPIN_PERIOD_DEFAULT_MS,
 ) {
     val coverTTarget = if (fullCover) 1f else 0f
     val coverTAnimated by animateFloatAsState(
@@ -991,20 +995,28 @@ internal fun VinylDiscFace(
 
     // gen / 曲目变化时新建 Animatable，切歌首帧必为外部同步好的 spinDeg（通常 0°）
     val spinAnim = remember(track.id, spinGen) { Animatable(spinDeg) }
+    val periodState = rememberUpdatedState(spinPeriodMs)
+    LaunchedEffect(track.id, spinGen) {
+        spinAnim.snapTo(spinDeg)
+    }
     LaunchedEffect(spinning, track.id, spinGen) {
         if (!spinning) return@LaunchedEffect
         val gen = spinGen
-        spinAnim.snapTo(spinDeg)
         try {
+            var lastNs = withFrameNanos { it }
             while (isActive) {
-                spinAnim.animateTo(
-                    targetValue = spinAnim.value + 360f,
-                    animationSpec = tween(durationMillis = 28_000, easing = LinearEasing),
-                ) {
-                    val live = spinEpoch?.get(0) ?: gen
-                    if (live == gen) {
-                        spinHolder?.set(0, value)
-                    }
+                val nowNs = withFrameNanos { it }
+                val dtMs = ((nowNs - lastNs) / 1_000_000f).coerceIn(0f, 48f)
+                lastNs = nowNs
+                val period = periodState.value.coerceIn(
+                    PlayerDisplayPrefs.VINYL_SPIN_PERIOD_MIN_MS,
+                    PlayerDisplayPrefs.VINYL_SPIN_PERIOD_MAX_MS,
+                ).coerceAtLeast(1)
+                val next = spinAnim.value + 360f * dtMs / period
+                spinAnim.snapTo(next)
+                val live = spinEpoch?.get(0) ?: gen
+                if (live == gen) {
+                    spinHolder?.set(0, next)
                 }
             }
         } finally {

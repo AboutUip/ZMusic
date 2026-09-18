@@ -65,6 +65,7 @@ class PlaybackService : MediaSessionService() {
             lyricRepository = bridge.lyricRepository(),
             likedPlaylistRepository = app.likedPlaylistRepository,
             audioQualityStore = app.audioQualityStore,
+            tunePrefsStore = app.tunePrefsStore,
             downloadAccelStore = app.downloadAccelStore,
             downloadAccelIndex = app.downloadAccelIndex,
             realtimeCacheStore = app.realtimeCacheStore,

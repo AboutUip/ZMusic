@@ -72,6 +72,10 @@ import com.kite.zmusic.ui.plugin.PluginContextMenuHost
 import com.kite.zmusic.ui.plugin.PluginFaultHost
 import com.kite.zmusic.ui.plugin.PluginSheetHost
 import com.kite.zmusic.ui.update.AppUpdateHost
+import com.kite.zmusic.ui.player.ListenMatchHost
+import com.kite.zmusic.ui.player.LocalShareSheetHost
+import com.kite.zmusic.ui.player.ShareSheetHostState
+import com.kite.zmusic.ui.player.ShareSheetOverlay
 import com.kite.zmusic.ui.common.LocalGlassActionSheetHost
 import com.kite.zmusic.ui.common.LocalGlassAlertHost
 import com.kite.zmusic.ui.common.LocalPredictiveBackClaimsState
@@ -129,11 +133,14 @@ fun IslandNoticeRoot(
         LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     val alertHost = remember { GlassAlertHostState() }
     val actionSheetHost = remember { GlassActionSheetHostState() }
+    val shareSheetHost = remember { ShareSheetHostState() }
     var islandLive by remember { mutableStateOf(false) }
-    val captureLive = islandLive || alertHost.visible || actionSheetHost.visible
+    val captureLive =
+        islandLive || alertHost.visible || actionSheetHost.visible || shareSheetHost.visible
     CompositionLocalProvider(
         LocalGlassAlertHost provides alertHost,
         LocalGlassActionSheetHost provides actionSheetHost,
+        LocalShareSheetHost provides shareSheetHost,
         LocalChromeGlassStyle provides effectiveGlass,
         LocalChromeHaze provides islandHaze,
         LocalPredictiveBackEnabled provides predictiveBackOn,
@@ -174,6 +181,11 @@ fun IslandNoticeRoot(
                 landscape = landscape,
                 modifier = Modifier.zIndex(790f),
             )
+            ShareSheetOverlay(
+                state = shareSheetHost,
+                hazeState = islandHaze,
+                modifier = Modifier.zIndex(795f),
+            )
             GlassAlertOverlay(
                 state = alertHost,
                 backdrop = backdrop,
@@ -185,6 +197,7 @@ fun IslandNoticeRoot(
             PluginSheetHost()
             PluginContextMenuHost()
             AppUpdateHost()
+            ListenMatchHost()
         }
     }
 }

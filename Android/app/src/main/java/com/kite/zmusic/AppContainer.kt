@@ -90,6 +90,7 @@ class AppContainer(app: Application) {
         workshopAuthStore,
     )
     val audioQualityStore = AudioQualityStore(app)
+    val tunePrefsStore = com.kite.zmusic.data.TunePrefsStore(app)
     val audioOutputStore = AudioOutputStore(app)
     val audioOutputController = AudioOutputController(app, audioOutputStore)
     val persistentPlaybackStore = PersistentPlaybackStore(app)
@@ -97,6 +98,7 @@ class AppContainer(app: Application) {
     val landscapeModeStore = LandscapeModeStore(app)
     val splashAccelStore = SplashAccelStore(app)
     val miniQuickSkipStore = MiniQuickSkipStore(app)
+    val recentCollectionStore = com.kite.zmusic.data.RecentCollectionStore(app)
     val lyricRenderStore = LyricRenderStore(app)
     val lyricOverlayStore = LyricOverlayStore(app)
     val chromeGlassStore = ChromeGlassStore(app)
@@ -250,6 +252,7 @@ class AppContainer(app: Application) {
         auth = workshopAuthStore,
     )
     val listenTogether = com.kite.zmusic.listen.ListenTogetherController(
+        app = app,
         client = listenTogetherClient,
         auth = workshopAuthStore,
         playback = playbackBridge,

@@ -11,7 +11,6 @@ import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -115,6 +114,19 @@ fun MiniPlayerBar(
         }
     }
 
+    val expand = LocalPlayerExpand.current
+    val chromeReveal = expand?.miniChromeReveal ?: 1f
+    val glassMode = LocalChromeGlassStyle.current.mode
+    val landing = expandCardFromColor()
+    val chrome = if (glassMode == ChromeGlassMode.Solid) {
+        Modifier
+            .clip(shape)
+            .background(lerp(landing, MainPalette.Surface, chromeReveal))
+    } else {
+        // 液态玻璃必须画在有尺寸的节点上，不能再外包一层 clip：
+        // 切 Dock 会换壁纸并重采样 Backdrop，外层 clip 会让 RenderThread 崩掉。
+        Modifier.mainLiquidGlass(backdrop, shape)
+    }
     Box(
         modifier
             .playerExpandAnchor(PlayerExpandSlot.MiniBar)
@@ -128,9 +140,15 @@ fun MiniPlayerBar(
                     )
                 },
             )
-            .clip(shape),
+            .then(chrome),
     ) {
-        MiniPlayerLandingChrome(backdrop = backdrop, shape = shape)
+        if (glassMode != ChromeGlassMode.Solid && chromeReveal < 0.999f) {
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .background(landing.copy(alpha = 1f - chromeReveal)),
+            )
+        }
         Row(
             Modifier
                 .fillMaxSize()
@@ -299,37 +317,6 @@ fun MiniPlayerBar(
             )
         }
         }
-    }
-}
-
-@Composable
-private fun BoxScope.MiniPlayerLandingChrome(
-    backdrop: Backdrop,
-    shape: RoundedCornerShape,
-) {
-    val expand = LocalPlayerExpand.current
-    val reveal = expand?.miniChromeReveal ?: 1f
-    val mode = LocalChromeGlassStyle.current.mode
-    val landing = expandCardFromColor()
-    if (mode == ChromeGlassMode.Solid) {
-        Box(
-            Modifier
-                .matchParentSize()
-                .background(lerp(landing, MainPalette.Surface, reveal)),
-        )
-        return
-    }
-    Box(
-        Modifier
-            .matchParentSize()
-            .mainLiquidGlass(backdrop, shape),
-    )
-    if (reveal < 0.999f) {
-        Box(
-            Modifier
-                .matchParentSize()
-                .background(landing.copy(alpha = 1f - reveal)),
-        )
     }
 }
 

@@ -23,6 +23,10 @@ enum class AudioQuality(
     JYMASTER("jymaster", "超清母带", "母带", "Master", "flac", true, 999_000),
     ;
 
+    /** 空间音频档：比特流/对象音频，本机调音按立体声 PCM 处理，可能听不出环绕。 */
+    val isSpatial: Boolean
+        get() = this == JYEFFECT || this == SKY || this == DOLBY
+
     fun fallbacks(): List<AudioQuality> = when (this) {
         JYMASTER, DOLBY, SKY, JYEFFECT -> listOf(HIRES, LOSSLESS, EXHIGH)
         HIRES -> listOf(LOSSLESS, EXHIGH)

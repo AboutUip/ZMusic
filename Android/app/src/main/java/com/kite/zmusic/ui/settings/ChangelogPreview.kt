@@ -22,15 +22,18 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kite.zmusic.data.ChangelogEntry
 import com.kite.zmusic.data.ChangelogItem
-import com.kite.zmusic.data.ChangelogItemType
 import com.kite.zmusic.ui.main.MainPalette
 
 internal val ChangelogKindTestColor = Color(0xFFC9A227)
 internal val ChangelogKindReleaseColor = Color(0xFF3D9B6E)
-private val TypeAddColor = Color(0xFF8B5CF6)
-private val TypeSupportColor = Color(0xFF3478F6)
-private val TypeImproveColor = Color(0xFF2A9D8F)
-private val TypeFixColor = Color(0xFFE85D75)
+private val TypePalette = listOf(
+    Color(0xFF8B5CF6),
+    Color(0xFF3478F6),
+    Color(0xFF2A9D8F),
+    Color(0xFFE85D75),
+    Color(0xFFC9A227),
+    Color(0xFF5B8DEF),
+)
 
 @Composable
 internal fun ChangelogPreviewBody(
@@ -197,12 +200,8 @@ private fun ChangelogMetaRow(label: String, value: String) {
 
 @Composable
 private fun ChangelogChangeRow(item: ChangelogItem) {
-    val (label, color) = when (item.type) {
-        ChangelogItemType.Add -> "新增" to TypeAddColor
-        ChangelogItemType.Support -> "支持" to TypeSupportColor
-        ChangelogItemType.Improve -> "优化" to TypeImproveColor
-        ChangelogItemType.Fix -> "修复" to TypeFixColor
-    }
+    val label = item.label
+    val color = TypePalette[kotlin.math.abs(label.hashCode()) % TypePalette.size]
     Row(
         Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.Top,

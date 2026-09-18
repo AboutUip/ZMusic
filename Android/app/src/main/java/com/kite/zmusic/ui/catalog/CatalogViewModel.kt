@@ -1036,7 +1036,8 @@ open class CatalogViewModel(
         if (entry.playlistId != openPlaylistId) return
         val expected = entry.expectedCount.coerceAtLeast(entry.tracks.size)
         val meta = entry.subscribeMeta?.takeIf { it.id == entry.playlistId }
-        var syncedCover: String? = null
+        var resolvedOwnCover: String? = null
+        var fallbackFirstCover: String? = null
         _list.update {
             val same = it.playlistId == entry.playlistId
             val merged = catalog.mergeLoadedInOrder(
@@ -1052,14 +1053,17 @@ open class CatalogViewModel(
             val expectedNow = expected.coerceAtLeast(tracks.size)
             val firstCover = tracks.firstOrNull()?.coverUrl
                 ?.takeUnless { isDefaultPlaylistCover(it) }
-            syncedCover = firstCover
+            val ownCover = meta?.coverUrl?.takeUnless { isDefaultPlaylistCover(it) }
+                ?: seededCover?.takeUnless { isDefaultPlaylistCover(it) }
+                ?: it.coverUrl.takeIf { same }?.takeUnless { isDefaultPlaylistCover(it) }
+            // 有真实歌单封面时绝不改成第一首歌；无封面才用首曲垫上。
+            val cover = ownCover ?: firstCover
+            resolvedOwnCover = ownCover
+            fallbackFirstCover = if (ownCover == null) firstCover else null
             CatalogListState(
                 title = entry.title.ifBlank { fallbackTitle.ifBlank { it.title } },
                 subtitle = playlistSubtitle(tracks.size, expectedNow, entry.complete),
-                coverUrl = firstCover
-                    ?: meta?.coverUrl?.takeUnless { isDefaultPlaylistCover(it) }
-                    ?: seededCover
-                    ?: it.coverUrl.takeIf { same },
+                coverUrl = cover,
                 tracks = tracks,
                 playlistId = entry.playlistId,
                 expectedCount = expectedNow,
@@ -1085,7 +1089,12 @@ open class CatalogViewModel(
                 },
             )
         }
-        syncedCover?.let { playlistCollection.syncCover(entry.playlistId, it) }
+        val own = resolvedOwnCover
+        if (own != null) {
+            playlistCollection.restorePlaylistCover(entry.playlistId, own)
+        } else {
+            fallbackFirstCover?.let { playlistCollection.syncCover(entry.playlistId, it) }
+        }
         meta?.let { applySubscribeMeta(it) }
         likedPlaylistRepository.prefetchLikeStatuses(entry.tracks)
     }
@@ -1299,8 +1308,9 @@ open class CatalogViewModel(
             if (it.playlistId != meta.id) return@update it
             it.copy(
                 title = meta.name.takeIf { n -> n.isNotBlank() } ?: it.title,
-                coverUrl = it.tracks.firstOrNull()?.coverUrl?.takeUnless { c -> isDefaultPlaylistCover(c) }
+                coverUrl = meta.coverUrl?.takeUnless { c -> isDefaultPlaylistCover(c) }
                     ?: it.coverUrl.takeUnless { c -> isDefaultPlaylistCover(c) }
+                    ?: it.tracks.firstOrNull()?.coverUrl?.takeUnless { c -> isDefaultPlaylistCover(c) }
                     ?: meta.coverUrl
                     ?: it.coverUrl,
                 creatorName = meta.creatorName ?: it.creatorName,

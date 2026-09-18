@@ -109,17 +109,19 @@ class PlaylistCollectionRepository {
 
     fun forcedCover(id: Long): String? = coverOverrides[id]
 
-    /** 歌单内第一首已变：列表封面跟过去，避免只改详情页。 */
-    fun syncCover(id: Long, coverUrl: String?) {
+    /** 详情页确认了歌单自身封面：写回列表并清掉首曲误覆盖。 */
+    fun restorePlaylistCover(id: Long, coverUrl: String?) {
         if (id <= 0L) return
-        val incoming = normalizedCover(coverUrl) ?: return
-        coverOverrides[id] = incoming
+        val incoming = normalizedCover(coverUrl)
+        if (incoming != null) {
+            coverOverrides.remove(id)
+        }
         _playlists.update { list ->
             var changed = false
             val next = list.map { pl ->
                 if (pl.id != id || pl.trackCount <= 0) {
                     pl
-                } else if (pl.coverUrl == incoming) {
+                } else if (incoming == null || pl.coverUrl == incoming) {
                     pl
                 } else {
                     changed = true
@@ -130,21 +132,48 @@ class PlaylistCollectionRepository {
         }
     }
 
-    /** 加歌成功：首数 +1，封面跟到这首歌（与歌单内第一首一致）。 */
+    /** 仅在列表还没有真实封面时写入；不覆盖已有歌单封面。 */
+    fun syncCover(id: Long, coverUrl: String?) {
+        if (id <= 0L) return
+        val incoming = normalizedCover(coverUrl) ?: return
+        _playlists.update { list ->
+            var changed = false
+            val next = list.map { pl ->
+                if (pl.id != id || pl.trackCount <= 0) {
+                    pl
+                } else {
+                    val existing = pl.resolvedCoverUrl()
+                    when {
+                        existing != null -> pl
+                        pl.coverUrl == incoming -> pl
+                        else -> {
+                            coverOverrides[id] = incoming
+                            changed = true
+                            pl.copy(coverUrl = incoming)
+                        }
+                    }
+                }
+            }
+            if (changed) next else list
+        }
+    }
+
+    /** 加歌成功：首数 +1；仅空封面歌单才跟到这首歌。 */
     fun applyAddedTrack(id: Long, coverUrl: String?) {
         if (id <= 0L) return
         val incoming = normalizedCover(coverUrl)
-        if (incoming != null) {
-            coverOverrides[id] = incoming
-        }
         _playlists.update { list ->
             list.map { pl ->
                 if (pl.id != id) {
                     pl
                 } else {
+                    val keepCover = pl.resolvedCoverUrl() != null
+                    if (!keepCover && incoming != null) {
+                        coverOverrides[id] = incoming
+                    }
                     pl.copy(
                         trackCount = pl.trackCount + 1,
-                        coverUrl = incoming ?: pl.coverUrl,
+                        coverUrl = if (keepCover) pl.coverUrl else (incoming ?: pl.coverUrl),
                     )
                 }
             }

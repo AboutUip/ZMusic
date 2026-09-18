@@ -2,6 +2,7 @@ package com.kite.zmusic.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import kotlin.math.roundToInt
 
 /** 横屏歌名信息块水平对齐方式。 */
 enum class TitleAlignMode {
@@ -31,6 +32,26 @@ enum class PreviewLyricAlign {
     companion object {
         fun fromOrdinal(v: Int): PreviewLyricAlign =
             entries.getOrElse(v) { CENTER }
+    }
+}
+
+/** 横屏弹幕陪伴出现区域（单选）。 */
+enum class DanmakuRegion {
+    /** 顶部一带 */
+    TOP,
+    /** 上半屏 */
+    UPPER,
+    /** 下半屏 */
+    LOWER,
+    /** 底部一带 */
+    BOTTOM,
+    /** 整屏 */
+    FULL,
+    ;
+
+    companion object {
+        fun fromOrdinal(v: Int): DanmakuRegion =
+            entries.getOrElse(v) { UPPER }
     }
 }
 
@@ -453,6 +474,11 @@ data class PlayerDisplayPrefs(
      * 值越高越灵敏（提交位移/甩速阈值越低）。
      */
     val vinylGestureDamping: Float = 0.5f,
+    /**
+     * 黑胶连转速度倍率：1 = 历史 28 秒一圈。
+     * 横屏 / 竖屏播放页各一份偏好。
+     */
+    val vinylSpinSpeed: Float = VINYL_SPIN_SPEED_DEFAULT,
     /** 横屏「播放中」歌词样式 */
     val lyricPlayingStyle: LyricRoleStyle = LyricRoleStyle.PlayingDefault,
     /** 横屏「已播放」歌词样式 */
@@ -525,11 +551,37 @@ data class PlayerDisplayPrefs(
     val portraitPreviewLyricPlayingFontSp: Float = PREVIEW_LYRIC_PLAYING_FONT_DEFAULT,
     /** 预览「待播放」字号（sp） */
     val portraitPreviewLyricUpcomingFontSp: Float = PREVIEW_LYRIC_UPCOMING_FONT_DEFAULT,
+    /**
+     * 横屏弹幕陪伴：从高赞评论拉单向弹幕。
+     * 关闭后密度 / 区域 / 流速仍保留，仅不可编辑。
+     */
+    val danmakuCompanionEnabled: Boolean = false,
+    /** 同时在场弹幕条数档：1 .. 8 */
+    val danmakuDensity: Int = DANMAKU_DENSITY_DEFAULT,
+    /** 弹幕出现区域 */
+    val danmakuRegion: DanmakuRegion = DanmakuRegion.UPPER,
+    /** 流速倍率：0.5 .. 2.0 */
+    val danmakuSpeed: Float = DANMAKU_SPEED_DEFAULT,
+    /** 弹幕整体大小倍率：1 = 默认字号 / 头像 / 高度 */
+    val danmakuScale: Float = DANMAKU_SCALE_DEFAULT,
 ) {
     fun activeCustomPreset(): VinylCustomPreset =
         vinylCustomPresets.getOrElse(vinylCustomPresetIndex.coerceIn(0, VINYL_CUSTOM_PRESET_COUNT - 1)) {
             VinylCustomPreset(vinylCustomBaseArgb, vinylCustomGrooveArgb)
         }
+
+    /** 1.0× = 28 秒一圈；调速时按当前角继续转。 */
+    fun vinylSpinPeriodMs(): Int {
+        val speed = vinylSpinSpeed.finiteCoerceIn(
+            VINYL_SPIN_SPEED_MIN,
+            VINYL_SPIN_SPEED_MAX,
+            VINYL_SPIN_SPEED_DEFAULT,
+        )
+        return (VINYL_SPIN_PERIOD_DEFAULT_MS / speed).roundToInt().coerceIn(
+            VINYL_SPIN_PERIOD_MIN_MS,
+            VINYL_SPIN_PERIOD_MAX_MS,
+        )
+    }
 
     /** 切换自选预设位，并同步当前生效色。 */
     fun withCustomPresetIndex(index: Int): PlayerDisplayPrefs {
@@ -665,6 +717,11 @@ data class PlayerDisplayPrefs(
                 VINYL_GESTURE_DAMPING_MAX,
                 0.5f,
             ),
+            vinylSpinSpeed = vinylSpinSpeed.finiteCoerceIn(
+                VINYL_SPIN_SPEED_MIN,
+                VINYL_SPIN_SPEED_MAX,
+                VINYL_SPIN_SPEED_DEFAULT,
+            ),
             lyricPlayingStyle = lyricPlayingStyle.sanitized(),
             lyricPlayedStyle = lyricPlayedStyle.sanitized(),
             lyricUnplayedStyle = lyricUnplayedStyle.sanitized(),
@@ -709,6 +766,17 @@ data class PlayerDisplayPrefs(
                 PREVIEW_LYRIC_FONT_MAX,
                 PREVIEW_LYRIC_UPCOMING_FONT_DEFAULT,
             ),
+            danmakuDensity = danmakuDensity.coerceIn(DANMAKU_DENSITY_MIN, DANMAKU_DENSITY_MAX),
+            danmakuSpeed = danmakuSpeed.finiteCoerceIn(
+                DANMAKU_SPEED_MIN,
+                DANMAKU_SPEED_MAX,
+                DANMAKU_SPEED_DEFAULT,
+            ),
+            danmakuScale = danmakuScale.finiteCoerceIn(
+                DANMAKU_SCALE_MIN,
+                DANMAKU_SCALE_MAX,
+                DANMAKU_SCALE_DEFAULT,
+            ),
         )
     }
 
@@ -739,6 +807,18 @@ data class PlayerDisplayPrefs(
         const val PREVIEW_LYRIC_FONT_MAX = 28f
         const val PREVIEW_LYRIC_PLAYING_FONT_DEFAULT = 16f
         const val PREVIEW_LYRIC_UPCOMING_FONT_DEFAULT = 13f
+        const val DANMAKU_DENSITY_MIN = 1
+        const val DANMAKU_DENSITY_MAX = 8
+        const val DANMAKU_DENSITY_DEFAULT = 4
+        const val DANMAKU_OFFSET_Y_MIN = 6f
+        const val DANMAKU_OFFSET_Y_MAX = 72f
+        const val DANMAKU_OFFSET_Y_DEFAULT = 16f
+        const val DANMAKU_SPEED_MIN = 0.50f
+        const val DANMAKU_SPEED_MAX = 2.00f
+        const val DANMAKU_SPEED_DEFAULT = 1.00f
+        const val DANMAKU_SCALE_MIN = 0.75f
+        const val DANMAKU_SCALE_MAX = 1.40f
+        const val DANMAKU_SCALE_DEFAULT = 1.00f
         const val UI_MIN = 0.80f
         const val UI_MAX = 1.25f
         const val VINYL_OFFSET_MIN = -56f
@@ -773,6 +853,13 @@ data class PlayerDisplayPrefs(
         /** 黑胶切歌手势阻尼（灵敏度）：0.15 最钝 … 1.0 最灵敏；0.5 = 历史默认 */
         const val VINYL_GESTURE_DAMPING_MIN = 0.15f
         const val VINYL_GESTURE_DAMPING_MAX = 1.00f
+        /** 黑胶连转：1.0× = 历史 28 秒一圈 */
+        const val VINYL_SPIN_SPEED_MIN = 0.50f
+        const val VINYL_SPIN_SPEED_MAX = 2.00f
+        const val VINYL_SPIN_SPEED_DEFAULT = 1.00f
+        const val VINYL_SPIN_PERIOD_DEFAULT_MS = 28_000
+        const val VINYL_SPIN_PERIOD_MIN_MS = 14_000
+        const val VINYL_SPIN_PERIOD_MAX_MS = 56_000
         /** 竖屏歌词页背景透明度：0=满强度磨砂，1=背景近乎全透可见 */
         const val LYRIC_BG_TRANSPARENCY_MIN = 0f
         const val LYRIC_BG_TRANSPARENCY_MAX = 1f
@@ -974,6 +1061,10 @@ class PlayerDisplayPrefsStore(
                 TitleLineStyle.SourceDefault,
             ),
             vinylGestureDamping = prefs.safeFloat(KEY_VINYL_GESTURE_DAMPING, 0.5f),
+            vinylSpinSpeed = prefs.safeFloat(
+                KEY_VINYL_SPIN_SPEED,
+                PlayerDisplayPrefs.VINYL_SPIN_SPEED_DEFAULT,
+            ),
             lyricPlayingStyle = decodeLyricRoleStyle(
                 prefs.safeString(KEY_LYRIC_PLAYING_STYLE, null),
                 // 旧版全局字号迁移到各角色
@@ -1070,6 +1161,20 @@ class PlayerDisplayPrefsStore(
                 KEY_PORTRAIT_PREVIEW_LYRIC_UPCOMING_FONT,
                 PlayerDisplayPrefs.PREVIEW_LYRIC_UPCOMING_FONT_DEFAULT,
             ),
+            danmakuCompanionEnabled = prefs.safeBoolean(KEY_DANMAKU_ENABLED, false),
+            danmakuDensity = prefs.safeInt(
+                KEY_DANMAKU_DENSITY,
+                PlayerDisplayPrefs.DANMAKU_DENSITY_DEFAULT,
+            ),
+            danmakuRegion = loadDanmakuRegion(),
+            danmakuSpeed = prefs.safeFloat(
+                KEY_DANMAKU_SPEED,
+                PlayerDisplayPrefs.DANMAKU_SPEED_DEFAULT,
+            ),
+            danmakuScale = prefs.safeFloat(
+                KEY_DANMAKU_SCALE,
+                PlayerDisplayPrefs.DANMAKU_SCALE_DEFAULT,
+            ),
         )
     }
 
@@ -1112,6 +1217,7 @@ class PlayerDisplayPrefsStore(
                 .putString(KEY_TITLE_ARTIST_STYLE, encodeTitleLineStyle(v.titleArtistStyle))
                 .putString(KEY_TITLE_SOURCE_STYLE, encodeTitleLineStyle(v.titleSourceStyle))
                 .putFloat(KEY_VINYL_GESTURE_DAMPING, v.vinylGestureDamping)
+                .putFloat(KEY_VINYL_SPIN_SPEED, v.vinylSpinSpeed)
                 .putString(KEY_LYRIC_PLAYING_STYLE, encodeLyricRoleStyle(v.lyricPlayingStyle))
                 .putString(KEY_LYRIC_PLAYED_STYLE, encodeLyricRoleStyle(v.lyricPlayedStyle))
                 .putString(KEY_LYRIC_UNPLAYED_STYLE, encodeLyricRoleStyle(v.lyricUnplayedStyle))
@@ -1169,7 +1275,31 @@ class PlayerDisplayPrefsStore(
                     KEY_PORTRAIT_PREVIEW_LYRIC_UPCOMING_FONT,
                     v.portraitPreviewLyricUpcomingFontSp,
                 )
+                .putBoolean(KEY_DANMAKU_ENABLED, v.danmakuCompanionEnabled)
+                .putInt(KEY_DANMAKU_DENSITY, v.danmakuDensity)
+                .putInt(KEY_DANMAKU_REGION, v.danmakuRegion.ordinal)
+                .putFloat(KEY_DANMAKU_SPEED, v.danmakuSpeed)
+                .putFloat(KEY_DANMAKU_SCALE, v.danmakuScale)
                 .apply()
+        }
+    }
+
+    private fun loadDanmakuRegion(): DanmakuRegion {
+        if (prefs.contains(KEY_DANMAKU_REGION)) {
+            return DanmakuRegion.fromOrdinal(
+                prefs.safeInt(KEY_DANMAKU_REGION, DanmakuRegion.UPPER.ordinal),
+            )
+        }
+        val legacyY = prefs.safeFloat(
+            KEY_DANMAKU_OFFSET_Y,
+            PlayerDisplayPrefs.DANMAKU_OFFSET_Y_DEFAULT,
+        )
+        val y = if (legacyY.isFinite()) legacyY else PlayerDisplayPrefs.DANMAKU_OFFSET_Y_DEFAULT
+        return when {
+            y < 12f -> DanmakuRegion.TOP
+            y < 38f -> DanmakuRegion.UPPER
+            y < 62f -> DanmakuRegion.LOWER
+            else -> DanmakuRegion.BOTTOM
         }
     }
 
@@ -1214,6 +1344,7 @@ class PlayerDisplayPrefsStore(
         private const val KEY_TITLE_ARTIST_STYLE = "title_artist_style"
         private const val KEY_TITLE_SOURCE_STYLE = "title_source_style"
         private const val KEY_VINYL_GESTURE_DAMPING = "vinyl_gesture_damping"
+        private const val KEY_VINYL_SPIN_SPEED = "vinyl_spin_speed"
         private const val KEY_LYRIC_PLAYING_STYLE = "lyric_playing_style"
         private const val KEY_LYRIC_PLAYED_STYLE = "lyric_played_style"
         private const val KEY_LYRIC_UNPLAYED_STYLE = "lyric_unplayed_style"
@@ -1254,6 +1385,12 @@ class PlayerDisplayPrefsStore(
             "portrait_preview_lyric_playing_font_sp"
         private const val KEY_PORTRAIT_PREVIEW_LYRIC_UPCOMING_FONT =
             "portrait_preview_lyric_upcoming_font_sp"
+        private const val KEY_DANMAKU_ENABLED = "danmaku_companion_enabled"
+        private const val KEY_DANMAKU_DENSITY = "danmaku_density"
+        private const val KEY_DANMAKU_REGION = "danmaku_region"
+        private const val KEY_DANMAKU_OFFSET_Y = "danmaku_offset_y_percent"
+        private const val KEY_DANMAKU_SPEED = "danmaku_speed"
+        private const val KEY_DANMAKU_SCALE = "danmaku_scale"
     }
 }
 

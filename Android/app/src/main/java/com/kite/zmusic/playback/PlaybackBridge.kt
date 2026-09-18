@@ -114,6 +114,10 @@ class PlaybackBridge(
     fun sessionRepository(): SessionRepository = sessionRepository
     fun lyricRepository(): LyricRepository = lyricRepository
 
+    fun setPlaybackClockLocked(locked: Boolean) {
+        runOnCoordinator { it.setPlaybackClockLocked(locked) }
+    }
+
     /** 通知栏点进 App：主壳打开全屏播放器。 */
     fun requestOpenPlayer() {
         _pendingOpenPlayer.value = true
@@ -255,6 +259,11 @@ class PlaybackBridge(
         runOnCoordinator { it.playInsertAfterCurrent(track) }
     }
 
+    fun playListenTrack(track: TrackRow, positionMs: Long, playWhenReady: Boolean) {
+        musicWillPlay?.invoke()
+        runOnCoordinator { it.playListenTrack(track, positionMs, playWhenReady) }
+    }
+
     /** 歌单缓存补全后同步扩展当前播放队列（同源 playlistId）。 */
     fun expandQueueFromSourcePlaylist(playlistId: Long, tracks: List<TrackRow>) {
         if (_ui.value.intelligenceActive) return
@@ -291,6 +300,8 @@ class PlaybackBridge(
     }
 
     fun togglePlayPause() = runOnCoordinator { it.togglePlayPause() }
+
+    fun setPlayWhenReady(play: Boolean) = runOnCoordinator { it.setPlayWhenReady(play) }
 
     fun ensureService() = ensureController()
 

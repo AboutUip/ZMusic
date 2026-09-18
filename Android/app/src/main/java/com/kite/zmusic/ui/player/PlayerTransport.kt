@@ -50,6 +50,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -138,6 +139,7 @@ import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
@@ -224,6 +226,8 @@ internal fun PlayerTransport(
     onOpenComments: (() -> Unit)? = null,
     /** 竖屏：底栏分享；五枚按钮 SpaceBetween 时居中 */
     onOpenShare: (() -> Unit)? = null,
+    commentsAsChat: Boolean = false,
+    commentsUnread: Int = 0,
     /**
      * 竖屏：进度条与播放按钮行的垂直偏移。
      * 关闭「容器包含」时底部设置条不参与；开启后整块玻璃容器一并偏移。
@@ -675,10 +679,11 @@ internal fun PlayerTransport(
                 if (onOpenComments != null) {
                     PortraitAccessoryIcon(
                         icon = ZIcons.Comments,
-                        contentDescription = "评论",
+                        contentDescription = if (commentsAsChat) "聊天室" else "评论",
                         tint = iconTint,
                         enabled = online,
                         onClick = { requireOnline(onOpenComments) },
+                        badge = if (commentsAsChat) commentsUnread else 0,
                     )
                 }
                 if (onOpenShare != null) {
@@ -823,6 +828,7 @@ private fun PortraitAccessoryIcon(
     tint: Color,
     onClick: () -> Unit,
     enabled: Boolean = true,
+    badge: Int = 0,
 ) {
     Box(
         modifier = Modifier
@@ -841,6 +847,34 @@ private fun PortraitAccessoryIcon(
             tint = tint,
             modifier = Modifier.size(20.dp),
         )
+        if (badge > 0) {
+            val label = if (badge > 9) "9+" else badge.toString()
+            Box(
+                Modifier
+                    .align(Alignment.TopEnd)
+                    .offset(x = (-1).dp, y = 1.dp)
+                    .height(16.dp)
+                    .defaultMinSize(minWidth = 16.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFFE53935))
+                    .padding(horizontal = if (label.length > 1) 5.dp else 0.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = label,
+                    color = Color.White,
+                    style = TextStyle(
+                        color = Color.White,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        lineHeight = 9.sp,
+                        textAlign = TextAlign.Center,
+                        platformStyle = PlatformTextStyle(includeFontPadding = false),
+                    ),
+                    maxLines = 1,
+                )
+            }
+        }
     }
 }
 

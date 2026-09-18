@@ -9,6 +9,7 @@ import androidx.media3.common.ForwardingPlayer
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultRenderersFactory
@@ -18,6 +19,7 @@ import androidx.media3.exoplayer.audio.DefaultAudioSink
 import com.kite.zmusic.R
 import com.kite.zmusic.data.AudioQuality
 import com.kite.zmusic.data.AudioQualityStore
+import com.kite.zmusic.data.TunePrefsStore
 import com.kite.zmusic.data.DownloadAccelHit
 import com.kite.zmusic.data.DownloadAccelIndex
 import com.kite.zmusic.data.DownloadAccelStore
@@ -75,6 +77,7 @@ class PlaylistCoordinator(
     private val lyricRepository: LyricRepository,
     private val likedPlaylistRepository: LikedPlaylistRepository,
     private val audioQualityStore: AudioQualityStore,
+    private val tunePrefsStore: TunePrefsStore,
     private val downloadAccelStore: DownloadAccelStore,
     private val downloadAccelIndex: DownloadAccelIndex,
     private val realtimeCacheStore: RealtimeCacheStore,
@@ -100,6 +103,8 @@ class PlaylistCoordinator(
     val spectrum: StateFlow<AudioSpectrumBands> = _spectrum.asStateFlow()
 
     private var lastSpectrumPublishMs = 0L
+    private val tuneProcessor = TuneAudioProcessor()
+
     private val spectrumProcessor = SpectrumTapAudioProcessor { bands ->
         // 音频 hop ~6ms；UI 只需约一帧一次。量化后相等则跳过，避免掀整棵 Compose 树。
         val now = android.os.SystemClock.elapsedRealtime()
@@ -120,8 +125,8 @@ class PlaylistCoordinator(
         ): AudioSink {
             return DefaultAudioSink.Builder(context)
                 .setEnableFloatOutput(true)
-                .setEnableAudioOutputPlaybackParameters(enableAudioOutputPlaybackParams)
-                .setAudioProcessors(arrayOf(spectrumProcessor))
+                    .setEnableAudioOutputPlaybackParameters(enableAudioOutputPlaybackParams)
+                    .setAudioProcessors(arrayOf(tuneProcessor, spectrumProcessor))
                 .build()
         }
     }.apply {
@@ -167,6 +172,8 @@ class PlaylistCoordinator(
     private var tickerJob: Job? = null
     private var noticeJob: Job? = null
     private var errorRetryJob: Job? = null
+    @Volatile
+    private var playbackClockLocked: Boolean = false
     /** 本次装载是否开播；失败重试 / 跳过不可播时沿用，避免冷启动预热被打成自动播放。 */
     private var loadPlayWhenReady = false
 
@@ -274,6 +281,14 @@ class PlaylistCoordinator(
     init {
         exoPlayer.addListener(playerListener)
         audioOutputController.attachPlayer(exoPlayer)
+        tuneProcessor.setPrefs(tunePrefsStore.current())
+        applyTunePlaybackParameters()
+        scope.launch {
+            tunePrefsStore.prefs.collect { next ->
+                tuneProcessor.setPrefs(next)
+                applyTunePlaybackParameters()
+            }
+        }
         // 从快照恢复模式与进度，不联网冲队列
         stateStore.load()?.let { snap ->
             playbackMode = snap.playbackMode
@@ -636,6 +651,83 @@ class PlaylistCoordinator(
         onClearAndStopService?.invoke()
     }
 
+    fun setPlayWhenReady(play: Boolean) {
+        if (play) {
+            if (exoPlayer.mediaItemCount == 0) {
+                val i = _ui.value.index
+                if (i >= 0 && _ui.value.hasQueue) {
+                    loadAndPlayIndex(
+                        i,
+                        resumeAtMs = _ui.value.positionMs.coerceAtLeast(0L),
+                        resumePlayWhenReady = true,
+                    )
+                }
+            } else if (!exoPlayer.playWhenReady) {
+                exoPlayer.play()
+            }
+        } else if (exoPlayer.playWhenReady || exoPlayer.isPlaying) {
+            exoPlayer.pause()
+        }
+    }
+
+    /**
+     * 一起听落到本机：切到 [track]、seek 到 [positionMs]，播放状态用绝对值而不是 toggle。
+     * 已在播同一首则只对齐进度和暂停/播放。
+     */
+    fun playListenTrack(track: TrackRow, positionMs: Long, playWhenReady: Boolean) {
+        if (track.id <= 0L) return
+        val pos = positionMs.coerceAtLeast(0L)
+        val ui = _ui.value
+        if (!ui.hasQueue || ui.queue.isEmpty() || ui.index !in ui.queue.indices) {
+            cancelLoads()
+            _ui.update {
+                it.copy(
+                    queue = listOf(track),
+                    index = 0,
+                    error = null,
+                    loadPending = true,
+                    hasQueue = true,
+                    sourcePlaylistId = null,
+                    sourcePlaylistTitle = track.name,
+                )
+            }
+            persistSnapshot()
+            loadAndPlayIndex(0, resumeAtMs = pos, resumePlayWhenReady = playWhenReady)
+            return
+        }
+        if (ui.queue[ui.index].id == track.id) {
+            seekTo(pos)
+            setPlayWhenReady(playWhenReady)
+            return
+        }
+        var cur = ui.index
+        val queue = ui.queue.toMutableList()
+        val existing = queue.indexOfFirst { it.id == track.id }
+        if (existing >= 0) {
+            queue.removeAt(existing)
+            remapQueueIndicesAfterRemove(existing)
+            if (existing < cur) cur -= 1
+        }
+        val insertAt = (cur + 1).coerceAtMost(queue.size)
+        queue.add(insertAt, track)
+        remapQueueIndicesAfterInsert(insertAt)
+        _ui.update {
+            it.copy(
+                queue = queue,
+                index = insertAt,
+                sourcePlaylistId = if (radioActive) it.sourcePlaylistId else null,
+            )
+        }
+        persistSnapshot()
+        loadAndPlayIndex(
+            insertAt,
+            resumeAtMs = pos,
+            resumePlayWhenReady = playWhenReady,
+            recordShuffleHistory = true,
+        )
+        if (radioActive) ensureRadioLookahead()
+    }
+
     fun togglePlayPause() {
         if (exoPlayer.playWhenReady) {
             exoPlayer.pause()
@@ -762,6 +854,24 @@ class PlaylistCoordinator(
         exoPlayer.removeListener(playerListener)
         exoPlayer.release()
         _spectrum.value = AudioSpectrumBands.ZERO
+    }
+
+    /** 一起听按墙钟插值，锁定本机变速/变调以免把 origin 拉开。均衡仍本机生效。 */
+    fun setPlaybackClockLocked(locked: Boolean) {
+        if (playbackClockLocked == locked) return
+        playbackClockLocked = locked
+        applyTunePlaybackParameters()
+    }
+
+    private fun applyTunePlaybackParameters() {
+        val prefs = tunePrefsStore.current()
+        val speed = if (playbackClockLocked) 1f else prefs.playbackSpeed()
+        val pitch = if (playbackClockLocked) 1f else prefs.playbackPitch()
+        val next = PlaybackParameters(speed, pitch)
+        val cur = exoPlayer.playbackParameters
+        if (cur.speed != next.speed || cur.pitch != next.pitch) {
+            exoPlayer.playbackParameters = next
+        }
     }
 
     private fun applyRepeatMode() {

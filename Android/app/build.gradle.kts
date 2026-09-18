@@ -1,3 +1,4 @@
+import java.io.File
 import java.util.Properties
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
@@ -51,8 +52,8 @@ android {
         applicationId = "com.kite.zmusic"
         minSdk = 29
         targetSdk = 36
-        versionCode = 9
-        versionName = "1.3.2"
+        versionCode = 10
+        versionName = "1.3.3"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -126,7 +127,6 @@ android {
     }
     sourceSets.getByName("main").assets.srcDir(layout.buildDirectory.dir("generated/pluginProbe"))
     sourceSets.getByName("test").java.srcDir("src/testShared/java")
-    sourceSets.getByName("androidTest").java.srcDir("src/testShared/java")
     testOptions {
         unitTests.isReturnDefaultValues = true
         animationsDisabled = true
@@ -217,9 +217,50 @@ dependencies {
 // ---------------------------------------------------------------------------
 // Distribution: copy release APK/AAB into repo-level artifacts/android/
 // (same top-level artifacts/ tree used by Windows Setup/MSI; gitignored)
+//
+// Installer name is fixed:
+//   ZMusic-Android-Version-{versionName}-Release.apk
+//   ZMusic-Android-Version-{versionName}-Test.apk
 // ---------------------------------------------------------------------------
 val releaseArtifactsDir = rootProject.file("../artifacts/android")
 val releaseVersionName = android.defaultConfig.versionName ?: "0.0"
+
+fun androidInstallChannel(buildType: String): String =
+    if (buildType.equals("release", ignoreCase = true)) "Release" else "Test"
+
+fun androidInstallFileName(versionName: String, buildType: String, ext: String): String =
+    "ZMusic-Android-Version-$versionName-${androidInstallChannel(buildType)}.$ext"
+
+android.applicationVariants.configureEach {
+    val version = versionName ?: releaseVersionName
+    val typeName = buildType.name
+    outputs.configureEach {
+        (this as com.android.build.gradle.internal.api.BaseVariantOutputImpl).outputFileName =
+            androidInstallFileName(version, typeName, "apk")
+    }
+}
+
+fun copyBuiltApkToArtifacts(buildType: String) {
+    val srcDir = layout.buildDirectory.dir("outputs/apk/$buildType").get().asFile
+    val apk =
+        srcDir.listFiles()
+            ?.filter { it.isFile && it.extension.equals("apk", ignoreCase = true) }
+            ?.maxByOrNull { it.length() }
+            ?: return
+    releaseArtifactsDir.mkdirs()
+    val dest = File(releaseArtifactsDir, androidInstallFileName(releaseVersionName, buildType, "apk"))
+    apk.copyTo(dest, overwrite = true)
+    logger.lifecycle("Install package → ${dest.canonicalPath}")
+}
+
+tasks.configureEach {
+    if (name == "assembleRelease") {
+        doLast { copyBuiltApkToArtifacts("release") }
+    }
+    if (name == "assembleDebug") {
+        doLast { copyBuiltApkToArtifacts("debug") }
+    }
+}
 
 tasks.register("publishReleaseToArtifacts") {
     group = "distribution"
@@ -229,17 +270,12 @@ tasks.register("publishReleaseToArtifacts") {
 
     doLast {
         releaseArtifactsDir.mkdirs()
-        copy {
-            from(layout.buildDirectory.dir("outputs/apk/release"))
-            include("*.apk")
-            into(releaseArtifactsDir)
-            rename { _ -> "ZMusic-$releaseVersionName-release.apk" }
-        }
+        copyBuiltApkToArtifacts("release")
         copy {
             from(layout.buildDirectory.dir("outputs/bundle/release"))
             include("*.aab")
             into(releaseArtifactsDir)
-            rename { _ -> "ZMusic-$releaseVersionName-release.aab" }
+            rename { _ -> androidInstallFileName(releaseVersionName, "release", "aab") }
         }
         logger.lifecycle("Release artifacts → ${releaseArtifactsDir.canonicalPath}")
         releaseArtifactsDir.listFiles()?.forEach { logger.lifecycle("  ${it.name}") }

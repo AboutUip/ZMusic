@@ -5,7 +5,6 @@ import android.graphics.Matrix
 import android.util.Size
 import android.view.ViewGroup
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.LocalActivity
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
@@ -55,7 +54,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.google.zxing.BinaryBitmap
 import com.google.zxing.MultiFormatReader
 import com.google.zxing.PlanarYUVLuminanceSource
@@ -80,8 +79,7 @@ fun QrScannerOverlay(
     onClose: () -> Unit,
 ) {
     val context = LocalContext.current
-    val activity = LocalActivity.current
-    val lifecycleOwner = (activity as? LifecycleOwner)
+    val lifecycleOwner = LocalLifecycleOwner.current
     val detected = remember { AtomicBoolean(false) }
     val lastReject = remember { AtomicReference<String?>(null) }
     val lastRejectAt = remember { AtomicLong(0L) }
@@ -116,10 +114,6 @@ fun QrScannerOverlay(
                 val mainExecutor = ContextCompat.getMainExecutor(ctx)
                 val owner = lifecycleOwner
                 fun bindCamera() {
-                    if (owner == null) {
-                        previewView.post { feedback = "无法打开相机，请从相册选取" }
-                        return
-                    }
                     val cameraProvider = runCatching { cameraProviderFuture.get() }.getOrNull() ?: return
                     val rotation = previewView.display?.rotation ?: android.view.Surface.ROTATION_0
                     val preview = Preview.Builder()
@@ -157,6 +151,7 @@ fun QrScannerOverlay(
                                 val consumed = runCatching { onDetectedState.value(text) }.getOrDefault(false)
                                 if (consumed) {
                                     lastReject.set(null)
+                                    unbindCameraIfReady(ctx)
                                 } else {
                                     lastReject.set(text)
                                     lastRejectAt.set(android.os.SystemClock.elapsedRealtime())
@@ -189,9 +184,7 @@ fun QrScannerOverlay(
                         }
 
                         override fun onViewDetachedFromWindow(v: android.view.View) {
-                            runCatching {
-                                cameraProviderFuture.get().unbindAll()
-                            }
+                            unbindCameraIfReady(ctx)
                         }
                     },
                 )
@@ -200,10 +193,8 @@ fun QrScannerOverlay(
             },
             modifier = Modifier.fillMaxSize(),
             onRelease = { view ->
-                (view.tag as? java.util.concurrent.ExecutorService)?.shutdown()
-                runCatching {
-                    ProcessCameraProvider.getInstance(context).get().unbindAll()
-                }
+                (view.tag as? java.util.concurrent.ExecutorService)?.shutdownNow()
+                unbindCameraIfReady(context)
             },
         )
 
@@ -300,6 +291,12 @@ private fun ScannerActionChip(label: String, onClick: () -> Unit) {
     ) {
         Text(text = label, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
     }
+}
+
+private fun unbindCameraIfReady(context: android.content.Context) {
+    val future = ProcessCameraProvider.getInstance(context)
+    if (!future.isDone) return
+    runCatching { future.get().unbindAll() }
 }
 
 private fun decodeProxy(imageProxy: ImageProxy, reader: MultiFormatReader): String? {

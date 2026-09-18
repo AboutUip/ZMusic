@@ -1,6 +1,7 @@
 package com.kite.zmusic.data
 
 import android.content.Context
+import kotlin.math.roundToInt
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -25,7 +26,8 @@ data class LyricOverlayPrefs(
     val upcomingColorArgb: Int = 0x66FFFFFF.toInt(),
     val fontSizeSp: Float = 16f,
     val dynamicWidth: Boolean = true,
-    val widthDp: Int = 280,
+    /** 关闭动态宽度时，相对可用屏宽的百分比（45–100）。 */
+    val widthPercent: Int = WIDTH_PERCENT_DEFAULT,
     /** true：侵入状态栏 / 刘海，便于横屏真正居中。 */
     val ignoreCutout: Boolean = false,
     /** 歌词在窗内的水平对齐：0 左 / 1 中 / 2 右。 */
@@ -43,8 +45,9 @@ data class LyricOverlayPrefs(
         const val LINES_MAX = 6
         const val FONT_MIN = 12f
         const val FONT_MAX = 28f
-        const val WIDTH_MIN_DP = 160
-        const val WIDTH_MAX_DP = 420
+        const val WIDTH_PERCENT_MIN = 45
+        const val WIDTH_PERCENT_MAX = 100
+        const val WIDTH_PERCENT_DEFAULT = 70
         const val BLUR_MIN = 0
         const val BLUR_MAX = 40
         const val BLUR_DEFAULT = 16
@@ -56,8 +59,8 @@ data class LyricOverlayPrefs(
 
 class LyricOverlayStore(context: Context) {
 
-    private val prefs = context.applicationContext
-        .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    private val app = context.applicationContext
+    private val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
     private val _prefs = MutableStateFlow(load())
     val prefsFlow: StateFlow<LyricOverlayPrefs> = _prefs.asStateFlow()
@@ -89,7 +92,7 @@ class LyricOverlayStore(context: Context) {
             upcomingColorArgb = prefs.getInt(KEY_COLOR_UPCOMING, 0x66FFFFFF.toInt()),
             fontSizeSp = prefs.getFloat(KEY_FONT, 16f),
             dynamicWidth = prefs.getBoolean(KEY_DYNAMIC_W, true),
-            widthDp = prefs.getInt(KEY_WIDTH, 280),
+            widthPercent = loadWidthPercent(),
             ignoreCutout = prefs.getBoolean(KEY_CUTOUT, false),
             textAlign = prefs.getInt(KEY_ALIGN, LyricOverlayPrefs.ALIGN_LEFT),
             posX = prefs.getInt(KEY_X, LyricOverlayPrefs.UNSET),
@@ -113,7 +116,7 @@ class LyricOverlayStore(context: Context) {
             .putInt(KEY_COLOR_UPCOMING, p.upcomingColorArgb)
             .putFloat(KEY_FONT, p.fontSizeSp)
             .putBoolean(KEY_DYNAMIC_W, p.dynamicWidth)
-            .putInt(KEY_WIDTH, p.widthDp)
+            .putInt(KEY_WIDTH_PCT, p.widthPercent)
             .putBoolean(KEY_CUTOUT, p.ignoreCutout)
             .putInt(KEY_ALIGN, p.textAlign)
             .putInt(KEY_X, p.posX)
@@ -127,10 +130,24 @@ class LyricOverlayStore(context: Context) {
         playedLines = p.playedLines.coerceIn(LyricOverlayPrefs.LINES_MIN, LyricOverlayPrefs.LINES_MAX),
         upcomingLines = p.upcomingLines.coerceIn(LyricOverlayPrefs.LINES_MIN, LyricOverlayPrefs.LINES_MAX),
         fontSizeSp = p.fontSizeSp.coerceIn(LyricOverlayPrefs.FONT_MIN, LyricOverlayPrefs.FONT_MAX),
-        widthDp = p.widthDp.coerceIn(LyricOverlayPrefs.WIDTH_MIN_DP, LyricOverlayPrefs.WIDTH_MAX_DP),
+        widthPercent = p.widthPercent.coerceIn(
+            LyricOverlayPrefs.WIDTH_PERCENT_MIN,
+            LyricOverlayPrefs.WIDTH_PERCENT_MAX,
+        ),
         blurRadiusPx = p.blurRadiusPx.coerceIn(LyricOverlayPrefs.BLUR_MIN, LyricOverlayPrefs.BLUR_MAX),
         textAlign = p.textAlign.coerceIn(LyricOverlayPrefs.ALIGN_LEFT, LyricOverlayPrefs.ALIGN_RIGHT),
     )
+
+    private fun loadWidthPercent(): Int {
+        if (prefs.contains(KEY_WIDTH_PCT)) {
+            return prefs.getInt(KEY_WIDTH_PCT, LyricOverlayPrefs.WIDTH_PERCENT_DEFAULT)
+                .coerceIn(LyricOverlayPrefs.WIDTH_PERCENT_MIN, LyricOverlayPrefs.WIDTH_PERCENT_MAX)
+        }
+        val dm = app.resources.displayMetrics
+        val screenDp = if (dm.density > 0f) dm.widthPixels / dm.density else 0f
+        return overlayWidthPercentFromStored(prefs.getInt(KEY_WIDTH, -1), screenDp)
+            .coerceIn(LyricOverlayPrefs.WIDTH_PERCENT_MIN, LyricOverlayPrefs.WIDTH_PERCENT_MAX)
+    }
 
     companion object {
         private const val PREFS = "zmusic_lyric_overlay"
@@ -147,6 +164,7 @@ class LyricOverlayStore(context: Context) {
         private const val KEY_FONT = "font_sp"
         private const val KEY_DYNAMIC_W = "dynamic_w"
         private const val KEY_WIDTH = "width_dp"
+        private const val KEY_WIDTH_PCT = "width_pct"
         private const val KEY_CUTOUT = "ignore_cutout"
         private const val KEY_ALIGN = "text_align"
         private const val KEY_X = "pos_x"
@@ -154,4 +172,14 @@ class LyricOverlayStore(context: Context) {
         private const val KEY_REF_W = "pos_ref_w"
         private const val KEY_REF_H = "pos_ref_h"
     }
+}
+
+/** 旧版 width_dp（约 160–420）迁到屏幕宽度百分比。 */
+internal fun overlayWidthPercentFromStored(raw: Int, screenWidthDp: Float): Int {
+    val min = LyricOverlayPrefs.WIDTH_PERCENT_MIN
+    val max = LyricOverlayPrefs.WIDTH_PERCENT_MAX
+    val fallback = LyricOverlayPrefs.WIDTH_PERCENT_DEFAULT
+    if (raw in min..max) return raw
+    if (raw <= 0 || screenWidthDp <= 0f) return fallback
+    return ((raw / screenWidthDp) * 100f).roundToInt().coerceIn(min, max)
 }

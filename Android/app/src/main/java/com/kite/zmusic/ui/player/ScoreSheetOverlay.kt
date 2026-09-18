@@ -109,6 +109,9 @@ fun ScoreSheetOverlay(
     openGeneration: Int,
     onApproachEnd: (lastVisibleIndex: Int) -> Unit = {},
     hazeState: HazeState? = null,
+    hazeNonce: Int = 0,
+    /** 黑胶居中完成前先纯色底，避免磨砂首帧采到错误源。 */
+    enableRealtimeHaze: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     // 网格实际列数：仅在实底遮挡下跳变
@@ -172,18 +175,21 @@ fun ScoreSheetOverlay(
                 onClick = {},
             ),
     ) {
-        if (hazeState != null) {
-            Box(
-                Modifier
-                    .matchParentSize()
-                    .hazeEffect(state = hazeState, style = pageSheetHazeStyle()),
-            )
-        } else {
-            Box(
-                Modifier
-                    .matchParentSize()
-                    .background(MainPalette.Page.copy(alpha = 0.96f)),
-            )
+        // 与播放设置同：nonce 重挂磨砂；未就绪时用纯色，避免开场脏底
+        key(hazeNonce) {
+            if (hazeState != null && enableRealtimeHaze) {
+                Box(
+                    Modifier
+                        .matchParentSize()
+                        .hazeEffect(state = hazeState, style = pageSheetHazeStyle()),
+                )
+            } else {
+                Box(
+                    Modifier
+                        .matchParentSize()
+                        .background(MainPalette.Page.copy(alpha = 0.96f)),
+                )
+            }
         }
         Box(
             Modifier

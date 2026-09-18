@@ -541,6 +541,16 @@ internal fun Modifier.playerExpandHideExtra(): Modifier = composed {
     }
 }
 
+/** 一起听头像簇：跟底栏附加铬层同一段进度淡入，并略从上方滑入。 */
+internal fun Modifier.playerExpandListenCluster(): Modifier = composed {
+    val expand = LocalPlayerExpand.current ?: return@composed this
+    graphicsLayer {
+        val a = expand.extraChromeAlpha
+        alpha = a
+        translationY = (1f - a) * -20f
+    }
+}
+
 /** 展开未交接时关掉播放键呼吸缩放，避免和飞层对不齐。 */
 internal fun Modifier.playerExpandPlayPulse(pulse: Float): Modifier = composed {
     val expand = LocalPlayerExpand.current
@@ -573,6 +583,17 @@ internal fun Modifier.playerExpandContentClip(
         val p = expand.visualProgress
         if (p <= 0.001f) return@drawWithContent
         val rect = lerpRect(expand.miniBarInShell(), expand.shellRect, p)
+        if (
+            !rect.left.isFinite() ||
+            !rect.top.isFinite() ||
+            !rect.right.isFinite() ||
+            !rect.bottom.isFinite() ||
+            rect.width <= 0.5f ||
+            rect.height <= 0.5f
+        ) {
+            drawContent()
+            return@drawWithContent
+        }
         val radius = lerp(24.dp.toPx(), 0f, p.coerceIn(0f, 1f))
         val path = expand.clipPath
         path.reset()

@@ -166,18 +166,19 @@ internal fun PortraitSongWikiOverlay(
                     WikiEmptyHint(text = "百科加载失败", color = meta)
                 }
             }
-            page == null || page!!.isEmpty -> {
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    WikiEmptyHint(text = "暂无这首歌的百科", color = meta)
-                }
-            }
             else -> {
-                val wiki = page!!
+                val wiki = page
+                if (wiki == null || wiki.isEmpty) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        WikiEmptyHint(text = "暂无这首歌的百科", color = meta)
+                    }
+                    return@Column
+                }
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxWidth()

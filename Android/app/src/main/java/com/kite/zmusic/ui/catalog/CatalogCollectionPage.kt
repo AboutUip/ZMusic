@@ -170,7 +170,8 @@ internal fun CatalogCollectionPage(
         MainOverlay.CloudDisk, MainOverlay.CloudDiskSearch, is MainOverlay.CloudMatch,
         is MainOverlay.PlaylistSearch, is MainOverlay.Mv,
         is MainOverlay.Artist, is MainOverlay.ArtistAlbums, is MainOverlay.ArtistMvs,
-        MainOverlay.LikedArtists, is MainOverlay.LikedArtistsSearch, MainOverlay.CachedSongs,
+        MainOverlay.LikedArtists, is MainOverlay.LikedArtistsSearch, is MainOverlay.LibraryCollectionAll,
+        MainOverlay.CachedSongs,
         is MainOverlay.User, is MainOverlay.UserRelations,
         is MainOverlay.PluginPage,
         -> Unit

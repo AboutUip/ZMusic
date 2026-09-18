@@ -175,6 +175,20 @@ class LibraryHomeRepository(
                 fetched.listenDurationMs?.let { ms ->
                     profile = profile.copy(listenDurationMs = ms)
                 }
+                val prevProfile = _snapshot.value.profile
+                if (prevProfile != null && prevProfile.userId == profile.userId) {
+                    val prevAvatar = prevProfile.avatarUrl
+                    val nextAvatar = profile.avatarUrl
+                    profile = when {
+                        nextAvatar.isNullOrBlank() && !prevAvatar.isNullOrBlank() ->
+                            profile.copy(avatarUrl = prevAvatar)
+                        // 同路径不同 query（param=xxx）时沿用旧 URL，避免个人页头像闪一下重载
+                        !prevAvatar.isNullOrBlank() &&
+                            sameAvatarIdentity(prevAvatar, nextAvatar) ->
+                            profile.copy(avatarUrl = prevAvatar)
+                        else -> profile
+                    }
+                }
                 _snapshot.update {
                     it.copy(
                         loading = false,
@@ -345,6 +359,19 @@ class LibraryHomeRepository(
 
     companion object {
         private const val AlbumPage = 20
+
+        private fun sameAvatarIdentity(a: String?, b: String?): Boolean {
+            val pa = avatarPathKey(a) ?: return false
+            val pb = avatarPathKey(b) ?: return false
+            return pa == pb
+        }
+
+        private fun avatarPathKey(url: String?): String? {
+            val raw = url?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+            return raw.substringBefore('#').substringBefore('?').trim()
+                .takeIf { it.isNotEmpty() }
+                ?.lowercase()
+        }
 
         fun mergeHeartTrackCount(
             playlists: List<PlaylistSummary>,

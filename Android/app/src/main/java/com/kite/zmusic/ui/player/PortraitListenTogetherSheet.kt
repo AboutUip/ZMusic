@@ -32,6 +32,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -43,6 +44,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
@@ -84,8 +86,9 @@ internal fun PortraitListenTogetherSheet(
     var shareUri by remember { mutableStateOf<Uri?>(null) }
     var shareOpen by remember { mutableStateOf(false) }
     val sharePanel = remember { Animatable(0f) }
-    val shareSheetH = 220.dp
-    val shareSheetHPx = with(LocalDensity.current) { shareSheetH.toPx() }
+    val fallbackShareHPx = with(LocalDensity.current) { rememberPortraitShareSheetHeight().toPx() }
+    var measuredShareHPx by remember { mutableFloatStateOf(0f) }
+    val shareSheetHPx = measuredShareHPx.takeIf { it > 1f } ?: fallbackShareHPx
     val switchColors = MainControls.switchColors()
     LaunchedEffect(shareOpen) {
         if (shareOpen) {
@@ -179,10 +182,10 @@ internal fun PortraitListenTogetherSheet(
                 Spacer(Modifier.height(6.dp))
                 Text(
                     text = if (ui.inRoom) {
-                        if (ui.hosting) "已开启 · 退出播放后会自动结束"
+                        if (ui.hosting) "已开启 · 清空播放列表后会自动结束"
                         else "已加入 · 进度按各自时钟对齐，不会互相拖跳"
                     } else {
-                        "邀请朋友进入一起听。仅本次有效，退出播放后自动关闭。"
+                        "邀请朋友进入一起听。仅本次有效，没有歌曲时会自动结束。"
                     },
                     style = TextStyle(
                         color = MainPalette.Secondary,
@@ -202,7 +205,7 @@ internal fun PortraitListenTogetherSheet(
                 } else if (!ui.inRoom) {
                     ListenSwitchRow(
                         title = "开启一起听",
-                        subtitle = "仅本次有效，退出音乐后自动关闭",
+                        subtitle = "仅本次有效，没有歌曲时会自动结束",
                         checked = false,
                         enabled = !ui.busy,
                         switchColors = switchColors,
@@ -275,6 +278,17 @@ internal fun PortraitListenTogetherSheet(
                             }
                         }
                         Spacer(Modifier.height(10.dp))
+                        ListenPrimaryButton(
+                            title = when {
+                                ui.outgoingPending -> "等待回应…"
+                                ui.matching -> "正在匹配…"
+                                else -> "匹配一起听"
+                            },
+                            enabled = !ui.busy && !sharing && ui.matchPeer == null && !ui.outgoingPending,
+                        ) {
+                            listen.toggleMatch()
+                        }
+                        Spacer(Modifier.height(10.dp))
                     }
                     ListenGhostButton(
                         title = if (ui.hosting) "结束一起听" else "离开一起听",
@@ -329,7 +343,7 @@ internal fun PortraitListenTogetherSheet(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .height(shareSheetH)
+                    .onSizeChanged { measuredShareHPx = it.height.toFloat() }
                     .graphicsLayer {
                         transformOrigin = TransformOrigin(0.5f, 1f)
                         translationY = (1f - shareT) * shareSheetHPx

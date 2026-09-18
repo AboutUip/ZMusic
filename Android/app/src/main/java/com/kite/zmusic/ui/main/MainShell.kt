@@ -160,6 +160,11 @@ fun MainShell(
     val overlay = overlayStack.lastOrNull()
     val context = LocalContext.current
     val app = context.applicationContext as ZMusicApplication
+    LaunchedEffect(playingSourceId) {
+        if (playingSourceId > 0L) {
+            app.recentCollectionStore.touchPlaylist(playingSourceId)
+        }
+    }
     val pluginDebug by app.pluginDebugStore.enabled.collectAsStateWithLifecycle()
     val pluginPages by app.pluginEngine.ui.pages.collectAsStateWithLifecycle()
     val probeReady = pluginPages[PluginDebugProbe.ID]?.containsKey(PluginDebugProbe.PAGE) == true
@@ -288,6 +293,9 @@ fun MainShell(
         PlayerExpandState(scope, initiallyOpen = showFullPlayer)
     }
     val playerHeld = showFullPlayer || expand.mounted
+    LaunchedEffect(playerHeld) {
+        app.listenTogether.setPlayerForeground(playerHeld)
+    }
     // 播放页卸掉后 insets 可能还有一两帧是 0，底栏会先抬高再掉回。多冻两帧。
     var restPadLatch by remember { mutableIntStateOf(0) }
     LaunchedEffect(playerHeld) {
@@ -906,9 +914,8 @@ fun MainShell(
                             onDestination = ::goToFromRail,
                             onOpenProbe = ::goToProbe,
                             onOpenSettings = {
-                                if (overlay is MainOverlay.Settings) {
-                                    popOverlay()
-                                } else {
+                                // 已在设置页时幂等，勿 pop 回主页
+                                if (overlay !is MainOverlay.Settings) {
                                     pushOverlay(MainOverlay.Settings)
                                 }
                             },

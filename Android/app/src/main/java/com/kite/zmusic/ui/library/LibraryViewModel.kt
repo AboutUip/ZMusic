@@ -469,12 +469,14 @@ class LibraryViewModel(
     }
 
     private fun PlaylistSummary.withLiveCover(): PlaylistSummary {
+        val own = resolvedCoverUrl()
+        if (own != null) return copy(coverUrl = own)
         val forced = playlistCollection.forcedCover(id)
         if (forced != null) return copy(coverUrl = forced)
         val first = playlistTracksCache.peek(id)?.tracks?.firstOrNull()?.coverUrl
             ?.takeIf { it.isNotBlank() }
             ?.takeUnless { isDefaultPlaylistCover(it) }
         if (first != null) return copy(coverUrl = first)
-        return copy(coverUrl = resolvedCoverUrl())
+        return copy(coverUrl = null)
     }
 }

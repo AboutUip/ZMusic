@@ -72,6 +72,7 @@ fun chromeWallpaperSurface(
         is MainOverlay.ArtistMvs,
         MainOverlay.LikedArtists,
         is MainOverlay.LikedArtistsSearch,
+        is MainOverlay.LibraryCollectionAll,
         is MainOverlay.User,
         is MainOverlay.UserRelations,
         is MainOverlay.PluginPage,

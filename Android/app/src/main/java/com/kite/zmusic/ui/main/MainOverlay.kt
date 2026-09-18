@@ -59,6 +59,8 @@ sealed class MainOverlay {
     ) : MainOverlay()
     data object LikedArtists : MainOverlay()
     data class LikedArtistsSearch(val users: Boolean = false) : MainOverlay()
+    /** 个人页收藏「查看更多」：全部歌单或全部专辑（不可互切）。 */
+    data class LibraryCollectionAll(val albums: Boolean) : MainOverlay()
     data class User(
         val id: Long,
         val name: String,
@@ -97,6 +99,7 @@ sealed class MainOverlay {
         is ArtistMvs -> "artist-mvs-$artistId"
         LikedArtists -> "liked-artists"
         is LikedArtistsSearch -> if (users) "liked-artists-search-users" else "liked-artists-search-artists"
+        is LibraryCollectionAll -> if (albums) "library-collection-albums" else "library-collection-playlists"
         is User -> "user-$id"
         is UserRelations -> if (fans) "user-fans-$userId" else "user-follows-$userId"
         is PluginPage -> "plugin-page-$pluginId-$pageName-$instance"

@@ -46,6 +46,7 @@ import com.kite.zmusic.ui.chrome.ChromeWallpaperBackdrop
 import com.kite.zmusic.ui.chrome.chromePage
 import com.kite.zmusic.ui.common.predictiveBackLayer
 import com.kite.zmusic.ui.common.rememberPredictiveBackUi
+import com.kite.zmusic.ui.library.LibraryCollectionAllScreen
 import com.kite.zmusic.ui.library.LikedArtistsScreen
 import com.kite.zmusic.ui.library.LikedArtistsSearchScreen
 import com.kite.zmusic.ui.library.ProfileEditScreen
@@ -413,6 +414,28 @@ private fun CatalogOverlayPage(
                 },
                 onOpenUser = { id, name, cover ->
                     onPushOverlay(MainOverlay.User(id, name, cover))
+                },
+            )
+        }
+        is MainOverlay.LibraryCollectionAll -> {
+            LibraryCollectionAllScreen(
+                albums = overlay.albums,
+                contentBottomInset = contentBottomInset,
+                onBack = onBack,
+                onOpenPlaylist = { pl ->
+                    onPushOverlay(
+                        MainOverlay.Playlist(
+                            id = pl.id,
+                            title = pl.name,
+                            coverUrl = pl.resolvedCoverUrl(),
+                            owned = pl.isOwned,
+                            heart = pl.isHeartPlaylist,
+                            collected = pl.isSubscribed,
+                        ),
+                    )
+                },
+                onOpenAlbum = { album ->
+                    onPushOverlay(MainOverlay.Album(album.id, album.name))
                 },
             )
         }

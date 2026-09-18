@@ -143,7 +143,8 @@ private fun ChromeGlassStyle.frostedHazeStyle(): HazeStyle {
         tints = listOf(HazeTint(tint)),
         blurRadius = frostedBlur(),
         noiseFactor = 0.04f + 0.08f * blur.coerceIn(0f, 1f),
-        fallbackTint = HazeTint(MainPalette.glassFill(0.62f)),
+        // 采样失败时仍半透，避免弹幕等浮层退成实心块
+        fallbackTint = HazeTint(MainPalette.glassFill(0.40f)),
     )
 }
 
@@ -159,6 +160,52 @@ internal fun pageSheetHazeStyle(): HazeStyle {
         noiseFactor = 0.08f,
         fallbackTint = HazeTint(page.copy(alpha = 0.94f)),
     )
+}
+
+/**
+ * 播放页浮层玻璃（弹幕等）：磨砂不依赖 Backdrop，只采 [haze]；
+ * 液态有 Backdrop 才折射，否则退磨砂；纯色用 [solidColor]。
+ */
+internal fun Modifier.playerOverlayGlass(
+    shape: Shape,
+    haze: HazeState?,
+    solidColor: Color = MainPalette.Surface,
+    liquidSurface: Color = MainPalette.glassFill(0.28f),
+): Modifier = composed {
+    val style = LocalChromeGlassStyle.current
+    val backdrop = LocalChromeBackdrop.current
+    val hazeState = haze ?: LocalChromeHaze.current
+    when (style.mode) {
+        ChromeGlassMode.Solid -> clip(shape).background(solidColor)
+        ChromeGlassMode.Frosted -> {
+            if (hazeState != null) {
+                clip(shape).hazeEffect(state = hazeState, style = style.frostedHazeStyle())
+            } else {
+                clip(shape).background(MainPalette.glassFill(0.50f))
+            }
+        }
+        ChromeGlassMode.Liquid -> {
+            if (backdrop != null) {
+                chromeGlassSurface(
+                    backdrop = backdrop,
+                    shape = shape,
+                    style = style,
+                    haze = hazeState,
+                    liquidBlur = 2.2.dp,
+                    liquidLensHeight = 5.3.dp,
+                    liquidLensAmount = 10.7.dp,
+                    highlightWidth = 0.5.dp,
+                    highlightAlpha = 0.40f,
+                    surface = liquidSurface,
+                    depthEffect = true,
+                )
+            } else if (hazeState != null) {
+                clip(shape).hazeEffect(state = hazeState, style = style.frostedHazeStyle())
+            } else {
+                clip(shape).background(MainPalette.glassFill(0.50f))
+            }
+        }
+    }
 }
 
 /**

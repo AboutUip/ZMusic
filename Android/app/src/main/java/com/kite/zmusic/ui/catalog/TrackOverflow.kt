@@ -9,6 +9,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import android.content.Context
 import com.kite.zmusic.ZMusicApplication
 import com.kite.zmusic.data.PlaylistSummary
 import com.kite.zmusic.data.TrackArtist
@@ -21,9 +22,15 @@ import com.kite.zmusic.ui.common.GlassActionSheet
 import com.kite.zmusic.ui.common.GlassAlertDialog
 import com.kite.zmusic.ui.common.GlassSheetAction
 import com.kite.zmusic.ui.notice.showIslandNotice
+import com.kite.zmusic.ui.player.NcmShare
+import com.kite.zmusic.ui.player.NcmShareResult
+import com.kite.zmusic.ui.player.NcmShareTarget
+import com.kite.zmusic.ui.player.ShareSheet
+import com.kite.zmusic.ui.player.ShareSongPoster
 import com.kite.zmusic.plugin.PluginSurfaces
 import com.kite.zmusic.plugin.PluginUiTarget
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -48,6 +55,7 @@ internal fun TrackOverflowMenu(
     var pickingPlaylist by remember(track?.id) { mutableStateOf(false) }
     var pickingArtist by remember(track?.id) { mutableStateOf(false) }
     var pickingExport by remember(track?.id) { mutableStateOf(false) }
+    var pickingShare by remember(track?.id) { mutableStateOf(false) }
     var artistChoices by remember(track?.id) { mutableStateOf<List<TrackArtist>>(emptyList()) }
     val current = track ?: return
     val app = LocalContext.current.applicationContext as ZMusicApplication
@@ -104,6 +112,16 @@ internal fun TrackOverflowMenu(
                 },
             )
         }
+        pickingShare -> {
+            ShareSheet(
+                contentKey = "share-track-${current.id}",
+                onDismiss = onDismiss,
+                onPick = { target ->
+                    shareTrackLikePlayer(context, app, current, target, scope)
+                    onDismiss()
+                },
+            )
+        }
         pickingPlaylist -> {
             val targets = playlists
                 .filter { it.isOwned && it.id != currentPlaylistId }
@@ -151,6 +169,11 @@ internal fun TrackOverflowMenu(
                             },
                         )
                     }
+                    add(
+                        GlassSheetAction("分享") {
+                            pickingShare = true
+                        },
+                    )
                     if (showAddToPlaylist) {
                         add(
                             GlassSheetAction("添加到歌单") {
@@ -232,6 +255,43 @@ internal fun TrackOverflowMenu(
                     }
                 },
             )
+        }
+    }
+}
+
+/** 与播放页竖屏分享同一套目标与发送逻辑。 */
+private fun shareTrackLikePlayer(
+    context: Context,
+    app: ZMusicApplication,
+    track: TrackRow,
+    target: NcmShareTarget,
+    scope: CoroutineScope,
+) {
+    if (target == NcmShareTarget.CopyLink) {
+        when (NcmShare.send(context, track, target)) {
+            NcmShareResult.Copied -> context.showIslandNotice("已复制链接")
+            NcmShareResult.NoLink -> context.showIslandNotice("当前歌曲无法分享")
+            else -> context.showIslandNotice("复制失败")
+        }
+        return
+    }
+    if (track.id <= 0L) {
+        context.showIslandNotice("当前歌曲无法分享")
+        return
+    }
+    scope.launch {
+        context.showIslandNotice("正在生成分享图")
+        val uri = ShareSongPoster.prepareShareUri(app, track)
+        if (uri == null) {
+            context.showIslandNotice("分享图生成失败")
+            return@launch
+        }
+        when (val result = NcmShare.sendImage(context, uri, target)) {
+            NcmShareResult.Opened -> Unit
+            NcmShareResult.Failed -> context.showIslandNotice("分享失败")
+            is NcmShareResult.MissingApp ->
+                context.showIslandNotice("未安装${result.appName}")
+            else -> context.showIslandNotice("分享失败")
         }
     }
 }

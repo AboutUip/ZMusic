@@ -44,7 +44,7 @@ fun TestPlanSettingsPage(
     ) {
         Spacer(Modifier.height(8.dp))
         Text(
-            text = "默认关闭。关闭时只提示正式版（Release）。打开后才会收到测试版（Test）更新推送。测试包可能不稳定，只建议参与内测的人打开。",
+            text = "默认关闭。关闭时只提示正式版（Release）。打开后除正式版外，还会收到测试版（Test）更新推送。测试包可能不稳定，只建议参与内测的人打开。",
             style = TextStyle(
                 color = MainPalette.Secondary,
                 fontSize = 13.sp,
@@ -108,7 +108,7 @@ fun TestPlanSettingsPage(
 
 internal fun testPlanSubtitle(enabled: Boolean): String =
     if (enabled) {
-        "已开启 · 接收测试版推送"
+        "已开启 · 正式版与测试版都会推送"
     } else {
         "已关闭 · 只接收正式版（默认）"
     }

@@ -68,6 +68,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -234,6 +235,8 @@ internal fun PortraitPlayerBody(
     onCloseComments: (() -> Unit)? = null,
     onCloseShare: (() -> Unit)? = null,
     onOpenWiki: (() -> Unit)? = null,
+    onOpenUser: (Long, String, String?) -> Unit = { _, _, _ -> },
+    onOpenListenTogether: () -> Unit = {},
     displayPrefs: PlayerDisplayPrefs = PlayerDisplayPrefs(),
     peekNextTrack: TrackRow? = null,
     peekPrevTrack: TrackRow? = null,
@@ -282,6 +285,7 @@ internal fun PortraitPlayerBody(
     // 进/出歌词页绝不切换 chrome 挂载方式，否则中间区高度突变导致黑胶上下跳。
     val selectBarReserve = 48.dp + 16.dp + navBottom.coerceAtLeast(12.dp)
     var transportReserve by remember { mutableStateOf(200.dp) }
+    var topChromeH by remember { mutableStateOf(64.dp) }
     val topReserve = 56.dp * chromeT
     val bottomReserve = androidx.compose.ui.unit.lerp(selectBarReserve, transportReserve, chromeT)
     val selectUiActive = lyricSelectOpen || selectT > 0.001f
@@ -352,6 +356,7 @@ internal fun PortraitPlayerBody(
     }
     val context = LocalContext.current
     val pluginEngine = (context.applicationContext as ZMusicApplication).pluginEngine
+    val listenUi by (context.applicationContext as ZMusicApplication).listenTogether.ui.collectAsStateWithLifecycle()
     LaunchedEffect(hiding) {
         if (hiding) {
             context.showIslandNotice("已进入清屏沉浸模式")
@@ -396,7 +401,16 @@ internal fun PortraitPlayerBody(
                 Spacer(Modifier.height(topReserve))
             } else {
                 CollapseFade(progress = topClearA, slideDown = false) {
-                    Column(Modifier.padding(horizontal = 4.dp)) {
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 4.dp)
+                            .onSizeChanged { sz ->
+                                if (sz.height > 0) {
+                                    topChromeH = with(density) { sz.height.toDp() }
+                                }
+                            },
+                    ) {
                         PortraitPlayerTopBar(
                             trackName = track.name,
                             onDismiss = onDismiss,
@@ -470,6 +484,7 @@ internal fun PortraitPlayerBody(
                                     outerScale = vinylOuterScale,
                                     plateColors = displayPrefs.vinylPlateColors(),
                                     gestureDamping = displayPrefs.vinylGestureDamping,
+                                    spinPeriodMs = displayPrefs.vinylSpinPeriodMs(),
                                 )
                             }
                         }
@@ -628,6 +643,8 @@ internal fun PortraitPlayerBody(
                         onOpenQuality = onOpenQuality,
                         onOpenComments = onOpenComments,
                         onOpenShare = onOpenShare,
+                        commentsAsChat = listenUi.inRoom,
+                        commentsUnread = listenUi.unreadChat,
                         controlsOffsetYDp = displayPrefs.portraitTransportOffsetYDp,
                         controlsContainerInclude = displayPrefs.portraitTransportContainerInclude,
                         controlsChromeAlpha = transportClearA,
@@ -635,6 +652,23 @@ internal fun PortraitPlayerBody(
                     )
                 }
             }
+        }
+
+        if (!selectUiActive && topClearA > 0.02f) {
+            PortraitListenTogetherAvatars(
+                compact = lyricsExpanded,
+                onOpenUser = onOpenUser,
+                onOpenListenTogether = onOpenListenTogether,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = topChromeH + 10.dp)
+                    .wrapContentSize()
+                    .graphicsLayer {
+                        alpha = topClearA
+                        clip = false
+                    }
+                    .zIndex(8f),
+            )
         }
 
         if (selectUiActive) {
@@ -702,6 +736,8 @@ internal fun PortraitPlayerBody(
                     onOpenQuality = onOpenQuality,
                     onOpenComments = onOpenComments,
                     onOpenShare = onOpenShare,
+                    commentsAsChat = listenUi.inRoom,
+                    commentsUnread = listenUi.unreadChat,
                     controlsOffsetYDp = displayPrefs.portraitTransportOffsetYDp,
                     controlsContainerInclude = displayPrefs.portraitTransportContainerInclude,
                     reportExpandPlay = false,

@@ -126,8 +126,9 @@ internal suspend fun copyBackgroundImageToPreset(
 ): String? = withContext(Dispatchers.IO) {
     runCatching {
         val dir = playerBackgroundDir(context, landscape)
-        // 每次新文件名：同路径覆盖时 Bitmap/Compose 会继续显示旧图
-        val out = File(dir, "preset_${index}_${System.currentTimeMillis()}.jpg")
+        val ext = guessBackgroundMediaExtension(context, uri)
+        // 每次新文件名：同路径覆盖时解码缓存会继续显示旧媒体
+        val out = File(dir, "preset_${index}_${System.currentTimeMillis()}.$ext")
         context.contentResolver.openInputStream(uri)?.use { input ->
             out.outputStream().use { output -> input.copyTo(output) }
         } ?: return@runCatching null
@@ -208,30 +209,14 @@ fun PlayerCustomBackgroundLayer(
         // Fit 留白处保持不透明，避免透出下层主界面
         Box(Modifier.fillMaxSize().background(TextTheme.PlayerStage))
         if (preset != null && preset.hasImage && t > 0.001f) {
-            if (preset.coverFill) {
-                // 与主壳壁纸同一套：铺满后按 offset 裁切，平移不会露出 player.stage
-                PlayerCoverFillImage(
-                    path = preset.imagePath,
-                    offsetX = ox,
-                    offsetY = oy,
-                    scale = sc,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            } else {
-                LocalPathImage(
-                    path = preset.imagePath,
-                    contentDescription = null,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer {
-                            scaleX = sc
-                            scaleY = sc
-                            translationX = (ox - 0.5f) * size.width * 0.55f
-                            translationY = (oy - 0.5f) * size.height * 0.55f
-                        },
-                    contentScale = ContentScale.Fit,
-                )
-            }
+            PlayerBackgroundMedia(
+                path = preset.imagePath,
+                offsetX = ox,
+                offsetY = oy,
+                scale = sc,
+                coverFill = preset.coverFill,
+                modifier = Modifier.fillMaxSize(),
+            )
             Box(
                 Modifier
                     .fillMaxSize()
@@ -247,47 +232,6 @@ fun PlayerCustomBackgroundLayer(
                     .background(expandCardFromColor().copy(alpha = (1f - expandP).coerceIn(0f, 1f))),
             )
         }
-    }
-}
-
-@Composable
-private fun PlayerCoverFillImage(
-    path: String,
-    offsetX: Float,
-    offsetY: Float,
-    scale: Float,
-    modifier: Modifier = Modifier,
-) {
-    var bitmap by remember(path) { mutableStateOf<ImageBitmap?>(null) }
-    LaunchedEffect(path) {
-        bitmap = withContext(Dispatchers.IO) {
-            runCatching { BitmapFactory.decodeFile(path)?.asImageBitmap() }.getOrNull()
-        }
-    }
-    val bmp = bitmap
-    if (bmp == null) {
-        Box(modifier.background(Color(0xFF12141A)))
-        return
-    }
-    Canvas(modifier.clipToBounds()) {
-        val place = wallpaperCanvasPlacement(
-            viewW = size.width,
-            viewH = size.height,
-            imgW = bmp.width,
-            imgH = bmp.height,
-            scale = scale,
-            offsetX = offsetX,
-            offsetY = offsetY,
-            coverFill = true,
-        ) ?: return@Canvas
-        drawImage(
-            image = bmp,
-            srcOffset = IntOffset.Zero,
-            srcSize = IntSize(bmp.width, bmp.height),
-            dstOffset = IntOffset(place.x, place.y),
-            dstSize = IntSize(place.w, place.h),
-            filterQuality = FilterQuality.Medium,
-        )
     }
 }
 
@@ -487,7 +431,7 @@ fun CustomBackgroundEditorOverlay(
                         contentAlignment = Alignment.Center,
                     ) {
                         if (preset.hasImage) {
-                            LocalPathImage(
+                            LocalPathThumb(
                                 path = preset.imagePath,
                                 contentDescription = null,
                                 modifier = Modifier.fillMaxSize(),
@@ -527,14 +471,14 @@ fun CustomBackgroundEditorOverlay(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 BgEditorActionButton(
-                    label = if (editable) "上传图片" else "已锁定",
+                    label = if (editable) "上传媒体" else "已锁定",
                     enabled = editable,
                     emphasize = true,
                     modifier = Modifier.weight(1f),
                     onClick = {
                         pickLauncher.launch(
                             PickVisualMediaRequest(
-                                ActivityResultContracts.PickVisualMedia.ImageOnly,
+                                ActivityResultContracts.PickVisualMedia.ImageAndVideo,
                             ),
                         )
                     },
@@ -600,7 +544,7 @@ fun CustomBackgroundEditorOverlay(
                     onValueChange = { draftOy = it },
                 )
                 BgSliderRow(
-                    title = "图片缩放",
+                    title = "缩放",
                     value = draftScale,
                     valueRange = PlayerDisplayPrefs.BG_SCALE_MIN..PlayerDisplayPrefs.BG_SCALE_MAX,
                     enabled = slidersEnabled,
@@ -819,18 +763,13 @@ private fun LandscapeBackgroundPreview(
                 .background(Color(0xFF0A0C12)),
         ) {
             if (!path.isNullOrBlank()) {
-                LocalPathImage(
+                PlayerBackgroundMedia(
                     path = path,
-                    contentDescription = null,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer {
-                            scaleX = scale
-                            scaleY = scale
-                            translationX = (offsetX - 0.5f) * size.width * 0.55f
-                            translationY = (offsetY - 0.5f) * size.height * 0.55f
-                        },
-                    contentScale = ContentScale.Fit,
+                    offsetX = offsetX,
+                    offsetY = offsetY,
+                    scale = scale,
+                    coverFill = false,
+                    modifier = Modifier.fillMaxSize(),
                 )
             } else {
                 Box(
@@ -1092,18 +1031,13 @@ private fun PortraitBackgroundPreview(
                 .background(Color(0xFF0A0C12)),
         ) {
             if (!path.isNullOrBlank()) {
-                LocalPathImage(
+                PlayerBackgroundMedia(
                     path = path,
-                    contentDescription = null,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer {
-                            scaleX = scale
-                            scaleY = scale
-                            translationX = (offsetX - 0.5f) * size.width * 0.55f
-                            translationY = (offsetY - 0.5f) * size.height * 0.55f
-                        },
-                    contentScale = ContentScale.Fit,
+                    offsetX = offsetX,
+                    offsetY = offsetY,
+                    scale = scale,
+                    coverFill = false,
+                    modifier = Modifier.fillMaxSize(),
                 )
             } else {
                 Box(

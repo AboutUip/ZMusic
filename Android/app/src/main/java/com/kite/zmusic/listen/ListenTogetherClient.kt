@@ -48,6 +48,9 @@ class ListenTogetherClient(
     suspend fun postOp(id: String, body: JSONObject): ListenRoomSnapshot =
         mutate("POST", "/rooms/${enc(id)}/ops", body)
 
+    suspend fun postChat(id: String, text: String): ListenRoomSnapshot =
+        mutate("POST", "/rooms/${enc(id)}/chat", JSONObject().put("text", text))
+
     suspend fun get(id: String, after: Long, wait: Boolean): ListenRoomSnapshot =
         withContext(Dispatchers.IO) {
             val q = buildString {
@@ -57,6 +60,64 @@ class ListenTogetherClient(
             val req = request("GET", "/rooms/${enc(id)}?$q", null)
             val client = if (wait) waiting else immediate
             client.newCall(req).execute().use { parseSnapshot(it.body?.string().orEmpty()) }
+        }
+
+    suspend fun presence() {
+        withContext(Dispatchers.IO) {
+            immediate.newCall(request("POST", "/presence", null)).execute().use {
+                parseObject(it.body?.string().orEmpty())
+            }
+        }
+    }
+
+    suspend fun leavePresence() {
+        withContext(Dispatchers.IO) {
+            immediate.newCall(request("POST", "/presence/leave", null)).execute().use {
+                parseObject(it.body?.string().orEmpty())
+            }
+        }
+    }
+
+    suspend fun match(wait: Boolean): ListenPeer =
+        withContext(Dispatchers.IO) {
+            val q = if (wait) "?wait=1" else ""
+            val client = if (wait) waiting else immediate
+            client.newCall(request("POST", "/match$q", null)).execute().use { resp ->
+                val json = parseObject(resp.body?.string().orEmpty())
+                parsePeer(json.optJSONObject("peer"))
+                    ?: throw WorkshopApiError.Message("nobody")
+            }
+        }
+
+    suspend fun invite(toUid: String): ListenInvite =
+        withContext(Dispatchers.IO) {
+            immediate.newCall(
+                request("POST", "/invites", JSONObject().put("to_uid", toUid.trim())),
+            ).execute().use { resp ->
+                val json = parseObject(resp.body?.string().orEmpty())
+                parseInvite(json.optJSONObject("invite"))
+                    ?: throw WorkshopApiError.Message("unavailable")
+            }
+        }
+
+    suspend fun getInvites(wait: Boolean): ListenInviteBox =
+        withContext(Dispatchers.IO) {
+            val q = if (wait) "?wait=1" else ""
+            val client = if (wait) waiting else immediate
+            client.newCall(request("GET", "/invites$q", null)).execute().use { resp ->
+                parseInviteBox(resp.body?.string().orEmpty())
+            }
+        }
+
+    suspend fun acceptInvite(id: String): ListenRoomSnapshot =
+        mutate("POST", "/invites/${enc(id)}/accept", null)
+
+    suspend fun declineInvite(id: String, today: Boolean): Unit =
+        withContext(Dispatchers.IO) {
+            immediate.newCall(
+                request("POST", "/invites/${enc(id)}/decline", JSONObject().put("today", today)),
+            ).execute().use { parseObject(it.body?.string().orEmpty()) }
+            Unit
         }
 
     private suspend fun mutate(method: String, path: String, body: JSONObject?): ListenRoomSnapshot =
@@ -96,7 +157,7 @@ class ListenTogetherClient(
         fun enc(s: String): String =
             URLEncoder.encode(s, Charsets.UTF_8.name()).replace("+", "%20")
 
-        fun parseSnapshot(raw: String): ListenRoomSnapshot {
+        fun parseObject(raw: String): JSONObject {
             if (raw.isBlank()) throw WorkshopApiError.Message("unavailable")
             val json = runCatching { JSONObject(raw) }.getOrElse {
                 throw WorkshopApiError.Message("unavailable")
@@ -116,6 +177,11 @@ class ListenTogetherClient(
                     else -> throw WorkshopApiError.Message(error.ifBlank { "unavailable" })
                 }
             }
+            return json
+        }
+
+        fun parseSnapshot(raw: String): ListenRoomSnapshot {
+            val json = parseObject(raw)
             val clockObj = json.optJSONObject("clock") ?: JSONObject()
             return ListenRoomSnapshot(
                 id = json.optString("id"),
@@ -123,22 +189,68 @@ class ListenTogetherClient(
                 maxMembers = json.optInt("max_members", 2),
                 members = parseMembers(json.optJSONArray("members")),
                 clock = ListenPlaybackClock(
-                    hlc = clockObj.optLong("hlc"),
+                    hlc = jsonLong(clockObj, "hlc"),
                     actor = clockObj.optString("actor"),
-                    trackId = clockObj.optLong("track_id"),
+                    trackId = jsonLong(clockObj, "track_id"),
                     title = clockObj.optString("title"),
                     artists = clockObj.optString("artists"),
                     coverUrl = clockObj.optString("cover_url"),
-                    durationMs = clockObj.optLong("duration_ms"),
+                    durationMs = jsonLong(clockObj, "duration_ms"),
                     playing = clockObj.optBoolean("playing"),
-                    originMs = clockObj.optLong("origin_ms"),
-                    originAt = clockObj.optLong("origin_at"),
+                    originMs = jsonLong(clockObj, "origin_ms"),
+                    originAt = jsonLong(clockObj, "origin_at"),
                 ),
                 rev = json.optLong("rev"),
                 serverNow = json.optLong("server_now"),
                 closed = json.optBoolean("closed"),
                 qrText = json.optString("qr_text"),
+                chat = parseChat(json.optJSONArray("chat")),
             )
+        }
+
+        fun parseInviteBox(raw: String): ListenInviteBox {
+            val json = parseObject(raw)
+            return ListenInviteBox(
+                incoming = parseInvite(json.optJSONObject("incoming")),
+                outgoing = parseInvite(json.optJSONObject("outgoing")),
+            )
+        }
+
+        fun parseInvite(obj: JSONObject?): ListenInvite? {
+            if (obj == null) return null
+            val id = obj.optString("id").trim()
+            if (id.isEmpty()) return null
+            val from = parsePeer(obj.optJSONObject("from")) ?: return null
+            val to = parsePeer(obj.optJSONObject("to")) ?: ListenPeer(uid = "", nickname = "", avatarUrl = "")
+            return ListenInvite(
+                id = id,
+                roomId = obj.optString("room_id"),
+                from = from,
+                to = to,
+                status = obj.optString("status").ifBlank { "pending" },
+                expiresAt = jsonLong(obj, "expires_at"),
+                expiresIn = jsonLong(obj, "expires_in"),
+            )
+        }
+
+        fun parsePeer(obj: JSONObject?): ListenPeer? {
+            if (obj == null) return null
+            val uid = obj.optString("uid").trim()
+            if (uid.isEmpty()) return null
+            return ListenPeer(
+                uid = uid,
+                nickname = obj.optString("nickname").ifBlank { uid },
+                avatarUrl = obj.optString("avatar_url"),
+            )
+        }
+
+        internal fun jsonLong(obj: JSONObject, key: String): Long {
+            val raw = obj.opt(key) ?: return 0L
+            return when (raw) {
+                is Number -> raw.toLong()
+                is String -> raw.trim().toLongOrNull() ?: 0L
+                else -> 0L
+            }
         }
 
         private fun parseMembers(arr: JSONArray?): List<ListenMember> {
@@ -153,6 +265,25 @@ class ListenTogetherClient(
                     nickname = o.optString("nickname").ifBlank { uid },
                     avatarUrl = o.optString("avatar_url"),
                     host = o.optBoolean("host"),
+                )
+            }
+            return out
+        }
+
+        private fun parseChat(arr: JSONArray?): List<ListenChatMsg> {
+            if (arr == null) return emptyList()
+            val out = ArrayList<ListenChatMsg>(arr.length())
+            for (i in 0 until arr.length()) {
+                val o = arr.optJSONObject(i) ?: continue
+                val text = o.optString("text").trim()
+                if (text.isEmpty()) continue
+                out += ListenChatMsg(
+                    id = jsonLong(o, "id"),
+                    uid = o.optString("uid").trim(),
+                    nickname = o.optString("nickname"),
+                    avatarUrl = o.optString("avatar_url"),
+                    text = text,
+                    at = jsonLong(o, "at"),
                 )
             }
             return out

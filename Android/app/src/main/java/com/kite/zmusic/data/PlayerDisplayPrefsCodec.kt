@@ -288,6 +288,7 @@ fun lerpPlayerDisplayPrefs(
         titleArtistStyle = lerpTitleLine(from.titleArtistStyle, to.titleArtistStyle, u),
         titleSourceStyle = lerpTitleLine(from.titleSourceStyle, to.titleSourceStyle, u),
         vinylGestureDamping = lf(from.vinylGestureDamping, to.vinylGestureDamping),
+        vinylSpinSpeed = lf(from.vinylSpinSpeed, to.vinylSpinSpeed),
         lyricPlayingStyle = lerpLyricRole(from.lyricPlayingStyle, to.lyricPlayingStyle, u),
         lyricPlayedStyle = lerpLyricRole(from.lyricPlayedStyle, to.lyricPlayedStyle, u),
         lyricUnplayedStyle = lerpLyricRole(from.lyricUnplayedStyle, to.lyricUnplayedStyle, u),
@@ -307,6 +308,11 @@ fun lerpPlayerDisplayPrefs(
             from.portraitLyricOthersShowTranslation,
             to.portraitLyricOthersShowTranslation,
         ),
+        danmakuCompanionEnabled = pick(from.danmakuCompanionEnabled, to.danmakuCompanionEnabled),
+        danmakuDensity = li(from.danmakuDensity, to.danmakuDensity),
+        danmakuRegion = pick(from.danmakuRegion, to.danmakuRegion),
+        danmakuSpeed = lf(from.danmakuSpeed, to.danmakuSpeed),
+        danmakuScale = lf(from.danmakuScale, to.danmakuScale),
     )
 }
 

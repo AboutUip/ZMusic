@@ -171,6 +171,20 @@ object UrlImageCache {
     fun normalizeKey(url: String?): String? =
         url?.trim()?.takeIf { it.isNotEmpty() }
 
+    /** 忽略 query/fragment 后的路径，用于判断是否仍是同一张图（刷新换参不换图）。 */
+    fun sameImageIdentity(a: String?, b: String?): Boolean {
+        val pa = imagePathKey(a) ?: return false
+        val pb = imagePathKey(b) ?: return false
+        return pa == pb
+    }
+
+    fun imagePathKey(url: String?): String? {
+        val raw = normalizeKey(url) ?: return null
+        val noHash = raw.substringBefore('#')
+        val path = noHash.substringBefore('?')
+        return path.trim().takeIf { it.isNotEmpty() }?.lowercase()
+    }
+
     fun isLocalMediaUri(url: String): Boolean {
         val t = url.trim()
         return t.startsWith("content:", ignoreCase = true) ||

@@ -40,6 +40,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -69,6 +70,7 @@ import com.kite.zmusic.ui.notice.showIslandNotice
 import com.kite.zmusic.ui.player.PlayerDisplayQr
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -102,14 +104,36 @@ fun rememberCommunityLoginOpener(
     var pendingSong by remember { mutableStateOf<PendingSongScan?>(null) }
     var pendingListenId by remember { mutableStateOf<String?>(null) }
     var pendingListenNeedLogin by remember { mutableStateOf(false) }
+    var queuedQr by remember { mutableStateOf<String?>(null) }
 
     fun toast(msg: String) = context.showIslandNotice(msg)
+
+    fun looksLikeKnownQr(raw: String): Boolean =
+        ZMusicListenLink.parse(raw) != null ||
+            ZMusicSongLink.parse(raw) != null ||
+            CommunityLoginConfig.parseQr(raw) != null
+
+    fun hideScannerWindow() {
+        if (phase is CommunityLoginPhase.Scanner) {
+            phase = CommunityLoginPhase.Hidden
+        }
+    }
+
+    fun closeScanner() {
+        queuedQr = null
+        hideScannerWindow()
+    }
 
     fun handleQr(raw: String): Boolean {
         val listenId = ZMusicListenLink.parse(raw)
         if (listenId != null) {
             previewJob?.cancel()
             phase = CommunityLoginPhase.Hidden
+            val current = app.listenTogether.ui.value
+            if (current.inRoom && current.room?.id == listenId) {
+                toast("你已经在这间一起听")
+                return true
+            }
             if (!app.workshopAuthStore.hasToken()) {
                 app.listenTogether.rememberPendingJoin(listenId)
                 pendingListenId = listenId
@@ -160,6 +184,19 @@ fun rememberCommunityLoginOpener(
         return true
     }
 
+    LaunchedEffect(queuedQr) {
+        val raw = queuedQr ?: return@LaunchedEffect
+        if (phase is CommunityLoginPhase.Scanner) {
+            phase = CommunityLoginPhase.Hidden
+        }
+        withFrameNanos { }
+        withFrameNanos { }
+        delay(160)
+        if (!isActive || queuedQr != raw) return@LaunchedEffect
+        queuedQr = null
+        handleQr(raw)
+    }
+
     val galleryLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia(),
     ) { uri ->
@@ -172,8 +209,14 @@ fun rememberCommunityLoginOpener(
                 toast("未识别到二维码，请换一张更清晰的图片")
                 return@launch
             }
-            if (!handleQr(text)) {
+            if (!looksLikeKnownQr(text)) {
                 toast("无法识别该二维码")
+                return@launch
+            }
+            if (phase is CommunityLoginPhase.Scanner) {
+                queuedQr = text
+            } else {
+                handleQr(text)
             }
         }
     }
@@ -213,7 +256,7 @@ fun rememberCommunityLoginOpener(
 
     if (phase is CommunityLoginPhase.Scanner) {
         Dialog(
-            onDismissRequest = { phase = CommunityLoginPhase.Hidden },
+            onDismissRequest = { hideScannerWindow() },
             properties = DialogProperties(
                 dismissOnBackPress = true,
                 dismissOnClickOutside = false,
@@ -224,13 +267,17 @@ fun rememberCommunityLoginOpener(
             QrScannerOverlay(
                 title = "扫描二维码",
                 subtitle = "对准分享海报或社区登录码，也可从相册选取",
-                onDetected = { raw -> handleQr(raw) },
+                onDetected = { raw ->
+                    if (!looksLikeKnownQr(raw)) return@QrScannerOverlay false
+                    queuedQr = raw
+                    true
+                },
                 onOpenGallery = {
                     galleryLauncher.launch(
                         PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
                     )
                 },
-                onClose = { phase = CommunityLoginPhase.Hidden },
+                onClose = { closeScanner() },
             )
         }
     }
@@ -369,6 +416,7 @@ fun rememberCommunityLoginOpener(
                 onDismiss = {
                     pendingListenNeedLogin = false
                     pendingListenId = null
+                    app.listenTogether.clearPendingJoin()
                 },
             )
         } else {

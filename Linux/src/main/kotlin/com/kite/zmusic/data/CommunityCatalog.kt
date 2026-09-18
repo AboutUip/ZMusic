@@ -56,17 +56,13 @@ internal fun <T> parseCatalogArray(
     return CommunityCatalogPage(true, "", more, entries)
 }
 
-enum class ChangelogItemType {
-    Add,
-    Support,
-    Improve,
-    Fix,
-}
-
 data class ChangelogItem(
-    val type: ChangelogItemType,
+    val type: String,
     val text: String,
-)
+) {
+    val label: String
+        get() = ChangelogRoster.displayLabel(type)
+}
 
 data class ChangelogEntry(
     val id: String,
@@ -80,6 +76,19 @@ data class ChangelogEntry(
 }
 
 object ChangelogRoster {
+    fun displayLabel(type: String): String {
+        val raw = type.trim()
+        if (raw.isEmpty()) return "说明"
+        return when (raw.lowercase()) {
+            "add", "new" -> "新增"
+            "support", "feat", "feature" -> "支持"
+            "improve", "opt", "optimize" -> "优化"
+            "fix", "bugfix" -> "修复"
+            "note" -> "说明"
+            else -> raw
+        }
+    }
+
     fun parseRemote(snapshot: Any?): CommunityCatalogPage<ChangelogEntry> =
         parseCatalogArray(snapshot, "releases", ::parseRelease)
 
@@ -105,15 +114,9 @@ object ChangelogRoster {
         val out = ArrayList<ChangelogItem>(arr.size)
         for (item in arr) {
             val o = item as? Map<*, *> ?: continue
-            val type = when (catalogString(o["type"]).trim().lowercase()) {
-                "add", "new" -> ChangelogItemType.Add
-                "support", "feat", "feature" -> ChangelogItemType.Support
-                "improve", "opt", "optimize" -> ChangelogItemType.Improve
-                "fix", "bugfix" -> ChangelogItemType.Fix
-                else -> null
-            } ?: continue
+            val type = catalogString(o["type"]).trim()
             val text = catalogString(o["text"])
-            if (text.isEmpty()) continue
+            if (type.isEmpty() || text.isEmpty()) continue
             out += ChangelogItem(type, text)
         }
         return out
