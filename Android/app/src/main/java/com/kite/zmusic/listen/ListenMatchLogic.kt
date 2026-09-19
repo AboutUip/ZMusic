@@ -46,6 +46,17 @@ fun listenHostCancel(
     skipUntil = listenRememberSkip(peerUid, nowMs, skipUntil),
 )
 
+/** 房主跳过此人：保持匹配，5 分钟内不再配这个人，进入下一轮。 */
+fun listenHostContinue(
+    peerUid: String,
+    nowMs: Long,
+    skipUntil: Map<String, Long> = emptyMap(),
+): ListenMatchGate = ListenMatchGate(
+    matching = true,
+    quietUntilMs = 0L,
+    skipUntil = listenRememberSkip(peerUid, nowMs, skipUntil),
+)
+
 /** 客人拒绝邀请：5 分钟内不弹下一张邀请；当日拒绝的配对封锁由服务端另算。 */
 fun listenGuestReject(
     fromUid: String,

@@ -450,69 +450,73 @@ internal fun NowPlayingScreenLayers(
                     },
                     onDismiss = onDismiss,
                     dismissSwipeThresholdPx = dismissSwipeThresholdPx,
-                    onOpenMore = { openPortraitMore() },
-                    onOpenScore = { openPortraitScore() },
-                    onOpenQuality = { openPortraitQuality() },
-                    onOpenComments = { openPortraitComments() },
-                    onOpenShare = { openPortraitShare() },
-                    onOpenWiki = { openPortraitWiki() },
-                    onOpenUser = onOpenUser,
-                    onOpenListenTogether = { openPortraitListen() },
-                    settingsOpen = portraitSettingsOpen,
-                    scoreOpen = portraitScoreOpen,
-                    qualityOpen = portraitQualityOpen,
-                    commentsOpen = portraitCommentsOpen,
-                    shareOpen = portraitShareOpen,
-                    panelHold = portraitSettingsOpen ||
-                        portraitScoreOpen ||
-                        portraitQualityOpen ||
-                        portraitShareOpen ||
-                        portraitCommentsOpen ||
-                        portraitListenOpen ||
-                        portraitMoreOpen ||
-                        portraitPosterOpen ||
-                        portraitBackgroundEditorOpen ||
-                        portraitLyricStyleEditorOpen ||
-                        portraitWikiOpen,
-                    onCloseSettings = { closePortraitSettings() },
-                    onCloseScore = { closePortraitScore() },
-                    onCloseQuality = { closePortraitQuality() },
-                    onCloseComments = { closePortraitComments() },
-                    onCloseShare = { closePortraitShare() },
+                    sheets = PortraitPlayerSheetChrome(
+                        settingsOpen = portraitSettingsOpen,
+                        scoreOpen = portraitScoreOpen,
+                        qualityOpen = portraitQualityOpen,
+                        commentsOpen = portraitCommentsOpen,
+                        shareOpen = portraitShareOpen,
+                        panelHold = portraitSettingsOpen ||
+                            portraitScoreOpen ||
+                            portraitQualityOpen ||
+                            portraitShareOpen ||
+                            portraitCommentsOpen ||
+                            portraitListenOpen ||
+                            portraitMoreOpen ||
+                            portraitPosterOpen ||
+                            portraitBackgroundEditorOpen ||
+                            portraitLyricStyleEditorOpen ||
+                            portraitWikiOpen,
+                        onOpenMore = { openPortraitMore() },
+                        onOpenScore = { openPortraitScore() },
+                        onOpenQuality = { openPortraitQuality() },
+                        onOpenComments = { openPortraitComments() },
+                        onOpenShare = { openPortraitShare() },
+                        onOpenWiki = { openPortraitWiki() },
+                        onCloseSettings = { closePortraitSettings() },
+                        onCloseScore = { closePortraitScore() },
+                        onCloseQuality = { closePortraitQuality() },
+                        onCloseComments = { closePortraitComments() },
+                        onCloseShare = { closePortraitShare() },
+                        onOpenUser = onOpenUser,
+                        onOpenListenTogether = { openPortraitListen() },
+                    ),
                     displayPrefs = portraitDisplayPrefs,
                     peekNextTrack = state.peekNextTrack,
                     peekPrevTrack = state.peekPrevTrack,
                     onSeek = onSeek,
-                    lyricContentAlpha = portraitLiveLyricAlpha,
-                    onLyricBandCoords = onPortraitLyricsBandCoords,
-                    frozenLyricPositionMs = if (portraitLyricStyleSnapshot != null) {
-                        portraitLyricStyleFrozenPositionMs
-                    } else {
-                        null
-                    },
-                    lyricSelectOpen = portraitLyricSelectOpen,
-                    lyricSelectProgress = portraitLyricSelectT,
-                    lyricSelectSelected = portraitLyricSelectSelected,
-                    lyricSelectResumeToken = portraitLyricSelectResumeToken,
-                    onLyricSelectResumeConsumed = { onPortraitLyricSelectResumeTokenChange(0) },
-                    onLyricSelectLongPress = { openPortraitLyricSelect() },
-                    onLyricSelectToggle = { index ->
-                        if (index in portraitLyricSelectSelected) {
-                            portraitLyricSelectSelected.remove(index)
+                    lyric = PortraitLyricOverlay(
+                        contentAlpha = portraitLiveLyricAlpha,
+                        onBandCoords = onPortraitLyricsBandCoords,
+                        frozenPositionMs = if (portraitLyricStyleSnapshot != null) {
+                            portraitLyricStyleFrozenPositionMs
                         } else {
-                            portraitLyricSelectSelected.add(index)
-                        }
-                    },
-                    onLyricSelectCancel = { closePortraitLyricSelect() },
-                    onLyricSelectCopy = {
-                        copyLyricSelection(
-                            context,
-                            lyricLines,
-                            portraitLyricSelectSelected.toSet(),
-                            lyricCompanions,
-                        )
-                        closePortraitLyricSelect()
-                    },
+                            null
+                        },
+                        selectOpen = portraitLyricSelectOpen,
+                        selectProgress = portraitLyricSelectT,
+                        selectSelected = portraitLyricSelectSelected,
+                        selectResumeToken = portraitLyricSelectResumeToken,
+                        onSelectResumeConsumed = { onPortraitLyricSelectResumeTokenChange(0) },
+                        onSelectLongPress = { openPortraitLyricSelect() },
+                        onSelectToggle = { index ->
+                            if (index in portraitLyricSelectSelected) {
+                                portraitLyricSelectSelected.remove(index)
+                            } else {
+                                portraitLyricSelectSelected.add(index)
+                            }
+                        },
+                        onSelectCancel = { closePortraitLyricSelect() },
+                        onSelectCopy = {
+                            copyLyricSelection(
+                                context,
+                                lyricLines,
+                                portraitLyricSelectSelected.toSet(),
+                                lyricCompanions,
+                            )
+                            closePortraitLyricSelect()
+                        },
+                    ),
                     modifier = Modifier.weight(1f),
                 )
             }

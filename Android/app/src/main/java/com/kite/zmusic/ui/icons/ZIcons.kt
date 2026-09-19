@@ -72,6 +72,7 @@ import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.Share
+import androidx.compose.material.icons.rounded.SentimentSatisfied
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Swipe
 import androidx.compose.material.icons.rounded.SkipNext
@@ -96,6 +97,7 @@ object ZIcons {
     val Features: ImageVector get() = Icons.Rounded.GridView
     val Profile: ImageVector get() = Icons.Rounded.Person
     val Search: ImageVector get() = Icons.Rounded.Search
+    val Emoji: ImageVector get() = Icons.Rounded.SentimentSatisfied
     val Settings: ImageVector get() = Icons.Rounded.Settings
     val Swipe: ImageVector get() = Icons.Rounded.Swipe
     val ScreenRotation: ImageVector get() = Icons.Rounded.ScreenRotation

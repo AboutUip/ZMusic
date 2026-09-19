@@ -201,7 +201,7 @@ class ListenTogetherClient(
             val clockObj = json.optJSONObject("clock") ?: JSONObject()
             return ListenRoomSnapshot(
                 id = json.optString("id"),
-                hostUid = json.optString("host_uid"),
+                hostUid = jsonUid(json, "host_uid"),
                 maxMembers = json.optInt("max_members", 2),
                 members = parseMembers(json.optJSONArray("members")),
                 clock = ListenPlaybackClock(
@@ -221,6 +221,7 @@ class ListenTogetherClient(
                 closed = json.optBoolean("closed"),
                 qrText = json.optString("qr_text"),
                 chat = parseChat(json.optJSONArray("chat")),
+                chatIncluded = json.has("chat") && !json.isNull("chat"),
             )
         }
 
@@ -251,7 +252,7 @@ class ListenTogetherClient(
 
         fun parsePeer(obj: JSONObject?): ListenPeer? {
             if (obj == null) return null
-            val uid = obj.optString("uid").trim()
+            val uid = jsonUid(obj)
             if (uid.isEmpty()) return null
             return ListenPeer(
                 uid = uid,
@@ -269,12 +270,22 @@ class ListenTogetherClient(
             }
         }
 
+        internal fun jsonUid(obj: JSONObject, key: String = "uid"): String {
+            val raw = obj.opt(key) ?: return ""
+            if (raw === JSONObject.NULL) return ""
+            return when (raw) {
+                is Number -> raw.toLong().toString()
+                is String -> raw.trim()
+                else -> raw.toString().trim()
+            }
+        }
+
         private fun parseMembers(arr: JSONArray?): List<ListenMember> {
             if (arr == null) return emptyList()
             val out = ArrayList<ListenMember>(arr.length())
             for (i in 0 until arr.length()) {
                 val o = arr.optJSONObject(i) ?: continue
-                val uid = o.optString("uid").trim()
+                val uid = jsonUid(o)
                 if (uid.isEmpty()) continue
                 out += ListenMember(
                     uid = uid,
@@ -295,7 +306,7 @@ class ListenTogetherClient(
                 if (text.isEmpty()) continue
                 out += ListenChatMsg(
                     id = jsonLong(o, "id"),
-                    uid = o.optString("uid").trim(),
+                    uid = jsonUid(o),
                     nickname = o.optString("nickname"),
                     avatarUrl = o.optString("avatar_url"),
                     text = text,

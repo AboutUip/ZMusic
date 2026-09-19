@@ -9,6 +9,7 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import android.view.Surface
+import androidx.activity.compose.LocalActivity
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Stable
@@ -152,7 +153,7 @@ val LocalSessionRotationLock = staticCompositionLocalOf<SessionRotationLock> {
 
 @Composable
 fun rememberSessionRotationLock(): SessionRotationLock {
-    val activity = LocalContext.current as? Activity
+    val activity = LocalActivity.current ?: LocalContext.current as? Activity
     val facade = remember { SessionRotationLock() }
     // Activity 附着 / 锁状态变化时重套（进程状态，不依赖 Compose remember 存活）
     DisposableEffect(activity, SessionRotationLockStore.locked, SessionRotationLockStore.lockedOrientation) {

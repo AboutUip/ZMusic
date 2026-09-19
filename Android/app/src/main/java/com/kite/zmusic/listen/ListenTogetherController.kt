@@ -15,6 +15,7 @@ import com.kite.zmusic.playback.PlaybackUiState
 import com.kite.zmusic.ui.notice.IslandNoticeCenter
 import com.kite.zmusic.workshop.WorkshopApiError
 import com.kite.zmusic.workshop.WorkshopAuthStore
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -38,7 +39,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.IOException
 import java.net.SocketTimeoutException
-import kotlin.coroutines.cancellation.CancellationException
+import java.util.concurrent.atomic.AtomicLong
 import com.kite.zmusic.i18n.t
 
 /**
@@ -81,6 +82,7 @@ class ListenTogetherController(
     private var matchJob: Job? = null
     private val matchSkipUntil = java.util.concurrent.ConcurrentHashMap<String, Long>()
     @Volatile private var incomingQuietUntil = 0L
+    private val localChatSeq = AtomicLong(0L)
 
     fun start() {
         if (started) return
@@ -139,8 +141,20 @@ class ListenTogetherController(
     }
 
     fun setChatForeground(open: Boolean) {
+        val wasOpen = chatForeground
         chatForeground = open
-        if (open) markChatRead()
+        if (open) {
+            markChatRead()
+            return
+        }
+        if (!wasOpen) return
+        _ui.update { cur ->
+            val mine = cur.room?.chat.orEmpty().lastOrNull { listenChatIsSelf(it, cur.selfUid) }
+                ?: return@update cur
+            val age = if (mine.at > 0L) System.currentTimeMillis() - mine.at else Long.MAX_VALUE
+            if (age > 12_000L) return@update cur
+            cur.copy(chatToast = mine)
+        }
     }
 
     fun setAppForeground(held: Boolean) {
@@ -251,6 +265,23 @@ class ListenTogetherController(
         if (uid.isNotBlank()) {
             scope.launch { runCatching { client.skipMatch(uid) } }
         }
+    }
+
+    fun skipMatchPeerAndContinue() {
+        val uid = _ui.value.matchPeer?.uid.orEmpty()
+        val gate = listenHostContinue(uid, nowElapsed(), matchSkipUntil)
+        matchSkipUntil.clear()
+        matchSkipUntil.putAll(gate.skipUntil)
+        _ui.update {
+            it.copy(
+                matching = true,
+                matchPeer = null,
+            )
+        }
+        if (uid.isNotBlank()) {
+            scope.launch { runCatching { client.skipMatch(uid) } }
+        }
+        if (matchJob?.isActive != true) startMatch()
     }
 
     fun inviteMatchedPeer() {
@@ -443,10 +474,10 @@ class ListenTogetherController(
     fun markChatRead() {
         val maxId = _ui.value.room?.chat?.maxOfOrNull { it.id } ?: return
         lastNotifiedChatId = maxOf(lastNotifiedChatId, maxId)
-        _ui.update {
-            it.copy(
-                lastReadChatId = maxOf(it.lastReadChatId, maxId),
-                chatToast = null,
+        _ui.update { cur ->
+            cur.copy(
+                lastReadChatId = maxOf(cur.lastReadChatId, maxId),
+                chatToast = listenChatKeepToastWhileReading(cur.chatToast, cur.selfUid),
             )
         }
     }
@@ -460,25 +491,59 @@ class ListenTogetherController(
     fun sendChat(text: String) {
         val body = text.trim()
         if (body.isEmpty()) return
-        val id = _ui.value.room?.id ?: return
+        val room = _ui.value.room ?: return
+        val self = auth.current()?.uid.orEmpty().ifBlank { _ui.value.selfUid }.trim()
+        val me = room.members.firstOrNull { listenChatUidEquals(it.uid, self) }
+        val localId = -localChatSeq.incrementAndGet()
+        val local = ListenChatMsg(
+            id = localId,
+            uid = self.ifBlank { me?.uid.orEmpty() },
+            nickname = me?.nickname.orEmpty(),
+            avatarUrl = me?.avatarUrl.orEmpty(),
+            text = body,
+            at = System.currentTimeMillis(),
+        )
+        _ui.update { cur ->
+            val current = cur.room ?: return@update cur
+            if (current.id != room.id) return@update cur
+            cur.copy(
+                room = current.copy(chat = current.chat + local),
+                chatToast = local,
+            )
+        }
         scope.launch {
             try {
-                val snap = client.postChat(id, body)
+                val snap = client.postChat(room.id, body)
                 applySnapshot(snap, applyPlayer = false)
             } catch (e: WorkshopApiError.Unauthorized) {
+                dropPendingChat(room.id, localId)
                 notices.show(t("社区登录已失效"))
             } catch (e: WorkshopApiError.RateLimited) {
+                dropPendingChat(room.id, localId)
                 notices.show(t("发送太快了"))
             } catch (e: WorkshopApiError.Message) {
+                dropPendingChat(room.id, localId)
                 when (e.message) {
                     "closed", "missing" -> dropLocal(t("一起听已结束"))
                     "forbidden" -> notices.show(t("无法发送"))
                     else -> notices.show(e.message?.ifBlank { t("发送失败") } ?: t("发送失败"))
                 }
             } catch (e: Exception) {
+                dropPendingChat(room.id, localId)
                 Log.w(TAG, "chat", e)
                 notices.show(t("发送失败"))
             }
+        }
+    }
+
+    private fun dropPendingChat(roomId: String, localId: Long) {
+        _ui.update { cur ->
+            val room = cur.room ?: return@update cur
+            if (room.id != roomId) return@update cur
+            cur.copy(
+                room = room.copy(chat = room.chat.filter { it.id != localId }),
+                chatToast = if (cur.chatToast?.id == localId) null else cur.chatToast,
+            )
         }
     }
 
@@ -576,31 +641,43 @@ class ListenTogetherController(
 
     private fun applySnapshot(snap: ListenRoomSnapshot, applyPlayer: Boolean) {
         if (leavingRoom) return
+        if (snap.id.isBlank()) return
         recvElapsed = SystemClock.elapsedRealtime()
         val prevId = _ui.value.room?.id
         var ping = false
         _ui.update { cur ->
             val self = auth.current()?.uid.orEmpty().ifBlank { cur.selfUid }
+            val merged = mergeListenRoomChat(
+                previous = cur.room?.chat.orEmpty(),
+                incoming = snap.chat,
+                incomingIncluded = snap.chatIncluded,
+                selfUid = self,
+            )
             var lastRead = cur.lastReadChatId
             var toast = cur.chatToast
             if (prevId != snap.id) {
-                lastRead = snap.chat.maxOfOrNull { it.id } ?: 0L
+                lastRead = merged.maxOfOrNull { it.id } ?: 0L
                 lastNotifiedChatId = lastRead
                 toast = null
             } else if (chatForeground) {
-                lastRead = maxOf(lastRead, snap.chat.maxOfOrNull { it.id } ?: 0L)
+                lastRead = maxOf(lastRead, merged.maxOfOrNull { it.id } ?: 0L)
                 lastNotifiedChatId = maxOf(lastNotifiedChatId, lastRead)
-                toast = null
+                toast = listenChatKeepToastWhileReading(
+                    retargetListenChatToast(toast, merged),
+                    self,
+                )
             } else {
-                val newestOther = snap.chat.lastOrNull { it.uid != self && it.id > lastNotifiedChatId }
-                if (newestOther != null) {
-                    lastNotifiedChatId = newestOther.id
-                    toast = newestOther
-                    ping = !playerForeground
+                val newest = merged.lastOrNull { it.id > lastNotifiedChatId }
+                if (newest != null) {
+                    lastNotifiedChatId = newest.id
+                    toast = newest
+                    ping = !playerForeground && !listenChatIsSelf(newest, self)
+                } else {
+                    toast = retargetListenChatToast(toast, merged)
                 }
             }
             cur.copy(
-                room = snap,
+                room = snap.copy(chat = merged),
                 selfUid = self,
                 lastReadChatId = lastRead,
                 chatToast = toast,

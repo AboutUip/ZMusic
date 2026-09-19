@@ -84,8 +84,8 @@ import com.kite.zmusic.ui.common.GlassAlertDialog
 import com.kite.zmusic.ui.common.GlassPromptField
 import com.kite.zmusic.ui.icons.ZIcons
 import com.kite.zmusic.ui.legal.AboutLegalGlassBody
+import com.kite.zmusic.ui.legal.AboutLegalKind
 import com.kite.zmusic.ui.legal.aboutLegalTitle
-import com.kite.zmusic.ui.login.LoginLegalKind
 import com.kite.zmusic.ui.chrome.ChromeWallpaperBackdrop
 import com.kite.zmusic.ui.chrome.chromePage
 import com.kite.zmusic.ui.chrome.LocalWallpaperViewport
@@ -223,7 +223,7 @@ fun SettingsScreen(
     var glassDraft by remember { mutableStateOf(glassStyle) }
     var confirmGlassLeave by remember { mutableStateOf(false) }
     var showAppreciate by remember { mutableStateOf(false) }
-    var legalKind by remember { mutableStateOf<LoginLegalKind?>(null) }
+    var legalKind by remember { mutableStateOf<AboutLegalKind?>(null) }
     val reveal = remember { Animatable(0f) }
     LaunchedEffect(Unit) {
         reveal.animateTo(1f, tween(420, easing = FastOutSlowInEasing))
@@ -896,8 +896,7 @@ fun SettingsScreen(
         ) {
             AboutPage(
                 contentBottomInset = contentBottomInset,
-                onOpenTerms = { legalKind = LoginLegalKind.Terms },
-                onOpenPrivacy = { legalKind = LoginLegalKind.Privacy },
+                onOpenLegal = { legalKind = it },
                 modifier = Modifier.fillMaxSize(),
             )
         }
@@ -1321,8 +1320,7 @@ private fun SettingsDrillHost(
 @Composable
 private fun AboutPage(
     contentBottomInset: Dp,
-    onOpenTerms: () -> Unit,
-    onOpenPrivacy: () -> Unit,
+    onOpenLegal: (AboutLegalKind) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -1398,12 +1396,25 @@ private fun AboutPage(
             modifier = Modifier.fillMaxWidth(),
         )
         Spacer(Modifier.height(14.dp))
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(18.dp),
-            verticalAlignment = Alignment.CenterVertically,
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            AboutLegalLink(t("《服务条款》"), onClick = onOpenTerms)
-            AboutLegalLink(t("《隐私政策》"), onClick = onOpenPrivacy)
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(18.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                AboutLegalLink(t("《服务条款》"), onClick = { onOpenLegal(AboutLegalKind.Terms) })
+                AboutLegalLink(t("《隐私政策》"), onClick = { onOpenLegal(AboutLegalKind.Privacy) })
+            }
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(18.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                AboutLegalLink(t("《开源许可》"), onClick = { onOpenLegal(AboutLegalKind.License) })
+                AboutLegalLink(t("《尊重官方》"), onClick = { onOpenLegal(AboutLegalKind.Official) })
+            }
         }
     }
 }

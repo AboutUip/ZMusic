@@ -24,6 +24,122 @@ class ListenChatLogicTest {
         assertEquals(1, listenUnreadChatCount(chat, "42", 1))
         assertEquals(0, listenUnreadChatCount(chat, "42", 3))
         assertEquals(1, listenUnreadChatCount(chat, "7", 0))
+        assertEquals(0, listenUnreadChatCount(chat, "042", 3))
+        assertEquals(2, listenUnreadChatCount(chat, "042", 0))
+    }
+
+    @Test
+    fun selfUidMatchesNumericString() {
+        assertEquals(true, listenChatUidEquals("42", "42"))
+        assertEquals(true, listenChatUidEquals("42", "042"))
+        assertEquals(false, listenChatUidEquals("42", "7"))
+        assertEquals(false, listenChatUidEquals("", "42"))
+    }
+
+    @Test
+    fun mergeKeepsOwnPendingWhenSnapshotOmitsChat() {
+        val mine = msg(-1, "42", "hello")
+        val other = msg(2, "7", "hi")
+        val prev = listOf(other, mine)
+        val kept = mergeListenRoomChat(prev, emptyList(), incomingIncluded = false, selfUid = "42")
+        assertEquals(prev, kept)
+    }
+
+    @Test
+    fun mergeKeepsOwnBubbleIfServerEchoIsMissing() {
+        val mine = msg(-1, "42", "hello")
+        val other = msg(2, "7", "hi")
+        val incoming = listOf(other, msg(3, "7", "again"))
+        val merged = mergeListenRoomChat(
+            previous = listOf(other, mine),
+            incoming = incoming,
+            incomingIncluded = true,
+            selfUid = "42",
+        )
+        assertEquals(3, merged.size)
+        assertEquals(true, merged.any { it.text == "hello" && listenChatUidEquals(it.uid, "42") })
+    }
+
+    @Test
+    fun mergeDropsPendingOnceServerEchoes() {
+        val mine = msg(-1, "42", "hello")
+        val echoed = msg(9, "42", "hello")
+        val merged = mergeListenRoomChat(
+            previous = listOf(mine),
+            incoming = listOf(echoed),
+            incomingIncluded = true,
+            selfUid = "42",
+        )
+        assertEquals(listOf(echoed), merged)
+    }
+
+    @Test
+    fun mergeKeepsDuplicatePendingUntilEachEchoArrives() {
+        val first = msg(-1, "42", "哈哈")
+        val second = msg(-2, "42", "哈哈")
+        val echoed = msg(9, "42", "哈哈")
+        val merged = mergeListenRoomChat(
+            previous = listOf(first, second),
+            incoming = listOf(echoed),
+            incomingIncluded = true,
+            selfUid = "42",
+        )
+        assertEquals(2, merged.size)
+        assertEquals(true, merged.any { it.id == 9L })
+        assertEquals(true, merged.any { it.id < 0L && it.text == "哈哈" })
+    }
+
+    @Test
+    fun mergeUnionsDeltaIncomingWithExistingHistory() {
+        val older = msg(2, "7", "hi")
+        val mine = msg(3, "42", "hello")
+        val newer = msg(4, "7", "again")
+        val merged = mergeListenRoomChat(
+            previous = listOf(older, mine),
+            incoming = listOf(newer),
+            incomingIncluded = true,
+            selfUid = "42",
+        )
+        assertEquals(listOf(older, mine, newer), merged)
+    }
+
+    @Test
+    fun pendingCountsAsSelfAndRetargetsToEcho() {
+        val pending = msg(-1, "42", "hello")
+        val echoed = msg(9, "42", "hello")
+        assertEquals(true, listenChatIsSelf(pending, "42"))
+        assertEquals(true, listenChatIsSelf(echoed, "042"))
+        assertEquals(false, listenChatIsSelf(msg(3, "7", "hi"), "42"))
+        assertEquals(echoed, retargetListenChatToast(pending, listOf(echoed)))
+        assertEquals(pending, listenChatKeepToastWhileReading(pending, "42"))
+        assertEquals(null, listenChatKeepToastWhileReading(msg(3, "7", "hi"), "42"))
+    }
+
+    @Test
+    fun parseSnapshotOmittingChatKeepsChatExcluded() {
+        val snap = ListenTogetherClient.parseSnapshot(
+            """{"ok":true,"id":"r1","host_uid":42,"chat":null}""",
+        )
+        assertEquals(false, snap.chatIncluded)
+        val omitted = ListenTogetherClient.parseSnapshot(
+            """{"ok":true,"id":"r1"}""",
+        )
+        assertEquals(false, omitted.chatIncluded)
+        val empty = ListenTogetherClient.parseSnapshot(
+            """{"ok":true,"id":"r1","chat":[]}""",
+        )
+        assertEquals(true, empty.chatIncluded)
+        assertEquals(true, empty.chat.isEmpty())
+    }
+
+    @Test
+    fun parseChatReadsNumericUid() {
+        val snap = ListenTogetherClient.parseSnapshot(
+            """{"ok":true,"id":"r1","host_uid":7,"chat":[{"id":1,"uid":42,"nickname":"我","text":"hi","at":1}]}""",
+        )
+        assertEquals("42", snap.chat.single().uid)
+        assertEquals("7", snap.hostUid)
+        assertEquals(true, snap.chatIncluded)
     }
 
     @Test

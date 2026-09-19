@@ -82,11 +82,13 @@ fun ListenMatchHost() {
         peer != null -> {
             GlassAlertDialog(
                 title = t("匹配到一起听"),
-                message = t("是否向对方发出邀请？"),
-                confirmLabel = t("发出邀请"),
+                message = t("可以向对方发出邀请，继续则匹配下一位。"),
+                confirmLabel = t("邀请"),
                 onConfirm = { listen.inviteMatchedPeer() },
                 onDismiss = { listen.dismissMatchPeer() },
                 cancelLabel = t("取消"),
+                tertiaryLabel = t("继续匹配"),
+                onTertiary = { listen.skipMatchPeerAndContinue() },
                 extraContent = { ListenMatchPeerCard(peer) },
                 scrimDismiss = false,
             )

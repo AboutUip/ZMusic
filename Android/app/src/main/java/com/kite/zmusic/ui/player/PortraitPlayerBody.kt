@@ -190,6 +190,42 @@ import kotlin.math.sin
 import androidx.compose.ui.unit.lerp as lerpDp
 import com.kite.zmusic.i18n.t
 
+internal data class PortraitPlayerSheetChrome(
+    val settingsOpen: Boolean = false,
+    val scoreOpen: Boolean = false,
+    val qualityOpen: Boolean = false,
+    val commentsOpen: Boolean = false,
+    val shareOpen: Boolean = false,
+    val panelHold: Boolean = false,
+    val onOpenMore: (() -> Unit)? = null,
+    val onOpenScore: (() -> Unit)? = null,
+    val onOpenQuality: (() -> Unit)? = null,
+    val onOpenComments: (() -> Unit)? = null,
+    val onOpenShare: (() -> Unit)? = null,
+    val onOpenWiki: (() -> Unit)? = null,
+    val onCloseSettings: (() -> Unit)? = null,
+    val onCloseScore: (() -> Unit)? = null,
+    val onCloseQuality: (() -> Unit)? = null,
+    val onCloseComments: (() -> Unit)? = null,
+    val onCloseShare: (() -> Unit)? = null,
+    val onOpenUser: (Long, String, String?) -> Unit = { _, _, _ -> },
+    val onOpenListenTogether: () -> Unit = {},
+)
+
+internal data class PortraitLyricOverlay(
+    val contentAlpha: Float = 1f,
+    val onBandCoords: ((LayoutCoordinates) -> Unit)? = null,
+    val frozenPositionMs: Long? = null,
+    val selectOpen: Boolean = false,
+    val selectProgress: Float = 0f,
+    val selectSelected: Set<Int> = emptySet(),
+    val selectResumeToken: Int = 0,
+    val onSelectResumeConsumed: (() -> Unit)? = null,
+    val onSelectLongPress: (() -> Unit)? = null,
+    val onSelectToggle: ((Int) -> Unit)? = null,
+    val onSelectCancel: (() -> Unit)? = null,
+    val onSelectCopy: (() -> Unit)? = null,
+)
 
 @Composable
 internal fun PortraitPlayerBody(
@@ -219,44 +255,45 @@ internal fun PortraitPlayerBody(
     onSliderDragEnd: (Float) -> Unit,
     onDismiss: () -> Unit,
     dismissSwipeThresholdPx: Float,
-    onOpenMore: (() -> Unit)? = null,
-    onOpenScore: (() -> Unit)? = null,
-    onOpenQuality: (() -> Unit)? = null,
-    onOpenComments: (() -> Unit)? = null,
-    onOpenShare: (() -> Unit)? = null,
-    settingsOpen: Boolean = false,
-    scoreOpen: Boolean = false,
-    qualityOpen: Boolean = false,
-    commentsOpen: Boolean = false,
-    shareOpen: Boolean = false,
-    /** 有面板盖在歌词页上时暂停自动清屏并保持 chrome */
-    panelHold: Boolean = false,
-    onCloseSettings: (() -> Unit)? = null,
-    onCloseScore: (() -> Unit)? = null,
-    onCloseQuality: (() -> Unit)? = null,
-    onCloseComments: (() -> Unit)? = null,
-    onCloseShare: (() -> Unit)? = null,
-    onOpenWiki: (() -> Unit)? = null,
-    onOpenUser: (Long, String, String?) -> Unit = { _, _, _ -> },
-    onOpenListenTogether: () -> Unit = {},
+    sheets: PortraitPlayerSheetChrome = PortraitPlayerSheetChrome(),
     displayPrefs: PlayerDisplayPrefs = PlayerDisplayPrefs(),
     peekNextTrack: TrackRow? = null,
     peekPrevTrack: TrackRow? = null,
     onSeek: (Long) -> Unit = {},
-    lyricContentAlpha: Float = 1f,
-    onLyricBandCoords: ((LayoutCoordinates) -> Unit)? = null,
-    frozenLyricPositionMs: Long? = null,
-    lyricSelectOpen: Boolean = false,
-    lyricSelectProgress: Float = 0f,
-    lyricSelectSelected: Set<Int> = emptySet(),
-    lyricSelectResumeToken: Int = 0,
-    onLyricSelectResumeConsumed: (() -> Unit)? = null,
-    onLyricSelectLongPress: (() -> Unit)? = null,
-    onLyricSelectToggle: ((Int) -> Unit)? = null,
-    onLyricSelectCancel: (() -> Unit)? = null,
-    onLyricSelectCopy: (() -> Unit)? = null,
+    lyric: PortraitLyricOverlay = PortraitLyricOverlay(),
     modifier: Modifier = Modifier,
 ) {
+    val onOpenMore = sheets.onOpenMore
+    val onOpenScore = sheets.onOpenScore
+    val onOpenQuality = sheets.onOpenQuality
+    val onOpenComments = sheets.onOpenComments
+    val onOpenShare = sheets.onOpenShare
+    val settingsOpen = sheets.settingsOpen
+    val scoreOpen = sheets.scoreOpen
+    val qualityOpen = sheets.qualityOpen
+    val commentsOpen = sheets.commentsOpen
+    val shareOpen = sheets.shareOpen
+    val panelHold = sheets.panelHold
+    val onCloseSettings = sheets.onCloseSettings
+    val onCloseScore = sheets.onCloseScore
+    val onCloseQuality = sheets.onCloseQuality
+    val onCloseComments = sheets.onCloseComments
+    val onCloseShare = sheets.onCloseShare
+    val onOpenWiki = sheets.onOpenWiki
+    val onOpenUser = sheets.onOpenUser
+    val onOpenListenTogether = sheets.onOpenListenTogether
+    val lyricContentAlpha = lyric.contentAlpha
+    val onLyricBandCoords = lyric.onBandCoords
+    val frozenLyricPositionMs = lyric.frozenPositionMs
+    val lyricSelectOpen = lyric.selectOpen
+    val lyricSelectProgress = lyric.selectProgress
+    val lyricSelectSelected = lyric.selectSelected
+    val lyricSelectResumeToken = lyric.selectResumeToken
+    val onLyricSelectResumeConsumed = lyric.onSelectResumeConsumed
+    val onLyricSelectLongPress = lyric.onSelectLongPress
+    val onLyricSelectToggle = lyric.onSelectToggle
+    val onLyricSelectCancel = lyric.onSelectCancel
+    val onLyricSelectCopy = lyric.onSelectCopy
     var vinylSkipDir by remember { mutableStateOf(VinylSkipDirection.Next) }
     var vinylBusy by remember { mutableStateOf(false) }
     val vinylSizeScale = displayPrefs.vinylSizeScale

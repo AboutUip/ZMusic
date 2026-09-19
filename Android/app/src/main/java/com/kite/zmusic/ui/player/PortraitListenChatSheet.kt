@@ -1,5 +1,10 @@
 package com.kite.zmusic.ui.player
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -26,6 +31,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -33,9 +41,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -55,20 +65,25 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.PlatformTextStyle
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kite.zmusic.ZMusicApplication
 import com.kite.zmusic.listen.ListenChatMsg
+import com.kite.zmusic.listen.listenChatUidEquals
 import com.kite.zmusic.ui.common.UrlImage
 import com.kite.zmusic.ui.easter.MjEasterEgg
+import com.kite.zmusic.ui.icons.ZIcons
 import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.main.pageSheetHazeStyle
 import dev.chrisbanes.haze.HazeState
@@ -103,23 +118,30 @@ internal fun PortraitListenChatSheet(
     val focusManager = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
     val density = LocalDensity.current
-    var draft by remember { mutableStateOf("") }
+    var draft by remember { mutableStateOf(TextFieldValue("")) }
     var composerFocused by remember { mutableStateOf(false) }
+    var emojiOpen by remember { mutableStateOf(false) }
     var restoreAfterIme by remember { mutableStateOf(false) }
+    var recentEmoji by remember { mutableStateOf(emptyList<String>()) }
     val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val imeBottom = WindowInsets.ime.getBottom(density)
+    var emojiPanelH by remember { mutableStateOf(248.dp) }
+    val imeDp = with(density) { imeBottom.toDp() }
+    SideEffect {
+        if (imeDp > 120.dp) emojiPanelH = imeDp
+    }
     val newestId = chat.lastOrNull()?.id
     LaunchedEffect(ui.inRoom, ui.room?.id) {
         if (ui.inRoom) listen.markChatRead()
     }
-    LaunchedEffect(composerFocused) {
+    LaunchedEffect(composerFocused, emojiOpen) {
         if (composerFocused) {
             if (!fullscreen) {
                 restoreAfterIme = true
                 onExpandFullscreen()
                 delay(320)
             }
-        } else if (restoreAfterIme) {
+        } else if (restoreAfterIme && !emojiOpen) {
             restoreAfterIme = false
             onCollapseToTwoThirds()
         }
@@ -131,11 +153,22 @@ internal fun PortraitListenChatSheet(
     }
 
     fun send() {
-        val text = draft.trim()
+        val text = draft.text.trim()
         if (text.isEmpty()) return
         MjEasterEgg.consider(text)
-        draft = ""
+        draft = TextFieldValue("")
         listen.sendChat(text)
+    }
+
+    fun insertEmoji(emoji: String) {
+        val text = draft.text
+        val start = draft.selection.start.coerceIn(0, text.length)
+        val end = draft.selection.end.coerceIn(0, text.length)
+        val a = minOf(start, end)
+        val b = maxOf(start, end)
+        val next = text.replaceRange(a, b, emoji)
+        draft = TextFieldValue(next, TextRange(a + emoji.length))
+        recentEmoji = (listOf(emoji) + recentEmoji.filter { it != emoji }).take(16)
     }
 
     Box(
@@ -147,6 +180,7 @@ internal fun PortraitListenChatSheet(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
                 onClick = {
+                    if (emojiOpen) emojiOpen = false
                     keyboard?.hide()
                     focusManager.clearFocus(force = true)
                 },
@@ -236,7 +270,7 @@ internal fun PortraitListenChatSheet(
                     items(chat.asReversed(), key = { it.id }) { msg ->
                         ChatRow(
                             msg = msg,
-                            self = msg.uid == ui.selfUid,
+                            self = msg.id < 0L || listenChatUidEquals(msg.uid, ui.selfUid),
                             onOpenUser = onOpenUser,
                         )
                     }
@@ -244,11 +278,49 @@ internal fun PortraitListenChatSheet(
             }
             ChatComposerBar(
                 draft = draft,
+                emojiOpen = emojiOpen,
                 focusRequester = focusRequester,
                 onDraftChange = { draft = it },
+                onToggleEmoji = {
+                    if (emojiOpen) {
+                        emojiOpen = false
+                        restoreAfterIme = true
+                        focusRequester.requestFocus()
+                        keyboard?.show()
+                    } else {
+                        if (!fullscreen) {
+                            restoreAfterIme = true
+                            onExpandFullscreen()
+                        }
+                        keyboard?.hide()
+                        focusManager.clearFocus(force = true)
+                        emojiOpen = true
+                    }
+                },
                 onSend = { send() },
-                onFocusChange = { composerFocused = it },
+                onFocusChange = { focused ->
+                    composerFocused = focused
+                    if (focused) emojiOpen = false
+                },
             )
+            AnimatedVisibility(
+                visible = emojiOpen,
+                enter = expandVertically(
+                    animationSpec = tween(220, easing = FastOutSlowInEasing),
+                    expandFrom = Alignment.Top,
+                ),
+                exit = shrinkVertically(
+                    animationSpec = tween(180, easing = FastOutSlowInEasing),
+                    shrinkTowards = Alignment.Top,
+                ),
+                label = "listenChatEmoji",
+            ) {
+                ChatEmojiPanel(
+                    height = emojiPanelH,
+                    recent = recentEmoji,
+                    onPick = { insertEmoji(it) },
+                )
+            }
         }
         if (t < 0.02f) {
             Box(Modifier.matchParentSize())
@@ -347,9 +419,11 @@ private fun ListenChatMsg.ncmUserId(): Long? =
 
 @Composable
 private fun ChatComposerBar(
-    draft: String,
+    draft: TextFieldValue,
+    emojiOpen: Boolean,
     focusRequester: FocusRequester,
-    onDraftChange: (String) -> Unit,
+    onDraftChange: (TextFieldValue) -> Unit,
+    onToggleEmoji: () -> Unit,
     onSend: () -> Unit,
     onFocusChange: (Boolean) -> Unit,
 ) {
@@ -395,7 +469,7 @@ private fun ChatComposerBar(
                         Modifier.fillMaxWidth(),
                         contentAlignment = Alignment.CenterStart,
                     ) {
-                        if (draft.isEmpty()) {
+                        if (draft.text.isEmpty()) {
                             Text(
                                 text = t("发条消息…"),
                                 style = composerStyle.copy(color = MainPalette.Hint),
@@ -406,7 +480,27 @@ private fun ChatComposerBar(
                 },
             )
         }
-        Spacer(Modifier.width(10.dp))
+        Spacer(Modifier.width(8.dp))
+        Box(
+            Modifier
+                .size(40.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(if (emojiOpen) MainPalette.Accent.copy(alpha = 0.16f) else MainPalette.Placeholder)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onToggleEmoji,
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = ZIcons.Emoji,
+                contentDescription = t("表情"),
+                tint = if (emojiOpen) MainPalette.Accent else MainPalette.Secondary,
+                modifier = Modifier.size(22.dp),
+            )
+        }
+        Spacer(Modifier.width(8.dp))
         Box(
             Modifier
                 .clip(RoundedCornerShape(14.dp))
@@ -425,6 +519,57 @@ private fun ChatComposerBar(
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 14.sp,
             )
+        }
+    }
+}
+
+private val ChatQuickEmojis = listOf(
+    "😀", "😁", "😂", "🤣", "😊", "😍", "🥰", "😘", "😜", "🤪",
+    "🤗", "🤔", "🙄", "😴", "🥺", "😢", "😭", "😤", "😡", "🤯",
+    "😳", "😇", "😎", "🤩", "🥳", "🤤", "😷", "🤒", "🤡", "👻",
+    "👍", "👎", "👌", "✌️", "🤞", "🤟", "🤘", "👏", "🙌", "🤝",
+    "❤️", "🧡", "💛", "💚", "💙", "💜", "🖤", "💔", "💕", "💯",
+    "🔥", "⭐", "✨", "🎉", "🎵", "🎶", "🎧", "🎤", "🎸", "💃",
+    "🫶", "👀", "💪", "🙏", "🌸", "🍀", "🌙", "☀️", "🌈", "☕",
+)
+
+@Composable
+private fun ChatEmojiPanel(
+    height: Dp,
+    recent: List<String>,
+    onPick: (String) -> Unit,
+) {
+    val glyphs = remember(recent) {
+        (recent + ChatQuickEmojis).distinct()
+    }
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(8),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(height)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = {},
+            ),
+        contentPadding = PaddingValues(top = 4.dp, bottom = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        items(glyphs, key = { it }) { emoji ->
+            Box(
+                Modifier
+                    .height(44.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable(
+                        interactionSource = remember(emoji) { MutableInteractionSource() },
+                        indication = null,
+                        onClick = { onPick(emoji) },
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(text = emoji, fontSize = 22.sp)
+            }
         }
     }
 }

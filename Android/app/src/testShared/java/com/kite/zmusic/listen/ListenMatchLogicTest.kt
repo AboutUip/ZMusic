@@ -76,6 +76,23 @@ class ListenMatchLogicTest {
     }
 
     @Test
+    fun hostContinueKeepsMatchingAndOffersSomeoneElse() {
+        val now = 1_000L
+        val after = listenHostContinue("7", now)
+        assertEquals(true, after.matching)
+        assertTrue(listenUidSkipped("7", after.skipUntil, now))
+        assertEquals(
+            "99",
+            listenOfferedPeer(
+                matching = after.matching,
+                candidates = listOf("7", "99"),
+                skipUntil = after.skipUntil,
+                nowMs = now,
+            ),
+        )
+    }
+
+    @Test
     fun threePeopleGuestRejectHidesNextHostForFiveMinutes() {
         val now = 10L
         val after = listenGuestReject("42", now)

@@ -5,10 +5,12 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
@@ -32,6 +34,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -51,11 +54,14 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kite.zmusic.ZMusicApplication
+import com.kite.zmusic.listen.ListenAvatarLayout
 import com.kite.zmusic.listen.ListenChatMsg
 import com.kite.zmusic.listen.ListenMember
 import com.kite.zmusic.listen.ListenRoomSnapshot
 import com.kite.zmusic.listen.listenAvatarLayout
 import com.kite.zmusic.listen.listenChatBubbleText
+import com.kite.zmusic.listen.listenChatIsSelf
+import com.kite.zmusic.listen.listenChatUidEquals
 import com.kite.zmusic.listen.ncmUserId
 import com.kite.zmusic.ui.common.UrlImage
 import com.kite.zmusic.ui.notice.showIslandNotice
@@ -66,6 +72,7 @@ private val ClusterRing = Color(0x66F2EDE6)
 private val ClusterFill = Color(0x33000000)
 private val ListenClusterAnim = tween<Float>(durationMillis = 320, easing = FastOutSlowInEasing)
 private val ListenClusterDpAnim = tween<Dp>(durationMillis = 320, easing = FastOutSlowInEasing)
+private val ListenBubbleAnim = tween<Float>(durationMillis = 280, easing = FastOutSlowInEasing)
 
 @Composable
 internal fun PortraitListenTogetherAvatars(
@@ -108,6 +115,7 @@ internal fun PortraitListenTogetherAvatars(
         ListenTogetherAvatarCluster(
             room = shown,
             compact = compact,
+            selfUid = ui.selfUid,
             toast = ui.chatToast,
             onOpenUser = onOpenUser,
             onOpenListenTogether = onOpenListenTogether,
@@ -120,6 +128,7 @@ internal fun PortraitListenTogetherAvatars(
 private fun ListenTogetherAvatarCluster(
     room: ListenRoomSnapshot,
     compact: Boolean,
+    selfUid: String,
     toast: ListenChatMsg?,
     onOpenUser: (Long, String, String?) -> Unit,
     onOpenListenTogether: () -> Unit,
@@ -153,16 +162,19 @@ private fun ListenTogetherAvatarCluster(
         layout.waitingSlot -> t("等待加入 · 1/%s", room.maxMembers.coerceAtLeast(2))
         else -> t("一起听 · %s人", room.members.size)
     }
-    val toastIndex = remember(toast?.uid, layout.host?.uid, layout.behind, layout.overflow) {
-        val uid = toast?.uid ?: return@remember -1
-        var i = 0
-        if (layout.overflow > 0) i++
-        layout.behind.forEach { member ->
-            if (member.uid == uid) return@remember i
-            i++
-        }
-        if (host.uid == uid) return@remember i
-        -1
+    val toastIndex = remember(toast?.uid, toast?.id, selfUid, layout.host?.uid, layout.behind, layout.overflow) {
+        val msg = toast ?: return@remember -1
+        val hit = layout.slotIndex(msg.uid, host)
+        if (hit >= 0) return@remember hit
+        val selfHit = layout.slotIndex(selfUid, host)
+        if (selfHit >= 0 && listenChatIsSelf(msg, selfUid)) return@remember selfHit
+        if (listenChatIsSelf(msg, selfUid)) layout.slotIndex(host.uid, host) else -1
+    }
+    var heldToast by remember { mutableStateOf<ListenChatMsg?>(null) }
+    var heldIndex by remember { mutableIntStateOf(-1) }
+    if (toast != null) {
+        heldToast = toast
+        if (toastIndex >= 0) heldIndex = toastIndex
     }
     LaunchedEffect(toast?.id) {
         val id = toast?.id ?: return@LaunchedEffect
@@ -225,16 +237,45 @@ private fun ListenTogetherAvatarCluster(
                 )
             }
         }
-        if (toast != null && toastIndex >= 0) {
-            val shift = step * toastIndex + avatar / 2 - stackW / 2
-            Spacer(Modifier.height(6.dp))
-            ListenChatToastBubble(
-                text = listenChatBubbleText(toast.text),
-                modifier = Modifier.offset(x = shift),
-            )
-            Spacer(Modifier.height(4.dp))
-        } else {
-            Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(6.dp))
+        AnimatedVisibility(
+            visible = toast != null,
+            enter = fadeIn(ListenBubbleAnim) +
+                expandVertically(
+                    animationSpec = tween(280, easing = FastOutSlowInEasing),
+                    expandFrom = Alignment.Top,
+                    clip = false,
+                ) +
+                scaleIn(
+                    initialScale = 0.86f,
+                    animationSpec = ListenBubbleAnim,
+                    transformOrigin = TransformOrigin(0.5f, 0f),
+                ),
+            exit = fadeOut(tween(200, easing = FastOutSlowInEasing)) +
+                shrinkVertically(
+                    animationSpec = tween(240, easing = FastOutSlowInEasing),
+                    shrinkTowards = Alignment.Top,
+                    clip = false,
+                ) +
+                scaleOut(
+                    targetScale = 0.86f,
+                    animationSpec = tween(200, easing = FastOutSlowInEasing),
+                    transformOrigin = TransformOrigin(0.5f, 0f),
+                ),
+            label = "listenChatToast",
+        ) {
+            val msg = toast ?: heldToast
+            val idx = if (toast != null && toastIndex >= 0) toastIndex else heldIndex
+            val shift = if (idx >= 0) step * idx + avatar / 2 - stackW / 2 else 0.dp
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                if (msg != null) {
+                    ListenChatToastBubble(
+                        text = listenChatBubbleText(msg.text),
+                        modifier = Modifier.offset(x = shift),
+                    )
+                }
+                Spacer(Modifier.height(4.dp))
+            }
         }
         Text(
             text = caption,
@@ -247,6 +288,18 @@ private fun ListenTogetherAvatarCluster(
             modifier = Modifier.clickableNoRipple(onOpenListenTogether),
         )
     }
+}
+
+private fun ListenAvatarLayout.slotIndex(uid: String, host: ListenMember): Int {
+    if (uid.isBlank()) return -1
+    var i = 0
+    if (overflow > 0) i++
+    behind.forEach { member ->
+        if (listenChatUidEquals(member.uid, uid)) return i
+        i++
+    }
+    if (listenChatUidEquals(host.uid, uid)) return i
+    return -1
 }
 
 @Composable

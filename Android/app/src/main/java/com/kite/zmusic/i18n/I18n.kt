@@ -2,7 +2,6 @@ package com.kite.zmusic.i18n
 
 import android.content.Context
 import android.content.Intent
-import android.content.res.Configuration
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.os.LocaleListCompat
 import org.json.JSONObject
@@ -54,10 +53,10 @@ object I18n {
         Runtime.getRuntime().exit(0)
     }
 
+    /** 语言只记在 [I18n]；不能 createConfigurationContext，否则会冻住横竖屏。 */
     fun wrapContext(base: Context, language: AppLanguage = this.language): Context {
-        val config = Configuration(base.resources.configuration)
-        config.setLocale(language.locale)
-        return base.createConfigurationContext(config)
+        setLanguage(language)
+        return base
     }
 
     fun translate(zh: String, vararg args: Any?): String {

@@ -52,8 +52,8 @@ android {
         applicationId = "com.kite.zmusic"
         minSdk = 29
         targetSdk = 36
-        versionCode = 12
-        versionName = "1.3.5"
+        versionCode = 13
+        versionName = "1.3.6"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -97,6 +97,8 @@ android {
     }
     packaging {
         resources {
+            // 依赖里常有同名 META-INF/LICENSE|NOTICE，合并会失败。
+            // 许可证全文与致谢集中放在 assets/legal/NOTICES.txt，设置 → 关于 → 开源许可可阅读。
             excludes += setOf(
                 "META-INF/LICENSE",
                 "META-INF/LICENSE.txt",

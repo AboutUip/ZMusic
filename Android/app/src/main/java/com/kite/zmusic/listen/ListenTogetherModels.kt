@@ -40,6 +40,7 @@ data class ListenRoomSnapshot(
     val closed: Boolean,
     val qrText: String,
     val chat: List<ListenChatMsg> = emptyList(),
+    val chatIncluded: Boolean = true,
 )
 
 data class ListenPeer(
@@ -226,13 +227,85 @@ fun listenAvatarLayout(
 fun ListenMember.ncmUserId(): Long? =
     uid.trim().toLongOrNull()?.takeIf { it > 0L }
 
+fun listenChatUidEquals(left: String, right: String): Boolean {
+    val a = left.trim()
+    val b = right.trim()
+    if (a.isEmpty() || b.isEmpty()) return false
+    if (a == b) return true
+    val na = a.toLongOrNull()
+    val nb = b.toLongOrNull()
+    return na != null && na == nb
+}
+
+fun listenChatIsSelf(msg: ListenChatMsg, selfUid: String): Boolean {
+    if (msg.id < 0L) return true
+    return listenChatUidEquals(msg.uid, selfUid)
+}
+
+fun retargetListenChatToast(current: ListenChatMsg?, merged: List<ListenChatMsg>): ListenChatMsg? {
+    if (current == null) return null
+    if (current.id > 0L) {
+        return merged.firstOrNull { it.id == current.id } ?: current
+    }
+    return merged.lastOrNull { remote ->
+        remote.id > 0L &&
+            listenChatUidEquals(remote.uid, current.uid) &&
+            remote.text == current.text
+    } ?: current
+}
+
+fun listenChatKeepToastWhileReading(toast: ListenChatMsg?, selfUid: String): ListenChatMsg? {
+    if (toast == null) return null
+    return if (listenChatIsSelf(toast, selfUid)) toast else null
+}
+
 fun listenUnreadChatCount(
     chat: List<ListenChatMsg>,
     selfUid: String,
     lastReadId: Long,
 ): Int {
     val self = selfUid.trim()
-    return chat.count { it.uid != self && it.id > lastReadId }
+    return chat.count { !listenChatUidEquals(it.uid, self) && it.id > lastReadId }
+}
+
+fun mergeListenRoomChat(
+    previous: List<ListenChatMsg>,
+    incoming: List<ListenChatMsg>,
+    incomingIncluded: Boolean,
+    selfUid: String,
+): List<ListenChatMsg> {
+    if (!incomingIncluded) return previous
+    if (previous.isEmpty()) return incoming
+    val self = selfUid.trim()
+    val seenIds = HashSet<Long>()
+    val out = ArrayList<ListenChatMsg>(incoming.size + previous.size)
+    for (msg in incoming) {
+        if (msg.id > 0L && !seenIds.add(msg.id)) continue
+        out += msg
+    }
+    val consumed = BooleanArray(incoming.size)
+    for (msg in previous) {
+        if (msg.id > 0L) {
+            if (msg.id in seenIds) continue
+            seenIds.add(msg.id)
+            out += msg
+            continue
+        }
+        var echoed = false
+        for (i in incoming.indices) {
+            if (consumed[i]) continue
+            val remote = incoming[i]
+            val uidHit = listenChatUidEquals(remote.uid, msg.uid) ||
+                listenChatUidEquals(remote.uid, self)
+            if (uidHit && remote.text == msg.text) {
+                consumed[i] = true
+                echoed = true
+                break
+            }
+        }
+        if (!echoed) out += msg
+    }
+    return out.sortedWith(compareBy<ListenChatMsg> { if (it.at > 0L) it.at else it.id }.thenBy { it.id })
 }
 
 fun listenChatBubbleText(text: String, maxRunes: Int = 20): String {
