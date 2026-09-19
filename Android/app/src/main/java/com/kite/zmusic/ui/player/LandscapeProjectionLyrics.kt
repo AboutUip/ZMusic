@@ -184,6 +184,7 @@ import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
 import androidx.compose.ui.unit.lerp as lerpDp
+import com.kite.zmusic.i18n.t
 
 
 @Composable
@@ -227,7 +228,7 @@ internal fun LandscapeProjectionLyrics(
     if (lines.isEmpty()) {
         Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text(
-                text = "暂无歌词",
+                text = t("暂无歌词"),
                 style = TextStyle(
                     color = LyricDim.copy(alpha = 0.5f),
                     fontFamily = FontFamily.Monospace,

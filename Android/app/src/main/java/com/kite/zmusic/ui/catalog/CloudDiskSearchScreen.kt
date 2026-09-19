@@ -60,6 +60,7 @@ import com.kite.zmusic.ui.icons.ZIcons
 import com.kite.zmusic.ui.main.MainOverlay
 import com.kite.zmusic.ui.main.MainPalette
 import kotlinx.coroutines.delay
+import com.kite.zmusic.i18n.t
 
 @Composable
 internal fun CloudDiskSearchScreen(
@@ -129,7 +130,7 @@ internal fun CloudDiskSearchScreen(
             .imePadding(),
     ) {
         CloudSearchBar(
-            title = "搜索云盘",
+            title = t("搜索云盘"),
             onBack = {
                 keyboard?.hide()
                 focus.clearFocus(force = true)
@@ -139,7 +140,7 @@ internal fun CloudDiskSearchScreen(
         CloudSearchField(
             value = query,
             onValueChange = { query = it },
-            placeholder = "搜索云盘里的歌曲",
+            placeholder = t("搜索云盘里的歌曲"),
             onSearch = { focus.clearFocus() },
             onClear = {
                 query = ""
@@ -153,16 +154,16 @@ internal fun CloudDiskSearchScreen(
         val status = when {
             q.isEmpty() -> {
                 val n = ui.tracks.size
-                if (scanning) "输入歌名或歌手 · 已加载 $n 首"
-                else if (n > 0) "输入歌名或歌手 · 共 $n 首"
-                else "输入歌名或歌手"
+                if (scanning) t("输入歌名或歌手 · 已加载 %s 首", n)
+                else if (n > 0) t("输入歌名或歌手 · 共 %s 首", n)
+                else t("输入歌名或歌手")
             }
             scanning -> {
-                val extra = if (hits.isNotEmpty()) " · 已找到 ${hits.size} 首" else ""
-                "正在搜索剩余歌曲$extra"
+                val extra = if (hits.isNotEmpty()) t(" · 已找到 %s 首", hits.size) else ""
+                t("正在搜索剩余歌曲%s", extra)
             }
-            hits.isNotEmpty() -> "找到 ${hits.size} 首"
-            else -> "云盘中没有找到相关歌曲"
+            hits.isNotEmpty() -> t("找到 %s 首", hits.size)
+            else -> t("云盘中没有找到相关歌曲")
         }
         Text(
             text = status,
@@ -199,8 +200,8 @@ internal fun CloudDiskSearchScreen(
                         playing = current && isPlaying,
                         onClick = {
                             val i = ui.tracks.indexOfFirst { it.id == t.id }
-                            if (i >= 0) onPlayTracks(ui.tracks, i, null, "音乐云盘")
-                            else onPlayTracks(listOf(t), 0, null, "音乐云盘")
+                            if (i >= 0) onPlayTracks(ui.tracks, i, null, t("音乐云盘"))
+                            else onPlayTracks(listOf(t), 0, null, t("音乐云盘"))
                         },
                         onMore = { moreTrack = t },
                     )
@@ -232,8 +233,8 @@ internal fun CloudDiskSearchScreen(
         onRemove = { vm.removeTrack(it) },
         showSaveToCloud = false,
         extraActions = moreTrack?.let { t -> cloudOverflowExtras(t, vm, onPushOverlay) }.orEmpty(),
-        removeConfirmTitle = "从云盘删除？",
-        removeConfirmMessage = "会从网易云云盘删掉，不可恢复。",
+        removeConfirmTitle = t("从云盘删除？"),
+        removeConfirmMessage = t("会从网易云云盘删掉，不可恢复。"),
         onOpenArtist = onOpenArtist,
     )
     CloudLyricDialog(vm)
@@ -301,7 +302,7 @@ internal fun CloudMatchScreen(
             .imePadding(),
     ) {
         CloudSearchBar(
-            title = "匹配歌曲",
+            title = t("匹配歌曲"),
             onBack = {
                 keyboard?.hide()
                 focus.clearFocus(force = true)
@@ -311,7 +312,7 @@ internal fun CloudMatchScreen(
         CloudSearchField(
             value = ui.query,
             onValueChange = vm::onQuery,
-            placeholder = "搜索网易云曲库",
+            placeholder = t("搜索网易云曲库"),
             onSearch = {
                 focus.clearFocus()
                 vm.search()
@@ -322,7 +323,7 @@ internal fun CloudMatchScreen(
             modifier = Modifier.padding(horizontal = 20.dp),
         )
         Text(
-            text = "把「${overlay.title}」匹配到一首公开歌曲，封面和歌手会跟着更新",
+            text = t("把「%s」匹配到一首公开歌曲，封面和歌手会跟着更新", overlay.title),
             color = MainPalette.Secondary,
             fontSize = 12.sp,
             modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 12.dp, bottom = 4.dp),
@@ -353,7 +354,7 @@ internal fun CloudMatchScreen(
             ui.query.trim().isEmpty() -> Spacer(Modifier.weight(1f))
             ui.hits.isEmpty() -> {
                 Text(
-                    text = "没有找到相关歌曲",
+                    text = t("没有找到相关歌曲"),
                     color = MainPalette.Secondary,
                     fontSize = 14.sp,
                     modifier = Modifier.padding(24.dp),
@@ -387,9 +388,9 @@ internal fun CloudMatchScreen(
     }
     pending?.let { pick ->
         GlassAlertDialog(
-            title = "用这首歌匹配？",
-            message = "「${pick.name}」· ${pick.artists}\n云盘文件的展示信息会改成这一首。",
-            confirmLabel = "匹配",
+            title = t("用这首歌匹配？"),
+            message = t("「%s」· %s\n云盘文件的展示信息会改成这一首。", pick.name, pick.artists),
+            confirmLabel = t("匹配"),
             onConfirm = {
                 val t = pick
                 pending = null
@@ -426,7 +427,7 @@ private fun CloudSearchBar(title: String, onBack: () -> Unit) {
         ) {
             Icon(
                 imageVector = ZIcons.Back,
-                contentDescription = "返回",
+                contentDescription = t("返回"),
                 tint = MainPalette.Ink,
                 modifier = Modifier.size(22.dp),
             )
@@ -507,7 +508,7 @@ private fun CloudSearchField(
             ) {
                 Icon(
                     imageVector = ZIcons.Close,
-                    contentDescription = "清空",
+                    contentDescription = t("清空"),
                     tint = MainPalette.Secondary,
                     modifier = Modifier.size(18.dp),
                 )

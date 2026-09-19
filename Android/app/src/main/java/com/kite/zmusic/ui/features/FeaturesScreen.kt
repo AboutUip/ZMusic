@@ -51,6 +51,7 @@ import com.kite.zmusic.ui.main.wallpaperItemChrome
 import com.kite.zmusic.ui.notice.showIslandNotice
 import com.kite.zmusic.ui.plugin.pluginUiIcon
 import com.kite.zmusic.ui.theme.parseThemeColor
+import com.kite.zmusic.i18n.t
 
 @Composable
 fun FeaturesScreen(
@@ -78,35 +79,35 @@ fun FeaturesScreen(
         }
     }
     val tools = listOf(
-        FeatureItem("每日推荐", "今天的三十首", MainPalette.Accent, ZIcons.Daily) {
+        FeatureItem(t("每日推荐"), t("今天的三十首"), MainPalette.Accent, ZIcons.Daily) {
             onOpenOverlay(MainOverlay.Daily)
         },
-        FeatureItem("年度报告", "把听歌这一年压成一张片子", Color(0xFFC45C7A), ZIcons.AnnualReport) {
+        FeatureItem(t("年度报告"), t("把听歌这一年压成一张片子"), Color(0xFFC45C7A), ZIcons.AnnualReport) {
             val session = app.sessionRepository.session.value
             if (session == null || session.isGuest) {
-                context.showIslandNotice("登录后查看年度报告")
+                context.showIslandNotice(t("登录后查看年度报告"))
             } else {
                 onOpenOverlay(MainOverlay.AnnualReport)
             }
         },
-        FeatureItem("排行榜", "官方与热歌榜", Color(0xFFFF9500), ZIcons.Charts) {
+        FeatureItem(t("排行榜"), t("官方与热歌榜"), Color(0xFFFF9500), ZIcons.Charts) {
             onOpenOverlay(MainOverlay.Charts)
         },
         FeatureItem(
-            title = "缓存的歌曲",
-            subtitle = "本机已下载",
+            title = t("缓存的歌曲"),
+            subtitle = t("本机已下载"),
             color = Color(0xFF30D158),
             icon = ZIcons.CachedSongs,
             availableOffline = true,
         ) {
             onOpenOverlay(MainOverlay.CachedSongs)
         },
-        FeatureItem("音乐云盘", "上传的歌曲", Color(0xFF0A84FF), ZIcons.Cloud) {
+        FeatureItem(t("音乐云盘"), t("上传的歌曲"), Color(0xFF0A84FF), ZIcons.Cloud) {
             onOpenOverlay(MainOverlay.CloudDisk)
         },
         FeatureItem(
-            title = "创意工坊",
-            subtitle = "社区插件与本机模块",
+            title = t("创意工坊"),
+            subtitle = t("社区插件与本机模块"),
             color = Color(0xFF5E5CE6),
             icon = ZIcons.Workshop,
             availableOffline = true,
@@ -123,7 +124,7 @@ fun FeaturesScreen(
     ) {
         if (!landscape) {
             MainPageHeader(
-                title = "功能",
+                title = t("功能"),
                 landscape = false,
             )
         }
@@ -135,11 +136,11 @@ fun FeaturesScreen(
                 .padding(bottom = contentBottomInset + 12.dp),
         ) {
             Spacer(Modifier.height(if (landscape) 8.dp else 14.dp))
-            FeatureSectionTitle("听歌模式")
+            FeatureSectionTitle(t("听歌模式"))
             Spacer(Modifier.height(10.dp))
             FeatureCardGrid(
                 offline = offline,
-                onOfflineBlocked = { context.showIslandNotice("当前无网络") },
+                onOfflineBlocked = { context.showIslandNotice(t("当前无网络")) },
                 items = modes.map { mode ->
                     FeatureItem(mode.title, mode.caption, mode.accent, mode.icon) {
                         enterListenMode(mode)
@@ -147,16 +148,16 @@ fun FeaturesScreen(
                 },
             )
             Spacer(Modifier.height(if (landscape) 22.dp else 26.dp))
-            FeatureSectionTitle("功能")
+            FeatureSectionTitle(t("功能"))
             Spacer(Modifier.height(10.dp))
             FeatureCardGrid(
                 items = tools,
                 offline = offline,
-                onOfflineBlocked = { context.showIslandNotice("当前无网络") },
+                onOfflineBlocked = { context.showIslandNotice(t("当前无网络")) },
             )
             if (pluginCards.isNotEmpty()) {
                 Spacer(Modifier.height(if (landscape) 22.dp else 26.dp))
-                FeatureSectionTitle("插件")
+                FeatureSectionTitle(t("插件"))
                 Spacer(Modifier.height(10.dp))
                 FeatureCardGrid(
                     items = pluginCards.map { entry ->
@@ -171,7 +172,7 @@ fun FeaturesScreen(
                         }
                     },
                     offline = offline,
-                    onOfflineBlocked = { context.showIslandNotice("当前无网络") },
+                    onOfflineBlocked = { context.showIslandNotice(t("当前无网络")) },
                 )
             }
         }

@@ -106,6 +106,85 @@ class ListenChatLogicTest {
     }
 
     @Test
+    fun ownClockNeverAppliesEvenWhenHlcIsNewerThanLastPost() {
+        // postOp 尚未写回 lastPostedHlc 时，poll 已带回自己的 pause/track。
+        assertEquals(true, ListenTogetherClock.isOwnClock("42", "42"))
+        assertEquals(false, ListenTogetherClock.isOwnClock("42", ""))
+        assertEquals(false, ListenTogetherClock.isOwnClock("7", "42"))
+        assertEquals(
+            false,
+            ListenTogetherClock.takeRemoteClock(
+                remoteHlc = 50L,
+                appliedHlc = 10L,
+                isMine = true,
+                mismatch = true,
+                applyingRemote = false,
+            ),
+        )
+    }
+
+    @Test
+    fun guestsFollowRemoteAdvanceHostsDoNot() {
+        assertEquals(true, ListenTogetherClock.followRemoteAdvance(inRoom = true, hosting = false))
+        assertEquals(false, ListenTogetherClock.followRemoteAdvance(inRoom = true, hosting = true))
+        assertEquals(false, ListenTogetherClock.followRemoteAdvance(inRoom = false, hosting = false))
+    }
+
+    @Test
+    fun newTrackOriginDropsLeftoverProgressFromPreviousSong() {
+        assertEquals(
+            0L,
+            ListenTogetherClock.originMsForNewTrack(
+                previousTrackId = 1L,
+                previousPositionMs = 179_000L,
+                newTrackId = 2L,
+                positionMs = 179_000L,
+                durationMs = 200_000L,
+            ),
+        )
+        assertEquals(
+            0L,
+            ListenTogetherClock.originMsForNewTrack(
+                previousTrackId = 1L,
+                previousPositionMs = 180_000L,
+                newTrackId = 2L,
+                positionMs = 148_000L,
+                durationMs = 150_000L,
+            ),
+        )
+        assertEquals(
+            800L,
+            ListenTogetherClock.originMsForNewTrack(
+                previousTrackId = 1L,
+                previousPositionMs = 179_000L,
+                newTrackId = 2L,
+                positionMs = 800L,
+                durationMs = 200_000L,
+            ),
+        )
+        assertEquals(
+            90_000L,
+            ListenTogetherClock.originMsForNewTrack(
+                previousTrackId = 1L,
+                previousPositionMs = 90_000L,
+                newTrackId = 1L,
+                positionMs = 90_000L,
+                durationMs = 200_000L,
+            ),
+        )
+        assertEquals(
+            0L,
+            ListenTogetherClock.originMsForNewTrack(
+                previousTrackId = 1L,
+                previousPositionMs = 0L,
+                newTrackId = 2L,
+                positionMs = 179_000L,
+                durationMs = 200_000L,
+            ),
+        )
+    }
+
+    @Test
     fun inviteRejectedIncludesDeclineAndTimeout() {
         assertEquals(true, listenInviteIsRejected("declined"))
         assertEquals(true, listenInviteIsRejected("timeout"))

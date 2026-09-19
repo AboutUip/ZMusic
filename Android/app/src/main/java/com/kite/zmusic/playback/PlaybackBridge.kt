@@ -118,6 +118,10 @@ class PlaybackBridge(
         runOnCoordinator { it.setPlaybackClockLocked(locked) }
     }
 
+    fun setListenFollowRemoteAdvance(follow: Boolean) {
+        runOnCoordinator { it.setListenFollowRemoteAdvance(follow) }
+    }
+
     /** 通知栏点进 App：主壳打开全屏播放器。 */
     fun requestOpenPlayer() {
         _pendingOpenPlayer.value = true
@@ -231,6 +235,11 @@ class PlaybackBridge(
     fun startPersonalFm(onStarted: () -> Unit = {}) {
         musicWillPlay?.invoke()
         runOnCoordinator { it.startPersonalFm(onStarted) }
+    }
+
+    fun applyPersonalFmMode(choice: com.kite.zmusic.data.PersonalFmModeChoice, onDone: () -> Unit = {}) {
+        musicWillPlay?.invoke()
+        runOnCoordinator { it.applyPersonalFmMode(choice, onDone) }
     }
 
     fun startIntelligence(
@@ -347,6 +356,8 @@ class PlaybackBridge(
 
     /** 竖屏评论打开时挂起曲末自动切歌；关闭后若已曲末则进下一首。 */
     fun setHoldAutoAdvance(hold: Boolean) = runOnCoordinator { it.setHoldAutoAdvance(hold) }
+
+    fun duckMusicVolume(level: Float?) = runOnCoordinator { it.duckMusicVolume(level) }
 
     fun startSleepTimer(minutes: Int, waitForTrackEnd: Boolean) {
         sleepTimerCtrl.start(minutes, waitForTrackEnd)

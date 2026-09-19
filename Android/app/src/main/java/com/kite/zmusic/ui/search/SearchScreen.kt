@@ -97,6 +97,7 @@ import com.kite.zmusic.plugin.PluginUiTarget
 import com.kite.zmusic.ui.plugin.pluginSurface
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import com.kite.zmusic.i18n.t
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -183,13 +184,13 @@ fun SearchScreen(
             ) {
                 Icon(
                     imageVector = ZIcons.Back,
-                    contentDescription = "返回",
+                    contentDescription = t("返回"),
                     tint = MainPalette.Ink,
                     modifier = Modifier.size(22.dp),
                 )
             }
             Text(
-                text = "搜索",
+                text = t("搜索"),
                 style = TextStyle(
                     color = MainPalette.Ink,
                     fontSize = 18.sp,
@@ -261,7 +262,7 @@ fun SearchScreen(
                     contentBottomInset = contentBottomInset,
                     onKind = vm::setKind,
                     onLoadMore = vm::loadMore,
-                    onPlay = { list, i -> onPlayTracks(list, i, null, "搜索") },
+                    onPlay = { list, i -> onPlayTracks(list, i, null, t("搜索")) },
                     onOpenPlaylist = onOpenPlaylist,
                     onOpenAlbum = onOpenAlbum,
                     onOpenMv = { mv -> onOpenMv(mv.id, mv.name, mv.coverUrl, mv.artist) },
@@ -320,7 +321,7 @@ private fun SearchField(
             decorationBox = { inner ->
                 if (value.isEmpty()) {
                     Text(
-                        "搜索歌曲、歌单、专辑、MV、歌手",
+                        t("搜索歌曲、歌单、专辑、MV、歌手"),
                         style = TextStyle(color = MainPalette.Hint, fontSize = 15.sp),
                     )
                 }
@@ -330,7 +331,7 @@ private fun SearchField(
         if (showTrailingSearch) {
             FieldIconButton(
                 icon = ZIcons.Search,
-                contentDescription = "搜索",
+                contentDescription = t("搜索"),
                 tint = MainPalette.Accent,
                 onClick = onSearch,
             )
@@ -338,7 +339,7 @@ private fun SearchField(
         if (showTrailingClear) {
             FieldIconButton(
                 icon = ZIcons.Close,
-                contentDescription = "清空",
+                contentDescription = t("清空"),
                 tint = MainPalette.Secondary,
                 onClick = onClear,
             )
@@ -386,7 +387,7 @@ private fun HistoryBlock(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            text = "搜索历史",
+            text = t("搜索历史"),
             style = TextStyle(
                 color = MainPalette.Ink,
                 fontSize = 17.sp,
@@ -395,7 +396,7 @@ private fun HistoryBlock(
             modifier = Modifier.weight(1f),
         )
         Text(
-            text = "清空",
+            text = t("清空"),
             color = MainPalette.Secondary,
             fontSize = 13.sp,
             modifier = Modifier
@@ -471,7 +472,7 @@ private fun HistoryCapsule(
         ) {
             Icon(
                 imageVector = ZIcons.Close,
-                contentDescription = "删除",
+                contentDescription = t("删除"),
                 tint = MainPalette.Hint,
                 modifier = Modifier.size(12.dp),
             )
@@ -486,7 +487,7 @@ private fun HotBlock(
     onWord: (String) -> Unit,
 ) {
     Text(
-        text = "热搜",
+        text = t("热搜"),
         style = TextStyle(
             color = MainPalette.Ink,
             fontSize = 17.sp,
@@ -496,7 +497,7 @@ private fun HotBlock(
     Spacer(Modifier.height(12.dp))
     if (ui.hotWords.isEmpty()) {
         Text(
-            text = "热搜加载后会出现在这里",
+            text = t("热搜加载后会出现在这里"),
             style = TextStyle(color = MainPalette.Hint, fontSize = 13.sp),
         )
     } else {
@@ -548,7 +549,7 @@ private fun SuggestList(
         if (query.isNotEmpty()) {
             item(key = "search-self") {
                 SuggestRow(
-                    text = "搜索 “$query”",
+                    text = t("搜索 “%s”", query),
                     onClick = onSearchQuery,
                 )
             }
@@ -832,7 +833,7 @@ private fun SearchKindPage(
         GlassActionSheet(
             title = hit.name,
             message = buildList {
-                if (hit.trackCount > 0) add("${hit.trackCount} 首")
+                if (hit.trackCount > 0) add(t("%s 首", hit.trackCount))
                 hit.creator?.let { add(it) }
             }.joinToString(" · ").takeIf { it.isNotBlank() },
             coverUrl = summary.resolvedCoverUrl() ?: hit.coverUrl,
@@ -841,14 +842,14 @@ private fun SearchKindPage(
                 if (!summary.isOwned && !summary.isHeartPlaylist) {
                     if (summary.isSubscribed) {
                         add(
-                            GlassSheetAction("取消收藏", destructive = true) {
+                            GlassSheetAction(t("取消收藏"), destructive = true) {
                                 confirmUnsub = summary
                                 morePlaylist = null
                             },
                         )
                     } else {
                         add(
-                            GlassSheetAction("收藏") {
+                            GlassSheetAction(t("收藏")) {
                                 morePlaylist = null
                                 scope.launch {
                                     context.showIslandNotice(
@@ -865,9 +866,9 @@ private fun SearchKindPage(
     }
     confirmUnsub?.let { pl ->
         GlassAlertDialog(
-            title = "取消收藏？",
-            message = "不再收藏「${pl.name}」。",
-            confirmLabel = "取消收藏",
+            title = t("取消收藏？"),
+            message = t("不再收藏「%s」。", pl.name),
+            confirmLabel = t("取消收藏"),
             confirmDestructive = true,
             onConfirm = {
                 confirmUnsub = null
@@ -993,7 +994,7 @@ private fun SearchSongRow(
         ) {
             Icon(
                 imageVector = ZIcons.More,
-                contentDescription = "更多",
+                contentDescription = t("更多"),
                 tint = MainPalette.Hint,
                 modifier = Modifier.size(20.dp),
             )
@@ -1008,8 +1009,8 @@ private fun SearchPlaylistRow(
     onMore: (() -> Unit)? = null,
 ) {
     val meta = buildList {
-        if (hit.trackCount > 0) add("${hit.trackCount}首")
-        if (hit.playCount > 0L) add("${NcmHomeParse.formatPlayCount(hit.playCount)}次播放")
+        if (hit.trackCount > 0) add(t("%s首", hit.trackCount))
+        if (hit.playCount > 0L) add(t("%s次播放", NcmHomeParse.formatPlayCount(hit.playCount)))
         hit.creator?.let { add(it) }
     }.joinToString(" · ")
     Row(
@@ -1074,7 +1075,7 @@ private fun SearchPlaylistRow(
             ) {
                 Icon(
                     imageVector = ZIcons.More,
-                    contentDescription = "更多",
+                    contentDescription = t("更多"),
                     tint = MainPalette.Hint,
                     modifier = Modifier.size(20.dp),
                 )
@@ -1184,7 +1185,7 @@ private fun SearchMvRow(
             )
             val sub = buildList {
                 mv.artist?.let { add(it) }
-                if (mv.playCount > 0L) add("${NcmHomeParse.formatPlayCount(mv.playCount)}次播放")
+                if (mv.playCount > 0L) add(t("%s次播放", NcmHomeParse.formatPlayCount(mv.playCount)))
             }.joinToString(" · ")
             if (sub.isNotEmpty()) {
                 Text(

@@ -20,6 +20,7 @@ import com.kite.zmusic.ui.common.GlassSheetAction
 import com.kite.zmusic.ui.icons.ZIcons
 import com.kite.zmusic.ui.main.MainOverlay
 import com.kite.zmusic.ui.main.MainPalette
+import com.kite.zmusic.i18n.t
 
 @Composable
 internal fun CloudDiskScreen(
@@ -56,11 +57,11 @@ internal fun CloudDiskScreen(
         onBack = onBack,
         onPlayAt = { i ->
             if (ui.tracks.isNotEmpty()) {
-                onPlayTracks(ui.tracks, i, null, "音乐云盘")
+                onPlayTracks(ui.tracks, i, null, t("音乐云盘"))
             }
         },
         onRetry = { vm.load(force = true) },
-        extraActionLabel = "上传",
+        extraActionLabel = t("上传"),
         extraActionIcon = ZIcons.Add,
         onExtraAction = {
             picker.launch(arrayOf("audio/*", "audio/mpeg", "audio/flac", "audio/mp4", "audio/x-wav"))
@@ -70,19 +71,19 @@ internal fun CloudDiskScreen(
         playingSourceId = playingSourceId,
         isPlaying = isPlaying,
         onSearch = { onPushOverlay(MainOverlay.CloudDiskSearch) },
-        searchContentDescription = "搜索云盘歌曲",
+        searchContentDescription = t("搜索云盘歌曲"),
         onRemoveTrack = vm::removeTrack,
         onRemoveTracks = vm::removeTracks,
         manageBridge = manageBridge,
         onOpenArtist = onOpenArtist,
         showSaveToCloud = false,
         onOverflowExtras = { track -> cloudOverflowExtras(track, vm, onPushOverlay) },
-        removeConfirmTitle = "从云盘删除？",
-        removeConfirmMessage = "会从网易云云盘删掉，不可恢复。",
-        removeSelectedTitle = "从云盘删除这些歌？",
-        removeSelectedMessage = "将从云盘删除已选歌曲，不可恢复。",
-        removeSelectedConfirmLabel = "删除",
-        emptyHint = "还没有云盘歌曲。点右上角上传本地音频，或在歌曲菜单里选择保存到云盘。",
+        removeConfirmTitle = t("从云盘删除？"),
+        removeConfirmMessage = t("会从网易云云盘删掉，不可恢复。"),
+        removeSelectedTitle = t("从云盘删除这些歌？"),
+        removeSelectedMessage = t("将从云盘删除已选歌曲，不可恢复。"),
+        removeSelectedConfirmLabel = t("删除"),
+        emptyHint = t("还没有云盘歌曲。点右上角上传本地音频，或在歌曲菜单里选择保存到云盘。"),
     )
     CloudLyricDialog(vm)
 }
@@ -93,14 +94,14 @@ internal fun cloudOverflowExtras(
     onPushOverlay: (MainOverlay) -> Unit,
 ): List<GlassSheetAction> = buildList {
     add(
-        GlassSheetAction("匹配歌曲信息") {
+        GlassSheetAction(t("匹配歌曲信息")) {
             onPushOverlay(MainOverlay.CloudMatch(track.id, track.name, track.artists))
         },
     )
     if (vm.matched(track.id)) {
-        add(GlassSheetAction("取消匹配") { vm.unmatch(track) })
+        add(GlassSheetAction(t("取消匹配")) { vm.unmatch(track) })
     }
-    add(GlassSheetAction("文件歌词") { vm.showLyric(track) })
+    add(GlassSheetAction(t("文件歌词")) { vm.showLyric(track) })
 }
 
 @Composable
@@ -109,7 +110,7 @@ internal fun CloudLyricDialog(vm: CloudDiskViewModel) {
     lyric?.let { (title, text) ->
         GlassAlertDialog(
             title = title,
-            confirmLabel = "好",
+            confirmLabel = t("好"),
             onConfirm = { vm.consumeLyric() },
             onDismiss = { vm.consumeLyric() },
             extraContent = {

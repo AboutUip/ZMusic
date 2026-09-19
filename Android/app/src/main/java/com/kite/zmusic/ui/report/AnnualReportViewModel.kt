@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import com.kite.zmusic.i18n.t
 
 data class AnnualReportUi(
     val year: Int,
@@ -54,7 +55,7 @@ class AnnualReportViewModel(
                         years = years,
                         nickname = session?.displayLabel,
                         loading = false,
-                        error = "登录网易云账号后才能看年度报告",
+                        error = t("登录网易云账号后才能看年度报告"),
                         report = AnnualReport(year = picked),
                     )
                 }

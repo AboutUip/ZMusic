@@ -70,6 +70,7 @@ import com.kite.zmusic.data.PlaylistSummary
 import com.kite.zmusic.data.SubcountBrief
 import com.kite.zmusic.data.UserProfileBrief
 import com.kite.zmusic.data.VipKind
+import com.kite.zmusic.i18n.t
 import com.kite.zmusic.ui.common.GlassAlertDialog
 import com.kite.zmusic.ui.common.UrlImageCache
 import com.kite.zmusic.ui.icons.ZIcons
@@ -87,13 +88,25 @@ private val SpaceLine = Color.White.copy(alpha = 0.28f)
 private val SpaceLineStrong = Color.White.copy(alpha = 0.5f)
 private val SpaceScrim = Color(0xCC07080C)
 
-private enum class UserConstellation(
-    val title: String,
-    val subtitle: String,
-) {
-    Fate("本命", "身份与等级"),
-    Voice("声纹", "听歌轨迹"),
-    Vault("藏馆", "歌单与收藏"),
+private enum class UserConstellation {
+    Fate,
+    Voice,
+    Vault,
+    ;
+
+    val title: String
+        get() = when (this) {
+            Fate -> t("本命")
+            Voice -> t("声纹")
+            Vault -> t("藏馆")
+        }
+
+    val subtitle: String
+        get() = when (this) {
+            Fate -> t("身份与等级")
+            Voice -> t("听歌轨迹")
+            Vault -> t("歌单与收藏")
+        }
 }
 
 private data class SkyDot(
@@ -305,9 +318,9 @@ internal fun UserSpaceOverlay(
 
         if (confirmClearBg) {
             GlassAlertDialog(
-                title = "恢复默认背景",
-                message = "移除自定义封面，改回账号默认背景。",
-                confirmLabel = "恢复",
+                title = t("恢复默认背景"),
+                message = t("移除自定义封面，改回账号默认背景。"),
+                confirmLabel = t("恢复"),
                 onConfirm = {
                     onClearBackground()
                     confirmClearBg = false
@@ -317,7 +330,7 @@ internal fun UserSpaceOverlay(
         }
 
         if (!opened && !landscape && t in 0.10f..0.88f) {
-            val hint = "下拉进入用户空间"
+            val hint = t("下拉进入用户空间")
             Text(
                 text = hint,
                 style = TextStyle(
@@ -680,7 +693,7 @@ private fun SpaceTopBar(
         ) {
             Icon(
                 imageVector = ZIcons.Close,
-                contentDescription = "退出用户空间",
+                contentDescription = t("退出用户空间"),
                 tint = Color.White,
                 modifier = Modifier.size(20.dp),
             )
@@ -719,7 +732,7 @@ private fun SpaceTopBar(
                 ) {
                     Icon(
                         imageVector = ZIcons.HideImage,
-                        contentDescription = "恢复默认背景",
+                        contentDescription = t("恢复默认背景"),
                         tint = Color.White,
                         modifier = Modifier.size(20.dp),
                     )
@@ -731,7 +744,7 @@ private fun SpaceTopBar(
             ) {
                 Icon(
                     imageVector = ZIcons.Wallpaper,
-                    contentDescription = "设置背景",
+                    contentDescription = t("设置背景"),
                     tint = Color.White,
                     modifier = Modifier.size(20.dp),
                 )
@@ -759,7 +772,7 @@ private fun SpaceNavButton(
     ) {
         Icon(
             imageVector = if (left) ZIcons.ChevronLeft else ZIcons.ChevronRight,
-            contentDescription = if (left) "上一星座" else "下一星座",
+            contentDescription = if (left) t("上一星座") else t("下一星座"),
             tint = Color.White.copy(alpha = if (enabled) 1f else 0.35f),
             modifier = Modifier.size(22.dp),
         )
@@ -894,74 +907,70 @@ private fun constellationNodes(
 ): List<StarNode> {
     return when (kind) {
         UserConstellation.Fate -> buildList {
-            profile.level?.let { add(StarNode("等级", "Lv.$it", -0.78f, -0.46f)) }
+            profile.level?.let { add(StarNode(t("等级"), "Lv.$it", -0.78f, -0.46f)) }
             val vip = when (profile.vipKind) {
                 VipKind.Svip -> "SVIP"
                 VipKind.Vip -> "VIP"
-                VipKind.None -> "未开通"
+                VipKind.None -> t("未开通")
             }
-            add(StarNode("黑胶", vip, 0.80f, -0.28f))
+            add(StarNode(t("黑胶"), vip, 0.80f, -0.28f))
             profile.listenSongs?.let {
-                add(StarNode("听歌", formatPlayCount(it), 0.48f, 0.70f))
+                add(StarNode(t("听歌"), formatPlayCount(it), 0.48f, 0.70f))
             }
             val sig = profile.signature?.trim().orEmpty()
             if (sig.isNotEmpty()) {
-                add(StarNode("签名", sig.take(8), -0.62f, 0.52f))
+                add(StarNode(t("签名"), sig.take(8), -0.62f, 0.52f))
             } else {
-                add(StarNode("昵称", profile.nickname.take(8), -0.62f, 0.52f))
+                add(StarNode(t("昵称"), profile.nickname.take(8), -0.62f, 0.52f))
             }
         }
         UserConstellation.Voice -> buildList {
             profile.listenSongs?.let {
-                add(StarNode("累计", formatPlayCount(it), 0f, -0.82f))
+                add(StarNode(t("累计"), formatPlayCount(it), 0f, -0.82f))
             }
             val lv = profile.level
             if (lv != null && lv >= 10) {
-                add(StarNode("等级", "听歌满级", 0f, 0.78f))
+                add(StarNode(t("等级"), t("听歌满级"), 0f, 0.78f))
             } else {
                 profile.levelProgress?.let { p ->
-                    add(StarNode("进度", "${(p * 100f).toInt().coerceIn(0, 100)}%", 0f, 0.78f))
+                    add(StarNode(t("进度"), "${(p * 100f).toInt().coerceIn(0, 100)}%", 0f, 0.78f))
                 }
                 val now = profile.nowPlayCount
                 val next = profile.nextPlayCount
                 if (now != null && next != null && next > now) {
-                    add(StarNode("距升级", "${formatPlayCount(next - now)} 首", -0.78f, 0.08f))
+                    add(StarNode(t("距升级"), t("%s 首", formatPlayCount(next - now)), -0.78f, 0.08f))
                 }
             }
             profile.nowPlayCount?.let {
-                add(StarNode("本级", formatPlayCount(it), 0.78f, 0.08f))
+                add(StarNode(t("本级"), formatPlayCount(it), 0.78f, 0.08f))
             }
             if (isEmpty()) {
-                add(StarNode("听歌", "暂无记录", 0f, -0.2f))
+                add(StarNode(t("听歌"), t("暂无记录"), 0f, -0.2f))
             }
         }
         UserConstellation.Vault -> buildList {
             val liked = likedTrackCount.takeIf { it > 0 }
                 ?: playlists.firstOrNull { it.isHeartPlaylist && it.isOwned }?.trackCount
-            liked?.let { add(StarNode("我喜欢", "${it} 首", -0.78f, -0.38f)) }
+            liked?.let { add(StarNode(t("我喜欢"), t("%s 首", it), -0.78f, -0.38f)) }
             val created = subcount?.createdPlaylistCount
                 ?: playlists.count { it.isOwned && !it.isHeartPlaylist }
-            add(StarNode("创建", "$created 个", -0.28f, -0.72f))
+            add(StarNode(t("创建"), t("%s 个", created), -0.28f, -0.72f))
             val collected = subcount?.subPlaylistCount
                 ?: playlists.count { it.isSubscribed }
-            add(StarNode("收藏", "$collected 个", 0.72f, -0.22f))
+            add(StarNode(t("收藏"), t("%s 个", collected), 0.72f, -0.22f))
             val extra = subcount?.let { sc ->
                 when {
-                    sc.subArtistCount > 0 -> StarNode("歌手", "${sc.subArtistCount} 位", 0.42f, 0.68f)
-                    sc.subAlbumCount > 0 -> StarNode("专辑", "${sc.subAlbumCount} 张", 0.42f, 0.68f)
+                    sc.subArtistCount > 0 -> StarNode(t("歌手"), t("%s 位", sc.subArtistCount), 0.42f, 0.68f)
+                    sc.subAlbumCount > 0 -> StarNode(t("专辑"), t("%s 张", sc.subAlbumCount), 0.42f, 0.68f)
                     else -> null
                 }
             }
-            add(extra ?: StarNode("歌单", "${playlists.size} 个", 0.42f, 0.68f))
+            add(extra ?: StarNode(t("歌单"), t("%s 个", playlists.size), 0.42f, 0.68f))
         }
     }
 }
 
-internal fun formatPlayCount(n: Long): String = when {
-    n >= 100_000_000 -> "%.1f亿".format(n / 100_000_000.0)
-    n >= 10_000 -> "%.1f万".format(n / 10_000.0)
-    else -> n.toString()
-}
+internal fun formatPlayCount(n: Long): String = com.kite.zmusic.i18n.I18n.formatCompactCount(n)
 
 /** 个人页等级右侧：优先小时，不足一小时用分钟。 */
 internal fun formatListenDuration(ms: Long): Pair<String, String> {
@@ -969,14 +978,14 @@ internal fun formatListenDuration(ms: Long): Pair<String, String> {
     val hours = safe / 3_600_000L
     val minutes = safe / 60_000L
     return when {
-        hours >= 10_000L -> formatPlayCount(hours) to "时"
-        hours >= 100L -> hours.toString() to "时"
+        hours >= 10_000L -> formatPlayCount(hours) to t("时")
+        hours >= 100L -> hours.toString() to t("时")
         hours >= 1L -> {
             val tenths = (safe + 180_000L) / 360_000L
-            if (tenths % 10L == 0L) (tenths / 10L).toString() to "时"
-            else "${tenths / 10L}.${tenths % 10L}" to "时"
+            if (tenths % 10L == 0L) (tenths / 10L).toString() to t("时")
+            else "${tenths / 10L}.${tenths % 10L}" to t("时")
         }
-        minutes >= 1L -> minutes.toString() to "分"
-        else -> "0" to "时"
+        minutes >= 1L -> minutes.toString() to t("分")
+        else -> "0" to t("时")
     }
 }

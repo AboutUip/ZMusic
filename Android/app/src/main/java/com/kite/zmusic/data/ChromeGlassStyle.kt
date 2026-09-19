@@ -1,5 +1,7 @@
 package com.kite.zmusic.data
 
+import com.kite.zmusic.i18n.t
+
 enum class ChromeGlassMode {
     Liquid,
     Frosted,
@@ -8,16 +10,16 @@ enum class ChromeGlassMode {
 
     val title: String
         get() = when (this) {
-            Liquid -> "液态"
-            Frosted -> "磨砂"
-            Solid -> "纯色"
+            Liquid -> t("液态")
+            Frosted -> t("磨砂")
+            Solid -> t("纯色")
         }
 
     val caption: String
         get() = when (this) {
-            Liquid -> "折射背后的画面"
-            Frosted -> "只做模糊，不折射"
-            Solid -> "不透明底，不再透出背景"
+            Liquid -> t("折射背后的画面")
+            Frosted -> t("只做模糊，不折射")
+            Solid -> t("不透明底，不再透出背景")
         }
 
     companion object {
@@ -37,10 +39,10 @@ data class ChromeGlassStyle(
     val settingsSubtitle: String
         get() = when (mode) {
             ChromeGlassMode.Liquid ->
-                "液态 · 折射率 ${formatRefraction(refraction)} · 模糊 ${formatBlurPercent(blur)}"
+                t("液态 · 折射率 %s · 模糊 %s", formatRefraction(refraction), formatBlurPercent(blur))
             ChromeGlassMode.Frosted ->
-                "磨砂 · 模糊 ${formatBlurPercent(blur)}"
-            ChromeGlassMode.Solid -> "纯色，不透明"
+                t("磨砂 · 模糊 %s", formatBlurPercent(blur))
+            ChromeGlassMode.Solid -> t("纯色，不透明")
         }
 
     companion object {

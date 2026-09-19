@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.sp
 import com.kite.zmusic.R
 import com.kite.zmusic.plugin.PluginDebugProbe
 import com.kite.zmusic.ui.icons.ZIcons
+import com.kite.zmusic.i18n.t
 
 internal val LandscapeRailWidth = 208.dp
 
@@ -139,7 +140,7 @@ fun LandscapeNavRail(
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 RailItem(
-                    label = "设置",
+                    label = t("设置"),
                     selected = settingsSelected && !probeSelected,
                     onClick = onOpenSettings,
                 ) {

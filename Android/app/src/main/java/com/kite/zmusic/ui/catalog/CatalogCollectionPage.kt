@@ -100,6 +100,7 @@ import com.kite.zmusic.ui.search.SearchViewModelFactory
 import com.kite.zmusic.ui.settings.SettingsScreen
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import com.kite.zmusic.i18n.t
 
 import com.kite.zmusic.ui.main.MainOverlay
 @Composable
@@ -130,7 +131,7 @@ internal fun CatalogCollectionPage(
             onBack = onBack,
             onPlayAt = { i ->
                 if (ui.tracks.isNotEmpty()) {
-                    onPlayTracks(ui.tracks, i, null, "缓存的歌曲")
+                    onPlayTracks(ui.tracks, i, null, t("缓存的歌曲"))
                 }
             },
             onRetry = cachedVm::load,
@@ -141,12 +142,12 @@ internal fun CatalogCollectionPage(
             onRemoveTracks = cachedVm::removeTracks,
             manageBridge = manageBridge,
             overflowDeleteOnly = true,
-            removeConfirmTitle = "删除这首缓存？",
-            removeConfirmMessage = "会从下载目录删掉整份文件，不可恢复。",
-            removeSelectedTitle = "删除这些缓存？",
-            removeSelectedMessage = "将从下载目录删除已选歌曲的全部文件，不可恢复。",
-            removeSelectedConfirmLabel = "删除",
-            emptyHint = "还没有符合规范的缓存歌曲。从歌单下载后，会出现在 Download/ZMusic。",
+            removeConfirmTitle = t("删除这首缓存？"),
+            removeConfirmMessage = t("会从下载目录删掉整份文件，不可恢复。"),
+            removeSelectedTitle = t("删除这些缓存？"),
+            removeSelectedMessage = t("将从下载目录删除已选歌曲的全部文件，不可恢复。"),
+            removeSelectedConfirmLabel = t("删除"),
+            emptyHint = t("还没有符合规范的缓存歌曲。从歌单下载后，会出现在 Download/ZMusic。"),
         )
         return
     }
@@ -184,7 +185,7 @@ internal fun CatalogCollectionPage(
                 onBack = onBack,
                 onPlayAt = { i ->
                     if (ui.tracks.isNotEmpty()) {
-                        onPlayTracks(ui.tracks, i, null, "每日推荐")
+                        onPlayTracks(ui.tracks, i, null, t("每日推荐"))
                     }
                 },
                 onRetry = { vm.loadDaily(force = true) },
@@ -205,11 +206,11 @@ internal fun CatalogCollectionPage(
                 onBack = onBack,
                 onPlayAt = { i ->
                     if (ui.tracks.isNotEmpty()) {
-                        onPlayTracks(ui.tracks, i, null, "私人漫游")
+                        onPlayTracks(ui.tracks, i, null, t("私人漫游"))
                     }
                 },
                 onRetry = vm::loadFm,
-                extraActionLabel = "换一批",
+                extraActionLabel = t("换一批"),
                 extraActionIcon = ZIcons.SkipNext,
                 onExtraAction = vm::loadMoreFm,
                 playingTrackId = playingTrackId,
@@ -290,7 +291,7 @@ internal fun CatalogCollectionPage(
                         onPushOverlay(
                             MainOverlay.User(
                                 uid,
-                                ui.creatorName ?: "用户",
+                                ui.creatorName ?: t("用户"),
                                 ui.creatorAvatarUrl,
                             ),
                         )
@@ -339,6 +340,9 @@ internal fun CatalogCollectionPage(
                 onPlayAt = { i ->
                     if (ui.tracks.isNotEmpty()) {
                         // 专辑 id 不是歌单 id：传过去会触发歌单灌列，把队列换成无关歌曲。
+                        if (app.albumCollectionRepository.isSubscribed(overlay.id) == true) {
+                            app.recentCollectionStore.touchAlbum(overlay.id)
+                        }
                         onPlayTracks(ui.tracks, i, null, ui.title)
                     }
                 },

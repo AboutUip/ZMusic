@@ -57,6 +57,7 @@ import com.kite.zmusic.ui.icons.ZIcons
 import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.main.wallpaperItemChrome
 import com.kite.zmusic.ui.notice.showIslandNotice
+import com.kite.zmusic.i18n.t
 
 internal data class AppPermissionSnapshot(
     val notifications: Boolean,
@@ -69,17 +70,17 @@ internal data class AppPermissionSnapshot(
     val subtitle: String
         get() {
             val missing = buildList {
-                if (!notifications) add("通知")
-                if (!backgroundRun) add("后台运行")
-                if (!camera) add("相机")
-                if (!overlay) add("悬浮窗")
-                if (!nearbyDevices) add("附近的设备")
-                if (!installPackages) add("安装应用")
+                if (!notifications) add(t("通知"))
+                if (!backgroundRun) add(t("后台运行"))
+                if (!camera) add(t("相机"))
+                if (!overlay) add(t("悬浮窗"))
+                if (!nearbyDevices) add(t("附近的设备"))
+                if (!installPackages) add(t("安装应用"))
             }
             return when {
-                missing.isEmpty() -> "通知、后台运行、相机、悬浮窗、附近的设备、安装应用均已开启"
-                missing.size == 6 -> "通知、后台运行、相机、悬浮窗、附近的设备、安装应用未开启"
-                else -> missing.joinToString("、") + "未开启"
+                missing.isEmpty() -> t("通知、后台运行、相机、悬浮窗、附近的设备、安装应用均已开启")
+                missing.size == 6 -> t("通知、后台运行、相机、悬浮窗、附近的设备、安装应用未开启")
+                else -> missing.joinToString("、") + t("未开启")
             }
         }
 
@@ -115,9 +116,9 @@ internal fun PermissionSettingsPage(
     ) { granted ->
         refresh()
         if (granted && notificationsEnabled(context)) {
-            context.showIslandNotice("已开启通知")
+            context.showIslandNotice(t("已开启通知"))
         } else {
-            context.showIslandNotice("未开启通知时，系统可能在息屏后限制后台播放")
+            context.showIslandNotice(t("未开启通知时，系统可能在息屏后限制后台播放"))
         }
     }
     val cameraLauncher = rememberLauncherForActivityResult(
@@ -125,9 +126,9 @@ internal fun PermissionSettingsPage(
     ) { granted ->
         refresh()
         if (granted) {
-            context.showIslandNotice("已开启相机")
+            context.showIslandNotice(t("已开启相机"))
         } else {
-            context.showIslandNotice("需要相机权限才能扫码")
+            context.showIslandNotice(t("需要相机权限才能扫码"))
         }
     }
     val nearbyLauncher = rememberLauncherForActivityResult(
@@ -135,9 +136,9 @@ internal fun PermissionSettingsPage(
     ) { granted ->
         refresh()
         if (granted) {
-            context.showIslandNotice("已开启附近的设备")
+            context.showIslandNotice(t("已开启附近的设备"))
         } else {
-            context.showIslandNotice("未开启时，蓝牙耳机可能只显示通用名称")
+            context.showIslandNotice(t("未开启时，蓝牙耳机可能只显示通用名称"))
         }
     }
     val backgroundLauncher = rememberLauncherForActivityResult(
@@ -145,9 +146,9 @@ internal fun PermissionSettingsPage(
     ) {
         refresh()
         if (backgroundRunEnabled(context)) {
-            context.showIslandNotice("已允许后台运行")
+            context.showIslandNotice(t("已允许后台运行"))
         } else {
-            context.showIslandNotice("未忽略电池优化时，系统可能在息屏后停止播放")
+            context.showIslandNotice(t("未忽略电池优化时，系统可能在息屏后停止播放"))
         }
     }
     val overlayLauncher = rememberLauncherForActivityResult(
@@ -155,9 +156,9 @@ internal fun PermissionSettingsPage(
     ) {
         refresh()
         if (overlayGranted(context)) {
-            context.showIslandNotice("已开启悬浮窗")
+            context.showIslandNotice(t("已开启悬浮窗"))
         } else {
-            context.showIslandNotice("未开启悬浮窗时，无法在应用外显示歌词")
+            context.showIslandNotice(t("未开启悬浮窗时，无法在应用外显示歌词"))
         }
     }
     val installLauncher = rememberLauncherForActivityResult(
@@ -165,9 +166,9 @@ internal fun PermissionSettingsPage(
     ) {
         refresh()
         if (installPackagesGranted(context)) {
-            context.showIslandNotice("已允许安装应用")
+            context.showIslandNotice(t("已允许安装应用"))
         } else {
-            context.showIslandNotice("未允许时，无法安装 ZMusic 更新")
+            context.showIslandNotice(t("未允许时，无法安装 ZMusic 更新"))
         }
     }
 
@@ -180,7 +181,7 @@ internal fun PermissionSettingsPage(
     ) {
         Spacer(Modifier.height(8.dp))
         Text(
-            text = "这些权限由系统管理。未开启时可在此申请；已开启可进入系统设置调整。从系统设置返回后，状态会自动刷新。",
+            text = t("这些权限由系统管理。未开启时可在此申请；已开启可进入系统设置调整。从系统设置返回后，状态会自动刷新。"),
             style = TextStyle(
                 color = MainPalette.Secondary,
                 fontSize = 12.sp,
@@ -195,8 +196,8 @@ internal fun PermissionSettingsPage(
                 .wallpaperItemChrome(RoundedCornerShape(16.dp)),
         ) {
             PermissionManageRow(
-                title = "通知",
-                purpose = "媒体通知与息屏后播放",
+                title = t("通知"),
+                purpose = t("媒体通知与息屏后播放"),
                 granted = snapshot.notifications,
                 icon = ZIcons.Notifications,
                 tint = Color(0xFF5070F0),
@@ -210,8 +211,8 @@ internal fun PermissionSettingsPage(
             )
             PermissionRowDivider()
             PermissionManageRow(
-                title = "后台运行",
-                purpose = "忽略电池优化，减少息屏后被系统杀掉",
+                title = t("后台运行"),
+                purpose = t("忽略电池优化，减少息屏后被系统杀掉"),
                 granted = snapshot.backgroundRun,
                 icon = ZIcons.Battery,
                 tint = Color(0xFFFF9500),
@@ -225,8 +226,8 @@ internal fun PermissionSettingsPage(
             )
             PermissionRowDivider()
             PermissionManageRow(
-                title = "相机",
-                purpose = "扫描播放器显示配置二维码",
+                title = t("相机"),
+                purpose = t("扫描播放器显示配置二维码"),
                 granted = snapshot.camera,
                 icon = ZIcons.Camera,
                 tint = Color(0xFF30B0C7),
@@ -240,8 +241,8 @@ internal fun PermissionSettingsPage(
             )
             PermissionRowDivider()
             PermissionManageRow(
-                title = "悬浮窗",
-                purpose = "通知栏歌词显示（仅应用外）",
+                title = t("悬浮窗"),
+                purpose = t("通知栏歌词显示（仅应用外）"),
                 granted = snapshot.overlay,
                 icon = ZIcons.Lyrics,
                 tint = Color(0xFF7C5CE6),
@@ -255,8 +256,8 @@ internal fun PermissionSettingsPage(
             )
             PermissionRowDivider()
             PermissionManageRow(
-                title = "附近的设备",
-                purpose = "识别耳机、音箱等音频输出设备名称",
+                title = t("附近的设备"),
+                purpose = t("识别耳机、音箱等音频输出设备名称"),
                 granted = snapshot.nearbyDevices,
                 icon = ZIcons.Bluetooth,
                 tint = Color(0xFF0A84FF),
@@ -274,8 +275,8 @@ internal fun PermissionSettingsPage(
             )
             PermissionRowDivider()
             PermissionManageRow(
-                title = "安装应用",
-                purpose = "用于安装 ZMusic 更新",
+                title = t("安装应用"),
+                purpose = t("用于安装 ZMusic 更新"),
                 granted = snapshot.installPackages,
                 icon = ZIcons.GetApp,
                 tint = Color(0xFF2A9D8F),
@@ -347,7 +348,7 @@ private fun PermissionManageRow(
                 ),
             )
             Text(
-                text = if (granted) "已开启 · $purpose" else "未开启 · $purpose",
+                text = if (granted) t("已开启 · %s", purpose) else t("未开启 · %s", purpose),
                 style = TextStyle(
                     color = MainPalette.Secondary,
                     fontSize = 12.sp,
@@ -363,7 +364,7 @@ private fun PermissionManageRow(
                 .padding(horizontal = 12.dp, vertical = 8.dp),
         ) {
             Text(
-                text = if (granted) "管理" else "去开启",
+                text = if (granted) t("管理") else t("去开启"),
                 style = TextStyle(
                     color = if (granted) MainPalette.Secondary else tint,
                     fontSize = 13.sp,

@@ -16,6 +16,7 @@ import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.coroutineContext
+import com.kite.zmusic.i18n.t
 
 class TrackExportException(message: String) : Exception(message)
 
@@ -97,7 +98,7 @@ class TrackExportRepository(
         options: TrackExportOptions,
         onAudioProgress: ((received: Long, total: Long) -> Unit)?,
     ): String {
-        if (track.id <= 0L) throw TrackExportException("无法下载这首歌")
+        if (track.id <= 0L) throw TrackExportException(t("无法下载这首歌"))
         val folder = folderName(track)
         val relative = "$ROOT/$folder/"
         TrackExportLog.i(
@@ -106,10 +107,10 @@ class TrackExportRepository(
                 "meta=${options.includeMetadata} folder=$folder",
         )
         val audioUrl = resolveAudioUrl(track.id, cookie, options.quality)
-            ?: throw TrackExportException("暂时没有可下载的音源")
+            ?: throw TrackExportException(t("暂时没有可下载的音源"))
         TrackExportLog.i("audio url ${urlBrief(audioUrl)}")
         val audioBytes = downloadBytes("audio", audioUrl, onAudioProgress)
-            ?: throw TrackExportException("音频下载失败")
+            ?: throw TrackExportException(t("音频下载失败"))
         TrackExportLog.i("audio bytes=${audioBytes.size}")
         clearFolder(relative)
         val (audioName, audioMime) = audioFileOf(audioBytes)
@@ -356,7 +357,7 @@ class TrackExportRepository(
             resolver.openOutputStream(uri, "w")?.use { out ->
                 out.write(bytes)
                 out.flush()
-            } ?: throw TrackExportException("写入下载目录失败")
+            } ?: throw TrackExportException(t("写入下载目录失败"))
             if (existing == null) {
                 val done = ContentValues().apply {
                     put(MediaStore.Downloads.IS_PENDING, 0)
@@ -370,7 +371,7 @@ class TrackExportRepository(
         } catch (e: Exception) {
             if (e is CancellationException) throw e
             TrackExportLog.e("write failed $displayName", e)
-            throw TrackExportException("写入下载目录失败")
+            throw TrackExportException(t("写入下载目录失败"))
         }
     }
 
@@ -384,7 +385,7 @@ class TrackExportRepository(
         return appContext.contentResolver.insert(
             MediaStore.Downloads.EXTERNAL_CONTENT_URI,
             values,
-        ) ?: throw TrackExportException("无法创建下载文件")
+        ) ?: throw TrackExportException(t("无法创建下载文件"))
     }
 
     private fun clearFolder(relativeDir: String) {

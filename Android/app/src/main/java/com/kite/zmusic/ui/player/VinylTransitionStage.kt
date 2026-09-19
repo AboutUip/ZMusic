@@ -212,6 +212,7 @@ fun VinylTransitionStage(
     fun writeTopSpin(deg: Float) {
         topSpinHolder[0] = deg
         topSpinDeg = deg
+        expand?.writeVinylSpin(deg)
     }
     fun resetTopSpin() {
         topSpinEpoch[0]++
@@ -1017,6 +1018,7 @@ internal fun VinylDiscFace(
                 val live = spinEpoch?.get(0) ?: gen
                 if (live == gen) {
                     spinHolder?.set(0, next)
+                    expand?.writeVinylSpin(next)
                 }
             }
         } finally {
@@ -1024,6 +1026,7 @@ internal fun VinylDiscFace(
             if (live == gen) {
                 val v = spinAnim.value
                 spinHolder?.set(0, v)
+                expand?.writeVinylSpin(v)
                 onSpinDegChange?.invoke(v)
             }
         }

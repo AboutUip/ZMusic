@@ -38,6 +38,7 @@ import com.kite.zmusic.ui.main.MainContentPadTop
 import com.kite.zmusic.ui.main.MainPageHeader
 import com.kite.zmusic.ui.main.mainContentPadH
 import com.kite.zmusic.ui.theme.TextTheme
+import com.kite.zmusic.i18n.t
 
 enum class PluginPageChrome {
     Overlay,
@@ -118,7 +119,7 @@ fun PluginPageScreen(
                     ) {
                         Icon(
                             imageVector = ZIcons.Back,
-                            contentDescription = "返回",
+                            contentDescription = t("返回"),
                             tint = TextTheme.CatalogTitle,
                             modifier = Modifier.size(22.dp),
                         )

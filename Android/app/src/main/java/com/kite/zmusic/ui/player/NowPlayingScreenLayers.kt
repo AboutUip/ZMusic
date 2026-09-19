@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -43,7 +42,6 @@ import androidx.compose.runtime.snapshots.SnapshotStateSet
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -68,6 +66,7 @@ import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import com.kite.zmusic.i18n.t
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -524,18 +523,9 @@ internal fun NowPlayingScreenLayers(
         // 竖屏设置：独立配置 + 可拉伸底部面板（吸附 1/3、2/3、全屏，不强制）
         if (!isLandscape && (portraitSettingsT > 0.001f || portraitSettingsOpen)) {
             val density = LocalDensity.current
-            NowPlayingSettingsOutsideDismiss(
+            PortraitBottomSheetViewport(
                 onDismiss = { closePortraitSettings() },
-                enabled = portraitSettingsOpen || portraitSettingsT > 0.05f,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer { alpha = portraitSettingsT },
-            )
-            BoxWithConstraints(
-                Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .fillMaxHeight(),
+                dismissEnabled = portraitSettingsOpen || portraitSettingsT > 0.05f,
             ) {
                 val screenH = constraints.maxHeight.toFloat().coerceAtLeast(1f)
                 // 全屏吸附不超过状态栏下沿，避免把手顶进状态栏后无法再下拉
@@ -552,7 +542,7 @@ internal fun NowPlayingScreenLayers(
                     hazeState = settingsHazeState,
                     showTransferActions = false,
                     titleOnlyHeader = true,
-                    headerTitle = "竖屏显示",
+                    headerTitle = t("竖屏显示"),
                     portraitContent = true,
                     enableRealtimeHaze = true,
                     panelShape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp),
@@ -578,11 +568,7 @@ internal fun NowPlayingScreenLayers(
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
                         .height(sheetHDp)
-                        .graphicsLayer {
-                            transformOrigin = TransformOrigin(0.5f, 1f)
-                            translationY = (1f - portraitSettingsT) * sheetHPx
-                            alpha = portraitSettingsT
-                        },
+                        .portraitSheetSurface(portraitSettingsT, sheetHPx),
                 )
             }
         }
@@ -590,18 +576,9 @@ internal fun NowPlayingScreenLayers(
         // 竖屏曲谱：与设置同壳层动画；打开固定 2/3，可吸附 1/3·2/3·全屏
         if (!isLandscape && (portraitScoreT > 0.001f || portraitScoreOpen)) {
             val density = LocalDensity.current
-            NowPlayingSettingsOutsideDismiss(
+            PortraitBottomSheetViewport(
                 onDismiss = { closePortraitScore() },
-                enabled = portraitScoreOpen || portraitScoreT > 0.05f,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer { alpha = portraitScoreT },
-            )
-            BoxWithConstraints(
-                Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .fillMaxHeight(),
+                dismissEnabled = portraitScoreOpen || portraitScoreT > 0.05f,
             ) {
                 val screenH = constraints.maxHeight.toFloat().coerceAtLeast(1f)
                 val statusTopPx = with(density) {
@@ -633,11 +610,7 @@ internal fun NowPlayingScreenLayers(
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
                         .height(sheetHDp)
-                        .graphicsLayer {
-                            transformOrigin = TransformOrigin(0.5f, 1f)
-                            translationY = (1f - portraitScoreT) * sheetHPx
-                            alpha = portraitScoreT
-                        },
+                        .portraitSheetSurface(portraitScoreT, sheetHPx),
                 )
             }
         }
@@ -645,18 +618,9 @@ internal fun NowPlayingScreenLayers(
         // 竖屏音源：与曲谱同壳层进出场；固定打开 1/3
         if (!isLandscape && (portraitQualityT > 0.001f || portraitQualityOpen)) {
             val density = LocalDensity.current
-            NowPlayingSettingsOutsideDismiss(
+            PortraitBottomSheetViewport(
                 onDismiss = { closePortraitQuality() },
-                enabled = portraitQualityOpen || portraitQualityT > 0.05f,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer { alpha = portraitQualityT },
-            )
-            BoxWithConstraints(
-                Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .fillMaxHeight(),
+                dismissEnabled = portraitQualityOpen || portraitQualityT > 0.05f,
             ) {
                 val screenH = constraints.maxHeight.toFloat().coerceAtLeast(1f)
                 val statusTopPx = with(density) {
@@ -670,7 +634,7 @@ internal fun NowPlayingScreenLayers(
                     onSelect = { next ->
                         if (next != audioQuality) {
                             app.audioQualityStore.set(next)
-                            context.showIslandNotice("已切换到${next.title}")
+                            context.showIslandNotice(t("已切换到%s", next.title))
                         }
                         closePortraitQuality()
                     },
@@ -679,11 +643,7 @@ internal fun NowPlayingScreenLayers(
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
                         .height(sheetHDp)
-                        .graphicsLayer {
-                            transformOrigin = TransformOrigin(0.5f, 1f)
-                            translationY = (1f - portraitQualityT) * sheetHPx
-                            alpha = portraitQualityT
-                        },
+                        .portraitSheetSurface(portraitQualityT, sheetHPx),
                 )
             }
         }
@@ -694,41 +654,38 @@ internal fun NowPlayingScreenLayers(
             val fallbackHPx = with(density) { rememberPortraitShareSheetHeight().toPx() }
             var measuredHPx by remember { mutableFloatStateOf(0f) }
             val sheetHPx = measuredHPx.takeIf { it > 1f } ?: fallbackHPx
-            NowPlayingSettingsOutsideDismiss(
+            PortraitBottomSheetViewport(
                 onDismiss = { closePortraitShare() },
-                enabled = portraitShareOpen || portraitShareT > 0.05f,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer { alpha = portraitShareT },
-            )
+                dismissEnabled = portraitShareOpen || portraitShareT > 0.05f,
+            ) {
             PortraitShareSheet(
                 onPick = { target ->
                     closePortraitShare()
                     if (target == NcmShareTarget.CopyLink) {
                         when (NcmShare.send(context, track, target)) {
-                            NcmShareResult.Copied -> context.showIslandNotice("已复制链接")
-                            NcmShareResult.NoLink -> context.showIslandNotice("当前歌曲无法分享")
-                            else -> context.showIslandNotice("复制失败")
+                            NcmShareResult.Copied -> context.showIslandNotice(t("已复制链接"))
+                            NcmShareResult.NoLink -> context.showIslandNotice(t("当前歌曲无法分享"))
+                            else -> context.showIslandNotice(t("复制失败"))
                         }
                         return@PortraitShareSheet
                     }
                     if (track.id <= 0L) {
-                        context.showIslandNotice("当前歌曲无法分享")
+                        context.showIslandNotice(t("当前歌曲无法分享"))
                         return@PortraitShareSheet
                     }
                     portraitSheetScope.launch {
-                        context.showIslandNotice("正在生成分享图")
+                        context.showIslandNotice(t("正在生成分享图"))
                         val uri = ShareSongPoster.prepareShareUri(app, track)
                         if (uri == null) {
-                            context.showIslandNotice("分享图生成失败")
+                            context.showIslandNotice(t("分享图生成失败"))
                             return@launch
                         }
                         when (val result = NcmShare.sendImage(context, uri, target)) {
                             NcmShareResult.Opened -> Unit
-                            NcmShareResult.Failed -> context.showIslandNotice("分享失败")
+                            NcmShareResult.Failed -> context.showIslandNotice(t("分享失败"))
                             is NcmShareResult.MissingApp ->
-                                context.showIslandNotice("未安装${result.appName}")
-                            else -> context.showIslandNotice("分享失败")
+                                context.showIslandNotice(t("未安装%s", result.appName))
+                            else -> context.showIslandNotice(t("分享失败"))
                         }
                     }
                 },
@@ -737,30 +694,18 @@ internal fun NowPlayingScreenLayers(
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
                     .onSizeChanged { measuredHPx = it.height.toFloat() }
-                    .graphicsLayer {
-                        transformOrigin = TransformOrigin(0.5f, 1f)
-                        translationY = (1f - portraitShareT) * sheetHPx
-                        alpha = portraitShareT
-                    },
+                    .portraitSheetSurface(portraitShareT, sheetHPx),
             )
+            }
         }
 
         // 竖屏评论：与曲谱同壳层进出场；固定打开 2/3，上箭头扩全屏（不可拖拽改高）
         if (!isLandscape && (portraitCommentsT > 0.001f || portraitCommentsOpen)) {
             val density = LocalDensity.current
             val commentCookie = app.sessionRepository.session.value?.cookie.orEmpty()
-            NowPlayingSettingsOutsideDismiss(
+            PortraitBottomSheetViewport(
                 onDismiss = { closePortraitComments() },
-                enabled = portraitCommentsOpen || portraitCommentsT > 0.05f,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer { alpha = portraitCommentsT },
-            )
-            BoxWithConstraints(
-                Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .fillMaxHeight(),
+                dismissEnabled = portraitCommentsOpen || portraitCommentsT > 0.05f,
             ) {
                 val screenH = constraints.maxHeight.toFloat().coerceAtLeast(1f)
                 // 全屏时弹窗/背景铺满到屏幕顶（含状态栏区域）；内容区仍自留安全边距
@@ -788,11 +733,7 @@ internal fun NowPlayingScreenLayers(
                             .align(Alignment.BottomCenter)
                             .fillMaxWidth()
                             .height(sheetHDp)
-                            .graphicsLayer {
-                                transformOrigin = TransformOrigin(0.5f, 1f)
-                                translationY = (1f - portraitCommentsT) * sheetHPx
-                                alpha = portraitCommentsT
-                            },
+                            .portraitSheetSurface(portraitCommentsT, sheetHPx),
                     )
                 } else {
                 PortraitCommentsSheet(
@@ -817,11 +758,7 @@ internal fun NowPlayingScreenLayers(
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
                         .height(sheetHDp)
-                        .graphicsLayer {
-                            transformOrigin = TransformOrigin(0.5f, 1f)
-                            translationY = (1f - portraitCommentsT) * sheetHPx
-                            alpha = portraitCommentsT
-                        },
+                        .portraitSheetSurface(portraitCommentsT, sheetHPx),
                 )
                 }
             }
@@ -829,18 +766,9 @@ internal fun NowPlayingScreenLayers(
 
         if (!isLandscape && (portraitListenT > 0.001f || portraitListenOpen)) {
             val density = LocalDensity.current
-            NowPlayingSettingsOutsideDismiss(
+            PortraitBottomSheetViewport(
                 onDismiss = { closePortraitListen() },
-                enabled = portraitListenOpen || portraitListenT > 0.05f,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer { alpha = portraitListenT },
-            )
-            BoxWithConstraints(
-                Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .fillMaxHeight(),
+                dismissEnabled = portraitListenOpen || portraitListenT > 0.05f,
             ) {
                 val screenH = constraints.maxHeight.toFloat().coerceAtLeast(1f)
                 val statusTopPx = with(density) {
@@ -858,11 +786,7 @@ internal fun NowPlayingScreenLayers(
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
                         .height(sheetHDp)
-                        .graphicsLayer {
-                            transformOrigin = TransformOrigin(0.5f, 1f)
-                            translationY = (1f - portraitListenT) * sheetHPx
-                            alpha = portraitListenT
-                        },
+                        .portraitSheetSurface(portraitListenT, sheetHPx),
                 )
             }
         }
@@ -896,18 +820,9 @@ internal fun NowPlayingScreenLayers(
 
         if (!isLandscape && (portraitMoreT > 0.001f || portraitMoreOpen)) {
             val density = LocalDensity.current
-            NowPlayingSettingsOutsideDismiss(
+            PortraitBottomSheetViewport(
                 onDismiss = { closePortraitMore() },
-                enabled = portraitMoreOpen || portraitMoreT > 0.05f,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer { alpha = portraitMoreT },
-            )
-            BoxWithConstraints(
-                Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .fillMaxHeight(),
+                dismissEnabled = portraitMoreOpen || portraitMoreT > 0.05f,
             ) {
                 val screenH = constraints.maxHeight.toFloat().coerceAtLeast(1f)
                 val statusTopPx = with(density) {
@@ -977,11 +892,7 @@ internal fun NowPlayingScreenLayers(
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
                         .height(sheetHDp)
-                        .graphicsLayer {
-                            transformOrigin = TransformOrigin(0.5f, 1f)
-                            translationY = (1f - portraitMoreT) * sheetHPx
-                            alpha = portraitMoreT
-                        },
+                        .portraitSheetSurface(portraitMoreT, sheetHPx),
                 )
             }
         }

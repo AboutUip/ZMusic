@@ -133,6 +133,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
+import com.kite.zmusic.i18n.t
 
 private fun profileBlankBrush() = Brush.verticalGradient(
     colors = listOf(MainPalette.Surface, MainPalette.Page),
@@ -248,7 +249,7 @@ private fun LibraryErrorText(err: String) {
 @Composable
 private fun LibraryGuestBanner() {
     Text(
-        text = "游客模式 · 数据与正式账号可能不一致",
+        text = t("游客模式 · 数据与正式账号可能不一致"),
         style = TextStyle(
             color = MainPalette.Secondary,
             fontSize = 13.sp,
@@ -505,7 +506,7 @@ private fun ProfileLandscapeBanner(
                         .padding(horizontal = 14.dp, vertical = 8.dp),
                 ) {
                     Text(
-                        text = "进入用户空间",
+                        text = t("进入用户空间"),
                         style = TextStyle(
                             color = MainPalette.Accent,
                             fontSize = 13.sp,
@@ -566,7 +567,6 @@ fun LibraryScreen(
     val heroBgPath = if (profileChrome) null else (PluginLookPresent.profilePath() ?: customBgPath)
 
     fun openPlaylist(pl: PlaylistSummary) {
-        app.recentCollectionStore.touchPlaylist(pl.id)
         onOpenOverlay(
             MainOverlay.Playlist(
                 id = pl.id,
@@ -580,7 +580,6 @@ fun LibraryScreen(
     }
 
     fun openAlbum(album: CollectedAlbum) {
-        app.recentCollectionStore.touchAlbum(album.id)
         onOpenOverlay(MainOverlay.Album(album.id, album.name))
     }
 
@@ -591,7 +590,7 @@ fun LibraryScreen(
     fun openFans() {
         val p = ui.profile ?: return
         if (ui.isGuest || p.userId <= 0L) {
-            context.showIslandNotice("请先登录")
+            context.showIslandNotice(t("请先登录"))
             return
         }
         onOpenOverlay(MainOverlay.UserRelations(p.userId, p.nickname, fans = true))
@@ -618,16 +617,16 @@ fun LibraryScreen(
     ) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
         if (uid <= 0L) {
-            context.showIslandNotice("登录后可设置空间背景")
+            context.showIslandNotice(t("登录后可设置空间背景"))
             return@rememberLauncherForActivityResult
         }
         scope.launch {
             val path = app.userSpaceBackgroundStore.import(uid, uri)
             if (path != null) {
                 customBgPath = path
-                context.showIslandNotice("已设置空间背景")
+                context.showIslandNotice(t("已设置空间背景"))
             } else {
-                context.showIslandNotice("背景设置失败")
+                context.showIslandNotice(t("背景设置失败"))
             }
         }
     }
@@ -736,27 +735,27 @@ fun LibraryScreen(
                 if (uid <= 0L) return@UserSpaceOverlay
                 app.userSpaceBackgroundStore.clear(uid)
                 customBgPath = null
-                context.showIslandNotice("已恢复默认背景")
+                context.showIslandNotice(t("已恢复默认背景"))
             },
             modifier = Modifier.fillMaxSize(),
         )
         morePlaylist?.let { pl ->
             GlassActionSheet(
                 title = pl.name,
-                message = "${pl.trackCount} 首",
+                message = t("%s 首", pl.trackCount),
                 coverUrl = pl.resolvedCoverUrl(),
                 onDismiss = { morePlaylist = null },
                 actions = buildList {
                     if (pl.isOwned && !pl.isHeartPlaylist) {
                         add(
-                            GlassSheetAction("重命名") {
+                            GlassSheetAction(t("重命名")) {
                                 renameDraft = pl.name
                                 renameTarget = pl
                                 morePlaylist = null
                             },
                         )
                         add(
-                            GlassSheetAction("删除", destructive = true) {
+                            GlassSheetAction(t("删除"), destructive = true) {
                                 confirmDelete = pl
                                 morePlaylist = null
                             },
@@ -764,14 +763,14 @@ fun LibraryScreen(
                     } else if (!pl.isOwned) {
                         if (pl.isSubscribed) {
                             add(
-                                GlassSheetAction("取消收藏", destructive = true) {
+                                GlassSheetAction(t("取消收藏"), destructive = true) {
                                     confirmUnsub = pl
                                     morePlaylist = null
                                 },
                             )
                         } else {
                             add(
-                                GlassSheetAction("收藏") {
+                                GlassSheetAction(t("收藏")) {
                                     val target = pl
                                     morePlaylist = null
                                     scope.launch {
@@ -789,16 +788,16 @@ fun LibraryScreen(
         }
         if (createOpen) {
             GlassAlertDialog(
-                title = "新建歌单",
-                confirmLabel = "创建",
+                title = t("新建歌单"),
+                confirmLabel = t("创建"),
                 onConfirm = {
                     val name = createDraft
                     if (name.trim().isEmpty()) {
-                        context.showIslandNotice("请输入歌单名称")
+                        context.showIslandNotice(t("请输入歌单名称"))
                         return@GlassAlertDialog
                     }
                     if (app.playlistEditor.hasCreatedName(name)) {
-                        context.showIslandNotice("已有同名歌单")
+                        context.showIslandNotice(t("已有同名歌单"))
                         return@GlassAlertDialog
                     }
                     createOpen = false
@@ -811,23 +810,23 @@ fun LibraryScreen(
                     GlassPromptField(
                         value = createDraft,
                         onValueChange = { createDraft = it },
-                        placeholder = "歌单名称",
+                        placeholder = t("歌单名称"),
                     )
                 },
             )
         }
         renameTarget?.let { pl ->
             GlassAlertDialog(
-                title = "重命名歌单",
-                confirmLabel = "保存",
+                title = t("重命名歌单"),
+                confirmLabel = t("保存"),
                 onConfirm = {
                     val name = renameDraft
                     if (name.trim().isEmpty()) {
-                        context.showIslandNotice("请输入歌单名称")
+                        context.showIslandNotice(t("请输入歌单名称"))
                         return@GlassAlertDialog
                     }
                     if (app.playlistEditor.hasCreatedName(name, exceptId = pl.id)) {
-                        context.showIslandNotice("已有同名歌单")
+                        context.showIslandNotice(t("已有同名歌单"))
                         return@GlassAlertDialog
                     }
                     renameTarget = null
@@ -843,16 +842,16 @@ fun LibraryScreen(
                     GlassPromptField(
                         value = renameDraft,
                         onValueChange = { renameDraft = it },
-                        placeholder = "歌单名称",
+                        placeholder = t("歌单名称"),
                     )
                 },
             )
         }
         confirmDelete?.let { pl ->
             GlassAlertDialog(
-                title = "删除歌单？",
-                message = "「${pl.name}」会被删除，歌曲文件不会动。",
-                confirmLabel = "删除",
+                title = t("删除歌单？"),
+                message = t("「%s」会被删除，歌曲文件不会动。", pl.name),
+                confirmLabel = t("删除"),
                 confirmDestructive = true,
                 onConfirm = {
                     confirmDelete = null
@@ -868,9 +867,9 @@ fun LibraryScreen(
         }
         confirmUnsub?.let { pl ->
             GlassAlertDialog(
-                title = "取消收藏？",
-                message = "不再收藏「${pl.name}」。",
-                confirmLabel = "取消收藏",
+                title = t("取消收藏？"),
+                message = t("不再收藏「%s」。", pl.name),
+                confirmLabel = t("取消收藏"),
                 confirmDestructive = true,
                 onConfirm = {
                     confirmUnsub = null
@@ -1317,7 +1316,7 @@ private fun ProfileSpaceHint(
     modifier: Modifier = Modifier,
 ) {
     Text(
-        text = "下拉进入用户空间",
+        text = t("下拉进入用户空间"),
         style = identityCaptionStyle(onPhoto).copy(
             fontSize = 10.sp,
             fontWeight = FontWeight.Normal,
@@ -1420,11 +1419,11 @@ private fun identityStatsOf(profile: UserProfileBrief): List<IdentityStat> {
     val stats = mutableListOf<IdentityStat>()
     val followTotal = (profile.follows ?: 0L) + profile.artistFollows.coerceAtLeast(0L)
     if (profile.follows != null || profile.artistFollows > 0L) {
-        stats += IdentityStat(formatPlayCount(followTotal), "关注", opensFollows = true)
+        stats += IdentityStat(formatPlayCount(followTotal), t("关注"), opensFollows = true)
     }
     stats += IdentityStat(
         value = profile.followeds?.let { formatPlayCount(it) } ?: "—",
-        label = "粉丝",
+        label = t("粉丝"),
         opensFans = true,
     )
     profile.level?.let { stats += IdentityStat("Lv.$it") }
@@ -1769,24 +1768,24 @@ private fun LibraryPlaylistBody(
 
     PlaylistSectionColumn(
         region = PluginCollections.LIBRARY_LIKED,
-        title = "我喜欢的音乐",
+        title = t("我喜欢的音乐"),
         playlists = liked,
-        emptyText = "还没有喜欢的音乐",
+        emptyText = t("还没有喜欢的音乐"),
         onOpenPlaylist = onOpenPlaylist,
         onMorePlaylist = onMorePlaylist,
     )
     PlaylistSectionColumn(
         region = PluginCollections.LIBRARY_CREATED,
-        title = "创建的歌单",
+        title = t("创建的歌单"),
         playlists = created,
-        emptyText = "还没有创建的歌单",
+        emptyText = t("还没有创建的歌单"),
         onOpenPlaylist = onOpenPlaylist,
         onMorePlaylist = onMorePlaylist,
         onCreate = onCreatePlaylist,
         showCount = true,
     )
     LibrarySectionTitle(
-        text = "收藏",
+        text = t("收藏"),
         trailing = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 CollectionKindSwitch(
@@ -1812,11 +1811,11 @@ private fun LibraryPlaylistBody(
         onSettled = onCollectionKind,
         playlist = {
             if (collected.isEmpty()) {
-                LibrarySectionEmpty("还没有收藏的歌单")
+                LibrarySectionEmpty(t("还没有收藏的歌单"))
             } else {
                 Column {
                     Text(
-                        text = "${collected.size} 个",
+                        text = t("%s 个", collected.size),
                         style = TextStyle(
                             color = MainPalette.Hint,
                             fontSize = 12.sp,
@@ -1829,7 +1828,7 @@ private fun LibraryPlaylistBody(
                         entries = playlistPreview.map { pl ->
                             LibraryCollectionEntry(
                                 title = pl.name,
-                                subtitle = "${pl.trackCount} 首 · 播放 ${formatPlayCount(pl.playCount)}",
+                                subtitle = t("%s 首 · 播放 %s", pl.trackCount, formatPlayCount(pl.playCount)),
                                 coverUrl = pl.resolvedCoverUrl(),
                                 onOpen = { onOpenPlaylist(pl) },
                                 onMore = { onMorePlaylist(pl) },
@@ -1866,7 +1865,7 @@ private fun CollectionViewMoreChip(
     modifier: Modifier = Modifier,
 ) {
     Text(
-        text = "查看更多",
+        text = t("查看更多"),
         style = TextStyle(
             color = if (enabled) MainPalette.Accent else MainPalette.Hint.copy(alpha = 0.55f),
             fontSize = 13.sp,
@@ -1909,7 +1908,7 @@ private fun CollectionViewMoreRow(
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            text = "查看更多",
+            text = t("查看更多"),
             style = TextStyle(
                 color = MainPalette.Accent,
                 fontSize = 14.sp,
@@ -2063,7 +2062,7 @@ private fun CollectionKindSwitch(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = if (kind == LibraryCollectionKind.Playlist) "歌单" else "专辑",
+                        text = if (kind == LibraryCollectionKind.Playlist) t("歌单") else t("专辑"),
                         style = TextStyle(
                             color = androidx.compose.ui.graphics.lerp(
                                 MainPalette.Secondary,
@@ -2096,7 +2095,7 @@ private fun CollectedAlbumPane(
     onViewMore: () -> Unit,
 ) {
     when {
-        isGuest && albums.isEmpty() -> LibrarySectionEmpty("登录后查看收藏的专辑")
+        isGuest && albums.isEmpty() -> LibrarySectionEmpty(t("登录后查看收藏的专辑"))
         loading && albums.isEmpty() -> {
             Box(
                 Modifier
@@ -2112,12 +2111,12 @@ private fun CollectedAlbumPane(
             }
         }
         error != null && albums.isEmpty() -> LibrarySectionEmpty(error)
-        albums.isEmpty() -> LibrarySectionEmpty("还没有收藏的专辑")
+        albums.isEmpty() -> LibrarySectionEmpty(t("还没有收藏的专辑"))
         else -> {
             Column {
                 if (total > 0) {
                     Text(
-                        text = "$total 张",
+                        text = t("%s 张", total),
                         style = TextStyle(
                             color = MainPalette.Hint,
                             fontSize = 12.sp,
@@ -2131,7 +2130,7 @@ private fun CollectedAlbumPane(
                     entries = albums.map { album ->
                         val sub = buildList {
                             album.yearLabel?.let { add(it) }
-                            if (album.size > 0) add("${album.size}首")
+                            if (album.size > 0) add(t("%s首", album.size))
                         }.joinToString(" · ")
                         LibraryCollectionEntry(
                             title = album.name,
@@ -2176,7 +2175,7 @@ private fun PlaylistSectionColumn(
                 ) {
                     Icon(
                         imageVector = ZIcons.Add,
-                        contentDescription = "新建歌单",
+                        contentDescription = t("新建歌单"),
                         tint = MainPalette.Accent,
                         modifier = Modifier.size(22.dp),
                     )
@@ -2192,7 +2191,7 @@ private fun PlaylistSectionColumn(
             entries = playlists.map { pl ->
                 LibraryCollectionEntry(
                     title = pl.name,
-                    subtitle = "${pl.trackCount} 首 · 播放 ${formatPlayCount(pl.playCount)}",
+                    subtitle = t("%s 首 · 播放 %s", pl.trackCount, formatPlayCount(pl.playCount)),
                     coverUrl = pl.resolvedCoverUrl(),
                     onOpen = { onOpenPlaylist(pl) },
                     onMore = if (pl.isHeartPlaylist) null else ({ onMorePlaylist(pl) }),

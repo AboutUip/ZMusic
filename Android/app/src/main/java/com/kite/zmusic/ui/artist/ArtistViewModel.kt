@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import com.kite.zmusic.i18n.t
 
 private const val AlbumPage = 20
 private const val MvPage = 20
@@ -65,7 +66,7 @@ class ArtistViewModel(
     private val _ui = MutableStateFlow(
         ArtistUiState(
             id = artistId,
-            name = seedName.ifBlank { "歌手" },
+            name = seedName.ifBlank { t("歌手") },
             coverUrl = seedCover,
         ),
     )
@@ -160,7 +161,7 @@ class ArtistViewModel(
         val session = sessionRepository.session.value
         val cookie = session?.cookie.orEmpty()
         if (cookie.isBlank() || session?.isGuest == true) {
-            islandNotices.show("请先登录")
+            islandNotices.show(t("请先登录"))
             return
         }
         val next = !state.followed
@@ -171,7 +172,7 @@ class ArtistViewModel(
                 val code = NcmJson.apiCode(json)
                 if (code == 301 || code == 302) {
                     revertFollow(next)
-                    islandNotices.show("请先登录")
+                    islandNotices.show(t("请先登录"))
                     return@launch
                 }
                 if (code != 200) {
@@ -187,7 +188,7 @@ class ArtistViewModel(
                 }
                 _ui.update { it.copy(followBusy = false, followed = next) }
                 islandNotices.show(
-                    if (next) "已收藏歌手" else "已取消收藏",
+                    if (next) t("已收藏歌手") else t("已取消收藏"),
                     state.coverUrl,
                 )
             } catch (e: CancellationException) {
@@ -284,7 +285,7 @@ class ArtistViewModel(
                 if (failedHard) {
                     val fallback = detailJson?.let {
                         NcmJson.userFacingMessage(it, "暂时无法打开这位歌手")
-                    } ?: "暂时无法打开这位歌手"
+                    } ?: t("暂时无法打开这位歌手")
                     _ui.update {
                         it.copy(loading = false, refreshing = false, error = fallback)
                     }

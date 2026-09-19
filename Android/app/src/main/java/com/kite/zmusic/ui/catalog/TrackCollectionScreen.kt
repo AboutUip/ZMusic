@@ -102,6 +102,7 @@ import com.kite.zmusic.ui.search.SearchViewModelFactory
 import com.kite.zmusic.ui.settings.SettingsScreen
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import com.kite.zmusic.i18n.t
 
 import com.kite.zmusic.ui.main.MainOverlay
 @Composable
@@ -121,7 +122,7 @@ internal fun TrackCollectionScreen(
     onSubscribe: (() -> Unit)? = null,
     onUnsubscribe: (() -> Unit)? = null,
     onSearch: (() -> Unit)? = null,
-    searchContentDescription: String = "搜索歌单内歌曲",
+    searchContentDescription: String = t("搜索歌单内歌曲"),
     onRemoveTrack: ((TrackRow) -> Unit)? = null,
     onRemoveTracks: ((List<TrackRow>, (Boolean) -> Unit) -> Unit)? = null,
     manageBridge: PlaylistManageBridge? = null,
@@ -189,9 +190,9 @@ internal fun TrackCollectionScreen(
             manageBridge.onCancel = { exitManage() }
             manageBridge.onRemove = {
                 if (!canRemove) {
-                    app.islandNoticeCenter.show("只能从自己创建的歌单移除歌曲")
+                    app.islandNoticeCenter.show(t("只能从自己创建的歌单移除歌曲"))
                 } else if (selected.isEmpty()) {
-                    app.islandNoticeCenter.show("请先选择歌曲")
+                    app.islandNoticeCenter.show(t("请先选择歌曲"))
                 } else {
                     confirmRemoveSelected = true
                 }
@@ -199,7 +200,7 @@ internal fun TrackCollectionScreen(
             manageBridge.onDownload = {
                 val list = selectedTracks()
                 if (list.isEmpty()) {
-                    app.islandNoticeCenter.show("请先选择歌曲")
+                    app.islandNoticeCenter.show(t("请先选择歌曲"))
                 } else {
                     exportTracks = list
                 }
@@ -218,7 +219,7 @@ internal fun TrackCollectionScreen(
     ) {
         CatalogTopBar(
             title = if (managing) {
-                if (selected.isEmpty()) "管理" else "已选 ${selected.size} 首"
+                if (selected.isEmpty()) t("管理") else t("已选 %s 首", selected.size)
             } else {
                 state.title
             },
@@ -367,13 +368,13 @@ internal fun TrackCollectionScreen(
     }
     if (confirmUncollect) {
         GlassAlertDialog(
-            title = if (state.isAlbum) "取消收藏这张专辑？" else "取消收藏此歌单？",
+            title = if (state.isAlbum) t("取消收藏这张专辑？") else t("取消收藏此歌单？"),
             message = if (state.isAlbum) {
-                "「${state.title}」会从收藏的专辑里拿掉。"
+                t("「%s」会从收藏的专辑里拿掉。", state.title)
             } else {
-                "「${state.title}」将从你的收藏中移除"
+                t("「%s」将从你的收藏中移除", state.title)
             },
-            confirmLabel = "取消收藏",
+            confirmLabel = t("取消收藏"),
             confirmDestructive = true,
             onConfirm = {
                 confirmUncollect = false
@@ -386,12 +387,12 @@ internal fun TrackCollectionScreen(
         val count = selected.size
         GlassAlertDialog(
             title = removeSelectedTitle ?: if (state.isHeartPlaylist) {
-                "从我喜欢的音乐移除？"
+                t("从我喜欢的音乐移除？")
             } else {
-                "从歌单移除这些歌？"
+                t("从歌单移除这些歌？")
             },
-            message = removeSelectedMessage ?: "将移除已选的 $count 首，不会删除已下载的文件。",
-            confirmLabel = removeSelectedConfirmLabel ?: "全部移出",
+            message = removeSelectedMessage ?: t("将移除已选的 %s 首，不会删除已下载的文件。", count),
+            confirmLabel = removeSelectedConfirmLabel ?: t("全部移出"),
             confirmDestructive = true,
             onConfirm = {
                 confirmRemoveSelected = false
@@ -413,7 +414,7 @@ internal fun TrackCollectionScreen(
     if (exportTracks.isNotEmpty()) {
         val pending = exportTracks
         TrackExportOptionsDialog(
-            title = "下载 ${pending.size} 首",
+            title = t("下载 %s 首", pending.size),
             onConfirm = { options ->
                 exportTracks = emptyList()
                 app.appScope.launch {
@@ -438,11 +439,11 @@ internal fun TrackCollectionScreen(
         showAddToPlaylist = showAddToPlaylist,
         showSaveToCloud = showSaveToCloud && showAddToPlaylist,
         removeConfirmTitle = removeConfirmTitle ?: if (state.isHeartPlaylist) {
-            "从我喜欢的音乐移除？"
+            t("从我喜欢的音乐移除？")
         } else {
-            "从歌单移除这首歌？"
+            t("从歌单移除这首歌？")
         },
-        removeConfirmMessage = removeConfirmMessage ?: "这首歌会从当前歌单里拿掉，不会删除已下载的文件。",
+        removeConfirmMessage = removeConfirmMessage ?: t("这首歌会从当前歌单里拿掉，不会删除已下载的文件。"),
         currentPlaylistId = state.playlistId,
         onOpenArtist = overflowArtist,
         extraActions = moreTrack?.let { t -> onOverflowExtras?.invoke(t) }.orEmpty(),
@@ -474,20 +475,20 @@ private fun CollectionHeader(
                 state.subtitle?.takeIf { it.isNotBlank() }?.let { add(it) }
                 state.albumCompany?.let { add(it) }
                 if (state.subscribedCount > 0) {
-                    add("${NcmHomeParse.formatPlayCount(state.subscribedCount.toLong())}收藏")
+                    add(t("%s收藏", NcmHomeParse.formatPlayCount(state.subscribedCount.toLong())))
                 }
                 if (state.commentCount > 0) {
-                    add("${NcmHomeParse.formatPlayCount(state.commentCount.toLong())}评论")
+                    add(t("%s评论", NcmHomeParse.formatPlayCount(state.commentCount.toLong())))
                 }
             }.joinToString("  ·  ").takeIf { it.isNotBlank() }
         } else {
             buildList {
                 state.subtitle?.takeIf { it.isNotBlank() }?.let { add(it) }
                 if (state.playCount > 0L) {
-                    add("${NcmHomeParse.formatPlayCount(state.playCount)}次播放")
+                    add(t("%s次播放", NcmHomeParse.formatPlayCount(state.playCount)))
                 }
                 if (state.subscribedCount > 0) {
-                    add("${NcmHomeParse.formatPlayCount(state.subscribedCount.toLong())}收藏")
+                    add(t("%s收藏", NcmHomeParse.formatPlayCount(state.subscribedCount.toLong())))
                 }
             }.joinToString("  ·  ").takeIf { it.isNotBlank() }
         }
@@ -523,10 +524,10 @@ private fun CollectionHeader(
         Column(Modifier.weight(1f)) {
             val useSelf = state.isHeartPlaylist || state.isOwnedPlaylist
             val creator = if (useSelf) {
-                selfProfile?.nickname?.takeIf { it.isNotBlank() && it != "null" } ?: "我"
+                selfProfile?.nickname?.takeIf { it.isNotBlank() && it != "null" } ?: t("我")
             } else {
                 state.creatorName?.takeIf { it.isNotBlank() && it != "null" }
-                    ?: if (state.isAlbum) "歌手" else "歌单"
+                    ?: if (state.isAlbum) t("歌手") else t("歌单")
             }
             val avatarUrl = if (useSelf) {
                 selfProfile?.avatarUrl?.takeIf { it.isNotBlank() && it != "null" }
@@ -656,12 +657,12 @@ private fun CollectionPlayAllButton(onClick: () -> Unit) {
     ) {
         Icon(
             imageVector = ZIcons.Play,
-            contentDescription = "播放全部",
+            contentDescription = t("播放全部"),
             tint = Color.White,
             modifier = Modifier.size(18.dp),
         )
         Spacer(Modifier.width(4.dp))
-        Text("播放全部", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+        Text(t("播放全部"), color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
     }
 }
 
@@ -703,11 +704,11 @@ private fun CollectionSubscribeButton(
                 ZIcons.CollectPlaylist
             },
             contentDescription = if (subscribed) {
-                "取消收藏"
+                t("取消收藏")
             } else if (isAlbum) {
-                "收藏专辑"
+                t("收藏专辑")
             } else {
-                "收藏歌单"
+                t("收藏歌单")
             },
             tint = MainPalette.Accent,
             modifier = Modifier.size(18.dp),
@@ -715,11 +716,11 @@ private fun CollectionSubscribeButton(
         Spacer(Modifier.width(4.dp))
         Text(
             text = if (subscribed) {
-                "已收藏"
+                t("已收藏")
             } else if (isAlbum) {
-                "收藏专辑"
+                t("收藏专辑")
             } else {
-                "收藏歌单"
+                t("收藏歌单")
             },
             color = MainPalette.Accent,
             fontSize = 13.sp,
@@ -845,7 +846,7 @@ internal fun CatalogTrackRow(
             ) {
                 Icon(
                     imageVector = ZIcons.More,
-                    contentDescription = "更多",
+                    contentDescription = t("更多"),
                     tint = if (current) MainPalette.Accent.copy(alpha = 0.72f) else MainPalette.Hint,
                     modifier = Modifier.size(20.dp),
                 )

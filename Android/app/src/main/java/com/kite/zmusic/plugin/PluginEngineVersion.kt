@@ -1,5 +1,7 @@
 package com.kite.zmusic.plugin
 
+import com.kite.zmusic.i18n.t
+
 /**
  * 引擎可读版本是唯一源。整数按 [docs/plugin-engine/VERSIONING.md] 换算，禁止另存一份数字。
  * 展示为 `0.1.0`，没有 `v`、不补零。换算时每段仍按两位对齐，避免 `0.1.12` 与 `0.11.2` 冲突。
@@ -16,7 +18,7 @@ object PluginEngineVersion {
      */
     fun encodeEngine(display: String): Int {
         val m = ENGINE_DISPLAY.matchEntire(display.trim())
-            ?: error("非法引擎版本展示: $display")
+            ?: error(t("非法引擎版本展示: %s", display))
         return triple(m.groupValues[1].toInt(), m.groupValues[2].toInt(), m.groupValues[3].toInt())
     }
 

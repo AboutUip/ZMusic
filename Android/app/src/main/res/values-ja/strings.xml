@@ -1,0 +1,12 @@
+<resources>
+    <string name="app_name">ZMusic</string>
+    <string name="poster_make">ポスターを作る</string>
+    <string name="playback_notification_channel_name">再生中</string>
+    <string name="playback_notification_channel_desc">再生の操作と状態</string>
+    <string name="playback_mode_order">全曲リピート</string>
+    <string name="playback_mode_repeat_one">1曲リピート</string>
+    <string name="playback_mode_shuffle">シャッフル</string>
+    <string name="playback_lyrics_overlay_on">歌詞を閉じる</string>
+    <string name="playback_lyrics_overlay_off">歌詞を表示</string>
+    <string name="playback_lyrics_overlay_unlock">ロック解除</string>
+</resources>

@@ -20,6 +20,7 @@ import kotlin.math.max
 import com.google.zxing.qrcode.QRCodeWriter
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import java.io.InputStream
+import com.kite.zmusic.i18n.t
 
 object PlayerDisplayQr {
     fun encodeBitmap(
@@ -123,12 +124,12 @@ object PlayerDisplayQr {
                 MediaStore.Images.Media.EXTERNAL_CONTENT_URI
             }
             val uri = resolver.insert(collection, values)
-                ?: error("无法创建相册条目")
+                ?: error(t("无法创建相册条目"))
             resolver.openOutputStream(uri)?.use { out ->
                 if (!bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)) {
-                    error("写入图片失败")
+                    error(t("写入图片失败"))
                 }
-            } ?: error("无法写入相册")
+            } ?: error(t("无法写入相册"))
             if (Build.VERSION.SDK_INT >= 29) {
                 values.clear()
                 values.put(MediaStore.Images.Media.IS_PENDING, 0)

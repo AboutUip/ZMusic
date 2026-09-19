@@ -63,6 +63,11 @@ class PlaybackViewModel(
 
     fun startPersonalFm(onStarted: () -> Unit = {}) = bridge.startPersonalFm(onStarted)
 
+    fun applyPersonalFmMode(
+        choice: com.kite.zmusic.data.PersonalFmModeChoice,
+        onDone: () -> Unit = {},
+    ) = bridge.applyPersonalFmMode(choice, onDone)
+
     fun startIntelligence(
         songId: Long,
         playlistId: Long,

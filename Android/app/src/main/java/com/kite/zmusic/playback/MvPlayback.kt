@@ -38,6 +38,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.coroutineContext
+import com.kite.zmusic.i18n.t
 
 data class MvUiState(
     val mvId: Long = 0L,
@@ -350,9 +351,9 @@ class MvPlayback(
         _ui.update { it.copy(playbackMode = playbackMode) }
         flashHint(
             when (playbackMode) {
-                PlaybackMode.ORDER -> "列表循环"
-                PlaybackMode.REPEAT_ONE -> "单曲循环"
-                PlaybackMode.SHUFFLE -> "随机播放"
+                PlaybackMode.ORDER -> t("列表循环")
+                PlaybackMode.REPEAT_ONE -> t("单曲循环")
+                PlaybackMode.SHUFFLE -> t("随机播放")
             },
         )
     }

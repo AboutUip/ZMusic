@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.sp
 import com.kite.zmusic.ui.main.MainControls
 import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.main.wallpaperItemChrome
+import com.kite.zmusic.i18n.t
 
 @Composable
 fun PredictiveBackSettingsPage(
@@ -44,7 +45,7 @@ fun PredictiveBackSettingsPage(
     ) {
         Spacer(Modifier.height(8.dp))
         Text(
-            text = "预测性返回是系统侧滑返回时，当前页跟着手指让开、露出底下那一层。部分机型上跟手预览不稳定，所以默认关闭：侧滑或返回键仍然有效，只是没有跟手动画。",
+            text = t("预测性返回是系统侧滑返回时，当前页跟着手指让开、露出底下那一层。部分机型上跟手预览不稳定，所以默认关闭：侧滑或返回键仍然有效，只是没有跟手动画。"),
             style = TextStyle(
                 color = MainPalette.Secondary,
                 fontSize = 13.sp,
@@ -56,7 +57,7 @@ fun PredictiveBackSettingsPage(
         )
         Spacer(Modifier.height(12.dp))
         Text(
-            text = "开启后：歌单、设置子页、播放器等全屏层会跟手平移。同一时间只有最上面那一层响应，避免一次滑动关掉两页。关闭后立即生效。离开应用回到桌面仍由系统决定是否预览。",
+            text = t("开启后：歌单、设置子页、播放器等全屏层会跟手平移。同一时间只有最上面那一层响应，避免一次滑动关掉两页。关闭后立即生效。离开应用回到桌面仍由系统决定是否预览。"),
             style = TextStyle(
                 color = MainPalette.Secondary,
                 fontSize = 13.sp,
@@ -81,7 +82,7 @@ fun PredictiveBackSettingsPage(
         ) {
             Column(Modifier.weight(1f)) {
                 Text(
-                    text = "预测性返回",
+                    text = t("预测性返回"),
                     style = TextStyle(
                         color = MainPalette.Ink,
                         fontSize = 15.sp,
@@ -90,9 +91,9 @@ fun PredictiveBackSettingsPage(
                 )
                 Text(
                     text = if (enabled) {
-                        "已开启 · 侧滑跟手预览"
+                        t("已开启 · 侧滑跟手预览")
                     } else {
-                        "已关闭 · 返回不跟手（默认）"
+                        t("已关闭 · 返回不跟手（默认）")
                     },
                     style = TextStyle(
                         color = MainPalette.Secondary,

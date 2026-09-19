@@ -1,5 +1,6 @@
 package com.kite.zmusic.data
 
+import com.kite.zmusic.i18n.t
 import kotlin.math.abs
 import kotlin.math.pow
 
@@ -67,7 +68,7 @@ data class TunePrefs(
     }
 }
 
-enum class TunePreset(val id: String, val title: String) {
+enum class TunePreset(val id: String, private val titleZh: String) {
     FLAT("flat", "原声"),
     POP("pop", "流行"),
     DANCE("dance", "电子"),
@@ -77,6 +78,8 @@ enum class TunePreset(val id: String, val title: String) {
     WARM("warm", "温暖"),
     CUSTOM("custom", "自定义"),
     ;
+
+    val title: String get() = t(titleZh)
 
     fun bands(): List<Float> = when (this) {
         FLAT, CUSTOM -> TuneBands.flat()
@@ -118,22 +121,22 @@ object TuneBands {
 }
 
 fun tuneRowSubtitle(prefs: TunePrefs): String {
-    if (!prefs.enabled) return "均衡、响度、变速"
+    if (!prefs.enabled) return t("均衡、响度、变速")
     val bits = buildList {
         when {
             prefs.preset != TunePreset.FLAT && prefs.preset != TunePreset.CUSTOM ->
                 add(prefs.preset.title)
-            prefs.eq.any { abs(it) >= 0.05f } -> add("均衡")
+            prefs.eq.any { abs(it) >= 0.05f } -> add(t("均衡"))
         }
         if (prefs.pitchSemitones != 0) {
             val n = prefs.pitchSemitones
-            add(if (n > 0) "+$n 半音" else "$n 半音")
+            add(if (n > 0) t("+%s 半音", n) else t("%s 半音", n))
         }
         if (abs(prefs.speed - 1f) >= 0.02f) {
             add("%.2f×".format(prefs.speed))
         }
-        if (prefs.loudness >= 0.2f) add("响度")
-        if (prefs.reverb >= 0.2f) add("混响")
+        if (prefs.loudness >= 0.2f) add(t("响度"))
+        if (prefs.reverb >= 0.2f) add(t("混响"))
     }
-    return if (bits.isEmpty()) "已开启" else bits.joinToString(" · ")
+    return if (bits.isEmpty()) t("已开启") else bits.joinToString(" · ")
 }

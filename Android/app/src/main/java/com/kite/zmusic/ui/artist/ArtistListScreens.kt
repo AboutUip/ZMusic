@@ -51,6 +51,7 @@ import com.kite.zmusic.ui.common.UrlImage
 import com.kite.zmusic.ui.common.ZPullRefresh
 import com.kite.zmusic.ui.chrome.chromePage
 import com.kite.zmusic.ui.main.MainPalette
+import com.kite.zmusic.i18n.t
 
 internal fun artistViewModelKey(artistId: Long) = "artist-$artistId"
 
@@ -111,11 +112,11 @@ fun ArtistAlbumsScreen(
             .chromePage()
             .statusBarsPadding(),
     ) {
-        CatalogTopBar(title = "专辑", onBack = onBack)
+        CatalogTopBar(title = t("专辑"), onBack = onBack)
         when {
             ui.error != null && ui.albums.isEmpty() && !ui.loading -> {
                 Text(
-                    text = ui.error ?: "暂时没有专辑",
+                    text = ui.error ?: t("暂时没有专辑"),
                     color = MainPalette.Secondary,
                     fontSize = 14.sp,
                     modifier = Modifier
@@ -223,7 +224,7 @@ fun ArtistMvsScreen(
         when {
             ui.error != null && ui.mvs.isEmpty() && !ui.loading -> {
                 Text(
-                    text = ui.error ?: "暂时没有 MV",
+                    text = ui.error ?: t("暂时没有 MV"),
                     color = MainPalette.Secondary,
                     fontSize = 14.sp,
                     modifier = Modifier
@@ -329,7 +330,7 @@ private fun AlbumGridTile(
         )
         val sub = buildList {
             album.year?.let { add(it) }
-            if (album.size > 0) add("${album.size}首")
+            if (album.size > 0) add(t("%s首", album.size))
         }.joinToString(" · ")
         if (sub.isNotEmpty()) {
             Text(

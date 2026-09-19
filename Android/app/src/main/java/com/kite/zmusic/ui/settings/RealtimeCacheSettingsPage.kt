@@ -53,6 +53,7 @@ import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.main.wallpaperItemChrome
 import java.util.Locale
 import kotlin.math.min
+import com.kite.zmusic.i18n.t
 
 private val CardShape = RoundedCornerShape(16.dp)
 private val ChipShape = RoundedCornerShape(12.dp)
@@ -86,7 +87,7 @@ fun RealtimeCacheSettingsPage(
     ) {
         Spacer(Modifier.height(8.dp))
         Text(
-            text = "谨慎模式按一周播放采样，满一周后把高于 6.5 分的歌下载到应用本地。实时模式边听边下载，只看这一次：听满 60%（6 分）就留下，不到就删。激进模式一首就边听边下、不评分；占满后按累计听次淘汰听得少的；每周清掉一周没听过的。音质不同算不同条目。不是 Download 目录。关闭后不再采样、也不再用这套缓存播放。",
+            text = t("谨慎模式按一周播放采样，满一周后把高于 6.5 分的歌下载到应用本地。实时模式边听边下载，只看这一次：听满 60%（6 分）就留下，不到就删。激进模式一首就边听边下、不评分；占满后按累计听次淘汰听得少的；每周清掉一周没听过的。音质不同算不同条目。不是 Download 目录。关闭后不再采样、也不再用这套缓存播放。"),
             style = TextStyle(
                 color = MainPalette.Secondary,
                 fontSize = 13.sp,
@@ -111,7 +112,7 @@ fun RealtimeCacheSettingsPage(
         ) {
             Column(Modifier.weight(1f)) {
                 Text(
-                    text = "实时缓存",
+                    text = t("实时缓存"),
                     style = TextStyle(
                         color = MainPalette.Ink,
                         fontSize = 15.sp,
@@ -120,9 +121,9 @@ fun RealtimeCacheSettingsPage(
                 )
                 Text(
                     text = if (enabled) {
-                        "已开启 · ${mode.title}模式"
+                        t("已开启 · %s模式", mode.title)
                     } else {
-                        "已关闭 · 不采样不走本地缓存"
+                        t("已关闭 · 不采样不走本地缓存")
                     },
                     style = TextStyle(
                         color = MainPalette.Secondary,
@@ -139,7 +140,7 @@ fun RealtimeCacheSettingsPage(
         }
         Spacer(Modifier.height(18.dp))
         Text(
-            text = "模式",
+            text = t("模式"),
             style = sectionTitle(),
             modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
         )
@@ -159,14 +160,14 @@ fun RealtimeCacheSettingsPage(
         }
         Spacer(Modifier.height(18.dp))
         Text(
-            text = "占用",
+            text = t("占用"),
             style = sectionTitle(),
             modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
         )
         OccupancyCard(occupancy = occupancy, mode = mode)
         Spacer(Modifier.height(18.dp))
         Text(
-            text = "空间上限",
+            text = t("空间上限"),
             style = sectionTitle(),
             modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
         )
@@ -177,7 +178,7 @@ fun RealtimeCacheSettingsPage(
                 .padding(horizontal = 16.dp, vertical = 14.dp),
         ) {
             Text(
-                text = "数值和单位都可以改。写入时按这个上限实时卡住，超出就从评分低的开始排除。",
+                text = t("数值和单位都可以改。写入时按这个上限实时卡住，超出就从评分低的开始排除。"),
                 style = TextStyle(
                     color = MainPalette.Secondary,
                     fontSize = 12.sp,
@@ -227,7 +228,7 @@ fun RealtimeCacheSettingsPage(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "清空缓存",
+                text = t("清空缓存"),
                 style = TextStyle(
                     color = MainPalette.Accent,
                     fontSize = 15.sp,
@@ -236,7 +237,7 @@ fun RealtimeCacheSettingsPage(
                 modifier = Modifier.weight(1f),
             )
             Text(
-                text = if (occupancy.fileCount > 0) "${occupancy.fileCount} 首" else "空",
+                text = if (occupancy.fileCount > 0) t("%s 首", occupancy.fileCount) else t("空"),
                 style = TextStyle(
                     color = MainPalette.Secondary,
                     fontSize = 13.sp,
@@ -244,7 +245,7 @@ fun RealtimeCacheSettingsPage(
             )
         }
         Text(
-            text = "只清应用内音频文件，播放原数据不会删。",
+            text = t("只清应用内音频文件，播放原数据不会删。"),
             style = TextStyle(
                 color = MainPalette.Hint,
                 fontSize = 12.sp,
@@ -255,9 +256,9 @@ fun RealtimeCacheSettingsPage(
     }
     if (confirmClear) {
         GlassAlertDialog(
-            title = "清空实时缓存",
-            message = "会删除应用本地已下载的缓存音频，播放记录仍保留。",
-            confirmLabel = "清空",
+            title = t("清空实时缓存"),
+            message = t("会删除应用本地已下载的缓存音频，播放记录仍保留。"),
+            confirmLabel = t("清空"),
             confirmDestructive = true,
             onConfirm = {
                 confirmClear = false
@@ -339,16 +340,16 @@ private fun OccupancyCard(occupancy: RealtimeCacheOccupancy, mode: RealtimeCache
                 text = when {
                     occupancy.downloading &&
                         (mode == RealtimeCacheMode.Realtime || mode == RealtimeCacheMode.Aggressive) ->
-                        "正在边听边缓存"
-                    occupancy.downloading -> "正在补下载"
+                        t("正在边听边缓存")
+                    occupancy.downloading -> t("正在补下载")
                     occupancy.enabled && mode == RealtimeCacheMode.Aggressive ->
-                        "激进缓存 · ${occupancy.fileCount} 首"
+                        t("激进缓存 · %s 首", occupancy.fileCount)
                     occupancy.enabled && mode == RealtimeCacheMode.Realtime ->
-                        "边听边缓存 · ${occupancy.fileCount} 首"
+                        t("边听边缓存 · %s 首", occupancy.fileCount)
                     occupancy.enabled && occupancy.canDownload ->
-                        "已用 ${(ratio * 100).toInt()}% · ${occupancy.fileCount} 首"
-                    occupancy.enabled -> "采样未满一周，暂不下载"
-                    else -> "功能已关闭 · 占用仍显示"
+                        t("已用 %s%% · %s 首", (ratio * 100).toInt(), occupancy.fileCount)
+                    occupancy.enabled -> t("采样未满一周，暂不下载")
+                    else -> t("功能已关闭 · 占用仍显示")
                 },
                 style = TextStyle(
                     color = MainPalette.Secondary,
@@ -397,7 +398,7 @@ private fun ModeChip(
         )
         if (!enabled) {
             Text(
-                text = "暂不可用",
+                text = t("暂不可用"),
                 style = TextStyle(
                     color = MainPalette.Hint,
                     fontSize = 10.sp,

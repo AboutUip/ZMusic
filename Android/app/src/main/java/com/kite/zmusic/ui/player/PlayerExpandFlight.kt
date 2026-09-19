@@ -114,6 +114,7 @@ internal fun PlayerExpandFlightLayer(
                         translationY = move.y
                         scaleX = scale
                         scaleY = scale
+                        rotationZ = flightVinylRotationDeg(p, expand.flightSpinFromDeg)
                         clip = false
                         shadowElevation = 0f
                     },
@@ -190,6 +191,9 @@ internal fun PlayerExpandFlightLayer(
         }
 
         if (miniPlay.isAnchorValid()) {
+            val playClicks = remember { MutableInteractionSource() }
+            // 交接后飞层 alpha=0 仍停在播放键位置；clickable 不能留着，否则会点穿底部面板。
+            val playFlyLive = expand.flightAlpha > 0.01f
             Box(
                 Modifier
                     .size(
@@ -211,10 +215,16 @@ internal fun PlayerExpandFlightLayer(
                     .drawBehind {
                         drawCircle(lerpColor(Color.Transparent, playFill, p))
                     }
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = onTogglePlay,
+                    .then(
+                        if (playFlyLive) {
+                            Modifier.clickable(
+                                interactionSource = playClicks,
+                                indication = null,
+                                onClick = onTogglePlay,
+                            )
+                        } else {
+                            Modifier
+                        },
                     ),
                 contentAlignment = Alignment.Center,
             ) {

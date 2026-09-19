@@ -27,6 +27,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.kite.zmusic.i18n.t
 
 private val SelectBarLabel = Color(0xFFF4F0E8)
 private val SelectBarAccent = Color(0xFF9AF0F0)
@@ -61,14 +62,14 @@ fun PortraitLyricSelectBar(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         PortraitSelectBarButton(
-            label = "取消",
+            label = t("取消"),
             enabled = true,
             accent = false,
             onClick = onCancel,
             modifier = Modifier.weight(1f),
         )
         PortraitSelectBarButton(
-            label = if (selectedCount > 0) "复制 ($selectedCount)" else "复制",
+            label = if (selectedCount > 0) t("复制 (%s)", selectedCount) else t("复制"),
             enabled = copyEnabled,
             accent = true,
             onClick = onCopy,

@@ -80,6 +80,7 @@ import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
+import com.kite.zmusic.i18n.t
 
 private val PreviewShape = RoundedCornerShape(16.dp)
 private val ChipShape = RoundedCornerShape(percent = 50)
@@ -225,7 +226,7 @@ fun LiquidGlassStylePage(
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    text = if (dirty) "应用" else "已是当前样式",
+                    text = if (dirty) t("应用") else t("已是当前样式"),
                     style = TextStyle(
                         color = if (dirty) Color.White else MainPalette.Secondary,
                         fontSize = 16.sp,
@@ -247,9 +248,9 @@ fun LiquidGlassStylePage(
 private fun GlassHintCopy(reveal: Float, compact: Boolean = false) {
     Text(
         text = if (compact) {
-            "拖预览条看折射；磨砂只模糊；纯色不透底。"
+            t("拖预览条看折射；磨砂只模糊；纯色不透底。")
         } else {
-            "拖一拖预览条，看它怎么盖在画面上。液态会折射；磨砂只做普通模糊；纯色不再透出背景。"
+            t("拖一拖预览条，看它怎么盖在画面上。液态会折射；磨砂只做普通模糊；纯色不再透出背景。")
         },
         style = TextStyle(
             color = MainPalette.Secondary,
@@ -282,7 +283,7 @@ private fun GlassControls(
     compact: Boolean = false,
 ) {
     Column(Modifier.fillMaxWidth()) {
-    SettingsHintLabel("模式", reveal, 0.06f)
+    SettingsHintLabel(t("模式"), reveal, 0.06f)
     GlassModePicker(
         selected = style.mode,
         onSelect = onMode,
@@ -294,7 +295,7 @@ private fun GlassControls(
         },
     )
     Spacer(Modifier.height(if (compact) 12.dp else 18.dp))
-    SettingsHintLabel("参数", reveal, 0.12f)
+    SettingsHintLabel(t("参数"), reveal, 0.12f)
     Column(
         Modifier
             .fillMaxWidth()
@@ -306,7 +307,7 @@ private fun GlassControls(
             .wallpaperItemChrome(CardShape),
     ) {
         GlassSliderRow(
-            title = "折射率",
+            title = t("折射率"),
             valueLabel = ChromeGlassStyle.formatRefraction(style.refraction),
             value = style.refraction,
             valueRange = ChromeGlassStyle.REFRACTION_MIN..ChromeGlassStyle.REFRACTION_MAX,
@@ -323,7 +324,7 @@ private fun GlassControls(
                 .background(MainPalette.Hairline),
         )
         GlassSliderRow(
-            title = "模糊程度",
+            title = t("模糊程度"),
             valueLabel = ChromeGlassStyle.formatBlurPercent(style.blur),
             value = style.blur,
             valueRange = 0f..1f,
@@ -343,7 +344,7 @@ private fun GlassResetLink(
     modifier: Modifier = Modifier,
 ) {
     Text(
-        text = "恢复默认",
+        text = t("恢复默认"),
         modifier = modifier
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -425,7 +426,7 @@ private fun GlassPreviewCard(
         ) {
             Image(
                 painter = painterResource(R.drawable.img_glass_preview),
-                contentDescription = "液态玻璃预览画布",
+                contentDescription = t("液态玻璃预览画布"),
                 modifier = Modifier
                     .fillMaxSize()
                     .layerBackdrop(backdrop),

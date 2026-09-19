@@ -53,6 +53,7 @@ import dev.chrisbanes.haze.HazeStyle
 import dev.chrisbanes.haze.HazeTint
 import dev.chrisbanes.haze.hazeEffect
 import kotlin.math.roundToInt
+import com.kite.zmusic.i18n.t
 
 private val EditorLabel = Color(0xFFFFFFFF)
 private val EditorHint = Color(0xFFE8F0F8)
@@ -277,7 +278,7 @@ fun PortraitLyricStyleEditorOverlay(
                                 ),
                             )
                             Text(
-                                text = "歌词样式",
+                                text = t("歌词样式"),
                                 style = TextStyle(
                                     color = EditorLabel,
                                     fontFamily = FontFamily.SansSerif,
@@ -314,7 +315,7 @@ fun PortraitLyricStyleEditorOverlay(
                         verticalArrangement = Arrangement.spacedBy(14.dp),
                     ) {
                         Text(
-                            text = "显示与间距 · 关闭后应用",
+                            text = t("显示与间距 · 关闭后应用"),
                             style = TextStyle(
                                 color = EditorHint.copy(alpha = 0.72f),
                                 fontFamily = FontFamily.Monospace,
@@ -334,21 +335,21 @@ fun PortraitLyricStyleEditorOverlay(
                         )
 
                         LyricRoleStyleSection(
-                            title = "播放中歌词",
+                            title = t("播放中歌词"),
                             role = LyricStyleRole.Playing,
                             style = draftPlaying,
                             switchColors = switchColors,
                             onChange = onDraftPlayingChange,
                         )
                         LyricRoleStyleSection(
-                            title = "已播放歌词",
+                            title = t("已播放歌词"),
                             role = LyricStyleRole.Played,
                             style = draftPlayed,
                             switchColors = switchColors,
                             onChange = onDraftPlayedChange,
                         )
                         LyricRoleStyleSection(
-                            title = "未播放歌词",
+                            title = t("未播放歌词"),
                             role = LyricStyleRole.Unplayed,
                             style = draftUnplayed,
                             switchColors = switchColors,
@@ -394,7 +395,7 @@ private fun PortraitLyricLayoutSection(
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Text(
-            text = "通用布局",
+            text = t("通用布局"),
             style = TextStyle(
                 color = EditorLabel,
                 fontFamily = FontFamily.SansSerif,
@@ -403,7 +404,7 @@ private fun PortraitLyricLayoutSection(
             ),
         )
         PortraitLayoutSliderRow(
-            title = "已播放歌词数",
+            title = t("已播放歌词数"),
             valueLabel = played.toString(),
             value = played.toFloat(),
             valueRange = PlayerDisplayPrefs.LYRIC_AROUND_MIN.toFloat()..
@@ -421,7 +422,7 @@ private fun PortraitLyricLayoutSection(
             },
         )
         PortraitLayoutSliderRow(
-            title = "未播放歌词数",
+            title = t("未播放歌词数"),
             valueLabel = upcoming.toString(),
             value = upcoming.toFloat(),
             valueRange = PlayerDisplayPrefs.LYRIC_AROUND_MIN.toFloat()..
@@ -439,7 +440,7 @@ private fun PortraitLyricLayoutSection(
             },
         )
         PortraitLayoutSliderRow(
-            title = "歌词行间距",
+            title = t("歌词行间距"),
             valueLabel = String.format("%.0f", spacing),
             value = spacing,
             valueRange = PlayerDisplayPrefs.LINE_SPACING_MIN..PlayerDisplayPrefs.LINE_SPACING_MAX,
@@ -448,7 +449,7 @@ private fun PortraitLyricLayoutSection(
             onValueChange = onLineSpacingChange,
         )
         Text(
-            text = "播放中歌词始终垂直居中",
+            text = t("播放中歌词始终垂直居中"),
             style = TextStyle(
                 color = EditorHint.copy(alpha = 0.62f),
                 fontFamily = FontFamily.Monospace,

@@ -2,6 +2,7 @@ package com.kite.zmusic.data
 
 import org.json.JSONArray
 import org.json.JSONObject
+import com.kite.zmusic.i18n.t
 
 internal object AnnualReportParse {
     private val SkipKeys = setOf(
@@ -154,14 +155,14 @@ internal object AnnualReportParse {
 
     private fun harvestFact(obj: JSONObject, acc: Acc, path: String) {
         if (acc.facts.size >= 8 || looksLikeItemPath(path)) return
-        textOf(obj, "period")?.let { acc.facts += AnnualFact("常听时段", it) }
+        textOf(obj, "period")?.let { acc.facts += AnnualFact(t("常听时段"), it) }
         textOf(obj, "style", "musicStyle", "genre")?.let { name ->
             if (acc.styles.none { it.name == name }) {
                 acc.styles += AnnualStyle(name, 0L)
             }
         }
-        textOf(obj, "city", "cityName")?.let { acc.facts += AnnualFact("常听城市", it) }
-        textOf(obj, "firstListen", "firstPlaySong")?.let { acc.facts += AnnualFact("年初第一首", it) }
+        textOf(obj, "city", "cityName")?.let { acc.facts += AnnualFact(t("常听城市"), it) }
+        textOf(obj, "firstListen", "firstPlaySong")?.let { acc.facts += AnnualFact(t("年初第一首"), it) }
     }
 
     private fun asSong(obj: JSONObject, path: String): AnnualSong? {

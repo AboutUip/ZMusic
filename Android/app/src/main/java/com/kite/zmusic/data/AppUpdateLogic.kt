@@ -1,5 +1,7 @@
 package com.kite.zmusic.data
 
+import com.kite.zmusic.i18n.t
+
 object AppUpdateLogic {
     fun compareVersions(left: String, right: String): Int {
         val a = parts(ChangelogRoster.normalizeVersion(left))
@@ -69,9 +71,9 @@ object AppUpdateLogic {
     fun progressMessage(version: String, received: Long, total: Long): String {
         if (total > 0L) {
             val pct = ((received * 100L) / total).toInt().coerceIn(0, 100)
-            return "正在下载 $version · $pct%"
+            return t("正在下载 %s · %s%%", version, pct)
         }
-        return "正在下载 $version"
+        return t("正在下载 %s", version)
     }
 
     fun downloadFailMessage(err: Throwable): String {
@@ -81,15 +83,15 @@ object AppUpdateLogic {
             .orEmpty()
         return when {
             raw.contains("ApkDownloadForbidden", ignoreCase = true) ->
-                "安装包无法从对象存储直接下载"
-            raw.contains("sha256", ignoreCase = true) -> "更新包校验失败"
-            raw.contains("size mismatch", ignoreCase = true) -> "更新包大小不符"
-            else -> "更新下载失败"
+                t("安装包无法从对象存储直接下载")
+            raw.contains("sha256", ignoreCase = true) -> t("更新包校验失败")
+            raw.contains("size mismatch", ignoreCase = true) -> t("更新包大小不符")
+            else -> t("更新下载失败")
         }
     }
 
     fun dialogTitle(version: String): String =
-        "ZMusic新版本v${ChangelogRoster.normalizeVersion(version)}"
+        t("ZMusic新版本v%s", ChangelogRoster.normalizeVersion(version))
 
     private fun parts(version: String): IntArray {
         val out = intArrayOf(0, 0, 0)

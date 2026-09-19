@@ -2,6 +2,7 @@ package com.kite.zmusic.data
 
 import java.util.Calendar
 import java.util.TimeZone
+import com.kite.zmusic.i18n.t
 
 data class AnnualSong(
     val id: Long,
@@ -103,9 +104,9 @@ internal object AnnualReportLogic {
 
     fun emptyHint(year: Int): String =
         if (hasClassicYearbook(year)) {
-            "这一年还没有可展示的听歌记录"
+            t("这一年还没有可展示的听歌记录")
         } else {
-            "网易官方年报目前做到 $CLASSIC_MAX_YEAR。$year 只能靠听歌足迹，这次没有拿到记录。"
+            t("网易官方年报目前做到 %s。%s 只能靠听歌足迹，这次没有拿到记录。", CLASSIC_MAX_YEAR, year)
         }
 
     fun availableYears(calendarYear: Int, month1to12: Int): List<Int> {
@@ -172,19 +173,7 @@ internal object AnnualReportLogic {
         )
     }
 
-    fun formatCount(n: Long): String {
-        if (n < 10_000L) return n.toString()
-        if (n < 100_000_000L) {
-            val wan = n / 10_000.0
-            val text = if (wan >= 100.0) {
-                wan.toInt().toString()
-            } else {
-                trimDecimal(wan)
-            }
-            return "${text}万"
-        }
-        return "${trimDecimal(n / 100_000_000.0)}亿"
-    }
+    fun formatCount(n: Long): String = com.kite.zmusic.i18n.I18n.formatCompactCount(n)
 
     private fun trimDecimal(value: Double): String {
         val scaled = kotlin.math.round(value * 10.0) / 10.0
@@ -200,12 +189,12 @@ internal object AnnualReportLogic {
         val peak = hours.maxByOrNull { it.playCount } ?: return null
         if (peak.playCount <= 0L) return null
         return when (peak.hour) {
-            in 0..4 -> "凌晨 ${peak.hour} 点"
-            in 5..10 -> "早晨 ${peak.hour} 点"
-            in 11..13 -> "正午 ${peak.hour} 点"
-            in 14..17 -> "午后 ${peak.hour} 点"
-            in 18..21 -> "傍晚 ${peak.hour} 点"
-            else -> "夜里 ${peak.hour} 点"
+            in 0..4 -> t("凌晨 %s 点", peak.hour)
+            in 5..10 -> t("早晨 %s 点", peak.hour)
+            in 11..13 -> t("正午 %s 点", peak.hour)
+            in 14..17 -> t("午后 %s 点", peak.hour)
+            in 18..21 -> t("傍晚 %s 点", peak.hour)
+            else -> t("夜里 %s 点", peak.hour)
         }
     }
 

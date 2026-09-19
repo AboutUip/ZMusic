@@ -74,6 +74,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.kite.zmusic.i18n.t
 
 private val TransferLabel get() = MainPalette.Ink
 private val TransferHint get() = MainPalette.Secondary
@@ -182,7 +183,7 @@ fun rememberPlayerDisplayTransferHost(
                 PlayerDisplayQr.decodeUri(context, uri)
             }
             if (text.isNullOrBlank()) {
-                toast("未识别到二维码，请换一张更清晰的图片")
+                toast(t("未识别到二维码，请换一张更清晰的图片"))
                 return@launch
             }
             PlayerDisplayPrefsCodec.decode(text).fold(
@@ -191,7 +192,7 @@ fun rememberPlayerDisplayTransferHost(
                     openPhase(TransferPhase.ImportConfirm(imported))
                 },
                 onFailure = { e ->
-                    toast(e.message?.takeIf { it.isNotBlank() } ?: "配置解析失败")
+                    toast(e.message?.takeIf { it.isNotBlank() } ?: t("配置解析失败"))
                 },
             )
         }
@@ -209,7 +210,7 @@ fun rememberPlayerDisplayTransferHost(
         if (granted) {
             scannerOpen = true
         } else {
-            toast("需要相机权限才能扫码")
+            toast(t("需要相机权限才能扫码"))
         }
     }
 
@@ -236,8 +237,8 @@ fun rememberPlayerDisplayTransferHost(
             ),
         ) {
             QrScannerOverlay(
-                title = "扫描配置二维码",
-                subtitle = "将二维码置于框内即可自动识别",
+                title = t("扫描配置二维码"),
+                subtitle = t("将二维码置于框内即可自动识别"),
                 onDetected = { raw ->
                     PlayerDisplayPrefsCodec.decode(raw).fold(
                         onSuccess = { imported ->
@@ -246,7 +247,7 @@ fun rememberPlayerDisplayTransferHost(
                             true
                         },
                         onFailure = { e ->
-                            toast(e.message?.takeIf { it.isNotBlank() } ?: "配置解析失败")
+                            toast(e.message?.takeIf { it.isNotBlank() } ?: t("配置解析失败"))
                             false
                         },
                     )
@@ -318,7 +319,7 @@ fun rememberPlayerDisplayTransferHost(
                                             phase = TransferPhase.Hidden
                                             visible = false
                                             scope.launch { panelT.snapTo(0f) }
-                                            toast("导入完成")
+                                            toast(t("导入完成"))
                                         },
                                     )
                                 }
@@ -331,7 +332,7 @@ fun rememberPlayerDisplayTransferHost(
                             TransferPhase.Export -> ExportPanelContent(
                                 prefs = prefsSnapshot.value,
                                 onCancel = { requestCloseTransfer() },
-                                onSaved = { toast("已保存到相册") },
+                                onSaved = { toast(t("已保存到相册")) },
                                 onSaveFailed = { toast(it) },
                             )
                             TransferPhase.ImportChooser -> ImportChooserContent(
@@ -411,7 +412,7 @@ private fun ExportPanelContent(
                 PlayerDisplayQr.encodeBitmap(PlayerDisplayPrefsCodec.encode(prefs), qrSizePx)
             }.getOrNull()
         }
-        if (qrBitmap == null) onSaveFailed("生成二维码失败")
+        if (qrBitmap == null) onSaveFailed(t("生成二维码失败"))
     }
 
     Column(
@@ -422,10 +423,10 @@ private fun ExportPanelContent(
     ) {
         TransferEyebrow("EXPORT")
         Spacer(Modifier.height(4.dp))
-        TransferTitle("导出配置")
+        TransferTitle(t("导出配置"))
         Spacer(Modifier.height(8.dp))
         Text(
-            text = "扫描此码可导入全部横屏播放配置",
+            text = t("扫描此码可导入全部横屏播放配置"),
             style = TextStyle(
                 color = TransferHint.copy(alpha = 0.62f),
                 fontFamily = FontFamily.SansSerif,
@@ -446,11 +447,11 @@ private fun ExportPanelContent(
             if (bmp != null) {
                 Image(
                     bitmap = bmp.asImageBitmap(),
-                    contentDescription = "配置二维码",
+                    contentDescription = t("配置二维码"),
                     modifier = Modifier.fillMaxSize(),
                 )
             } else {
-                Text(text = "生成中…", color = Color.Black.copy(alpha = 0.45f), fontSize = 13.sp)
+                Text(text = t("生成中…"), color = Color.Black.copy(alpha = 0.45f), fontSize = 13.sp)
             }
         }
         Spacer(Modifier.weight(1f))
@@ -459,12 +460,12 @@ private fun ExportPanelContent(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             TransferSecondaryButton(
-                label = "取消",
+                label = t("取消"),
                 onClick = onCancel,
                 modifier = Modifier.weight(1f),
             )
             TransferPrimaryButton(
-                label = if (saving) "保存中…" else "保存到相册",
+                label = if (saving) t("保存中…") else t("保存到相册"),
                 enabled = bmp != null && !saving,
                 modifier = Modifier.weight(1f),
                 onClick = {
@@ -481,7 +482,7 @@ private fun ExportPanelContent(
                         saving = false
                         result.fold(
                             onSuccess = { onSaved() },
-                            onFailure = { onSaveFailed(it.message ?: "保存失败") },
+                            onFailure = { onSaveFailed(it.message ?: t("保存失败")) },
                         )
                     }
                 },
@@ -505,10 +506,10 @@ private fun ImportChooserContent(
     ) {
         TransferEyebrow("IMPORT")
         Spacer(Modifier.height(4.dp))
-        TransferTitle("导入配置")
+        TransferTitle(t("导入配置"))
         Spacer(Modifier.height(8.dp))
         Text(
-            text = "选择相机扫码或从相册选取二维码图片",
+            text = t("选择相机扫码或从相册选取二维码图片"),
             style = TextStyle(
                 color = TransferHint.copy(alpha = 0.62f),
                 fontFamily = FontFamily.SansSerif,
@@ -517,11 +518,11 @@ private fun ImportChooserContent(
             textAlign = TextAlign.Center,
         )
         Spacer(Modifier.weight(1f))
-        TransferPrimaryButton(label = "使用相机扫描", onClick = onCamera)
+        TransferPrimaryButton(label = t("使用相机扫描"), onClick = onCamera)
         Spacer(Modifier.height(8.dp))
-        TransferPrimaryButton(label = "从相册选择", onClick = onGallery)
+        TransferPrimaryButton(label = t("从相册选择"), onClick = onGallery)
         Spacer(Modifier.height(8.dp))
-        TransferSecondaryButton(label = "取消", onClick = onCancel)
+        TransferSecondaryButton(label = t("取消"), onClick = onCancel)
         Spacer(Modifier.weight(1f))
     }
 }
@@ -536,10 +537,10 @@ private fun ImportConfirmContent(onYes: () -> Unit, onNo: () -> Unit) {
     ) {
         TransferEyebrow("IMPORT")
         Spacer(Modifier.height(4.dp))
-        TransferTitle("已获取配置")
+        TransferTitle(t("已获取配置"))
         Spacer(Modifier.height(12.dp))
         Text(
-            text = "是否采用并覆盖当前横屏播放页全部配置？\n此操作不可撤销。",
+            text = t("是否采用并覆盖当前横屏播放页全部配置？\n此操作不可撤销。"),
             style = TextStyle(
                 color = TransferHint.copy(alpha = 0.72f),
                 fontFamily = FontFamily.SansSerif,
@@ -549,9 +550,9 @@ private fun ImportConfirmContent(onYes: () -> Unit, onNo: () -> Unit) {
             textAlign = TextAlign.Center,
         )
         Spacer(Modifier.weight(1f))
-        TransferPrimaryButton(label = "是，立即采用", onClick = onYes)
+        TransferPrimaryButton(label = t("是，立即采用"), onClick = onYes)
         Spacer(Modifier.height(8.dp))
-        TransferSecondaryButton(label = "否", onClick = onNo)
+        TransferSecondaryButton(label = t("否"), onClick = onNo)
         Spacer(Modifier.weight(1f))
     }
 }
@@ -591,7 +592,7 @@ private fun ImportApplyingContent(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        TransferTitle("正在导入")
+        TransferTitle(t("正在导入"))
         Spacer(Modifier.height(18.dp))
         Box(
             Modifier
@@ -610,7 +611,7 @@ private fun ImportApplyingContent(
         }
         Spacer(Modifier.height(12.dp))
         Text(
-            text = "配置动画覆盖中，请稍候…",
+            text = t("配置动画覆盖中，请稍候…"),
             style = TextStyle(
                 color = TransferHint.copy(alpha = 0.62f),
                 fontFamily = FontFamily.SansSerif,

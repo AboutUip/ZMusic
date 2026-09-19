@@ -65,6 +65,7 @@ import com.kite.zmusic.ui.icons.ZIcons
 import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.notice.showIslandNotice
 import kotlinx.coroutines.launch
+import com.kite.zmusic.i18n.t
 
 @Composable
 internal fun LibraryCollectionAllScreen(
@@ -98,7 +99,7 @@ internal fun LibraryCollectionAllScreen(
     val keyboard = LocalSoftwareKeyboardController.current
     val searchFocus = remember { FocusRequester() }
     val listState = rememberLazyListState()
-    val title = if (albums) "收藏的专辑" else "收藏的歌单"
+    val title = if (albums) t("收藏的专辑") else t("收藏的歌单")
     val q = query.trim()
 
     LaunchedEffect(albums, ui.albumsHasMore, ui.albumsLoadingMore, ui.albumsLoading, ui.albums.size) {
@@ -168,7 +169,7 @@ internal fun LibraryCollectionAllScreen(
             ) {
                 Icon(
                     imageVector = ZIcons.Back,
-                    contentDescription = "返回",
+                    contentDescription = t("返回"),
                     tint = MainPalette.Ink,
                     modifier = Modifier.size(22.dp),
                 )
@@ -187,9 +188,9 @@ internal fun LibraryCollectionAllScreen(
             Text(
                 text = if (albums) {
                     val total = ui.albumsTotal.takeIf { it > 0 } ?: ui.albums.size
-                    "$total 张"
+                    t("%s 张", total)
                 } else {
-                    "${collected.size} 个"
+                    t("%s 个", collected.size)
                 },
                 style = TextStyle(
                     color = MainPalette.Hint,
@@ -202,7 +203,7 @@ internal fun LibraryCollectionAllScreen(
         CollectionAllSearchBar(
             query = query,
             onQueryChange = { query = it },
-            placeholder = if (albums) "搜索专辑" else "搜索歌单",
+            placeholder = if (albums) t("搜索专辑") else t("搜索歌单"),
             focusRequester = searchFocus,
             onClearFocus = {
                 focus.clearFocus(force = true)
@@ -251,7 +252,7 @@ internal fun LibraryCollectionAllScreen(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = if (q.isEmpty()) "还没有收藏的歌单" else "没有匹配的歌单",
+                        text = if (q.isEmpty()) t("还没有收藏的歌单") else t("没有匹配的歌单"),
                         style = TextStyle(color = MainPalette.Hint, fontSize = 14.sp),
                     )
                 }
@@ -265,7 +266,7 @@ internal fun LibraryCollectionAllScreen(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = if (q.isEmpty()) "还没有收藏的专辑" else "没有匹配的专辑",
+                        text = if (q.isEmpty()) t("还没有收藏的专辑") else t("没有匹配的专辑"),
                         style = TextStyle(color = MainPalette.Hint, fontSize = 14.sp),
                     )
                 }
@@ -289,10 +290,9 @@ internal fun LibraryCollectionAllScreen(
                                 entries = playlistHits.map { pl ->
                                     LibraryCollectionEntry(
                                         title = pl.name,
-                                        subtitle = "${pl.trackCount} 首 · 播放 ${formatPlayCount(pl.playCount)}",
+                                        subtitle = t("%s 首 · 播放 %s", pl.trackCount, formatPlayCount(pl.playCount)),
                                         coverUrl = pl.resolvedCoverUrl(),
                                         onOpen = {
-                                            app.recentCollectionStore.touchPlaylist(pl.id)
                                             onOpenPlaylist(pl)
                                         },
                                         onMore = { morePlaylist = pl },
@@ -305,7 +305,7 @@ internal fun LibraryCollectionAllScreen(
                                 entries = albumHits.map { album ->
                                     val sub = buildList {
                                         album.yearLabel?.let { add(it) }
-                                        if (album.size > 0) add("${album.size}首")
+                                        if (album.size > 0) add(t("%s首", album.size))
                                         album.artist?.takeIf { it.isNotBlank() }?.let { add(it) }
                                     }.joinToString(" · ")
                                     LibraryCollectionEntry(
@@ -313,7 +313,6 @@ internal fun LibraryCollectionAllScreen(
                                         subtitle = sub,
                                         coverUrl = album.coverUrl,
                                         onOpen = {
-                                            app.recentCollectionStore.touchAlbum(album.id)
                                             onOpenAlbum(album)
                                         },
                                     )
@@ -345,11 +344,11 @@ internal fun LibraryCollectionAllScreen(
     morePlaylist?.let { pl ->
         GlassActionSheet(
             title = pl.name,
-            message = "${pl.trackCount} 首",
+            message = t("%s 首", pl.trackCount),
             coverUrl = pl.resolvedCoverUrl(),
             onDismiss = { morePlaylist = null },
             actions = listOf(
-                GlassSheetAction("取消收藏", destructive = true) {
+                GlassSheetAction(t("取消收藏"), destructive = true) {
                     confirmUnsub = pl
                     morePlaylist = null
                 },
@@ -358,9 +357,9 @@ internal fun LibraryCollectionAllScreen(
     }
     confirmUnsub?.let { pl ->
         GlassAlertDialog(
-            title = "取消收藏？",
-            message = "不再收藏「${pl.name}」。",
-            confirmLabel = "取消收藏",
+            title = t("取消收藏？"),
+            message = t("不再收藏「%s」。", pl.name),
+            confirmLabel = t("取消收藏"),
             confirmDestructive = true,
             onConfirm = {
                 confirmUnsub = null
@@ -442,7 +441,7 @@ private fun CollectionAllSearchBar(
             ) {
                 Icon(
                     imageVector = ZIcons.Close,
-                    contentDescription = "清除",
+                    contentDescription = t("清除"),
                     tint = MainPalette.Hint,
                     modifier = Modifier.size(16.dp),
                 )

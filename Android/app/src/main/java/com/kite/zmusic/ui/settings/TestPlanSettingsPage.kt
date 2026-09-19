@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.sp
 import com.kite.zmusic.ui.main.MainControls
 import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.main.wallpaperItemChrome
+import com.kite.zmusic.i18n.t
 
 @Composable
 fun TestPlanSettingsPage(
@@ -44,7 +45,7 @@ fun TestPlanSettingsPage(
     ) {
         Spacer(Modifier.height(8.dp))
         Text(
-            text = "默认关闭。关闭时只提示正式版（Release）。打开后除正式版外，还会收到测试版（Test）更新推送。测试包可能不稳定，只建议参与内测的人打开。",
+            text = t("默认关闭。关闭时只提示正式版（Release）。打开后除正式版外，还会收到测试版（Test）更新推送。测试包可能不稳定，只建议参与内测的人打开。"),
             style = TextStyle(
                 color = MainPalette.Secondary,
                 fontSize = 13.sp,
@@ -56,7 +57,7 @@ fun TestPlanSettingsPage(
         )
         Spacer(Modifier.height(12.dp))
         Text(
-            text = "开关立即保存。本次已打开的更新弹窗不会因此补弹或收起；下次冷启动（经过启动动画）才会按新规则检查。",
+            text = t("开关立即保存。本次已打开的更新弹窗不会因此补弹或收起；下次冷启动（经过启动动画）才会按新规则检查。"),
             style = TextStyle(
                 color = MainPalette.Secondary,
                 fontSize = 13.sp,
@@ -81,7 +82,7 @@ fun TestPlanSettingsPage(
         ) {
             Column(Modifier.weight(1f)) {
                 Text(
-                    text = "参与测试计划",
+                    text = t("参与测试计划"),
                     style = TextStyle(
                         color = MainPalette.Ink,
                         fontSize = 15.sp,
@@ -108,7 +109,7 @@ fun TestPlanSettingsPage(
 
 internal fun testPlanSubtitle(enabled: Boolean): String =
     if (enabled) {
-        "已开启 · 正式版与测试版都会推送"
+        t("已开启 · 正式版与测试版都会推送")
     } else {
-        "已关闭 · 只接收正式版（默认）"
+        t("已关闭 · 只接收正式版（默认）")
     }

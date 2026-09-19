@@ -56,6 +56,8 @@ internal class PersistentPlaybackFocus(
     private var volumeJob: Job? = null
     private var collectJob: Job? = null
     private var callbackRegistered = false
+    /** 彩蛋等叠层压低歌曲；非空时禁止其它路径把音量拉回 1。 */
+    private var overlayDuck: Float? = null
 
     private val focusListener = AudioManager.OnAudioFocusChangeListener { change ->
         onFocusChange(change)
@@ -105,7 +107,15 @@ internal class PersistentPlaybackFocus(
         volumeJob = null
         unregisterPlaybackCallback()
         abandonFocus()
+        overlayDuck = null
         player.volume = 1f
+    }
+
+    fun setOverlayDuck(level: Float?) {
+        overlayDuck = level?.coerceIn(0f, 1f)
+        volumeJob?.cancel()
+        volumeJob = null
+        player.volume = restVolume()
     }
 
     fun setForeignYield(active: Boolean) {
@@ -117,7 +127,7 @@ internal class PersistentPlaybackFocus(
             if (player.playWhenReady) player.pause()
             player.setAudioAttributes(musicAudioAttrs, false)
             abandonFocus()
-            player.volume = 1f
+            player.volume = restVolume()
         } else {
             applyPolicy(enabled)
             if (holdPlayback) ensurePlaying()
@@ -170,13 +180,15 @@ internal class PersistentPlaybackFocus(
     }
 
     fun fadeInFromSilence(durationMs: Long) {
-        fadeVolume(from = 0f, to = 1f, durationMs = durationMs)
+        fadeVolume(from = 0f, to = restVolume(), durationMs = durationMs)
     }
 
     fun snapVolume() {
         if (volumeJob?.isActive == true) return
-        player.volume = 1f
+        player.volume = restVolume()
     }
+
+    private fun restVolume(): Float = overlayDuck ?: 1f
 
     private fun applyPolicy(nextEnabled: Boolean) {
         enabled = nextEnabled
@@ -187,20 +199,20 @@ internal class PersistentPlaybackFocus(
             player.setAudioAttributes(musicAudioAttrs, false)
             unregisterPlaybackCallback()
             abandonFocus()
-            player.volume = 1f
+            player.volume = restVolume()
             return
         }
         if (enabled) {
             // 不让 Exo 处理焦点，也不去抢 AUDIOFOCUS_GAIN，避免成为被系统压着的「前任持有者」。
             player.setAudioAttributes(mixAudioAttrs, false)
             abandonFocus()
-            player.volume = 1f
+            player.volume = restVolume()
             registerPlaybackCallback()
             othersPlaying = otherAppsPlaying(audioManager.activePlaybackConfigurations)
         } else {
             unregisterPlaybackCallback()
             abandonFocus()
-            player.volume = 1f
+            player.volume = restVolume()
             player.setAudioAttributes(musicAudioAttrs, true)
         }
     }
@@ -221,7 +233,7 @@ internal class PersistentPlaybackFocus(
             AudioManager.AUDIOFOCUS_GAIN -> {
                 if (!holdPlayback) return
                 ensurePlaying()
-                if (volumeJob?.isActive != true) player.volume = 1f
+                if (volumeJob?.isActive != true) player.volume = restVolume()
             }
         }
     }
@@ -266,24 +278,29 @@ internal class PersistentPlaybackFocus(
 
     private fun dipThenRestore() {
         if (!enabled || foreignYield || !holdPlayback) return
+        if (overlayDuck != null) {
+            ensurePlaying()
+            player.volume = restVolume()
+            return
+        }
         val now = SystemClock.elapsedRealtime()
         if (now - lastDipAt < DIP_COOLDOWN_MS) {
             ensurePlaying()
-            if (volumeJob?.isActive != true) player.volume = 1f
+            if (volumeJob?.isActive != true) player.volume = restVolume()
             return
         }
         lastDipAt = now
         volumeJob?.cancel()
         volumeJob = scope.launch {
             ensurePlaying()
-            animateVolume(player.volume, DIP_LEVEL, DIP_DOWN_MS)
+            animateVolume(player.volume, overlayDuck ?: DIP_LEVEL, DIP_DOWN_MS)
             if (!isActive) return@launch
             delay(DIP_HOLD_MS)
             if (!isActive) return@launch
             ensurePlaying()
-            animateVolume(player.volume, 1f, DIP_UP_MS)
+            animateVolume(player.volume, restVolume(), DIP_UP_MS)
             if (!isActive) return@launch
-            player.volume = 1f
+            player.volume = restVolume()
         }
     }
 

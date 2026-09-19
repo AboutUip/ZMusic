@@ -30,6 +30,7 @@ import com.kite.zmusic.ui.common.GlassAlertDialog
 import com.kite.zmusic.ui.common.UrlImage
 import com.kite.zmusic.ui.main.MainPalette
 import kotlinx.coroutines.delay
+import com.kite.zmusic.i18n.t
 
 @Composable
 fun ListenMatchHost() {
@@ -53,13 +54,13 @@ fun ListenMatchHost() {
                 }
             }
             GlassAlertDialog(
-                title = "一起听邀请",
-                message = "邀请你加入一起听",
-                confirmLabel = "接受",
+                title = t("一起听邀请"),
+                message = t("邀请你加入一起听"),
+                confirmLabel = t("接受"),
                 onConfirm = { listen.respondInvite(accept = true, today = false) },
                 onDismiss = { listen.respondInvite(accept = false, today = false) },
-                cancelLabel = "拒绝",
-                tertiaryLabel = "当日拒绝",
+                cancelLabel = t("拒绝"),
+                tertiaryLabel = t("当日拒绝"),
                 onTertiary = { listen.respondInvite(accept = false, today = true) },
                 extraContent = { ListenMatchPeerCard(incoming.from) },
                 scrimDismiss = false,
@@ -68,24 +69,24 @@ fun ListenMatchHost() {
         }
         rejected != null -> {
             GlassAlertDialog(
-                title = "邀请被拒绝",
-                message = "是否继续匹配一起听？",
-                confirmLabel = "继续匹配",
+                title = t("邀请被拒绝"),
+                message = t("是否继续匹配一起听？"),
+                confirmLabel = t("继续匹配"),
                 onConfirm = { listen.continueMatch() },
                 onDismiss = { listen.dismissRejected() },
-                cancelLabel = "取消",
+                cancelLabel = t("取消"),
                 extraContent = { ListenMatchPeerCard(rejected.to) },
                 scrimDismiss = false,
             )
         }
         peer != null -> {
             GlassAlertDialog(
-                title = "匹配到一起听",
-                message = "是否向对方发出邀请？",
-                confirmLabel = "发出邀请",
+                title = t("匹配到一起听"),
+                message = t("是否向对方发出邀请？"),
+                confirmLabel = t("发出邀请"),
                 onConfirm = { listen.inviteMatchedPeer() },
                 onDismiss = { listen.dismissMatchPeer() },
-                cancelLabel = "取消",
+                cancelLabel = t("取消"),
                 extraContent = { ListenMatchPeerCard(peer) },
                 scrimDismiss = false,
             )

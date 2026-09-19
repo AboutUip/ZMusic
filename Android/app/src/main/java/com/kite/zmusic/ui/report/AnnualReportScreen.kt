@@ -85,6 +85,7 @@ import com.kite.zmusic.ui.icons.ZIcons
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
+import com.kite.zmusic.i18n.t
 
 private object AnnualTone {
     val Void = Color(0xFF07040C)
@@ -294,7 +295,7 @@ private fun CoverPage(
                 Text("ANNUAL PRESSING", style = Kicker)
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    text = nickname?.takeIf { it.isNotBlank() } ?: "未署名",
+                    text = nickname?.takeIf { it.isNotBlank() } ?: t("未署名"),
                     color = AnnualTone.Paper,
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Medium,
@@ -356,17 +357,17 @@ private fun CoverPage(
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     report.listenDurationMs?.let {
-                        MetaChip("${AnnualReportLogic.durationParts(it).hours} 小时")
+                        MetaChip(t("%s 小时", AnnualReportLogic.durationParts(it).hours))
                     }
-                    report.playCount?.let { MetaChip("${AnnualReportLogic.formatCount(it)} 次") }
-                    report.songCount?.let { MetaChip("${AnnualReportLogic.formatCount(it)} 首") }
+                    report.playCount?.let { MetaChip(t("%s 次", AnnualReportLogic.formatCount(it))) }
+                    report.songCount?.let { MetaChip(t("%s 首", AnnualReportLogic.formatCount(it))) }
                 }
                 Spacer(Modifier.height(12.dp))
                 Text(
                     text = if (report.keyword.isNullOrBlank()) {
-                        "这一年的声音压进这张片子里。"
+                        t("这一年的声音压进这张片子里。")
                     } else {
-                        "关键词 · ${report.keyword}"
+                        t("关键词 · %s", report.keyword)
                     },
                     color = AnnualTone.Paper,
                     fontSize = 18.sp,
@@ -374,7 +375,7 @@ private fun CoverPage(
                     lineHeight = 26.sp,
                 )
                 Spacer(Modifier.height(8.dp))
-                Text("上滑翻开 · 共 ${AnnualReportLogic.chapters(report).size} 面", color = AnnualTone.Mist, fontSize = 12.sp)
+                Text(t("上滑翻开 · 共 %s 面", AnnualReportLogic.chapters(report).size), color = AnnualTone.Mist, fontSize = 12.sp)
             }
         }
     }
@@ -396,7 +397,7 @@ private fun TimePage(
             Column {
                 Text("LISTENING TIME", style = Kicker)
                 Spacer(Modifier.height(4.dp))
-                Text("把一年听成连续的时间", color = AnnualTone.Mist, fontSize = 13.sp)
+                Text(t("把一年听成连续的时间"), color = AnnualTone.Mist, fontSize = 13.sp)
             }
         }
         Appear(current, reduceMotion, 70) {
@@ -412,7 +413,7 @@ private fun TimePage(
                     )
                     Spacer(Modifier.width(10.dp))
                     Text(
-                        text = "小时",
+                        text = t("小时"),
                         color = AnnualTone.Copper,
                         fontSize = 20.sp,
                         modifier = Modifier.padding(bottom = 14.dp),
@@ -422,7 +423,7 @@ private fun TimePage(
                 YearShareBar(share)
                 Spacer(Modifier.height(10.dp))
                 Text(
-                    text = "占一整年 ${yearHours} 小时的 ${trimPct(share)}",
+                    text = t("占一整年 %s 小时的 %s", yearHours, trimPct(share)),
                     color = AnnualTone.Mist,
                     fontSize = 12.sp,
                 )
@@ -431,15 +432,15 @@ private fun TimePage(
         Appear(current, reduceMotion, 140) {
             Column {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    MetaChip("另有 ${parts.minutes} 分钟")
-                    MetaChip("约 ${parts.days} 个整天")
-                    if (parts.hours > 0L) MetaChip("日均 ${maxOf(1L, parts.hours / 365L)} 小时")
+                    MetaChip(t("另有 %s 分钟", parts.minutes))
+                    MetaChip(t("约 %s 个整天", parts.days))
+                    if (parts.hours > 0L) MetaChip(t("日均 %s 小时", maxOf(1L, parts.hours / 365L)))
                 }
                 Spacer(Modifier.height(18.dp))
                 MonthTicks()
                 Spacer(Modifier.height(16.dp))
                 Text(
-                    text = "时间没有声音。是你把它听成了年。",
+                    text = t("时间没有声音。是你把它听成了年。"),
                     color = AnnualTone.Paper,
                     fontSize = 16.sp,
                     fontFamily = FontFamily.Serif,
@@ -489,7 +490,7 @@ private fun VolumePage(
                 Column {
                     Text("VOLUME", style = Kicker)
                     Spacer(Modifier.height(4.dp))
-                    Text("针压下去的次数，和压过的槽", color = AnnualTone.Mist, fontSize = 13.sp)
+                    Text(t("针压下去的次数，和压过的槽"), color = AnnualTone.Mist, fontSize = 13.sp)
                 }
             }
             Spacer(Modifier.height(14.dp))
@@ -498,22 +499,22 @@ private fun VolumePage(
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    VolumeTile("播放", plays, "次", Modifier.weight(1f))
-                    VolumeTile("不同的歌", songs, "首", Modifier.weight(1f))
-                    VolumeTile("歌手", artists, "位", Modifier.weight(1f))
+                    VolumeTile(t("播放"), plays, t("次"), Modifier.weight(1f))
+                    VolumeTile(t("不同的歌"), songs, t("首"), Modifier.weight(1f))
+                    VolumeTile(t("歌手"), artists, t("位"), Modifier.weight(1f))
                 }
             }
             Spacer(Modifier.height(10.dp))
             Appear(current, reduceMotion, 90) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (perSong > 0f) {
-                        MetaChip("每首约听 ${trimDecimalOne(perSong)} 次")
+                        MetaChip(t("每首约听 %s 次", trimDecimalOne(perSong)))
                     }
                     report.songs.firstOrNull()?.let {
-                        MetaChip("最勤 ${it.name}")
+                        MetaChip(t("最勤 %s", it.name))
                     }
                     if ((report.artistCount ?: 0L) > 0L && (report.songCount ?: 0L) > 0L) {
-                        MetaChip("人均 ${maxOf(1L, (report.songCount ?: 1L) / (report.artistCount ?: 1L))} 首")
+                        MetaChip(t("人均 %s 首", maxOf(1L, (report.songCount ?: 1L) / (report.artistCount ?: 1L))))
                     }
                 }
             }
@@ -542,7 +543,7 @@ private fun VolumePage(
             }
             Appear(current, reduceMotion, 180) {
                 Column {
-                    Text("TOP CUTS 波形", color = AnnualTone.Copper, fontSize = 11.sp, letterSpacing = 2.sp)
+                    Text(t("TOP CUTS 波形"), color = AnnualTone.Copper, fontSize = 11.sp, letterSpacing = 2.sp)
                     Spacer(Modifier.height(8.dp))
                     report.songs.take(7).forEach { song ->
                         MiniWaveRow(song, maxPlay)
@@ -642,7 +643,7 @@ private fun CrownPage(
             }
             Appear(current, reduceMotion, 90) {
                 Column {
-                    Text("这一年听得最多", color = AnnualTone.Copper, fontSize = 13.sp)
+                    Text(t("这一年听得最多"), color = AnnualTone.Copper, fontSize = 13.sp)
                     Spacer(Modifier.height(8.dp))
                     Text(
                         text = song.name,
@@ -653,19 +654,19 @@ private fun CrownPage(
                         lineHeight = 40.sp,
                     )
                     Spacer(Modifier.height(6.dp))
-                    Text(song.artists.ifBlank { "未知歌手" }, color = AnnualTone.Mist, fontSize = 15.sp)
+                    Text(song.artists.ifBlank { t("未知歌手") }, color = AnnualTone.Mist, fontSize = 15.sp)
                     Spacer(Modifier.height(10.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         if (song.playCount > 0L) {
-                            MetaChip("${AnnualReportLogic.formatCount(song.playCount)} 次")
+                            MetaChip(t("%s 次", AnnualReportLogic.formatCount(song.playCount)))
                         }
-                        report.songs.getOrNull(1)?.let { MetaChip("其次 ${it.name}") }
+                        report.songs.getOrNull(1)?.let { MetaChip(t("其次 %s", it.name)) }
                     }
                     Spacer(Modifier.height(18.dp))
                     if (queue.isNotEmpty()) {
-                        PlayChip("从这首开始") {
+                        PlayChip(t("从这首开始")) {
                             val idx = queue.indexOfFirst { it.id == song.id }.coerceAtLeast(0)
-                            onPlayTracks(queue, idx, null, "${report.year} 年度报告")
+                            onPlayTracks(queue, idx, null, t("%s 年度报告", report.year))
                         }
                     }
                 }
@@ -691,7 +692,7 @@ private fun RankPage(
             Column {
                 Text("TOP CUTS", style = Kicker)
                 Spacer(Modifier.height(4.dp))
-                Text("按针落下的次数排", color = AnnualTone.Mist, fontSize = 13.sp)
+                Text(t("按针落下的次数排"), color = AnnualTone.Mist, fontSize = 13.sp)
             }
         }
         Spacer(Modifier.height(14.dp))
@@ -703,7 +704,7 @@ private fun RankPage(
                     maxPlay = maxPlay,
                     onPlay = {
                         val idx = queue.indexOfFirst { it.id == song.id }
-                        if (idx >= 0) onPlayTracks(queue, idx, null, "${report.year} 年度报告")
+                        if (idx >= 0) onPlayTracks(queue, idx, null, t("%s 年度报告", report.year))
                     },
                 )
             }
@@ -750,7 +751,7 @@ private fun RankRow(index: Int, song: AnnualSong, maxPlay: Long, onPlay: () -> U
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    text = song.artists.ifBlank { "未知歌手" },
+                    text = song.artists.ifBlank { t("未知歌手") },
                     color = AnnualTone.Mist,
                     fontSize = 12.sp,
                     maxLines = 1,
@@ -798,14 +799,14 @@ private fun ArtistsPage(
                 Text("PLAYERS", style = Kicker)
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    text = "围着转盘的人",
+                    text = t("围着转盘的人"),
                     color = AnnualTone.Paper,
                     fontSize = 22.sp,
                     fontFamily = FontFamily.Serif,
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    text = "共 ${artists.size} 位 · 点头像可打开",
+                    text = t("共 %s 位 · 点头像可打开", artists.size),
                     color = AnnualTone.Mist,
                     fontSize = 12.sp,
                 )
@@ -925,10 +926,10 @@ private fun StylesPage(
                         fontFamily = FontFamily.Serif,
                         fontWeight = FontWeight.Bold,
                     )
-                    Text("这一年的关键词", color = AnnualTone.Mist, fontSize = 13.sp)
+                    Text(t("这一年的关键词"), color = AnnualTone.Mist, fontSize = 13.sp)
                 } else {
                     Text(
-                        text = "针走过的槽",
+                        text = t("针走过的槽"),
                         color = AnnualTone.Paper,
                         fontSize = 22.sp,
                         fontFamily = FontFamily.Serif,
@@ -1001,7 +1002,7 @@ private fun HoursPage(
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("CLOCK", style = Kicker)
                 Spacer(Modifier.height(4.dp))
-                Text("针最常在哪个钟点落下", color = AnnualTone.Mist, fontSize = 13.sp)
+                Text(t("针最常在哪个钟点落下"), color = AnnualTone.Mist, fontSize = 13.sp)
             }
         }
         Appear(current, reduceMotion, 70) {
@@ -1010,7 +1011,7 @@ private fun HoursPage(
         Appear(current, reduceMotion, 140) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
-                    text = peak?.let { "最常落在$it" } ?: "听歌的钟点散落在一天里",
+                    text = peak?.let { t("最常落在%s", it) } ?: t("听歌的钟点散落在一天里"),
                     color = AnnualTone.Paper,
                     fontSize = 18.sp,
                     fontFamily = FontFamily.Serif,
@@ -1080,7 +1081,7 @@ private fun ClosePage(
                     fontWeight = FontWeight.Bold,
                 )
                 Text(
-                    text = (nickname?.takeIf { it.isNotBlank() } ?: "你") + " 的听歌年",
+                    text = (nickname?.takeIf { it.isNotBlank() } ?: t("你")) + t(" 的听歌年"),
                     color = AnnualTone.Copper,
                     fontSize = 18.sp,
                 )
@@ -1091,16 +1092,16 @@ private fun ClosePage(
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     report.listenDurationMs?.let {
-                        MetaChip("${AnnualReportLogic.durationParts(it).hours} 小时")
+                        MetaChip(t("%s 小时", AnnualReportLogic.durationParts(it).hours))
                     }
-                    report.playCount?.let { MetaChip("${AnnualReportLogic.formatCount(it)} 次") }
+                    report.playCount?.let { MetaChip(t("%s 次", AnnualReportLogic.formatCount(it))) }
                     report.songs.firstOrNull()?.let { MetaChip(it.name) }
                 }
             }
         }
         Appear(current, reduceMotion, 160) {
             Text(
-                text = "片子可以翻面。年份不会。",
+                text = t("片子可以翻面。年份不会。"),
                 color = AnnualTone.Paper,
                 fontSize = 16.sp,
                 fontFamily = FontFamily.Serif,
@@ -1134,7 +1135,7 @@ private fun TopChrome(
         ) {
             Icon(
                 imageVector = ZIcons.Back,
-                contentDescription = "返回",
+                contentDescription = t("返回"),
                 tint = AnnualTone.Paper,
                 modifier = Modifier.size(22.dp),
             )
@@ -1212,7 +1213,7 @@ private fun PlayChip(label: String, onClick: () -> Unit) {
 private fun LoadingPane(modifier: Modifier) {
     Box(modifier, contentAlignment = Alignment.Center) {
         Text(
-            text = "压片中",
+            text = t("压片中"),
             color = AnnualTone.Copper,
             fontFamily = FontFamily.Serif,
             fontSize = 18.sp,
@@ -1242,7 +1243,7 @@ private fun ErrorPane(
         )
         Spacer(Modifier.height(16.dp))
         Text(
-            text = "再试一次",
+            text = t("再试一次"),
             color = AnnualTone.Void,
             fontSize = 13.sp,
             fontWeight = FontWeight.SemiBold,
@@ -1259,7 +1260,7 @@ private fun ErrorPane(
         if (fallbackYear != null) {
             Spacer(Modifier.height(12.dp))
             Text(
-                text = "查看 $fallbackYear",
+                text = t("查看 %s", fallbackYear),
                 color = AnnualTone.Copper,
                 fontSize = 13.sp,
                 modifier = Modifier
@@ -1584,7 +1585,7 @@ private fun dayParts(hours: List<AnnualHourSlot>): List<DayPart> {
         buckets[i] += slot.playCount
     }
     val total = buckets.sum().coerceAtLeast(1L)
-    val names = listOf("凌晨", "上午", "下午", "夜里")
+    val names = listOf(t("凌晨"), t("上午"), t("下午"), t("夜里"))
     return names.mapIndexed { i, name ->
         DayPart(name, "${(buckets[i] * 100L / total)}%")
     }

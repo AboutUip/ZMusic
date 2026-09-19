@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.sp
 import com.kite.zmusic.ui.main.MainControls
 import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.main.wallpaperItemChrome
+import com.kite.zmusic.i18n.t
 
 @Composable
 fun LandscapeModeSettingsPage(
@@ -44,7 +45,7 @@ fun LandscapeModeSettingsPage(
     ) {
         Spacer(Modifier.height(8.dp))
         Text(
-            text = "关闭后，首页、播放页和 MV 上的旋转按钮（含锁定旋转）都会收起。不会把应用锁成只能竖屏。",
+            text = t("关闭后，首页、播放页和 MV 上的旋转按钮（含锁定旋转）都会收起。不会把应用锁成只能竖屏。"),
             style = TextStyle(
                 color = MainPalette.Secondary,
                 fontSize = 13.sp,
@@ -56,7 +57,7 @@ fun LandscapeModeSettingsPage(
         )
         Spacer(Modifier.height(12.dp))
         Text(
-            text = "系统自动旋转仍可进入横屏，横屏界面照常。系统也锁了旋转时，没有应用内按钮可强制转横。关闭时若已钉住方向，会自动解开。",
+            text = t("系统自动旋转仍可进入横屏，横屏界面照常。系统也锁了旋转时，没有应用内按钮可强制转横。关闭时若已钉住方向，会自动解开。"),
             style = TextStyle(
                 color = MainPalette.Secondary,
                 fontSize = 13.sp,
@@ -81,7 +82,7 @@ fun LandscapeModeSettingsPage(
         ) {
             Column(Modifier.weight(1f)) {
                 Text(
-                    text = "横屏模式",
+                    text = t("横屏模式"),
                     style = TextStyle(
                         color = MainPalette.Ink,
                         fontSize = 15.sp,
@@ -108,7 +109,7 @@ fun LandscapeModeSettingsPage(
 
 internal fun landscapeModeSubtitle(enabled: Boolean): String =
     if (enabled) {
-        "已开启 · 显示旋转按钮（默认）"
+        t("已开启 · 显示旋转按钮（默认）")
     } else {
-        "已关闭 · 仅系统自动旋转可横屏"
+        t("已关闭 · 仅系统自动旋转可横屏")
     }

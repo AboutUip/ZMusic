@@ -58,6 +58,7 @@ import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.theme.MainSlider
 import kotlin.math.abs
 import kotlin.math.roundToInt
+import com.kite.zmusic.i18n.t
 
 private val TuneRowShape = RoundedCornerShape(14.dp)
 private val TuneChipShape = RoundedCornerShape(10.dp)
@@ -83,20 +84,20 @@ internal fun PortraitTunePanel(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         TuneSwitchRow(
-            title = "开启调音",
-            subtitle = if (on) "已作用到当前播放" else "关闭时保持原曲",
+            title = t("开启调音"),
+            subtitle = if (on) t("已作用到当前播放") else t("关闭时保持原曲"),
             checked = on,
             switchColors = switchColors,
             onCheckedChange = { store.set(prefs.copy(enabled = it)) },
         )
         if (quality.isSpatial) {
             TuneNote(
-                "当前是${quality.title}。调音按立体声处理，空间环绕可能会变弱或听不出。",
+                t("当前是%s。调音按立体声处理，空间环绕可能会变弱或听不出。", quality.title),
             )
         }
         TuneCard(enabled = on) {
             Text(
-                text = "预设",
+                text = t("预设"),
                 style = TextStyle(
                     color = MainPalette.Ink,
                     fontWeight = FontWeight.SemiBold,
@@ -112,7 +113,7 @@ internal fun PortraitTunePanel(
         }
         TuneCard(enabled = on) {
             Text(
-                text = "均衡器",
+                text = t("均衡器"),
                 style = TextStyle(
                     color = MainPalette.Ink,
                     fontWeight = FontWeight.SemiBold,
@@ -121,7 +122,7 @@ internal fun PortraitTunePanel(
             )
             Spacer(Modifier.height(2.dp))
             Text(
-                text = "拖动柱子，±12 dB",
+                text = t("拖动柱子，±12 dB"),
                 style = TextStyle(
                     color = MainPalette.Secondary,
                     fontSize = 12.sp,
@@ -136,36 +137,36 @@ internal fun PortraitTunePanel(
             )
         }
         TuneSliderRow(
-            title = "低音增强",
+            title = t("低音增强"),
             valueText = pct(prefs.bass),
             value = prefs.bass,
             enabled = on,
             onChange = { store.set(prefs.copy(bass = it)) },
         )
         TuneSliderRow(
-            title = "响度",
+            title = t("响度"),
             valueText = pct(prefs.loudness),
             value = prefs.loudness,
             enabled = on,
             onChange = { store.set(prefs.copy(loudness = it)) },
         )
         TuneSliderRow(
-            title = "压缩",
+            title = t("压缩"),
             valueText = pct(prefs.compress),
             value = prefs.compress,
             enabled = on,
             onChange = { store.set(prefs.copy(compress = it)) },
         )
         TuneSliderRow(
-            title = "混响",
+            title = t("混响"),
             valueText = pct(prefs.reverb),
             value = prefs.reverb,
             enabled = on,
             onChange = { store.set(prefs.copy(reverb = it)) },
         )
         TuneStepperRow(
-            title = "变调",
-            subtitle = if (clockLocked) "一起听进行中，变调已暂停" else "独立于速度，单位半音",
+            title = t("变调"),
+            subtitle = if (clockLocked) t("一起听进行中，变调已暂停") else t("独立于速度，单位半音"),
             valueText = formatSemitones(prefs.pitchSemitones),
             enabled = on && !clockLocked,
             onMinus = {
@@ -176,12 +177,12 @@ internal fun PortraitTunePanel(
             },
         )
         TuneSliderRow(
-            title = "速度",
+            title = t("速度"),
             valueText = "%.2f×".format(prefs.speed),
             value = prefs.speed,
             valueRange = TuneBands.MIN_SPEED..TuneBands.MAX_SPEED,
             enabled = on && !clockLocked,
-            subtitle = if (clockLocked) "一起听进行中，变速已暂停" else null,
+            subtitle = if (clockLocked) t("一起听进行中，变速已暂停") else null,
             onChange = { store.set(prefs.copy(speed = it)) },
         )
         Row(
@@ -198,7 +199,7 @@ internal fun PortraitTunePanel(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "全部复位",
+                text = t("全部复位"),
                 style = TextStyle(
                     color = MainPalette.Ink,
                     fontWeight = FontWeight.SemiBold,
@@ -207,21 +208,21 @@ internal fun PortraitTunePanel(
             )
             Spacer(Modifier.weight(1f))
             Text(
-                text = "恢复原曲",
+                text = t("恢复原曲"),
                 style = TextStyle(
                     color = MainPalette.Secondary,
                     fontSize = 12.sp,
                 ),
             )
         }
-        TuneNote("仅本机生效，不会同步到一起听。杜比等空间音源上可能被跳过。")
+        TuneNote(t("仅本机生效，不会同步到一起听。杜比等空间音源上可能被跳过。"))
     }
 }
 
 private fun pct(v: Float): String = "${(v * 100f).roundToInt()}%"
 
 private fun formatSemitones(n: Int): String = when {
-    n == 0 -> "原调"
+    n == 0 -> t("原调")
     n > 0 -> "+$n"
     else -> "$n"
 }

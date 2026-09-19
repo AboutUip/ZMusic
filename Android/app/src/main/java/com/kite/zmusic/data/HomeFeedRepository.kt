@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import com.kite.zmusic.i18n.t
 
 data class HomeFeed(
     val banners: List<HomeBanner> = emptyList(),
@@ -44,6 +45,7 @@ data class HomeFeed(
 class HomeFeedRepository(
     private val sessionRepository: SessionRepository,
     private val userClient: NcmUserClient,
+    private val fmModeStore: PersonalFmModeStore,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val mutex = Mutex()
@@ -102,7 +104,7 @@ class HomeFeedRepository(
             val session = sessionRepository.session.value
             val cookie = session?.cookie.orEmpty()
             if (cookie.isBlank()) {
-                _feed.update { it.copy(loading = false, refreshing = false, error = "请先登录") }
+                _feed.update { it.copy(loading = false, refreshing = false, error = t("请先登录")) }
                 return
             }
             val keep = _feed.value
@@ -232,7 +234,7 @@ class HomeFeedRepository(
                         listOfNotNull(dailyJson, plJson, bannersJson, dailyPlJson, newSongJson, mvJson, mvFirstJson)
                             .firstOrNull { NcmJson.apiCode(it) !in listOf(200, -1, 0) }
                             ?.let { NcmJson.userFacingMessage(it, "加载失败") }
-                            ?: "暂时没有内容，点这里重试"
+                            ?: t("暂时没有内容，点这里重试")
                     } else {
                         null
                     }
@@ -313,9 +315,9 @@ class HomeFeedRepository(
 
     suspend fun loadPersonalFm(): Pair<List<TrackRow>, String?> {
         val cookie = sessionRepository.session.value?.cookie.orEmpty()
-        if (cookie.isBlank()) return emptyList<TrackRow>() to "请先登录"
+        if (cookie.isBlank()) return emptyList<TrackRow>() to t("请先登录")
         return try {
-            val json = userClient.personalFm(cookie)
+            val json = userClient.personalFm(cookie, fmModeStore.current())
             val tracks = NcmHomeParse.personalFmTracks(json)
             if (tracks.isEmpty()) {
                 emptyList<TrackRow>() to NcmJson.userFacingMessage(json, "暂时没有漫游歌曲")

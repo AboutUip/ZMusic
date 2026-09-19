@@ -15,6 +15,7 @@ import org.json.JSONException
 import org.json.JSONObject
 import java.io.IOException
 import java.util.concurrent.TimeUnit
+import com.kite.zmusic.i18n.t
 
 /**
  * 登录相关：短信 / 密码 / 注册 / 邮箱直连网易；二维码与登录态仍走公益服代理。
@@ -206,7 +207,7 @@ class NcmAuthClient(
                 throw NcmEndpointMissingException()
             }
             NcmLog.w("proxy fail http=${resp.code} len=${text.length} preview=${text.take(400)}")
-            throw IOException("请求失败，请稍后重试")
+            throw IOException(t("请求失败，请稍后重试"))
         }
     }
 
@@ -221,4 +222,4 @@ class NcmAuthClient(
 }
 
 /** 公益服未部署该路由（如部分环境没有 `/captcha/verify`）。 */
-internal class NcmEndpointMissingException : IOException("接口不可用")
+internal class NcmEndpointMissingException : IOException(t("接口不可用"))

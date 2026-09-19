@@ -50,6 +50,8 @@ import com.kite.zmusic.data.ncm.NcmLog
 import com.kite.zmusic.ui.notice.showIslandNotice
 import com.kite.zmusic.ui.player.PlayerDisplayQr
 import com.kite.zmusic.ui.theme.MainPalette
+import com.kite.zmusic.i18n.I18n
+import com.kite.zmusic.i18n.t
 
 @Composable
 internal fun NeteaseLoginQrOverlay(
@@ -68,7 +70,7 @@ internal fun NeteaseLoginQrOverlay(
     val qrImage = remember(qrBitmap) { qrBitmap?.asImageBitmap() }
     var saveBusy by remember(loginUrl) { mutableStateOf(false) }
     var lastJumpAt by remember { mutableStateOf(0L) }
-    val expired = hint.contains("过期")
+    val expired = I18n.sourceOf(hint).contains("过期")
 
     BackHandler(onBack = { onDismissState.value() })
 
@@ -103,7 +105,7 @@ internal fun NeteaseLoginQrOverlay(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(
-                text = "扫码登录",
+                text = t("扫码登录"),
                 style = TextStyle(
                     color = MainPalette.Ink,
                     fontSize = 20.sp,
@@ -126,7 +128,7 @@ internal fun NeteaseLoginQrOverlay(
                 if (qrImage != null && !expired) {
                     Image(
                         bitmap = qrImage,
-                        contentDescription = "登录二维码",
+                        contentDescription = t("登录二维码"),
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Fit,
                     )
@@ -138,7 +140,7 @@ internal fun NeteaseLoginQrOverlay(
                     )
                 } else {
                     Text(
-                        text = if (expired) "点击刷新" else "二维码生成失败",
+                        text = if (expired) t("点击刷新") else t("二维码生成失败"),
                         style = TextStyle(color = MainPalette.Accent, fontSize = 13.sp),
                     )
                 }
@@ -157,11 +159,11 @@ internal fun NeteaseLoginQrOverlay(
             }
             Spacer(Modifier.height(18.dp))
             CloudOutlinePillButton(
-                text = if (saveBusy) "正在保存…" else "保存到相册",
+                text = if (saveBusy) t("正在保存…") else t("保存到相册"),
                 onClick = {
                     val bmp = qrBitmap
                     if (bmp == null) {
-                        context.showIslandNotice("二维码还没准备好")
+                        context.showIslandNotice(t("二维码还没准备好"))
                         return@CloudOutlinePillButton
                     }
                     if (saveBusy) return@CloudOutlinePillButton
@@ -171,16 +173,16 @@ internal fun NeteaseLoginQrOverlay(
                     saveBusy = false
                     if (result.isSuccess) {
                         NcmLog.i("login qr saved")
-                        context.showIslandNotice("已保存")
+                        context.showIslandNotice(t("已保存"))
                     } else {
                         NcmLog.w("login qr save failed", result.exceptionOrNull())
-                        context.showIslandNotice("保存失败")
+                        context.showIslandNotice(t("保存失败"))
                     }
                 },
             )
             Spacer(Modifier.height(10.dp))
             CloudOutlinePillButton(
-                text = "打开网易云",
+                text = t("打开网易云"),
                 onClick = {
                     val now = SystemClock.elapsedRealtime()
                     if (now - lastJumpAt < 800) return@CloudOutlinePillButton
@@ -191,17 +193,17 @@ internal fun NeteaseLoginQrOverlay(
                         }
                         NeteaseCloudApp.OpenResult.NotInstalled -> {
                             NcmLog.w("login qr netease not installed")
-                            context.showIslandNotice("未安装网易云音乐")
+                            context.showIslandNotice(t("未安装网易云音乐"))
                         }
                         NeteaseCloudApp.OpenResult.Failed -> {
                             NcmLog.w("login qr open netease failed")
-                            context.showIslandNotice("无法打开网易云")
+                            context.showIslandNotice(t("无法打开网易云"))
                         }
                     }
                 },
             )
             Text(
-                text = "取消",
+                text = t("取消"),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 6.dp, bottom = 2.dp)

@@ -46,6 +46,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
+import com.kite.zmusic.i18n.t
 
 /**
  * 分享用歌曲明信片：主页自定义壁纸（铺满裁切）或默认插画，米白纸卡。
@@ -285,9 +286,9 @@ internal object ShareSongPoster {
             bounds = RectF(inner.left, qrTop, inner.left + colW - 10f, inner.bottom),
             mark = ncmMark,
             qr = ncmQr,
-            title = "网易云音乐",
-            subtitle = "发现好音乐",
-            caption = "识别二维码  打开网易云音乐",
+            title = t("网易云音乐"),
+            subtitle = t("发现好音乐"),
+            caption = t("识别二维码  打开网易云音乐"),
             circularMark = false,
         )
         val midX = inner.left + colW
@@ -302,8 +303,8 @@ internal object ShareSongPoster {
             mark = zMark,
             qr = zQr,
             title = context.getString(R.string.app_name),
-            subtitle = "遇见更多好音乐",
-            caption = "识别二维码  打开 ZMusic",
+            subtitle = t("遇见更多好音乐"),
+            caption = t("识别二维码  打开 ZMusic"),
             circularMark = true,
         )
 
@@ -361,7 +362,7 @@ internal object ShareSongPoster {
         canvas.withTranslation(textLeft, avRect.top + 8f) {
             nameLayout.draw(this)
         }
-        val sig = signature.ifBlank { "和喜欢的音乐不期而遇" }
+        val sig = signature.ifBlank { t("和喜欢的音乐不期而遇") }
         val sigPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Muted
             textSize = 22f
@@ -439,7 +440,7 @@ internal object ShareSongPoster {
             color = 0xB8F7F3EE.toInt()
             textSize = 24f
         }
-        val title = track.name.trim().ifEmpty { "未知歌曲" }
+        val title = track.name.trim().ifEmpty { t("未知歌曲") }
         val titleLayout = staticLayout(title, titlePaint, titleW, 2)
         val artist = track.artists.trim()
         val artistLayout = if (artist.isEmpty()) {
@@ -534,7 +535,7 @@ internal object ShareSongPoster {
         val headerCy = bounds.top + 16f
         drawFlame(canvas, bounds.left + 16f, headerCy - 4f)
         canvas.drawText(
-            "最赞评论",
+            t("最赞评论"),
             bounds.left + 36f,
             baselineForCenter(titlePaint, headerCy),
             titlePaint,
@@ -578,7 +579,7 @@ internal object ShareSongPoster {
             textSize = 22f
             typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
         }
-        val name = comment.nickname.ifBlank { "网易云用户" }
+        val name = comment.nickname.ifBlank { t("网易云用户") }
         val nameLayout = staticLayout(name, namePaint, textW, 1)
         canvas.withTranslation(textLeft, contentTop) {
             nameLayout.draw(this)
@@ -926,18 +927,8 @@ internal object ShareSongPoster {
         return min(d, 360f - d)
     }
 
-    private fun formatLiked(count: Int): String {
-        return if (count >= 10_000) {
-            val wan = count / 10000f
-            if (wan >= 10f) {
-                "${wan.toInt()}万"
-            } else {
-                String.format(Locale.CHINA, "%.1f万", wan)
-            }
-        } else {
-            count.toString()
-        }
-    }
+    private fun formatLiked(count: Int): String =
+        com.kite.zmusic.i18n.I18n.formatCompactCount(count.toLong())
 
     private suspend fun loadUrlBitmap(context: Context, url: String?, minSide: Int): Bitmap? {
         val key = UrlImageCache.normalizeKey(url) ?: return null

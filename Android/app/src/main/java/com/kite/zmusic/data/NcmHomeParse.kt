@@ -2,6 +2,7 @@ package com.kite.zmusic.data
 
 import org.json.JSONArray
 import org.json.JSONObject
+import com.kite.zmusic.i18n.t
 
 data class HomeBanner(
     val picUrl: String,
@@ -179,7 +180,7 @@ internal object NcmHomeParse {
                 add(
                     SearchPlaylistHit(
                         id = id,
-                        name = o.optString("name", "歌单").ifBlank { "歌单" },
+                        name = o.optString("name", t("歌单")).ifBlank { t("歌单") },
                         coverUrl = o.optString("coverImgUrl", "")
                             .ifBlank { o.optString("picUrl", "") }
                             .takeIf { it.isNotBlank() },
@@ -214,7 +215,7 @@ internal object NcmHomeParse {
                 add(
                     SearchArtistHit(
                         id = id,
-                        name = o.optString("name", "歌手").ifBlank { "歌手" },
+                        name = o.optString("name", t("歌手")).ifBlank { t("歌手") },
                         coverUrl = o.optString("picUrl", "")
                             .ifBlank { o.optString("img1v1Url", "") }
                             .takeIf { it.isNotBlank() && !it.contains("default") },
@@ -239,8 +240,8 @@ internal object NcmHomeParse {
                     SearchUserHit(
                         id = id,
                         name = o.optString("nickname", "")
-                            .ifBlank { o.optString("name", "用户") }
-                            .ifBlank { "用户" },
+                            .ifBlank { o.optString("name", t("用户")) }
+                            .ifBlank { t("用户") },
                         avatarUrl = o.optString("avatarUrl", "").takeIf { it.isNotBlank() },
                         signature = o.optString("signature", "").takeIf { it.isNotBlank() && it != "null" },
                     ),
@@ -352,7 +353,7 @@ internal object NcmHomeParse {
         val album = json.optJSONObject("album")
         val name = album?.optString("name", "")?.ifBlank { null }
             ?: json.optString("name", "").takeIf { it.isNotBlank() }
-            ?: "专辑"
+            ?: t("专辑")
         val cover = NcmLibraryParse.ncmHttpsImage(
             album?.optString("picUrl", "")?.takeIf { it.isNotBlank() }
                 ?: album?.optString("blurPicUrl", "")?.takeIf { it.isNotBlank() },
@@ -450,7 +451,7 @@ internal object NcmHomeParse {
             ?: 0L
         return CollectedAlbum(
             id = id,
-            name = o.optString("name", "专辑").ifBlank { "专辑" },
+            name = o.optString("name", t("专辑")).ifBlank { t("专辑") },
             coverUrl = NcmLibraryParse.ncmHttpsImage(
                 firstNonBlank(
                     o.optString("picUrl"),
@@ -503,7 +504,7 @@ internal object NcmHomeParse {
                 add(
                     ChartSummary(
                         id = id,
-                        name = o.optString("name", "榜单").ifBlank { "榜单" },
+                        name = o.optString("name", t("榜单")).ifBlank { t("榜单") },
                         coverUrl = o.optString("coverImgUrl", "").takeIf { it.isNotBlank() },
                         updateFrequency = o.optString("updateFrequency", "").takeIf { it.isNotBlank() },
                         playCount = o.optLong("playCount", 0L),
@@ -513,17 +514,7 @@ internal object NcmHomeParse {
         }
     }
 
-    fun formatPlayCount(n: Long): String = when {
-        n >= 100_000_000L -> {
-            val v = n / 100_000_000.0
-            if (v >= 10) "${v.toInt()}亿" else String.format("%.1f亿", v).replace(".0亿", "亿")
-        }
-        n >= 10_000L -> {
-            val v = n / 10_000.0
-            if (v >= 10) "${v.toInt()}万" else String.format("%.1f万", v).replace(".0万", "万")
-        }
-        else -> n.toString()
-    }
+    fun formatPlayCount(n: Long): String = com.kite.zmusic.i18n.I18n.formatCompactCount(n)
 
     private fun artistNames(arr: JSONArray?): String? {
         if (arr == null || arr.length() == 0) return null
@@ -548,7 +539,7 @@ internal object NcmHomeParse {
             add(
                 RecommendPlaylistCard(
                     id = id,
-                    name = o.optString("name", "歌单").ifBlank { "歌单" },
+                    name = o.optString("name", t("歌单")).ifBlank { t("歌单") },
                     coverUrl = o.optString(picKey, "")
                         .ifBlank { o.optString("coverImgUrl", "") }
                         .ifBlank { o.optString("picUrl", "") }

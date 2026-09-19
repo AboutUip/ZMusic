@@ -1,6 +1,7 @@
 package com.kite.zmusic.data
 
 import org.json.JSONObject
+import com.kite.zmusic.i18n.t
 
 internal object NcmCloudParse {
 
@@ -35,7 +36,7 @@ internal object NcmCloudParse {
         if (id <= 0L) return null
         val fromSimple = simple?.let { NcmLibraryParse.trackFromSongObject(it) }
         val name = o.optString("songName").ifBlank {
-            fromSimple?.name ?: o.optString("fileName").ifBlank { "云盘歌曲" }
+            fromSimple?.name ?: o.optString("fileName").ifBlank { t("云盘歌曲") }
         }
         val artist = o.optString("artist").ifBlank { fromSimple?.artists.orEmpty() }
         val album = o.optString("album").ifBlank { fromSimple?.album.orEmpty() }.takeIf { it.isNotBlank() }
@@ -134,7 +135,7 @@ internal object NcmCloudParse {
             data?.optString("message").orEmpty(),
             data?.optString("msg").orEmpty(),
         ).firstOrNull { it.isNotBlank() && it != "null" }
-        return msg ?: fallback
+        return if (msg != null) t(msg) else fallback
     }
 
     fun formatBytes(bytes: Long): String {

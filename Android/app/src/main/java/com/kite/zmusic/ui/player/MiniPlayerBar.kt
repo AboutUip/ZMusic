@@ -59,6 +59,7 @@ import com.kite.zmusic.ui.plugin.pluginSurface
 import com.kyant.backdrop.Backdrop
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
+import com.kite.zmusic.i18n.t
 
 @Composable
 fun MiniPlayerBar(
@@ -312,7 +313,7 @@ fun MiniPlayerBar(
         ) {
             Icon(
                 imageVector = if (isPlaying) ZIcons.Pause else ZIcons.Play,
-                contentDescription = if (isPlaying) "暂停" else "播放",
+                contentDescription = if (isPlaying) t("暂停") else t("播放"),
                 tint = TextTheme.MiniPlayerIcon,
                 modifier = Modifier.size(22.dp),
             )
@@ -330,55 +331,22 @@ private fun MiniPlayerProgress(
     positions: Flow<Long>,
     initialPositionMs: Long,
 ) {
-    val anim = remember {
-        Animatable(initialPositionMs.toFloat().coerceAtLeast(0f))
-    }
-    var boundTrackId by remember { mutableLongStateOf(trackId) }
-    val loadPendingRef = rememberUpdatedState(loadPending)
-    val bufferingRef = rememberUpdatedState(buffering)
-    val durationRef = rememberUpdatedState(durationMs)
+    var livePos by remember { mutableLongStateOf(initialPositionMs.coerceAtLeast(0L)) }
     val initialRef = rememberUpdatedState(initialPositionMs)
-    var lastApplyElapsed by remember { mutableLongStateOf(progressElapsedRealtimeMs()) }
-    LaunchedEffect(trackId, positions) {
-        val seed = initialRef.value.toFloat().coerceAtLeast(0f)
-        if (seed > 48f && anim.value <= 48f) {
-            anim.snapTo(seed)
-        }
-        positions.collect { positionMs ->
-            val now = progressElapsedRealtimeMs()
-            val stale = now - lastApplyElapsed >= ProgressStaleUiGapMs
-            lastApplyElapsed = now
-            val target = positionMs.toFloat().coerceAtLeast(0f)
-            val from = anim.value
-            val trackChanged = trackId != boundTrackId
-            if (trackChanged) boundTrackId = trackId
-            val holding = loadPendingRef.value || bufferingRef.value
-            if (stale) {
-                anim.snapTo(target)
-                return@collect
-            }
-            if (miniProgressWrapToStart(from, target, durationRef.value, trackChanged)) {
-                anim.animateTo(
-                    targetValue = target,
-                    animationSpec = tween(
-                        durationMillis = 360,
-                        easing = FastOutSlowInEasing,
-                    ),
-                )
-                return@collect
-            }
-            // 续播 / 缓冲时的假 0：保住当前进度，不要从开头再跟一遍
-            if (target <= 48f && from > 200f && holding) {
-                return@collect
-            }
-            anim.snapTo(target)
-        }
+    LaunchedEffect(positions) {
+        val seed = initialRef.value.coerceAtLeast(0L)
+        if (seed > 48L && livePos <= 48L) livePos = seed
+        positions.collect { livePos = it.coerceAtLeast(0L) }
     }
+    val clock = rememberSeekDisplayClock(
+        trackId = trackId,
+        positionMs = livePos,
+        durationMs = durationMs,
+        loadPending = loadPending || buffering,
+    )
     LinearProgressIndicator(
         progress = {
-            val dur = durationMs.toFloat()
-            if (dur <= 0f) 0f
-            else (anim.value / dur).coerceIn(0f, 1f)
+            seekProgressFraction(clock.positionMs, clock.durationMs)
         },
         modifier = Modifier
             .padding(top = 6.dp)
@@ -392,17 +360,4 @@ private fun MiniPlayerProgress(
         gapSize = 0.dp,
         drawStopIndicator = {},
     )
-}
-
-/** 曲末回到开头（单曲循环 / 自动下一首）才做回退动画；续播假 0 不动画。 */
-private fun miniProgressWrapToStart(
-    from: Float,
-    target: Float,
-    durationMs: Long,
-    trackChanged: Boolean,
-): Boolean {
-    if (target > 48f || from <= 64f || from - target <= 64f) return false
-    val dur = durationMs.toFloat()
-    val nearEnd = dur > 0f && (from >= dur * 0.75f || dur - from <= 5_000f)
-    return nearEnd || trackChanged
 }

@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import com.kite.zmusic.i18n.t
 
 data class PlaylistSearchUiState(
     val title: String,
@@ -106,7 +107,7 @@ class PlaylistSearchViewModel(
         viewModelScope.launch {
             val cookie = sessionRepository.session.value?.cookie.orEmpty()
             if (cookie.isBlank()) {
-                islandNotices.show("请先登录", track.coverUrl)
+                islandNotices.show(t("请先登录"), track.coverUrl)
                 return@launch
             }
             try {
@@ -114,23 +115,23 @@ class PlaylistSearchViewModel(
                     likedPlaylistRepository.applyLocalLike(track, liked = false)
                     if (!likedPlaylistRepository.pushLike(track, liked = false, cookie)) {
                         likedPlaylistRepository.applyLocalLike(track, liked = true, scheduleSync = false)
-                        islandNotices.show("移除失败", track.coverUrl)
+                        islandNotices.show(t("移除失败"), track.coverUrl)
                         return@launch
                     }
-                    islandNotices.show("已从喜欢的音乐移除", track.coverUrl)
+                    islandNotices.show(t("已从喜欢的音乐移除"), track.coverUrl)
                     return@launch
                 }
                 if (!owned) {
-                    islandNotices.show("只能从自己创建的歌单移除歌曲", track.coverUrl)
+                    islandNotices.show(t("只能从自己创建的歌单移除歌曲"), track.coverUrl)
                     return@launch
                 }
                 val ack = catalog.deletePlaylistTracks(playlistId, listOf(track.id), cookie)
                 if (!ack.ok) {
-                    islandNotices.show("无法从歌单移除", track.coverUrl)
+                    islandNotices.show(t("无法从歌单移除"), track.coverUrl)
                     return@launch
                 }
                 playlistTracksCache.removeTrack(playlistId, track.id)
-                islandNotices.show("已从歌单移除", track.coverUrl)
+                islandNotices.show(t("已从歌单移除"), track.coverUrl)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -171,7 +172,7 @@ class PlaylistSearchViewModel(
         }
         val cookie = sessionRepository.session.value?.cookie.orEmpty()
         if (cookie.isBlank()) {
-            _ui.update { it.copy(error = "请先登录") }
+            _ui.update { it.copy(error = t("请先登录")) }
             return
         }
         try {

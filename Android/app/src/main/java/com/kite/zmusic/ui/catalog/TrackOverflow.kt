@@ -34,6 +34,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import com.kite.zmusic.i18n.t
 
 @Composable
 internal fun TrackOverflowMenu(
@@ -43,8 +44,8 @@ internal fun TrackOverflowMenu(
     onDownload: (TrackRow, TrackExportOptions) -> Unit,
     onRemove: (TrackRow) -> Unit,
     showDownload: Boolean = true,
-    removeConfirmTitle: String = "从歌单移除这首歌？",
-    removeConfirmMessage: String = "这首歌会从当前歌单里拿掉，不会删除已下载的文件。",
+    removeConfirmTitle: String = t("从歌单移除这首歌？"),
+    removeConfirmMessage: String = t("这首歌会从当前歌单里拿掉，不会删除已下载的文件。"),
     currentPlaylistId: Long = 0L,
     showAddToPlaylist: Boolean = true,
     showSaveToCloud: Boolean = showAddToPlaylist,
@@ -77,7 +78,7 @@ internal fun TrackOverflowMenu(
             GlassAlertDialog(
                 title = removeConfirmTitle,
                 message = removeConfirmMessage,
-                confirmLabel = "删除",
+                confirmLabel = t("删除"),
                 confirmDestructive = true,
                 onConfirm = {
                     onRemove(current)
@@ -88,7 +89,7 @@ internal fun TrackOverflowMenu(
         }
         pickingExport -> {
             TrackExportOptionsDialog(
-                title = "下载",
+                title = t("下载"),
                 message = current.name,
                 onConfirm = { options ->
                     onDownload(current, options)
@@ -99,7 +100,7 @@ internal fun TrackOverflowMenu(
         }
         pickingArtist -> {
             GlassActionSheet(
-                title = "查看歌手",
+                title = t("查看歌手"),
                 message = current.name,
                 coverUrl = current.coverUrl,
                 contentKey = "pick-artist-${current.id}",
@@ -130,9 +131,9 @@ internal fun TrackOverflowMenu(
                         .thenBy { it.name },
                 )
             GlassActionSheet(
-                title = "添加到歌单",
+                title = t("添加到歌单"),
                 message = if (targets.isEmpty()) {
-                    "先在个人页创建歌单"
+                    t("先在个人页创建歌单")
                 } else {
                     current.name
                 },
@@ -164,26 +165,26 @@ internal fun TrackOverflowMenu(
                 actions = buildList {
                     if (showDownload) {
                         add(
-                            GlassSheetAction("下载") {
+                            GlassSheetAction(t("下载")) {
                                 pickingExport = true
                             },
                         )
                     }
                     add(
-                        GlassSheetAction("分享") {
+                        GlassSheetAction(t("分享")) {
                             pickingShare = true
                         },
                     )
                     if (showAddToPlaylist) {
                         add(
-                            GlassSheetAction("添加到歌单") {
+                            GlassSheetAction(t("添加到歌单")) {
                                 pickingPlaylist = true
                             },
                         )
                     }
                     if (showSaveToCloud) {
                         add(
-                            GlassSheetAction("保存到云盘") {
+                            GlassSheetAction(t("保存到云盘")) {
                                 scope.launch {
                                     val msg = app.cloudDiskRepository.importPublicTrack(current)
                                     context.showIslandNotice(msg, current.coverUrl)
@@ -207,13 +208,13 @@ internal fun TrackOverflowMenu(
                     }
                     if (onOpenArtist != null) {
                         add(
-                            GlassSheetAction("查看歌手") {
+                            GlassSheetAction(t("查看歌手")) {
                                 scope.launch {
                                     val cookie = app.sessionRepository.session.value?.cookie.orEmpty()
                                     val found = resolveTrackArtists(current, cookie, app.songRepository)
                                     when {
                                         found.isEmpty() -> {
-                                            context.showIslandNotice("暂时无法打开这位歌手", current.coverUrl)
+                                            context.showIslandNotice(t("暂时无法打开这位歌手"), current.coverUrl)
                                             onDismiss()
                                         }
                                         found.size == 1 -> {
@@ -232,7 +233,7 @@ internal fun TrackOverflowMenu(
                     }
                     if (canRemove) {
                         add(
-                            GlassSheetAction("删除", destructive = true) {
+                            GlassSheetAction(t("删除"), destructive = true) {
                                 confirmRemove = true
                             },
                         )
@@ -269,29 +270,29 @@ private fun shareTrackLikePlayer(
 ) {
     if (target == NcmShareTarget.CopyLink) {
         when (NcmShare.send(context, track, target)) {
-            NcmShareResult.Copied -> context.showIslandNotice("已复制链接")
-            NcmShareResult.NoLink -> context.showIslandNotice("当前歌曲无法分享")
-            else -> context.showIslandNotice("复制失败")
+            NcmShareResult.Copied -> context.showIslandNotice(t("已复制链接"))
+            NcmShareResult.NoLink -> context.showIslandNotice(t("当前歌曲无法分享"))
+            else -> context.showIslandNotice(t("复制失败"))
         }
         return
     }
     if (track.id <= 0L) {
-        context.showIslandNotice("当前歌曲无法分享")
+        context.showIslandNotice(t("当前歌曲无法分享"))
         return
     }
     scope.launch {
-        context.showIslandNotice("正在生成分享图")
+        context.showIslandNotice(t("正在生成分享图"))
         val uri = ShareSongPoster.prepareShareUri(app, track)
         if (uri == null) {
-            context.showIslandNotice("分享图生成失败")
+            context.showIslandNotice(t("分享图生成失败"))
             return@launch
         }
         when (val result = NcmShare.sendImage(context, uri, target)) {
             NcmShareResult.Opened -> Unit
-            NcmShareResult.Failed -> context.showIslandNotice("分享失败")
+            NcmShareResult.Failed -> context.showIslandNotice(t("分享失败"))
             is NcmShareResult.MissingApp ->
-                context.showIslandNotice("未安装${result.appName}")
-            else -> context.showIslandNotice("分享失败")
+                context.showIslandNotice(t("未安装%s", result.appName))
+            else -> context.showIslandNotice(t("分享失败"))
         }
     }
 }
@@ -336,8 +337,8 @@ internal suspend fun launchTrackDownloads(
             app.islandNoticeCenter.clearSticky()
         }
         app.islandNoticeCenter.show(
-            if (ok == tracks.size) "已保存 ${ok} 首到 Download/ZMusic"
-            else "已保存 ${ok}/${tracks.size} 首",
+            if (ok == tracks.size) t("已保存 %s 首到 Download/ZMusic", ok)
+            else t("已保存 %s/%s 首", ok, tracks.size),
             tracks.lastOrNull()?.coverUrl,
         )
     }
@@ -351,9 +352,9 @@ private fun exportStickyMessage(
     totalTracks: Int,
 ): String {
     val head = if (totalTracks > 1) {
-        "正在下载 $index/$totalTracks · $name"
+        t("正在下载 %s/%s · %s", index, totalTracks, name)
     } else {
-        "正在下载 $name"
+        t("正在下载 %s", name)
     }
     if (total > 0L) {
         val pct = ((received * 100L) / total).toInt().coerceIn(0, 100)
@@ -378,7 +379,7 @@ private suspend fun downloadOneTrack(
     val cookie = app.sessionRepository.session.value?.cookie.orEmpty()
     if (cookie.isBlank()) {
         TrackExportLog.w("ui no cookie id=${track.id}")
-        app.islandNoticeCenter.show("请先登录", track.coverUrl)
+        app.islandNoticeCenter.show(t("请先登录"), track.coverUrl)
         return false
     }
     val notices = app.islandNoticeCenter
@@ -410,7 +411,7 @@ private suspend fun downloadOneTrack(
         TrackExportLog.i("ui ok id=${track.id} folder=$folder")
         if (notify) {
             notices.clearSticky()
-            notices.show("已保存到 Download/ZMusic", track.coverUrl)
+            notices.show(t("已保存到 Download/ZMusic"), track.coverUrl)
         }
         true
     } catch (e: CancellationException) {
@@ -418,7 +419,7 @@ private suspend fun downloadOneTrack(
         throw e
     } catch (e: Exception) {
         val msg = (e as? TrackExportException)?.message?.takeIf { it.isNotBlank() }
-            ?: "下载失败"
+            ?: t("下载失败")
         TrackExportLog.e("ui fail id=${track.id} notice=$msg", e)
         if (notify) {
             notices.clearSticky()

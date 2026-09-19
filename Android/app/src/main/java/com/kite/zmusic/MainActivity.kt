@@ -1,5 +1,6 @@
 package com.kite.zmusic
 
+import android.content.Context
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
@@ -9,7 +10,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import com.kite.zmusic.config.NcmApiConfig
+import com.kite.zmusic.data.LanguageStore
 import com.kite.zmusic.data.ServerConfigRepository
+import com.kite.zmusic.i18n.I18n
 import com.kite.zmusic.navigation.ZMusicNavHost
 import com.kite.zmusic.ui.orientation.SessionRotationLockStore
 import com.kite.zmusic.ui.orientation.ZMusicOrientationHost
@@ -18,6 +21,12 @@ import com.kite.zmusic.ui.theme.StartupTheme
 import com.kite.zmusic.ui.theme.ZMusicTheme
 
 class MainActivity : ComponentActivity() {
+    override fun attachBaseContext(newBase: Context) {
+        val language = LanguageStore.peek(newBase)
+        I18n.setLanguage(language)
+        super.attachBaseContext(I18n.wrapContext(newBase, language))
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // 1) 先按系统深浅盖住窗口，避免 XML/默认浅色闪一下

@@ -8,6 +8,8 @@ import com.kite.zmusic.data.NcmHomeParse
 import com.kite.zmusic.data.SearchRepository
 import com.kite.zmusic.data.SessionRepository
 import com.kite.zmusic.data.TrackRow
+import com.kite.zmusic.i18n.I18n
+import com.kite.zmusic.i18n.t
 import com.kite.zmusic.ui.notice.IslandNoticeCenter
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -69,7 +71,7 @@ class CloudMatchViewModel(
         if (q.isEmpty()) return
         val cookie = sessionRepository.session.value?.cookie.orEmpty()
         if (cookie.isBlank() || sessionRepository.session.value?.isGuest == true) {
-            _ui.update { it.copy(loading = false, error = "请先登录", hits = emptyList()) }
+            _ui.update { it.copy(loading = false, error = t("请先登录"), hits = emptyList()) }
             return
         }
         job?.cancel()
@@ -78,7 +80,7 @@ class CloudMatchViewModel(
             val json = runCatching {
                 search.cloudSearch(q, cookie, type = 1, limit = 30, offset = 0)
             }.getOrElse {
-                _ui.update { it.copy(loading = false, error = "搜索失败") }
+                _ui.update { it.copy(loading = false, error = t("搜索失败")) }
                 return@launch
             }
             val hits = NcmHomeParse.searchTracks(json).filter { it.id != songId }
@@ -96,7 +98,7 @@ class CloudMatchViewModel(
         viewModelScope.launch {
             val msg = cloud.match(songId, track.id)
             notices.show(msg, track.coverUrl)
-            val ok = msg.startsWith("已")
+            val ok = I18n.sourceOf(msg).startsWith("已")
             done(ok)
         }
     }

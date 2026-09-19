@@ -32,6 +32,7 @@ import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.main.pageSheetHazeStyle
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeEffect
+import com.kite.zmusic.i18n.t
 
 private val QualityPanelShape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp)
 
@@ -105,7 +106,7 @@ fun PortraitQualitySheet(
                 )
             }
             Text(
-                text = "音源",
+                text = t("音源"),
                 style = TextStyle(
                     color = MainPalette.Ink,
                     fontWeight = FontWeight.Bold,

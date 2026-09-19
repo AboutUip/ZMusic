@@ -93,6 +93,7 @@ import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.kite.zmusic.i18n.t
 
 private val BgEditorAccent = Color(0xFF9AF0F0)
 private val BgEditorLabel = Color(0xFFFFFFFF)
@@ -349,7 +350,7 @@ fun CustomBackgroundEditorOverlay(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = "自定义背景",
+                    text = t("自定义背景"),
                     style = TextStyle(
                         color = BgEditorLabel,
                         fontFamily = FontFamily.SansSerif,
@@ -361,9 +362,9 @@ fun CustomBackgroundEditorOverlay(
                 )
                 AnimatedContent(
                     targetState = when {
-                        draft.locked -> "已锁定"
-                        hasImage -> "可调整"
-                        else -> "待上传"
+                        draft.locked -> t("已锁定")
+                        hasImage -> t("可调整")
+                        else -> t("待上传")
                     },
                     transitionSpec = {
                         fadeIn(tween(200)) togetherWith fadeOut(tween(140))
@@ -381,7 +382,7 @@ fun CustomBackgroundEditorOverlay(
                     )
                 }
                 Text(
-                    text = "关闭",
+                    text = t("关闭"),
                     style = TextStyle(
                         color = BgEditorAccent,
                         fontFamily = FontFamily.SansSerif,
@@ -471,7 +472,7 @@ fun CustomBackgroundEditorOverlay(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 BgEditorActionButton(
-                    label = if (editable) "上传媒体" else "已锁定",
+                    label = if (editable) t("上传媒体") else t("已锁定"),
                     enabled = editable,
                     emphasize = true,
                     modifier = Modifier.weight(1f),
@@ -484,7 +485,7 @@ fun CustomBackgroundEditorOverlay(
                     },
                 )
                 BgEditorActionButton(
-                    label = "确定锁定",
+                    label = t("确定锁定"),
                     enabled = canConfirm,
                     emphasize = true,
                     modifier = Modifier.weight(1f),
@@ -500,7 +501,7 @@ fun CustomBackgroundEditorOverlay(
                     },
                 )
                 BgEditorActionButton(
-                    label = "重置预设",
+                    label = t("重置预设"),
                     enabled = canReset,
                     emphasize = false,
                     modifier = Modifier.weight(1f),
@@ -526,7 +527,7 @@ fun CustomBackgroundEditorOverlay(
                 // 始终占位：无图时禁用，避免显隐撑缩导致预览区跳动/错位
                 val slidersEnabled = editable && hasImage
                 BgSliderRow(
-                    title = "水平位置",
+                    title = t("水平位置"),
                     value = draftOx,
                     valueRange = PlayerDisplayPrefs.BG_OFFSET_MIN..PlayerDisplayPrefs.BG_OFFSET_MAX,
                     enabled = slidersEnabled,
@@ -535,7 +536,7 @@ fun CustomBackgroundEditorOverlay(
                     onValueChange = { draftOx = it },
                 )
                 BgSliderRow(
-                    title = "垂直位置",
+                    title = t("垂直位置"),
                     value = draftOy,
                     valueRange = PlayerDisplayPrefs.BG_OFFSET_MIN..PlayerDisplayPrefs.BG_OFFSET_MAX,
                     enabled = slidersEnabled,
@@ -544,7 +545,7 @@ fun CustomBackgroundEditorOverlay(
                     onValueChange = { draftOy = it },
                 )
                 BgSliderRow(
-                    title = "缩放",
+                    title = t("缩放"),
                     value = draftScale,
                     valueRange = PlayerDisplayPrefs.BG_SCALE_MIN..PlayerDisplayPrefs.BG_SCALE_MAX,
                     enabled = slidersEnabled,
@@ -803,7 +804,7 @@ private fun LandscapeBackgroundPreview(
                     horizontalAlignment = if (centerTitle) Alignment.CenterHorizontally else Alignment.Start,
                 ) {
                     Text(
-                        text = sampleTrack?.name.orEmpty().ifBlank { "预览" },
+                        text = sampleTrack?.name.orEmpty().ifBlank { t("预览") },
                         style = TextStyle(
                             color = nameColor,
                             fontFamily = FontFamily.SansSerif,
@@ -816,7 +817,7 @@ private fun LandscapeBackgroundPreview(
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        text = sampleTrack?.artists.orEmpty().ifBlank { "歌手" },
+                        text = sampleTrack?.artists.orEmpty().ifBlank { t("歌手") },
                         style = TextStyle(
                             color = artistColor.copy(alpha = 0.78f),
                             fontFamily = FontFamily.SansSerif,
@@ -1079,7 +1080,7 @@ private fun PortraitBackgroundPreview(
                         ),
                     )
                     Text(
-                        text = sampleTrack?.name.orEmpty().ifBlank { "预览" },
+                        text = sampleTrack?.name.orEmpty().ifBlank { t("预览") },
                         style = TextStyle(
                             color = Color(0xFFF2EDE6),
                             fontFamily = FontFamily.SansSerif,

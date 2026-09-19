@@ -1,7 +1,9 @@
 package com.kite.zmusic.plugin
 
+import com.kite.zmusic.i18n.t
+
 object PluginSplashCopy {
-    const val LOADING = "正在加载插件"
+    val LOADING: String get() = t("正在加载插件")
 
     fun namesLine(pendingNames: List<String>): String {
         if (pendingNames.isEmpty()) return ""

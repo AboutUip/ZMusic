@@ -7,6 +7,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.IOException
 import java.util.concurrent.TimeUnit
+import com.kite.zmusic.i18n.t
 
 /**
  * 轻量服务器连通性探测（`GET /inner/version`，无需登录）。
@@ -22,19 +23,19 @@ class NcmConnectivityClient(
     suspend fun checkReachable(baseUrl: String? = null): Result<Unit> = withContext(Dispatchers.IO) {
         val base = (baseUrl ?: NcmApiConfig.baseUrl).trim().trimEnd('/')
         if (base.isEmpty()) {
-            return@withContext Result.failure(IOException("服务器地址为空"))
+            return@withContext Result.failure(IOException(t("服务器地址为空")))
         }
         val url = "$base/inner/version"
         val req = Request.Builder().url(url).get().build()
         try {
             client.newCall(req).execute().use { resp ->
                 if (!resp.isSuccessful) {
-                    return@withContext Result.failure(IOException("服务器无响应"))
+                    return@withContext Result.failure(IOException(t("服务器无响应")))
                 }
                 Result.success(Unit)
             }
         } catch (e: Exception) {
-            Result.failure(IOException("无法连接服务器", e))
+            Result.failure(IOException(t("无法连接服务器"), e))
         }
     }
 

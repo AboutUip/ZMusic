@@ -2,6 +2,7 @@ package com.kite.zmusic.data
 
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import com.kite.zmusic.i18n.t
 
 /**
  * 单曲查询：详情、歌手解析、红心核对。Compose 不要直接打这些接口。
@@ -62,7 +63,7 @@ class SongRepository(
             val ugcJson = ugc.await()
             val page = SongWikiParse.merge(summaryJson, ugcJson, creatorsJson, wikiInfoJson)
             if (page.isEmpty && summaryJson == null && creatorsJson == null) {
-                error("百科加载失败")
+                error(t("百科加载失败"))
             }
             page
         }

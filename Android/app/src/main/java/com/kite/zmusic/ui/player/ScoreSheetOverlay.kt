@@ -72,6 +72,7 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlinx.coroutines.yield
+import com.kite.zmusic.i18n.t
 
 private val LabelColor get() = MainPalette.Ink
 private val Accent get() = MainPalette.Accent
@@ -224,7 +225,7 @@ fun ScoreSheetOverlay(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = "曲谱",
+                    text = t("曲谱"),
                     style = TextStyle(
                         color = LabelColor,
                         fontFamily = FontFamily.SansSerif,
@@ -496,7 +497,7 @@ private fun ScoreExpandLoadingBlocker(
     expanding: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    val caption = if (expanding) "展开曲谱" else "收起曲谱"
+    val caption = if (expanding) t("展开曲谱") else t("收起曲谱")
     Box(
         modifier
             .background(BlockerBg)
@@ -761,7 +762,7 @@ private fun ScoreTrackCard(
         }
         Spacer(Modifier.height(6.dp))
         Text(
-            text = track.name.ifBlank { "未知歌曲" },
+            text = track.name.ifBlank { t("未知歌曲") },
             style = TextStyle(
                 color = if (playing) Accent else LabelColor,
                 fontFamily = FontFamily.SansSerif,
@@ -773,7 +774,7 @@ private fun ScoreTrackCard(
             modifier = Modifier.fillMaxWidth(),
         )
         Text(
-            text = track.artists.ifBlank { "未知艺人" },
+            text = track.artists.ifBlank { t("未知艺人") },
             style = TextStyle(
                 color = HintColor.copy(alpha = 0.85f),
                 fontFamily = FontFamily.SansSerif,

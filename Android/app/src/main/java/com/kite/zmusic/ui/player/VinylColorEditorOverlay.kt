@@ -68,6 +68,7 @@ import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeStyle
 import dev.chrisbanes.haze.HazeTint
 import dev.chrisbanes.haze.hazeEffect
+import com.kite.zmusic.i18n.t
 
 private val EditorLabel = Color(0xFFFFFFFF)
 private val EditorHint = Color(0xFFE8F0F8)
@@ -308,7 +309,7 @@ fun VinylColorEditorOverlay(
                     ),
                 )
                 Text(
-                    text = "自选配色",
+                    text = t("自选配色"),
                     style = TextStyle(
                         color = EditorLabel,
                         fontFamily = FontFamily.SansSerif,
@@ -317,7 +318,7 @@ fun VinylColorEditorOverlay(
                     ),
                 )
                 Text(
-                    text = "5 个预设位 · 改色即保存",
+                    text = t("5 个预设位 · 改色即保存"),
                     style = TextStyle(
                         color = EditorHint.copy(alpha = 0.72f),
                         fontFamily = FontFamily.Monospace,
@@ -445,7 +446,7 @@ private fun VinylLiveColorEditor(
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("盘面", "纹理").forEachIndexed { i, label ->
+            listOf(t("盘面"), t("纹理")).forEachIndexed { i, label ->
                 val on = target == i
                 val swatch = if (i == 0) base else groove
                 Box(
@@ -548,7 +549,7 @@ private fun VinylLiveColorEditor(
         }
 
         Text(
-            text = "色相",
+            text = t("色相"),
             style = TextStyle(
                 color = EditorHint.copy(alpha = 0.75f),
                 fontSize = 10.sp,

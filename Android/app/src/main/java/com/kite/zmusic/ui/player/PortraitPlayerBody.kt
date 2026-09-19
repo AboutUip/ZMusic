@@ -79,6 +79,7 @@ import androidx.compose.runtime.mutableStateSetOf
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.snapshots.SnapshotStateSet
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -187,6 +188,7 @@ import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
 import androidx.compose.ui.unit.lerp as lerpDp
+import com.kite.zmusic.i18n.t
 
 
 @Composable
@@ -355,16 +357,31 @@ internal fun PortraitPlayerBody(
         onCollapseLyrics()
     }
     val context = LocalContext.current
-    val pluginEngine = (context.applicationContext as ZMusicApplication).pluginEngine
-    val listenUi by (context.applicationContext as ZMusicApplication).listenTogether.ui.collectAsStateWithLifecycle()
+    val app = context.applicationContext as ZMusicApplication
+    val pluginEngine = app.pluginEngine
+    val listenUi by app.listenTogether.ui.collectAsStateWithLifecycle()
+    val playbackFmActive by remember {
+        app.playbackBridge.ui.map { it.fmActive }.distinctUntilChanged()
+    }.collectAsStateWithLifecycle(initialValue = app.playbackBridge.ui.value.fmActive)
+    val fmChoice by app.personalFmModeStore.choice.collectAsStateWithLifecycle()
+    var fmPickerOpen by remember { mutableStateOf(false) }
+    var fmPickerOrigin by remember { mutableStateOf(Offset.Zero) }
+    var fmApplying by remember { mutableStateOf(false) }
+    LaunchedEffect(playbackFmActive) {
+        if (!playbackFmActive) {
+            fmPickerOpen = false
+            fmApplying = false
+        }
+    }
     LaunchedEffect(hiding) {
         if (hiding) {
-            context.showIslandNotice("已进入清屏沉浸模式")
+            context.showIslandNotice(t("已进入清屏沉浸模式"))
         }
     }
 
+    Box(modifier.fillMaxSize()) {
     Box(
-        modifier
+        Modifier
             .fillMaxSize()
             .graphicsLayer {
                 scaleX = uiScale
@@ -414,6 +431,11 @@ internal fun PortraitPlayerBody(
                         PortraitPlayerTopBar(
                             trackName = track.name,
                             onDismiss = onDismiss,
+                            showFmMode = playbackFmActive,
+                            onFmModeClick = { origin ->
+                                fmPickerOrigin = origin
+                                fmPickerOpen = true
+                            },
                         )
                         Spacer(Modifier.height(8.dp))
                     }
@@ -686,6 +708,11 @@ internal fun PortraitPlayerBody(
                 PortraitPlayerTopBar(
                     trackName = track.name,
                     onDismiss = onDismiss,
+                    showFmMode = playbackFmActive,
+                    onFmModeClick = { origin ->
+                        fmPickerOrigin = origin
+                        fmPickerOpen = true
+                    },
                 )
             }
 
@@ -755,12 +782,34 @@ internal fun PortraitPlayerBody(
             )
         }
     }
+
+        PersonalFmModePickerOverlay(
+            visible = fmPickerOpen,
+            originInWindow = fmPickerOrigin,
+            current = fmChoice,
+            applying = fmApplying,
+            onDismiss = { if (!fmApplying) fmPickerOpen = false },
+            onSelect = { choice ->
+                if (choice == fmChoice) {
+                    fmPickerOpen = false
+                    return@PersonalFmModePickerOverlay
+                }
+                fmApplying = true
+                app.playbackBridge.applyPersonalFmMode(choice) {
+                    fmApplying = false
+                    fmPickerOpen = false
+                }
+            },
+        )
+    }
 }
 
 @Composable
 private fun PortraitPlayerTopBar(
     trackName: String,
     onDismiss: () -> Unit,
+    showFmMode: Boolean = false,
+    onFmModeClick: (Offset) -> Unit = {},
 ) {
     val activity = LocalActivity.current
     val rotationLock = com.kite.zmusic.ui.orientation.LocalSessionRotationLock.current
@@ -792,6 +841,12 @@ private fun PortraitPlayerTopBar(
                 .playerExpandAnchor(PlayerExpandSlot.FullTitle)
                 .playerExpandHideFull(),
         )
+        if (showFmMode) {
+            NowPlayingFmModeButton(
+                chromeBackground = false,
+                onClick = onFmModeClick,
+            )
+        }
         NowPlayingRotationLockButton(
             locked = rotationLocked,
             forceToLandscape = if (systemAutoRotate) null else true,

@@ -1,6 +1,8 @@
 package com.kite.zmusic.plugin
 
-class PluginDebugApiDeniedException : IllegalStateException("插件引擎调试已关闭")
+import com.kite.zmusic.i18n.t
+
+class PluginDebugApiDeniedException : IllegalStateException(t("插件引擎调试已关闭"))
 
 sealed class PluginRegisterResult {
     data class Installed(val record: PluginRecord) : PluginRegisterResult()

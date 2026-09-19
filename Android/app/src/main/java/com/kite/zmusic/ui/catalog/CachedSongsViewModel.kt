@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import com.kite.zmusic.i18n.t
 
 class CachedSongsViewModel(
     private val exporter: TrackExportRepository,
@@ -17,8 +18,8 @@ class CachedSongsViewModel(
 
     private val _list = MutableStateFlow(
         CatalogListState(
-            title = "缓存的歌曲",
-            creatorName = "本机",
+            title = t("缓存的歌曲"),
+            creatorName = t("本机"),
             loading = true,
             complete = true,
         ),
@@ -41,7 +42,7 @@ class CachedSongsViewModel(
                         it.copy(
                             tracks = tracks,
                             coverUrl = tracks.firstOrNull()?.coverUrl,
-                            subtitle = "${tracks.size} 首",
+                            subtitle = t("%s 首", tracks.size),
                             expectedCount = tracks.size,
                             loading = false,
                             refreshing = false,
@@ -55,7 +56,7 @@ class CachedSongsViewModel(
                         cur.copy(
                             loading = false,
                             refreshing = false,
-                            error = if (cur.tracks.isEmpty()) "无法读取下载目录，点这里重试" else cur.error,
+                            error = if (cur.tracks.isEmpty()) t("无法读取下载目录，点这里重试") else cur.error,
                         )
                     }
                 }

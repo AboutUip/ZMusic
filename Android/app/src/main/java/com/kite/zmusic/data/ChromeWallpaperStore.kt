@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.util.Log
+import com.kite.zmusic.i18n.t
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -14,8 +15,8 @@ import org.json.JSONObject
 import java.io.File
 
 enum class ChromeWallpaperSurface(
-    val title: String,
-    val caption: String,
+    private val titleZh: String,
+    private val captionZh: String,
 ) {
     Home("主页", "默认铺这一页"),
     Features("功能", "听歌模式和入口"),
@@ -25,6 +26,10 @@ enum class ChromeWallpaperSurface(
     Playlist("歌单", "歌单、日推、漫游列表和榜"),
     Album("专辑", "专辑详情"),
     Artist("歌手", "歌手页和收藏的歌手"),
+    ;
+
+    val title: String get() = t(titleZh)
+    val caption: String get() = t(captionZh)
 }
 
 data class WallpaperFrame(
@@ -83,12 +88,12 @@ data class ChromeWallpaperState(
 
     val settingsSubtitle: String
         get() {
-            if (!enabled) return "已关闭 · 各页用主题底色"
+            if (!enabled) return t("已关闭 · 各页用主题底色")
             val n = coverage.size
             return if (n == 1 && ChromeWallpaperSurface.Home in coverage) {
-                "已启用 · 目前只铺主页"
+                t("已启用 · 目前只铺主页")
             } else {
-                "已启用 · ${n} 处页面"
+                t("已启用 · %s 处页面", n)
             }
         }
 }

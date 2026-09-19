@@ -2,6 +2,7 @@ package com.kite.zmusic.data
 
 import android.net.Uri
 import java.net.URLDecoder
+import com.kite.zmusic.i18n.t
 
 /**
  * 方案 C：官方包预置的社区登录常量。密钥只用于本机签发断言，不放请求头。
@@ -9,7 +10,7 @@ import java.net.URLDecoder
 object CommunityLoginConfig {
     const val CLIENT_ID = "qp-zmusic"
     const val HMAC_SECRET_HEX = "a5f6efd78093e026a2bcc8993f61cf2e78c50ca3ab480dae47fb810511eb4dcc"
-    const val DISPLAY_NAME = "量子像素 · ZMusic"
+    val DISPLAY_NAME: String get() = t("量子像素 · ZMusic")
     const val QR_PREFIX = "ZMLOGIN1:"
     const val SUBMIT_PATH = "/api/v1/communities/zmusic/login/submit"
     /** 社区网页登录页（扫码确认用）。 */

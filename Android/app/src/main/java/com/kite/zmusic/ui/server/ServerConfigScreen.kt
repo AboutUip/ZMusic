@@ -44,6 +44,7 @@ import com.kite.zmusic.R
 import com.kite.zmusic.data.ServerConfigRepository
 import com.kite.zmusic.ui.main.MainLightSystemBars
 import com.kite.zmusic.ui.main.MainPalette
+import com.kite.zmusic.i18n.t
 
 /**
  * 启动时服务不可达的全屏配置页。应用内改地址走设置里的液体玻璃弹窗。
@@ -84,7 +85,7 @@ fun ServerConfigScreen(
             )
             Spacer(Modifier.height(22.dp))
             Text(
-                text = "无法连接服务",
+                text = t("无法连接服务"),
                 style = TextStyle(
                     color = MainPalette.Ink,
                     fontSize = 22.sp,
@@ -94,7 +95,7 @@ fun ServerConfigScreen(
             )
             Spacer(Modifier.height(8.dp))
             Text(
-                text = "填写主机和端口，测试通过后再进入",
+                text = t("填写主机和端口，测试通过后再进入"),
                 style = TextStyle(
                     color = MainPalette.Secondary,
                     fontSize = 14.sp,
@@ -113,13 +114,13 @@ fun ServerConfigScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 GateField(
-                    label = "主机 / IP",
+                    label = t("主机 / IP"),
                     value = vm.host,
                     onChange = vm::onHostChange,
                     keyboardType = KeyboardType.Uri,
                 )
                 GateField(
-                    label = "端口",
+                    label = t("端口"),
                     value = vm.portText,
                     onChange = vm::onPortChange,
                     keyboardType = KeyboardType.Number,
@@ -160,7 +161,7 @@ fun ServerConfigScreen(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = if (vm.busy) "连接中" else "测试并保存",
+                        text = if (vm.busy) t("连接中") else t("测试并保存"),
                         style = TextStyle(
                             color = Color.White,
                             fontSize = 16.sp,

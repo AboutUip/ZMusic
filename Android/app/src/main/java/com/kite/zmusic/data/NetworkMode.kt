@@ -3,6 +3,7 @@ package com.kite.zmusic.data
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import com.kite.zmusic.i18n.t
 
 enum class NetworkPhase {
     Online,
@@ -35,9 +36,9 @@ internal object NetworkPhaseLogic {
 
     /** [from] 为 null 表示主界面第一次看到该相位：在线开场不提示。 */
     fun islandNotice(from: NetworkPhase?, to: NetworkPhase): String? = when (to) {
-        NetworkPhase.Fluctuating -> "网络波动，正在等待恢复"
-        NetworkPhase.Offline -> "已进入离线模式"
-        NetworkPhase.Online -> if (from != null) "网络已恢复" else null
+        NetworkPhase.Fluctuating -> t("网络波动，正在等待恢复")
+        NetworkPhase.Offline -> t("已进入离线模式")
+        NetworkPhase.Online -> if (from != null) t("网络已恢复") else null
     }
 }
 

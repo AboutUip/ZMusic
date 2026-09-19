@@ -52,6 +52,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.kite.zmusic.ui.theme.MainPalette
+import com.kite.zmusic.i18n.t
 
 internal enum class LoginLegalKind {
     Terms,
@@ -70,50 +71,50 @@ private data class LegalSection(
 )
 
 internal fun loginLegalTitle(kind: LoginLegalKind): String = when (kind) {
-    LoginLegalKind.Terms -> "服务条款"
-    LoginLegalKind.Privacy -> "隐私政策"
+    LoginLegalKind.Terms -> t("服务条款")
+    LoginLegalKind.Privacy -> t("隐私政策")
 }
 
 private fun loginLegalSections(kind: LoginLegalKind): List<LegalSection> = when (kind) {
     LoginLegalKind.Terms -> listOf(
         LegalSection(
-            heading = "开源与作者",
-            body = "ZMusic 以 GNU GPL-2.0 协议开源。使用、复制、修改或再分发本软件时，必须遵守该开源协议，保留许可证文本与版权声明，不得剥离开源义务。\n\n" +
-                "作者为小萱baibai。请尊重作者的署名、劳动与本项目的原创性。",
+            heading = t("开源与作者"),
+            body = t("ZMusic 以 GNU GPL-2.0 协议开源。使用、复制、修改或再分发本软件时，必须遵守该开源协议，保留许可证文本与版权声明，不得剥离开源义务。\n\n") +
+                t("作者为小萱baibai。请尊重作者的署名、劳动与本项目的原创性。"),
         ),
         LegalSection(
-            heading = "服务性质",
-            body = "本应用默认向你提供听歌相关服务。该服务由作者出于自愿、以个人公益方式提供。服务器性能、可用性、延迟与稳定性不作任何保证，也可能随时调整、中断或停止。使用即表示你接受这一前提。",
+            heading = t("服务性质"),
+            body = t("本应用默认向你提供听歌相关服务。该服务由作者出于自愿、以个人公益方式提供。服务器性能、可用性、延迟与稳定性不作任何保证，也可能随时调整、中断或停止。使用即表示你接受这一前提。"),
         ),
         LegalSection(
-            heading = "使用范围",
-            body = "本应用所连接的音乐服务，仅限在 ZMusic 内使用。任何人不得将上述服务私自用于 ZMusic 之外的软件、脚本、接口调用或其他用途。",
+            heading = t("使用范围"),
+            body = t("本应用所连接的音乐服务，仅限在 ZMusic 内使用。任何人不得将上述服务私自用于 ZMusic 之外的软件、脚本、接口调用或其他用途。"),
         ),
         LegalSection(
-            heading = "公益服务器",
-            body = "为个人公益服务器。任何人不得对其进行压力测试、漏洞试探、恶意扫描或其他测试行为，也不得就其性能、稳定或提供方式提出无端质疑或干扰。",
+            heading = t("公益服务器"),
+            body = t("为个人公益服务器。任何人不得对其进行压力测试、漏洞试探、恶意扫描或其他测试行为，也不得就其性能、稳定或提供方式提出无端质疑或干扰。"),
         ),
         LegalSection(
-            heading = "账号与责任",
-            body = "登录即连接你的网易云账号，用于在 ZMusic 内同步收藏与歌单。请妥善保管账号。违反本条款造成的后果，由使用者自行承担。",
+            heading = t("账号与责任"),
+            body = t("登录即连接你的网易云账号，用于在 ZMusic 内同步收藏与歌单。请妥善保管账号。违反本条款造成的后果，由使用者自行承担。"),
         ),
     )
     LoginLegalKind.Privacy -> listOf(
         LegalSection(
-            heading = "我们保存什么",
-            body = "ZMusic 只会保存登录凭证（加密存放于本机）以及你在本应用内的个性化数据，例如播放队列快照、显示偏好、服务器地址配置。",
+            heading = t("我们保存什么"),
+            body = t("ZMusic 只会保存登录凭证（加密存放于本机）以及你在本应用内的个性化数据，例如播放队列快照、显示偏好、服务器地址配置。"),
         ),
         LegalSection(
-            heading = "其余数据在哪",
-            body = "歌曲、歌单、歌词、评论、账号资料等其余数据均存储于网易云官方服务器。ZMusic 不另建用户内容库，也不把这些数据另存为可对外传播的副本。",
+            heading = t("其余数据在哪"),
+            body = t("歌曲、歌单、歌词、评论、账号资料等其余数据均存储于网易云官方服务器。ZMusic 不另建用户内容库，也不把这些数据另存为可对外传播的副本。"),
         ),
         LegalSection(
-            heading = "如何传递",
-            body = "仅在本地与远程服务器之间传递登录和使用所必需的个人信息参数（例如请求所需的登录凭证，以及你主动填写的手机号、邮箱等登录字段）。我们保证不把这些数据对外传播、出售或提供给无关第三方。",
+            heading = t("如何传递"),
+            body = t("仅在本地与远程服务器之间传递登录和使用所必需的个人信息参数（例如请求所需的登录凭证，以及你主动填写的手机号、邮箱等登录字段）。我们保证不把这些数据对外传播、出售或提供给无关第三方。"),
         ),
         LegalSection(
-            heading = "你能做什么",
-            body = "你可以在应用内退出登录以清除本地会话。卸载或清除应用数据，将同时移除本机个性化数据。",
+            heading = t("你能做什么"),
+            body = t("你可以在应用内退出登录以清除本地会话。卸载或清除应用数据，将同时移除本机个性化数据。"),
         ),
     )
 }
@@ -300,7 +301,7 @@ internal fun LoginAgreementRow(
             }
             Spacer(Modifier.size(8.dp))
             Text(
-                text = "同意",
+                text = t("同意"),
                 modifier = Modifier.clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
@@ -308,8 +309,8 @@ internal fun LoginAgreementRow(
                 ),
                 style = TextStyle(color = InkSecondary, fontSize = 12.sp),
             )
-            LegalNameLink("《服务条款》", onClick = onOpenTerms)
-            LegalNameLink("《隐私政策》", onClick = onOpenPrivacy)
+            LegalNameLink(t("《服务条款》"), onClick = onOpenTerms)
+            LegalNameLink(t("《隐私政策》"), onClick = onOpenPrivacy)
         }
     }
 }
@@ -322,8 +323,8 @@ internal fun LoginLegalNameLinks(
     fontSize: TextUnit = 14.sp,
 ) {
     Row {
-        LegalNameLink("《服务条款》", onClick = onOpenTerms, color = color, fontSize = fontSize)
-        LegalNameLink("《隐私政策》", onClick = onOpenPrivacy, color = color, fontSize = fontSize)
+        LegalNameLink(t("《服务条款》"), onClick = onOpenTerms, color = color, fontSize = fontSize)
+        LegalNameLink(t("《隐私政策》"), onClick = onOpenPrivacy, color = color, fontSize = fontSize)
     }
 }
 

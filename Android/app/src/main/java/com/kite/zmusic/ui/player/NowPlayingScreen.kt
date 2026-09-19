@@ -188,6 +188,7 @@ import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
 import androidx.compose.ui.unit.lerp as lerpDp
+import com.kite.zmusic.i18n.t
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -339,7 +340,7 @@ fun NowPlayingScreen(
     fun toggleTrackLike() {
         val session = app.sessionRepository.session.value
         if (session == null || session.isGuest || session.cookie.isBlank()) {
-            context.showIslandNotice("请先登录")
+            context.showIslandNotice(t("请先登录"))
             return
         }
         val likedTrack = track
@@ -355,15 +356,16 @@ fun NowPlayingScreen(
         sliderDragging = false
     }
 
-    val duration = state.durationMs.coerceAtLeast(1L)
-    // 进度条/时间：切歌时快速动画归零；歌词仍用真实 position，避免回 scrub
-    val seekDisplayPos = rememberSeekDisplayPositionMs(
+    val seekClock = rememberSeekDisplayClock(
         trackId = track.id,
         positionMs = state.positionMs,
+        durationMs = state.durationMs,
         loadPending = state.loadPending,
         seeking = sliderDragging,
         scrubPositionMs = sliderValue.toLong(),
     )
+    val duration = seekClock.durationMs
+    val seekDisplayPos = seekClock.positionMs
     val displayPos = if (sliderDragging) sliderValue.toLong() else seekDisplayPos
     val lyricPos = if (sliderDragging) sliderValue.toLong() else state.positionMs
     // 歌词选择抽到小函数：避免在超大 Composable 里混用 List/Boolean 的 remember key（ART VerifyError）
@@ -556,8 +558,9 @@ fun NowPlayingScreen(
             )
         }
     }
-    LaunchedEffect(portraitCommentsOpen) {
-        onHoldAutoAdvanceChange(portraitCommentsOpen)
+    LaunchedEffect(portraitCommentsOpen, listenUi.inRoom) {
+        // 一起听里评论位是聊天室：不按歌曲挂起自动下一首
+        onHoldAutoAdvanceChange(portraitCommentsOpen && !listenUi.inRoom)
         if (portraitCommentsOpen) {
             portraitCommentsSheetFrac.snapTo(2f / 3f)
             portraitCommentsPanel.animateTo(
@@ -638,7 +641,10 @@ fun NowPlayingScreen(
         portraitLyricSelectOpen = false
         portraitLyricSelectSelected.clear()
         portraitLyricSelectResumeToken = 0
-        portraitCommentsOpen = false
+        // 一起听聊天室跟房间走，切歌不关；普通评论仍跟当前曲
+        if (!listenUi.inRoom) {
+            portraitCommentsOpen = false
+        }
         portraitMoreOpen = false
         portraitShareOpen = false
         portraitListenOpen = false

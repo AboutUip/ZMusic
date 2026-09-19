@@ -1,5 +1,7 @@
 package com.kite.zmusic.data
 
+import com.kite.zmusic.i18n.t
+
 data class CommentSelfProfile(
     val uid: Long,
     val nickname: String,
@@ -20,7 +22,7 @@ class CommentsRepository(
     suspend fun selfProfile(cookie: String): CommentSelfProfile {
         val status = authClient.loginStatus(cookie)
         val uid = NcmJson.userIdFromLoginStatus(status) ?: 0L
-        val nickname = NcmJson.displayLabelFromLogin(status)?.ifBlank { null } ?: "我"
+        val nickname = NcmJson.displayLabelFromLogin(status)?.ifBlank { null } ?: t("我")
         val profile = status.optJSONObject("profile")
             ?: status.optJSONObject("data")?.optJSONObject("profile")
         val avatar = profile?.optString("avatarUrl")
@@ -77,7 +79,7 @@ class CommentsRepository(
             cookie = cookie,
             replyCommentId = replyCommentId,
         )
-        val failHint = if (replyCommentId != null) "回复失败，请稍后重试" else "评论失败，请稍后重试"
+        val failHint = if (replyCommentId != null) t("回复失败，请稍后重试") else t("评论失败，请稍后重试")
         val code = json.optInt("code", -1)
         if (code != 200) {
             return CommentPostResult(false, null, NcmJson.userFacingMessage(json, failHint))

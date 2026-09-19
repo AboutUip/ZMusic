@@ -83,6 +83,8 @@ import androidx.core.view.WindowCompat
 import com.kite.zmusic.R
 import com.kite.zmusic.ui.common.GlassAlertDialog
 import com.kite.zmusic.ui.theme.MainPalette
+import com.kite.zmusic.i18n.I18n
+import com.kite.zmusic.i18n.t
 
 /** 登录主色；跟随 [MainPalette.Accent]。 */
 private val CloudRed get() = MainPalette.Accent
@@ -333,7 +335,7 @@ private fun LandingPane(
             )
             Spacer(Modifier.height(8.dp))
             Text(
-                text = "把世界调小一点  ·  把歌开大一点",
+                text = t("把世界调小一点  ·  把歌开大一点"),
                 style = TextStyle(
                     color = InkSecondary,
                     fontSize = 13.sp,
@@ -345,7 +347,7 @@ private fun LandingPane(
         Spacer(Modifier.weight(1f))
 
         CloudPillButton(
-            text = "手机号登录",
+            text = t("手机号登录"),
             onClick = onPhone,
         )
         Spacer(Modifier.height(16.dp))
@@ -361,7 +363,7 @@ private fun LandingPane(
             contentAlignment = Alignment.Center,
         ) {
             Text(
-                text = "扫码登录",
+                text = t("扫码登录"),
                 style = TextStyle(
                     color = Ink,
                     fontSize = 15.sp,
@@ -382,11 +384,11 @@ private fun LandingPane(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "没有账号？",
+                text = t("没有账号？"),
                 style = TextStyle(color = InkSecondary, fontSize = 13.sp),
             )
             Text(
-                text = "注册",
+                text = t("注册"),
                 modifier = Modifier
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
@@ -424,9 +426,9 @@ internal fun LoginSmsPane(
     val phoneOk = LoginPhoneRegex.matches(vm.phone.trim())
     Column(Modifier.fillMaxSize()) {
         LoginDrillTopBar(
-            title = "手机号登录",
+            title = t("手机号登录"),
             onBack = onBack,
-            trailing = { TextLink("密码登录", onClick = onSwitchPassword) },
+            trailing = { TextLink(t("密码登录"), onClick = onSwitchPassword) },
         )
         Column(
             Modifier
@@ -442,7 +444,7 @@ internal fun LoginSmsPane(
                     if (filtered != vm.phone) vm.onSmsPhoneChanged()
                     vm.phone = filtered
                 },
-                hint = "请输入手机号",
+                hint = t("请输入手机号"),
                 leading = {
                     Text(
                         text = "+86",
@@ -469,15 +471,15 @@ internal fun LoginSmsPane(
                     LoginUnderlineField(
                         value = vm.captcha,
                         onValueChange = { vm.captcha = it.filter { ch -> ch.isDigit() }.take(8) },
-                        hint = "请输入验证码",
+                        hint = t("请输入验证码"),
                         keyboardType = KeyboardType.Number,
                         imeAction = ImeAction.Done,
                         onIme = onLogin,
                         trailing = {
                             val label = when {
-                                vm.captchaSending -> "发送中"
+                                vm.captchaSending -> t("发送中")
                                 vm.captchaCooldownSec > 0 -> "${vm.captchaCooldownSec}s"
-                                else -> "重获验证码"
+                                else -> t("重获验证码")
                             }
                             val can = !vm.captchaSending && vm.captchaCooldownSec == 0 && phoneOk
                             Text(
@@ -499,13 +501,13 @@ internal fun LoginSmsPane(
             Spacer(Modifier.height(32.dp))
             if (!codeStage) {
                 CloudPillButton(
-                    text = if (vm.captchaSending) "发送中…" else "下一步",
+                    text = if (vm.captchaSending) t("发送中…") else t("下一步"),
                     enabled = phoneOk && !vm.captchaSending,
                     onClick = onSendCode,
                 )
             } else {
                 CloudPillButton(
-                    text = "登录",
+                    text = t("登录"),
                     enabled = phoneOk && vm.captcha.isNotBlank() && !vm.busy,
                     onClick = onLogin,
                 )
@@ -513,7 +515,7 @@ internal fun LoginSmsPane(
             if (codeStage && vm.phone.length == 11) {
                 Spacer(Modifier.height(16.dp))
                 Text(
-                    text = "验证码已发送至 ${maskPhone(vm.phone)}",
+                    text = t("验证码已发送至 %s", maskPhone(vm.phone)),
                     style = TextStyle(
                         color = InkHint,
                         fontSize = 12.sp,
@@ -534,7 +536,7 @@ internal fun LoginQrPane(
 ) {
     val b64 = vm.qrImageBase64
     val hint = vm.qrHint
-    val expired = hint.contains("过期")
+    val expired = I18n.sourceOf(hint).contains("过期")
     val bmp = rememberQrBitmap(b64)
     val qrCard = @Composable {
         Box(
@@ -548,18 +550,18 @@ internal fun LoginQrPane(
             if (bmp != null && !expired) {
                 Image(
                     bitmap = bmp,
-                    contentDescription = "登录二维码",
+                    contentDescription = t("登录二维码"),
                     modifier = Modifier.size(if (wide) 176.dp else 196.dp),
                 )
             } else {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
-                        text = if (expired) "二维码已失效" else "二维码加载中",
+                        text = if (expired) t("二维码已失效") else t("二维码加载中"),
                         style = TextStyle(color = InkSecondary, fontSize = 14.sp),
                     )
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        text = "点击刷新",
+                        text = t("点击刷新"),
                         style = TextStyle(
                             color = CloudRed,
                             fontSize = 13.sp,
@@ -573,7 +575,7 @@ internal fun LoginQrPane(
     val qrCopy = @Composable {
         Column(horizontalAlignment = if (wide) Alignment.Start else Alignment.CenterHorizontally) {
             Text(
-                text = "打开网易云音乐 App 扫一扫登录",
+                text = t("打开网易云音乐 App 扫一扫登录"),
                 style = TextStyle(
                     color = Ink,
                     fontSize = 15.sp,
@@ -582,16 +584,16 @@ internal fun LoginQrPane(
             )
             Spacer(Modifier.height(8.dp))
             Text(
-                text = hint.ifEmpty { "等待扫描…" },
+                text = hint.ifEmpty { t("等待扫描…") },
                 style = TextStyle(color = InkSecondary, fontSize = 13.sp),
             )
             LoginErrorLine(err, vm::dismissError)
             Spacer(Modifier.height(20.dp))
-            TextLink("刷新二维码") { vm.loadQrSession() }
+            TextLink(t("刷新二维码")) { vm.loadQrSession() }
         }
     }
     Column(Modifier.fillMaxSize()) {
-        LoginDrillTopBar(title = "扫码登录", onBack = onBack)
+        LoginDrillTopBar(title = t("扫码登录"), onBack = onBack)
         if (wide) {
             Row(
                 Modifier
@@ -630,9 +632,9 @@ internal fun LoginPasswordPane(
 ) {
     Column(Modifier.fillMaxSize()) {
         LoginDrillTopBar(
-            title = "密码登录",
+            title = t("密码登录"),
             onBack = onBack,
-            trailing = { TextLink("验证码登录", onClick = onSwitchSms) },
+            trailing = { TextLink(t("验证码登录"), onClick = onSwitchSms) },
         )
         Column(
             Modifier
@@ -648,7 +650,7 @@ internal fun LoginPasswordPane(
                     if (filtered != vm.phone) vm.onSmsPhoneChanged()
                     vm.phone = filtered
                 },
-                hint = "请输入手机号",
+                hint = t("请输入手机号"),
                 leading = {
                     Text("+86", style = TextStyle(color = Ink, fontSize = 16.sp, fontWeight = FontWeight.Medium))
                     Box(
@@ -665,7 +667,7 @@ internal fun LoginPasswordPane(
             LoginUnderlineField(
                 value = vm.password,
                 onValueChange = { vm.password = it },
-                hint = "请输入密码",
+                hint = t("请输入密码"),
                 password = true,
                 imeAction = ImeAction.Done,
                 onIme = onLogin,
@@ -673,12 +675,12 @@ internal fun LoginPasswordPane(
             LoginErrorLine(err, vm::dismissError)
             Spacer(Modifier.height(12.dp))
             Text(
-                text = "密码登录可能触发风控，建议优先使用验证码或扫码。",
+                text = t("密码登录可能触发风控，建议优先使用验证码或扫码。"),
                 style = TextStyle(color = InkHint, fontSize = 12.sp, lineHeight = 18.sp),
             )
             Spacer(Modifier.height(28.dp))
             CloudPillButton(
-                text = "登录",
+                text = t("登录"),
                 enabled = vm.phone.isNotBlank() && vm.password.isNotBlank() && !vm.busy,
                 onClick = onLogin,
             )
@@ -694,7 +696,7 @@ internal fun LoginEmailPane(
     onLogin: () -> Unit,
 ) {
     Column(Modifier.fillMaxSize()) {
-        LoginDrillTopBar(title = "邮箱登录", onBack = onBack)
+        LoginDrillTopBar(title = t("邮箱登录"), onBack = onBack)
         Column(
             Modifier
                 .fillMaxSize()
@@ -705,14 +707,14 @@ internal fun LoginEmailPane(
             LoginUnderlineField(
                 value = vm.email,
                 onValueChange = { vm.email = it },
-                hint = "请输入网易邮箱",
+                hint = t("请输入网易邮箱"),
                 keyboardType = KeyboardType.Email,
             )
             Spacer(Modifier.height(8.dp))
             LoginUnderlineField(
                 value = vm.emailPassword,
                 onValueChange = { vm.emailPassword = it },
-                hint = "请输入密码",
+                hint = t("请输入密码"),
                 password = true,
                 imeAction = ImeAction.Done,
                 onIme = onLogin,
@@ -720,7 +722,7 @@ internal fun LoginEmailPane(
             LoginErrorLine(err, vm::dismissError)
             Spacer(Modifier.height(32.dp))
             CloudPillButton(
-                text = "登录",
+                text = t("登录"),
                 enabled = vm.email.isNotBlank() && vm.emailPassword.isNotBlank() && !vm.busy,
                 onClick = onLogin,
             )
@@ -800,7 +802,7 @@ internal fun OtherMethodsRow(
                     .background(Hairline),
             )
             Text(
-                text = "其他登录方式",
+                text = t("其他登录方式"),
                 modifier = Modifier.padding(horizontal = 12.dp),
                 style = TextStyle(color = InkHint, fontSize = 12.sp),
             )
@@ -813,8 +815,8 @@ internal fun OtherMethodsRow(
         }
         Spacer(Modifier.height(20.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(36.dp)) {
-            RoundMethod(label = "密码", onClick = onPassword) { LockGlyph() }
-            RoundMethod(label = "邮箱", onClick = onEmail) { EnvelopeGlyph() }
+            RoundMethod(label = t("密码"), onClick = onPassword) { LockGlyph() }
+            RoundMethod(label = t("邮箱"), onClick = onEmail) { EnvelopeGlyph() }
         }
     }
 }
@@ -851,8 +853,8 @@ internal fun LoginAgreeFirstDialog(
     onOpenPrivacy: () -> Unit,
 ) {
     GlassAlertDialog(
-        title = "请阅读并同意以下条款",
-        confirmLabel = "同意并继续",
+        title = t("请阅读并同意以下条款"),
+        confirmLabel = t("同意并继续"),
         onConfirm = onAgree,
         onDismiss = onDismiss,
         extraContent = {

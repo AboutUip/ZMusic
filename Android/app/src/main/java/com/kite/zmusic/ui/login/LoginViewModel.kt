@@ -17,6 +17,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlin.coroutines.coroutineContext
 import org.json.JSONObject
+import com.kite.zmusic.i18n.t
 
 class LoginViewModel(
     private val sessionRepository: SessionRepository,
@@ -104,7 +105,7 @@ class LoginViewModel(
                     return@launch
                 }
                 val key = NcmJson.qrKey(keyJson) ?: run {
-                    bannerError = "二维码 key 解析失败"
+                    bannerError = t("二维码 key 解析失败")
                     return@launch
                 }
                 qrUnikey = key
@@ -116,11 +117,11 @@ class LoginViewModel(
                 qrLoginUrl = NcmJson.qrUrl(create, key)
                 val img = NcmJson.qrImgBase64(create)
                 if (img.isNullOrBlank() && qrLoginUrl.isBlank()) {
-                    bannerError = "二维码数据为空，请稍后重试"
+                    bannerError = t("二维码数据为空，请稍后重试")
                     return@launch
                 }
                 qrImageBase64 = img
-                qrHint = if (overlay) "" else "使用网易云音乐 App 扫描"
+                qrHint = if (overlay) "" else t("使用网易云音乐 App 扫描")
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -147,15 +148,15 @@ class LoginViewModel(
                 }
                 when (code) {
                     800 -> {
-                        qrHint = "二维码已过期，请刷新"
+                        qrHint = t("二维码已过期，请刷新")
                         return
                     }
-                    801 -> qrHint = "等待扫描…"
-                    802 -> qrHint = "请在手机上确认登录"
+                    801 -> qrHint = t("等待扫描…")
+                    802 -> qrHint = t("请在手机上确认登录")
                     803 -> {
                         val cookie = NcmJson.extractCookie(json)
                         if (cookie.isNullOrEmpty()) {
-                            bannerError = "登录成功但未返回 cookie"
+                            bannerError = t("登录成功但未返回 cookie")
                             return
                         }
                         sessionRepository.persist(cookie, NcmJson.displayLabelFromLogin(json))
@@ -177,7 +178,7 @@ class LoginViewModel(
         viewModelScope.launch {
             if (captchaCooldownSec > 0 || captchaSending) return@launch
             if (phone.isBlank()) {
-                bannerError = "请输入手机号"
+                bannerError = t("请输入手机号")
                 return@launch
             }
             captchaSending = true
@@ -196,7 +197,7 @@ class LoginViewModel(
                     bannerError = NcmJson.userFacingMessage(j, "发送失败")
                     NcmLog.w("captchaSent fail banner=$bannerError")
                 } else {
-                    smsCaptchaHint = "验证码已下发至手机，请查收短信"
+                    smsCaptchaHint = t("验证码已下发至手机，请查收短信")
                     sentOk = true
                 }
             } catch (e: Exception) {
@@ -222,7 +223,7 @@ class LoginViewModel(
         viewModelScope.launch {
             if (busy) return@launch
             if (phone.isBlank() || captcha.isBlank()) {
-                bannerError = "请输入手机号与验证码"
+                bannerError = t("请输入手机号与验证码")
                 return@launch
             }
             busy = true
@@ -253,7 +254,7 @@ class LoginViewModel(
         viewModelScope.launch {
             if (busy) return@launch
             if (phone.isBlank() || password.isBlank()) {
-                bannerError = "请输入手机号与密码"
+                bannerError = t("请输入手机号与密码")
                 return@launch
             }
             busy = true
@@ -282,7 +283,7 @@ class LoginViewModel(
         viewModelScope.launch {
             if (busy) return@launch
             if (email.isBlank() || emailPassword.isBlank()) {
-                bannerError = "请输入邮箱与密码"
+                bannerError = t("请输入邮箱与密码")
                 return@launch
             }
             busy = true
@@ -315,7 +316,7 @@ class LoginViewModel(
         }
         val cookie = NcmJson.extractCookie(j)
         if (cookie.isNullOrEmpty()) {
-            bannerError = "登录成功但未返回 cookie，请重试或使用二维码"
+            bannerError = t("登录成功但未返回 cookie，请重试或使用二维码")
             NcmLog.w("login 200 but no cookie ${NcmLog.summarize(j)}")
             return false
         }
@@ -337,7 +338,7 @@ class LoginViewModel(
         return when (NcmJson.phoneAlreadyRegistered(existJson)) {
             true -> true
             false -> {
-                bannerError = "该手机号尚未注册，请先注册"
+                bannerError = t("该手机号尚未注册，请先注册")
                 NcmLog.w("exist not-registered")
                 false
             }

@@ -28,6 +28,7 @@ import java.io.File
 import java.io.FileOutputStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import com.kite.zmusic.i18n.t
 
 internal object ShareListenCard {
     private const val W = 1080
@@ -67,7 +68,7 @@ internal object ShareListenCard {
         val qrText = room.qrText.ifBlank { ZMusicListenLink.format(room.id) }
         if (qrText.isBlank()) return@withContext null
         val host = room.members.firstOrNull { it.host }
-        val hostName = host?.nickname?.ifBlank { null } ?: "好友"
+        val hostName = host?.nickname?.ifBlank { null } ?: t("好友")
         val avatar = loadUrlBitmap(app, resolveUrl(app, host?.avatarUrl.orEmpty()), 240)
         val qr = PlayerDisplayQr.encodeBitmap(qrText, 500, ErrorCorrectionLevel.M)
         val logo = runCatching {
@@ -118,17 +119,17 @@ internal object ShareListenCard {
                 color = Muted
                 textSize = 30f
             }
-            c.drawText("发起一起听", avLeft + avSize + 28f, avTop + 118f, rolePaint)
+            c.drawText(t("发起一起听"), avLeft + avSize + 28f, avTop + 118f, rolePaint)
 
             val title = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = Ink
                 textSize = 72f
                 typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
             }
-            c.drawText("一起听", 120f, 520f, title)
+            c.drawText(t("一起听"), 120f, 520f, title)
             layout(
                 c,
-                "「$hostName」邀请你进入一起听，用 ZMusic 扫码即可加入",
+                t("「%s」邀请你进入一起听，用 ZMusic 扫码即可加入", hostName),
                 TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
                     color = Muted
                     textSize = 34f
@@ -151,7 +152,7 @@ internal object ShareListenCard {
 
             layout(
                 c,
-                "最多 ${room.maxMembers} 人 · 歌曲会一起切换",
+                t("最多 %s 人 · 歌曲会一起切换", room.maxMembers),
                 TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
                     color = Muted
                     textSize = 30f

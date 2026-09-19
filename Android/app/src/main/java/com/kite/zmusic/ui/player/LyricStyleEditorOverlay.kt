@@ -83,6 +83,7 @@ import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeStyle
 import dev.chrisbanes.haze.HazeTint
 import dev.chrisbanes.haze.hazeEffect
+import com.kite.zmusic.i18n.t
 
 private val EditorLabel = Color(0xFFFFFFFF)
 private val EditorHint = Color(0xFFE8F0F8)
@@ -370,7 +371,7 @@ fun LyricStyleEditorOverlay(
                             ),
                         )
                         Text(
-                            text = "歌词样式",
+                            text = t("歌词样式"),
                             style = TextStyle(
                                 color = EditorLabel,
                                 fontFamily = FontFamily.SansSerif,
@@ -379,7 +380,7 @@ fun LyricStyleEditorOverlay(
                             ),
                         )
                         Text(
-                            text = "颜色与字号 · 关闭后应用",
+                            text = t("颜色与字号 · 关闭后应用"),
                             style = TextStyle(
                                 color = EditorHint.copy(alpha = 0.72f),
                                 fontFamily = FontFamily.Monospace,
@@ -389,21 +390,21 @@ fun LyricStyleEditorOverlay(
                         )
 
                         LyricRoleStyleSection(
-                            title = "播放中歌词",
+                            title = t("播放中歌词"),
                             role = LyricStyleRole.Playing,
                             style = draftPlaying,
                             switchColors = switchColors,
                             onChange = onDraftPlayingChange,
                         )
                         LyricRoleStyleSection(
-                            title = "已播放歌词",
+                            title = t("已播放歌词"),
                             role = LyricStyleRole.Played,
                             style = draftPlayed,
                             switchColors = switchColors,
                             onChange = onDraftPlayedChange,
                         )
                         LyricRoleStyleSection(
-                            title = "未播放歌词",
+                            title = t("未播放歌词"),
                             role = LyricStyleRole.Unplayed,
                             style = draftUnplayed,
                             switchColors = switchColors,
@@ -557,7 +558,7 @@ internal fun LyricRoleStyleSection(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "字体大小",
+                text = t("字体大小"),
                 style = TextStyle(
                     color = EditorHint.copy(alpha = 0.85f),
                     fontFamily = FontFamily.Monospace,
@@ -594,7 +595,7 @@ internal fun LyricRoleStyleSection(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "斜体",
+                text = t("斜体"),
                 style = TextStyle(color = EditorHint, fontSize = 12.sp),
                 modifier = Modifier.weight(1f),
             )
@@ -609,7 +610,7 @@ internal fun LyricRoleStyleSection(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "粗体",
+                text = t("粗体"),
                 style = TextStyle(color = EditorHint, fontSize = 12.sp),
                 modifier = Modifier.weight(1f),
             )
@@ -621,7 +622,7 @@ internal fun LyricRoleStyleSection(
         }
 
         Text(
-            text = "字体颜色",
+            text = t("字体颜色"),
             style = TextStyle(
                 color = EditorHint.copy(alpha = 0.85f),
                 fontFamily = FontFamily.Monospace,
@@ -728,7 +729,7 @@ private fun LyricColorSlotRow(
                 )
                 if (locked) {
                     Text(
-                        text = "默",
+                        text = t("默"),
                         style = TextStyle(
                             color = Color.Black.copy(alpha = 0.72f),
                             fontSize = 8.sp,
@@ -823,7 +824,7 @@ private fun LyricSingleColorEditor(
             }
         }
         Text(
-            text = "色相",
+            text = t("色相"),
             style = TextStyle(
                 color = EditorHint.copy(alpha = 0.75f),
                 fontSize = 10.sp,
@@ -928,7 +929,7 @@ private fun LyricStyleCloneContent(
     ) {
         if (lines.isEmpty()) {
             Text(
-                text = "暂无歌词",
+                text = t("暂无歌词"),
                 style = TextStyle(
                     color = EditorHint.copy(alpha = 0.5f),
                     fontFamily = FontFamily.Monospace,

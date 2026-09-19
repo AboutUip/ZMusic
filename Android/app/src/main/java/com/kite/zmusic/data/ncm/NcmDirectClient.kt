@@ -12,6 +12,7 @@ import org.json.JSONObject
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 import kotlin.random.Random
+import com.kite.zmusic.i18n.t
 
 /**
  * 直连网易云 weapi / eapi / xeapi，覆盖短信、密码、注册与游客 token。
@@ -87,8 +88,8 @@ internal class NcmDirectClient(
         attachRiskProof(data, secureCaptcha)
         val json = eapi("/api/w/login", data, attachCookie = true)
         if (json.optInt("code") == 502) {
-            json.put("msg", "账号或密码错误")
-            json.put("message", "账号或密码错误")
+            json.put("msg", t("账号或密码错误"))
+            json.put("message", t("账号或密码错误"))
         }
         return json
     }
@@ -530,7 +531,7 @@ internal class NcmDirectClient(
                 null
             } ?: run {
                 NcmLog.w("http ${resp.code} empty-or-invalid body len=${text.length} preview=${text.take(400)}")
-                throw IOException("请求失败，请稍后重试")
+                throw IOException(t("请求失败，请稍后重试"))
             }
             NcmLog.i(
                 "http ${resp.code} setCookie=${NcmLog.cookieNames(setCookie)} " +
@@ -552,7 +553,7 @@ internal class NcmDirectClient(
                 NcmXeapi.decryptResponse(bytes)
             } catch (e: Exception) {
                 NcmLog.w("xeapi decrypt failed http=${resp.code} bytes=${bytes.size}", e)
-                throw IOException("请求失败，请稍后重试")
+                throw IOException(t("请求失败，请稍后重试"))
             }
             NcmLog.i(
                 "xeapi http=${resp.code} setCookie=${NcmLog.cookieNames(setCookie)} ${NcmLog.summarize(json)}",

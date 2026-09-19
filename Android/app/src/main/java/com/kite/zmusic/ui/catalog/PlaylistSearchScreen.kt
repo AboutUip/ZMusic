@@ -61,6 +61,7 @@ import com.kite.zmusic.ui.icons.ZIcons
 import com.kite.zmusic.ui.main.MainOverlay
 import com.kite.zmusic.ui.main.MainPalette
 import kotlinx.coroutines.delay
+import com.kite.zmusic.i18n.t
 
 @Composable
 fun PlaylistSearchScreen(
@@ -150,13 +151,13 @@ fun PlaylistSearchScreen(
             ) {
                 Icon(
                     imageVector = ZIcons.Back,
-                    contentDescription = "返回",
+                    contentDescription = t("返回"),
                     tint = MainPalette.Ink,
                     modifier = Modifier.size(22.dp),
                 )
             }
             Text(
-                text = "搜索歌单",
+                text = t("搜索歌单"),
                 modifier = Modifier
                     .weight(1f)
                     .padding(start = 4.dp),
@@ -187,19 +188,19 @@ fun PlaylistSearchScreen(
                 val loaded = ui.loaded.size
                 val expected = ui.expectedCount
                 if (expected > loaded && loaded > 0) {
-                    "输入歌名、歌手或专辑 · 已加载 $loaded / $expected 首"
+                    t("输入歌名、歌手或专辑 · 已加载 %s / %s 首", loaded, expected)
                 } else if (loaded > 0) {
-                    "输入歌名、歌手或专辑 · 共 $loaded 首"
+                    t("输入歌名、歌手或专辑 · 共 %s 首", loaded)
                 } else {
-                    "输入歌名、歌手或专辑"
+                    t("输入歌名、歌手或专辑")
                 }
             }
             ui.scanning -> {
-                val extra = if (ui.hits.isNotEmpty()) " · 已找到 ${ui.hits.size} 首" else ""
-                "正在搜索剩余歌曲$extra"
+                val extra = if (ui.hits.isNotEmpty()) t(" · 已找到 %s 首", ui.hits.size) else ""
+                t("正在搜索剩余歌曲%s", extra)
             }
-            ui.hits.isNotEmpty() -> "找到 ${ui.hits.size} 首"
-            ui.complete || ui.loaded.isNotEmpty() -> "歌单中没有找到相关歌曲"
+            ui.hits.isNotEmpty() -> t("找到 %s 首", ui.hits.size)
+            ui.complete || ui.loaded.isNotEmpty() -> t("歌单中没有找到相关歌曲")
             else -> null
         }
         if (status != null) {
@@ -283,9 +284,9 @@ fun PlaylistSearchScreen(
             onDownload = { track, options -> launchTrackDownload(app, track, options) },
             onRemove = { vm.removeTrack(it, overlay.owned) },
             removeConfirmTitle = if (overlay.heart) {
-                "从我喜欢的音乐移除？"
+                t("从我喜欢的音乐移除？")
             } else {
-                "从歌单移除这首歌？"
+                t("从歌单移除这首歌？")
             },
             currentPlaylistId = overlay.playlistId,
             onOpenArtist = onOpenArtist,
@@ -334,7 +335,7 @@ private fun PlaylistSearchField(
             decorationBox = { inner ->
                 if (value.isEmpty()) {
                     Text(
-                        "搜索歌单内的歌曲",
+                        t("搜索歌单内的歌曲"),
                         style = TextStyle(color = MainPalette.Hint, fontSize = 15.sp),
                     )
                 }
@@ -355,7 +356,7 @@ private fun PlaylistSearchField(
             ) {
                 Icon(
                     imageVector = ZIcons.Close,
-                    contentDescription = "清空",
+                    contentDescription = t("清空"),
                     tint = MainPalette.Secondary,
                     modifier = Modifier.size(18.dp),
                 )

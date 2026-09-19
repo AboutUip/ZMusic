@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.sp
 import com.kite.zmusic.ui.main.MainControls
 import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.main.wallpaperItemChrome
+import com.kite.zmusic.i18n.t
 
 @Composable
 fun PersistentPlaybackSettingsPage(
@@ -44,7 +45,7 @@ fun PersistentPlaybackSettingsPage(
     ) {
         Spacer(Modifier.height(8.dp))
         Text(
-            text = "开启后可以和其他软件一起出声。对方开始播放时，歌曲不会暂停：声音会先轻轻压低，随即恢复到原来大小，两边一起播。关闭后仍按系统规则让出播放。应用内观看 MV 时仍会暂停歌曲。",
+            text = t("开启后可以和其他软件一起出声。对方开始播放时，歌曲不会暂停：声音会先轻轻压低，随即恢复到原来大小，两边一起播。关闭后仍按系统规则让出播放。应用内观看 MV 时仍会暂停歌曲。"),
             style = TextStyle(
                 color = MainPalette.Secondary,
                 fontSize = 13.sp,
@@ -69,7 +70,7 @@ fun PersistentPlaybackSettingsPage(
         ) {
             Column(Modifier.weight(1f)) {
                 Text(
-                    text = "持续播放",
+                    text = t("持续播放"),
                     style = TextStyle(
                         color = MainPalette.Ink,
                         fontSize = 15.sp,
@@ -77,7 +78,7 @@ fun PersistentPlaybackSettingsPage(
                     ),
                 )
                 Text(
-                    text = if (enabled) "已开启 · 与其他应用同时出声" else "已关闭 · 按系统规则让出",
+                    text = if (enabled) t("已开启 · 与其他应用同时出声") else t("已关闭 · 按系统规则让出"),
                     style = TextStyle(
                         color = MainPalette.Secondary,
                         fontSize = 12.sp,

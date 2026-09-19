@@ -1,5 +1,7 @@
 package com.kite.zmusic.playback
 
+import com.kite.zmusic.i18n.t
+
 /**
  * 音频输出口筛选与命名。类型常量与 [android.media.AudioDeviceInfo] 对齐，
  * 逻辑不依赖 AudioDeviceInfo，便于单测。
@@ -72,7 +74,7 @@ data class AudioOutputUiState(
         get() {
             val device = active
             return if (usingSmart || device == null) {
-                "智能模式 · 由系统决定"
+                t("智能模式 · 由系统决定")
             } else {
                 device.name
             }
@@ -93,34 +95,34 @@ internal fun isListedAudioOutputType(type: Int): Boolean = when (type) {
 internal fun audioOutputFallbackName(type: Int): String = when (type) {
     AudioOutputTypes.BUILTIN_SPEAKER,
     AudioOutputTypes.BUILTIN_SPEAKER_SAFE,
-    -> "本机扬声器"
-    AudioOutputTypes.BUILTIN_EARPIECE -> "听筒"
+    -> t("本机扬声器")
+    AudioOutputTypes.BUILTIN_EARPIECE -> t("听筒")
     AudioOutputTypes.WIRED_HEADSET,
     AudioOutputTypes.WIRED_HEADPHONES,
-    -> "有线耳机"
+    -> t("有线耳机")
     AudioOutputTypes.USB_HEADSET,
     AudioOutputTypes.USB_DEVICE,
     AudioOutputTypes.USB_ACCESSORY,
-    -> "USB 音频"
+    -> t("USB 音频")
     AudioOutputTypes.BLUETOOTH_A2DP,
     AudioOutputTypes.BLUETOOTH_SCO,
     AudioOutputTypes.BLE_HEADSET,
     AudioOutputTypes.BLE_SPEAKER,
     AudioOutputTypes.BLE_BROADCAST,
-    -> "蓝牙设备"
+    -> t("蓝牙设备")
     AudioOutputTypes.HDMI,
     AudioOutputTypes.HDMI_ARC,
     AudioOutputTypes.HDMI_EARC,
     -> "HDMI"
-    AudioOutputTypes.DOCK -> "底座"
-    AudioOutputTypes.HEARING_AID -> "助听器"
+    AudioOutputTypes.DOCK -> t("底座")
+    AudioOutputTypes.HEARING_AID -> t("助听器")
     AudioOutputTypes.LINE_ANALOG,
     AudioOutputTypes.LINE_DIGITAL,
     AudioOutputTypes.AUX_LINE,
-    -> "线路输出"
+    -> t("线路输出")
     AudioOutputTypes.FM -> "FM"
-    AudioOutputTypes.IP -> "网络音频"
-    else -> "音频设备"
+    AudioOutputTypes.IP -> t("网络音频")
+    else -> t("音频设备")
 }
 
 internal fun audioOutputTypeRank(type: Int): Int = when (type) {

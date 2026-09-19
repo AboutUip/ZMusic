@@ -11,6 +11,7 @@ import kotlinx.coroutines.withTimeout
 import java.util.concurrent.CompletionException
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
+import com.kite.zmusic.i18n.t
 
 /**
  * 社区公开目录的 HTTP：无 cookie，Accept text/xaiop，失败静默重试后灵动岛提示。
@@ -75,7 +76,7 @@ class CommunityXaiopClient(
     suspend fun <T> withRemoteRetry(block: suspend () -> T): T? {
         runAttempt(block).getOrNull()?.let { return it }
         runAttempt(block).getOrNull()?.let { return it }
-        notices.show("网络波动")
+        notices.show(t("网络波动"))
         return runAttempt(block).getOrNull()
     }
 

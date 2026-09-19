@@ -16,6 +16,8 @@ import com.kite.zmusic.data.SearchPlaylistHit
 import com.kite.zmusic.data.SearchUserHit
 import com.kite.zmusic.data.SessionRepository
 import com.kite.zmusic.data.TrackRow
+import com.kite.zmusic.i18n.t
+import com.kite.zmusic.ui.easter.MjEasterEgg
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -32,13 +34,34 @@ enum class SearchPhase {
     Results,
 }
 
-enum class SearchKind(val apiType: Int, val label: String, val emptyHint: String, val countKey: String) {
-    Song(1, "歌曲", "没有找到相关歌曲", "songCount"),
-    Playlist(1000, "歌单", "没有找到相关歌单", "playlistCount"),
-    Album(10, "专辑", "没有找到相关专辑", "albumCount"),
-    Mv(1004, "MV", "没有找到相关 MV", "mvCount"),
-    Artist(100, "歌手", "没有找到相关歌手", "artistCount"),
-    User(1002, "用户", "没有找到相关用户", "userprofileCount"),
+enum class SearchKind(val apiType: Int, val countKey: String) {
+    Song(1, "songCount"),
+    Playlist(1000, "playlistCount"),
+    Album(10, "albumCount"),
+    Mv(1004, "mvCount"),
+    Artist(100, "artistCount"),
+    User(1002, "userprofileCount"),
+    ;
+
+    val label: String
+        get() = when (this) {
+            Song -> t("歌曲")
+            Playlist -> t("歌单")
+            Album -> t("专辑")
+            Mv -> t("MV")
+            Artist -> t("歌手")
+            User -> t("用户")
+        }
+
+    val emptyHint: String
+        get() = when (this) {
+            Song -> t("没有找到相关歌曲")
+            Playlist -> t("没有找到相关歌单")
+            Album -> t("没有找到相关专辑")
+            Mv -> t("没有找到相关 MV")
+            Artist -> t("没有找到相关歌手")
+            User -> t("没有找到相关用户")
+        }
 }
 
 private const val SearchPageSize = 30
@@ -246,6 +269,7 @@ class SearchViewModel(
     fun submitSearch() {
         val q = _ui.value.query.trim()
         if (q.isEmpty()) return
+        MjEasterEgg.consider(q)
         runFullSearch(q, kindForQuery(q))
     }
 
@@ -279,6 +303,7 @@ class SearchViewModel(
     fun applySuggestion(word: String) {
         val q = word.trim()
         if (q.isEmpty()) return
+        MjEasterEgg.consider(q)
         _ui.update { it.copy(query = q) }
         runFullSearch(q, kindForQuery(q))
     }

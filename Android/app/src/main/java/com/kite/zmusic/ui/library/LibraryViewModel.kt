@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import com.kite.zmusic.i18n.t
 
 data class LibraryUiState(
     val loading: Boolean = false,
@@ -226,7 +227,7 @@ class LibraryViewModel(
                         _ui.update {
                             it.copy(
                                 sheetRefreshing = false,
-                                sheet = LibrarySheet.Failed(id, title, "刷新失败"),
+                                sheet = LibrarySheet.Failed(id, title, t("刷新失败")),
                             )
                         }
                         return@launch
@@ -308,7 +309,7 @@ class LibraryViewModel(
                             sheet = if (it.sheet is LibrarySheet.Ready) {
                                 it.sheet
                             } else {
-                                LibrarySheet.Failed(playlistId, title, "加载曲目失败")
+                                LibrarySheet.Failed(playlistId, title, t("加载曲目失败"))
                             },
                         )
                     }
@@ -447,7 +448,7 @@ class LibraryViewModel(
                     title = snap.title.ifBlank {
                         (sheet as? LibrarySheet.Ready)?.title
                             ?: (sheet as? LibrarySheet.Loading)?.title
-                            ?: "我喜欢的音乐"
+                            ?: t("我喜欢的音乐")
                     },
                     tracks = NcmLibraryParse.mergeLoadedInOrder(
                         snap.orderKey(),

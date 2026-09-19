@@ -60,6 +60,7 @@ import com.kite.zmusic.listen.ncmUserId
 import com.kite.zmusic.ui.common.UrlImage
 import com.kite.zmusic.ui.notice.showIslandNotice
 import kotlinx.coroutines.delay
+import com.kite.zmusic.i18n.t
 
 private val ClusterRing = Color(0x66F2EDE6)
 private val ClusterFill = Color(0x33000000)
@@ -149,8 +150,8 @@ private fun ListenTogetherAvatarCluster(
     val count = layout.behind.size + 1 + extra
     val stackW = avatar + step * (count - 1).coerceAtLeast(0)
     val caption = when {
-        layout.waitingSlot -> "等待加入 · 1/${room.maxMembers.coerceAtLeast(2)}"
-        else -> "一起听 · ${room.members.size}人"
+        layout.waitingSlot -> t("等待加入 · 1/%s", room.maxMembers.coerceAtLeast(2))
+        else -> t("一起听 · %s人", room.members.size)
     }
     val toastIndex = remember(toast?.uid, layout.host?.uid, layout.behind, layout.overflow) {
         val uid = toast?.uid ?: return@remember -1
@@ -366,7 +367,7 @@ private fun openMemberSpace(
 ) {
     val id = member.ncmUserId()
     if (id == null) {
-        context.showIslandNotice("无法打开主页")
+        context.showIslandNotice(t("无法打开主页"))
         return
     }
     onOpenUser(id, member.nickname, member.avatarUrl.takeIf { it.isNotBlank() })

@@ -25,6 +25,7 @@ import com.kite.zmusic.ZMusicApplication
 import com.kite.zmusic.data.SessionRepository
 import com.kite.zmusic.ui.notice.showIslandNotice
 import com.kite.zmusic.ui.theme.MainPalette
+import com.kite.zmusic.i18n.t
 
 internal enum class LoginMethod {
     Qr,
@@ -69,7 +70,7 @@ fun LoginScreen(
         registerVm.reset()
         method = LoginMethod.Sms
         resumeSms = true
-        context.showIslandNotice("注册成功，请用验证码登录")
+        context.showIslandNotice(t("注册成功，请用验证码登录"))
     }
 
     Box(modifier.fillMaxSize()) {

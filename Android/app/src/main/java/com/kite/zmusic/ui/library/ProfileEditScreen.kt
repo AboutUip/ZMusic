@@ -61,11 +61,12 @@ import com.kite.zmusic.ui.icons.ZIcons
 import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.main.wallpaperItemChrome
 import com.kite.zmusic.ui.notice.showIslandNotice
+import com.kite.zmusic.i18n.I18n
+import com.kite.zmusic.i18n.t
 import java.io.File
-import java.text.SimpleDateFormat
+import java.text.DateFormat
 import java.util.Calendar
 import java.util.Date
-import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -88,7 +89,7 @@ internal fun ProfileEditScreen(
         ) {
             ProfileEditTopBar(onBack = onBack, saving = false, onSave = {})
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("登录后可编辑资料", color = MainPalette.Secondary, fontSize = 14.sp)
+                Text(t("登录后可编辑资料"), color = MainPalette.Secondary, fontSize = 14.sp)
             }
         }
         return
@@ -109,7 +110,7 @@ internal fun ProfileEditScreen(
         scope.launch {
             val file = withContext(Dispatchers.IO) { copyPickedAvatar(context, uri) }
             if (file == null) {
-                context.showIslandNotice("无法读取这张图片")
+                context.showIslandNotice(t("无法读取这张图片"))
             } else {
                 pendingAvatar = file
             }
@@ -120,7 +121,7 @@ internal fun ProfileEditScreen(
         if (saving) return
         val name = nickname.trim()
         if (name.isEmpty()) {
-            context.showIslandNotice("请填写昵称")
+            context.showIslandNotice(t("请填写昵称"))
             return
         }
         saving = true
@@ -131,7 +132,7 @@ internal fun ProfileEditScreen(
                 val avatarAck = withContext(Dispatchers.IO) { repo.uploadSelfAvatar(avatarFile) }
                 if (!avatarAck.ok) {
                     saving = false
-                    context.showIslandNotice(avatarAck.message.ifBlank { "头像更新失败" })
+                    context.showIslandNotice(avatarAck.message.ifBlank { t("头像更新失败") })
                     return@launch
                 }
             }
@@ -140,7 +141,7 @@ internal fun ProfileEditScreen(
                 val check = withContext(Dispatchers.IO) { repo.checkNicknameAvailable(name) }
                 if (!check.ok) {
                     saving = false
-                    context.showIslandNotice(check.message.ifBlank { "昵称不可用" })
+                    context.showIslandNotice(check.message.ifBlank { t("昵称不可用") })
                     return@launch
                 }
             }
@@ -159,7 +160,7 @@ internal fun ProfileEditScreen(
                 }
                 if (!ack.ok) {
                     saving = false
-                    context.showIslandNotice(ack.message.ifBlank { "保存失败" })
+                    context.showIslandNotice(ack.message.ifBlank { t("保存失败") })
                     return@launch
                 }
             } else if (avatarFile == null) {
@@ -168,7 +169,7 @@ internal fun ProfileEditScreen(
                 return@launch
             }
             saving = false
-            context.showIslandNotice("资料已保存")
+            context.showIslandNotice(t("资料已保存"))
             onBack()
         }
     }
@@ -205,35 +206,35 @@ internal fun ProfileEditScreen(
                     },
                 )
                 Spacer(Modifier.height(22.dp))
-                ProfileEditLabel("昵称")
+                ProfileEditLabel(t("昵称"))
                 Spacer(Modifier.height(8.dp))
                 GlassPromptField(
                     value = nickname,
                     onValueChange = { nickname = it },
-                    placeholder = "填写昵称",
+                    placeholder = t("填写昵称"),
                     maxLength = 30,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                 )
                 Spacer(Modifier.height(18.dp))
-                ProfileEditLabel("签名")
+                ProfileEditLabel(t("签名"))
                 Spacer(Modifier.height(8.dp))
                 GlassPromptField(
                     value = signature,
                     onValueChange = { signature = it },
-                    placeholder = "介绍一下自己",
+                    placeholder = t("介绍一下自己"),
                     maxLength = 100,
                     singleLine = false,
                     minLines = 3,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                 )
                 Spacer(Modifier.height(18.dp))
-                ProfileEditLabel("性别")
+                ProfileEditLabel(t("性别"))
                 Spacer(Modifier.height(8.dp))
                 Row(
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    listOf(0 to "保密", 1 to "男", 2 to "女").forEach { (value, label) ->
+                    listOf(0 to t("保密"), 1 to t("男"), 2 to t("女")).forEach { (value, label) ->
                         ProfileEditChip(
                             label = label,
                             selected = gender == value,
@@ -244,7 +245,7 @@ internal fun ProfileEditScreen(
                     }
                 }
                 Spacer(Modifier.height(18.dp))
-                ProfileEditLabel("生日")
+                ProfileEditLabel(t("生日"))
                 Spacer(Modifier.height(8.dp))
                 ProfileEditRow(
                     value = formatBirthday(birthdayMs),
@@ -269,7 +270,7 @@ internal fun ProfileEditScreen(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = if (saving) "保存中…" else "保存",
+                        text = if (saving) t("保存中…") else t("保存"),
                         color = Color.White,
                         fontSize = 16.sp,
                         fontWeight = FontWeight.SemiBold,
@@ -320,13 +321,13 @@ private fun ProfileEditTopBar(
         ) {
             Icon(
                 imageVector = ZIcons.Back,
-                contentDescription = "返回",
+                contentDescription = t("返回"),
                 tint = MainPalette.Ink,
                 modifier = Modifier.size(22.dp),
             )
         }
         Text(
-            text = "编辑资料",
+            text = t("编辑资料"),
             modifier = Modifier.weight(1f),
             style = TextStyle(
                 color = MainPalette.Ink,
@@ -335,7 +336,7 @@ private fun ProfileEditTopBar(
             ),
         )
         Text(
-            text = "保存",
+            text = t("保存"),
             modifier = Modifier
                 .clip(RoundedCornerShape(10.dp))
                 .clickable(
@@ -381,7 +382,7 @@ private fun ProfileEditAvatar(
             } else {
                 UrlImage(
                     url = url,
-                    contentDescription = "头像",
+                    contentDescription = t("头像"),
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize(),
                     maxPx = UrlImageCache.THUMB_MAX_PX,
@@ -398,7 +399,7 @@ private fun ProfileEditAvatar(
             ) {
                 Icon(
                     imageVector = ZIcons.Camera,
-                    contentDescription = "更换头像",
+                    contentDescription = t("更换头像"),
                     tint = MainPalette.Page,
                     modifier = Modifier.size(15.dp),
                 )
@@ -406,7 +407,7 @@ private fun ProfileEditAvatar(
         }
         Spacer(Modifier.height(10.dp))
         Text(
-            text = "点击更换头像",
+            text = t("点击更换头像"),
             color = MainPalette.Secondary,
             fontSize = 12.sp,
         )
@@ -483,7 +484,7 @@ private fun ProfileEditRow(
     ) {
         Text(
             text = value,
-            color = if (value == "未设置") MainPalette.Hint else MainPalette.Ink,
+            color = if (value == t("未设置")) MainPalette.Hint else MainPalette.Ink,
             fontSize = 16.sp,
             fontWeight = FontWeight.Medium,
             modifier = Modifier.weight(1f),
@@ -517,7 +518,7 @@ internal fun ProfileMoreButton(
     ) {
         Icon(
             imageVector = ZIcons.Menu,
-            contentDescription = "编辑资料",
+            contentDescription = t("编辑资料"),
             tint = MainPalette.Ink,
             modifier = Modifier.size(20.dp),
         )
@@ -525,8 +526,8 @@ internal fun ProfileMoreButton(
 }
 
 private fun formatBirthday(ms: Long): String {
-    if (ms <= 0L) return "未设置"
-    return SimpleDateFormat("yyyy年M月d日", Locale.CHINA).format(Date(ms))
+    if (ms <= 0L) return t("未设置")
+    return DateFormat.getDateInstance(DateFormat.LONG, I18n.language.locale).format(Date(ms))
 }
 
 private fun openBirthdayPicker(

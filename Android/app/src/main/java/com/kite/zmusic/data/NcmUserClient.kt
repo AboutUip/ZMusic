@@ -13,6 +13,7 @@ import okhttp3.RequestBody.Companion.asRequestBody
 import org.json.JSONObject
 import java.io.File
 import java.util.concurrent.TimeUnit
+import com.kite.zmusic.i18n.t
 
 /**
  * 用户与歌单相关 GET（携带 cookie），与 [NcmAuthClient] 共用同一套 API 基址。
@@ -762,8 +763,23 @@ class NcmUserClient(
         get("/recommend/songs", mapOf("cookie" to cookie, "timestamp" to ts()))
     }
 
-    suspend fun personalFm(cookie: String): JSONObject = withContext(Dispatchers.IO) {
-        get("/personal_fm", mapOf("cookie" to cookie, "timestamp" to ts()))
+    suspend fun personalFm(
+        cookie: String,
+        choice: PersonalFmModeChoice = PersonalFmModeChoice.Default,
+    ): JSONObject = withContext(Dispatchers.IO) {
+        val query = mutableMapOf(
+            "cookie" to cookie,
+            "timestamp" to ts(),
+            "mode" to choice.mode,
+        )
+        choice.submode?.trim()?.takeIf { it.isNotEmpty() }?.let { query["submode"] = it }
+        runCatching { get("/personal/fm/mode", query) }.getOrElse { err ->
+            if (choice.isDefault) {
+                get("/personal_fm", mapOf("cookie" to cookie, "timestamp" to ts()))
+            } else {
+                throw err
+            }
+        }
     }
 
     /**
@@ -1121,13 +1137,13 @@ class NcmUserClient(
         cookie: String,
         limit: Int = 30,
         offset: Int = 0,
-        order: String = "最热",
+        order: String = t("最热"),
     ): JSONObject = withContext(Dispatchers.IO) {
         get(
             "/mv/all",
             mapOf(
-                "area" to "全部",
-                "type" to "全部",
+                "area" to t("全部"),
+                "type" to t("全部"),
                 "order" to order,
                 "limit" to limit.toString(),
                 "offset" to offset.toString(),

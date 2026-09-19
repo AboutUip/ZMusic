@@ -110,8 +110,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.kite.zmusic.i18n.t
 
-private val WorkshopTabs = listOf("浏览社区", "模块")
+private fun workshopTabs() = listOf(t("浏览社区"), t("模块"))
 private val DrillSlideSpec = tween<IntOffset>(durationMillis = 320, easing = FastOutSlowInEasing)
 private val DrillFadeSpec = tween<Float>(durationMillis = 220)
 
@@ -170,7 +171,7 @@ fun CreativeWorkshopScreen(
                 .imePadding(),
         ) {
             if (auth == null) {
-                CatalogTopBar(title = "创意工坊", onBack = onBack)
+                CatalogTopBar(title = t("创意工坊"), onBack = onBack)
                 WorkshopGate(
                     contentBottomInset = contentBottomInset,
                     onConfirm = openLogin,
@@ -194,7 +195,7 @@ fun CreativeWorkshopScreen(
                     if (page == 0) {
                         if (offline) {
                             WorkshopEmptyHint(
-                                text = "浏览需要网络",
+                                text = t("浏览需要网络"),
                                 contentBottomInset = contentBottomInset,
                             )
                         } else {
@@ -233,7 +234,7 @@ fun CreativeWorkshopScreen(
             val id = detailId
             Column(Modifier.fillMaxSize()) {
                 CatalogTopBar(
-                    title = "插件详情",
+                    title = t("插件详情"),
                     onBack = { closeDetail() },
                 )
                 if (id != null) {
@@ -327,7 +328,7 @@ private fun WorkshopHomeTopBar(
         ) {
             Icon(
                 imageVector = ZIcons.Back,
-                contentDescription = "返回",
+                contentDescription = t("返回"),
                 tint = MainPalette.Ink,
                 modifier = Modifier.size(22.dp),
             )
@@ -336,7 +337,7 @@ private fun WorkshopHomeTopBar(
             Modifier.align(Alignment.Center),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            WorkshopTabs.forEachIndexed { index, label ->
+            workshopTabs().forEachIndexed { index, label ->
                 WorkshopTabLabel(
                     label = label,
                     selected = selected == index,
@@ -358,7 +359,7 @@ private fun WorkshopHomeTopBar(
         ) {
             Icon(
                 imageVector = ZIcons.Search,
-                contentDescription = "搜索插件",
+                contentDescription = t("搜索插件"),
                 tint = MainPalette.Ink,
                 modifier = Modifier.size(22.dp),
             )
@@ -416,7 +417,7 @@ private fun WorkshopGate(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
-            "首次确认社区身份",
+            t("首次确认社区身份"),
             style = TextStyle(
                 color = MainPalette.Ink,
                 fontSize = 20.sp,
@@ -425,7 +426,7 @@ private fun WorkshopGate(
         )
         Spacer(Modifier.height(10.dp))
         Text(
-            "扫一次社区登录码，社区会保存你的资料，之后创意工坊长期可用（含应用更新）。",
+            t("扫一次社区登录码，社区会保存你的资料，之后创意工坊长期可用（含应用更新）。"),
             style = TextStyle(
                 color = MainPalette.Secondary,
                 fontSize = 14.sp,
@@ -445,7 +446,7 @@ private fun WorkshopGate(
                 .padding(horizontal = 22.dp, vertical = 12.dp),
         ) {
             Text(
-                "去扫码确认",
+                t("去扫码确认"),
                 style = TextStyle(
                     color = Color.White,
                     fontSize = 15.sp,
@@ -540,10 +541,10 @@ private fun WorkshopBrowseTab(
                 Box(Modifier.fillMaxSize())
             }
             failed && items.isEmpty() -> {
-                WorkshopEmptyHint("社区服务器繁忙", contentBottomInset)
+                WorkshopEmptyHint(t("社区服务器繁忙"), contentBottomInset)
             }
             items.isEmpty() -> {
-                WorkshopEmptyHint("暂无上架插件", contentBottomInset)
+                WorkshopEmptyHint(t("暂无上架插件"), contentBottomInset)
             }
             else -> {
                 LazyColumn(
@@ -688,13 +689,13 @@ private fun WorkshopSearchPage(
             ) {
                 Icon(
                     imageVector = ZIcons.Back,
-                    contentDescription = "返回",
+                    contentDescription = t("返回"),
                     tint = MainPalette.Ink,
                     modifier = Modifier.size(22.dp),
                 )
             }
             Text(
-                text = "搜索插件",
+                text = t("搜索插件"),
                 modifier = Modifier
                     .weight(1f)
                     .padding(start = 4.dp),
@@ -727,11 +728,11 @@ private fun WorkshopSearchPage(
             modifier = Modifier.padding(horizontal = 20.dp),
         )
         val status = when {
-            offline || searchFailed -> "社区服务器繁忙"
-            query.trim().isEmpty() -> "输入插件名或 id"
+            offline || searchFailed -> t("社区服务器繁忙")
+            query.trim().isEmpty() -> t("输入插件名或 id")
             searching && items.isEmpty() -> null
-            didSearch && items.isEmpty() -> "没有找到相关插件"
-            didSearch -> "找到 ${items.size} 个"
+            didSearch && items.isEmpty() -> t("没有找到相关插件")
+            didSearch -> t("找到 %s 个", items.size)
             else -> null
         }
         if (status != null) {
@@ -744,7 +745,7 @@ private fun WorkshopSearchPage(
         }
         when {
             !searching && (offline || searchFailed) && items.isEmpty() -> {
-                WorkshopEmptyHint("社区服务器繁忙", contentBottomInset)
+                WorkshopEmptyHint(t("社区服务器繁忙"), contentBottomInset)
             }
             searching && items.isEmpty() -> {
                 Box(Modifier.fillMaxSize())
@@ -827,7 +828,7 @@ private fun WorkshopSearchField(
                 Box {
                     if (value.isEmpty()) {
                         Text(
-                            text = "搜索插件名或 id",
+                            text = t("搜索插件名或 id"),
                             color = MainPalette.Hint,
                             fontSize = 15.sp,
                         )
@@ -839,7 +840,7 @@ private fun WorkshopSearchField(
         if (value.isNotEmpty()) {
             Icon(
                 imageVector = ZIcons.Close,
-                contentDescription = "清除",
+                contentDescription = t("清除"),
                 tint = MainPalette.Hint,
                 modifier = Modifier
                     .size(18.dp)
@@ -910,7 +911,12 @@ private fun WorkshopCardRow(card: WorkshopPluginCard, onClick: () -> Unit) {
             )
             Spacer(Modifier.height(4.dp))
             Text(
-                "v${card.version} · ★ ${"%.1f".format(card.ratingAvg)} · ${card.downloads} 次下载",
+                t(
+                    "v%s · ★ %s · %s 次下载",
+                    card.version,
+                    String.format("%.1f", card.ratingAvg),
+                    card.downloads,
+                ),
                 style = TextStyle(color = MainPalette.Secondary, fontSize = 12.sp),
             )
         }
@@ -946,7 +952,7 @@ private fun WorkshopModulesTab(contentBottomInset: Dp) {
             try {
                 val copied = withContext(Dispatchers.IO) { copyPickedZpp(context, uri) }
                 if (copied == null) {
-                    context.showIslandNotice("无法读取所选文件")
+                    context.showIslandNotice(t("无法读取所选文件"))
                 } else {
                     try {
                         repo.installFromLocalZpp(copied)
@@ -1008,14 +1014,14 @@ private fun WorkshopModulesTab(contentBottomInset: Dp) {
             actions = buildList {
                 if (!pluginPages[rec.id].isNullOrEmpty()) {
                     add(
-                        GlassSheetAction("打开页面") {
+                        GlassSheetAction(t("打开页面")) {
                             app.pluginEngine.ui.openPreferred(rec.id)
                             moreTarget = null
                         },
                     )
                 }
                 add(
-                    GlassSheetAction("删除", destructive = true) {
+                    GlassSheetAction(t("删除"), destructive = true) {
                         confirmDelete = rec
                         moreTarget = null
                     },
@@ -1025,16 +1031,16 @@ private fun WorkshopModulesTab(contentBottomInset: Dp) {
     }
     confirmDelete?.let { rec ->
         GlassAlertDialog(
-            title = "删除插件？",
-            message = "「${rec.name}」会从本机移除，可之后再从创意工坊安装。",
-            confirmLabel = "删除",
+            title = t("删除插件？"),
+            message = t("「%s」会从本机移除，可之后再从创意工坊安装。", rec.name),
+            confirmLabel = t("删除"),
             confirmDestructive = true,
             onConfirm = {
                 confirmDelete = null
                 val ok = repo.uninstallModule(rec.id)
                 refresh()
                 context.showIslandNotice(
-                    if (ok) "已删除「${rec.name}」" else "删除失败",
+                    if (ok) t("已删除「%s」", rec.name) else t("删除失败"),
                 )
             },
             onDismiss = { confirmDelete = null },
@@ -1046,7 +1052,7 @@ private fun listModulesOrdered(repo: com.kite.zmusic.workshop.WorkshopRepository
     val list = repo.modules()
     val probe = list.find { it.id == PluginDebugProbe.ID } ?: PluginRecord(
         id = PluginDebugProbe.ID,
-        name = "引擎探针",
+        name = t("引擎探针"),
         version = 1,
         entry = "index.js",
         engineMin = 1,
@@ -1119,7 +1125,7 @@ private fun InstallLocalZppRow(
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(
-                if (busy) "正在安装…" else "从本地安装 ZPP 插件",
+                if (busy) t("正在安装…") else t("从本地安装 ZPP 插件"),
                 style = TextStyle(
                     color = MainPalette.Ink,
                     fontSize = 16.sp,
@@ -1128,7 +1134,7 @@ private fun InstallLocalZppRow(
             )
             Spacer(Modifier.height(2.dp))
             Text(
-                "选择本机 .zpp 包，安装后默认不启用",
+                t("选择本机 .zpp 包，安装后默认不启用"),
                 style = TextStyle(color = MainPalette.Secondary, fontSize = 12.sp),
             )
         }
@@ -1162,13 +1168,13 @@ private fun ModuleRow(
             Spacer(Modifier.height(2.dp))
             Text(
                 if (readOnly) {
-                    "引擎探针 · 仅显示"
+                    t("引擎探针 · 仅显示")
                 } else {
                     buildString {
                         append(record.id)
                         append(" · v")
                         append(record.version)
-                        if (record.quarantined) append(" · 已隔离")
+                        if (record.quarantined) append(t(" · 已隔离"))
                     }
                 },
                 style = TextStyle(color = MainPalette.Secondary, fontSize = 12.sp),
@@ -1176,7 +1182,7 @@ private fun ModuleRow(
         }
         if (readOnly) {
             Text(
-                "系统",
+                t("系统"),
                 style = TextStyle(
                     color = MainPalette.Hint,
                     fontSize = 12.sp,
@@ -1205,7 +1211,7 @@ private fun ModuleRow(
             ) {
                 Icon(
                     imageVector = ZIcons.More,
-                    contentDescription = "更多",
+                    contentDescription = t("更多"),
                     tint = MainPalette.Hint,
                     modifier = Modifier.size(20.dp),
                 )
@@ -1247,16 +1253,16 @@ private fun WorkshopDetailPage(
         myRating = d?.myRating ?: 0
         if (d == null) {
             loadFailedHint = when (val err = result.exceptionOrNull()) {
-                is WorkshopApiError.Missing -> "插件不存在或已下架"
-                is WorkshopApiError.Unauthorized -> "需要重新确认社区身份"
-                else -> "社区服务器繁忙"
+                is WorkshopApiError.Missing -> t("插件不存在或已下架")
+                is WorkshopApiError.Unauthorized -> t("需要重新确认社区身份")
+                else -> t("社区服务器繁忙")
             }
         }
         loading = false
     }
 
     if (offline) {
-        WorkshopEmptyHint("详情需要网络", contentBottomInset)
+        WorkshopEmptyHint(t("详情需要网络"), contentBottomInset)
         return
     }
     if (loading) {
@@ -1265,7 +1271,7 @@ private fun WorkshopDetailPage(
     }
     val d = detail
     if (d == null) {
-        WorkshopEmptyHint(loadFailedHint ?: "社区服务器繁忙", contentBottomInset)
+        WorkshopEmptyHint(loadFailedHint ?: t("社区服务器繁忙"), contentBottomInset)
         return
     }
 
@@ -1349,25 +1355,25 @@ private fun WorkshopDetailPage(
                     "—"
                 },
                 secondary = if (d.card.ratingCount > 0) {
-                    "★ · ${d.card.ratingCount} 人"
+                    t("★ · %s 人", d.card.ratingCount)
                 } else {
-                    "暂无评分"
+                    t("暂无评分")
                 },
             )
             WorkshopMetricDivider()
             WorkshopMetricCell(
                 primary = formatWorkshopCount(d.card.downloads),
-                secondary = "次下载",
+                secondary = t("次下载"),
             )
             WorkshopMetricDivider()
             WorkshopMetricCell(
                 primary = formatWorkshopBytes(d.sizeBytes),
-                secondary = "大小",
+                secondary = t("大小"),
             )
             WorkshopMetricDivider()
             WorkshopMetricCell(
                 primary = "v${d.card.version}",
-                secondary = "引擎 ${d.card.engineMin}" +
+                secondary = t("引擎 %s", d.card.engineMin) +
                     (d.card.engineMax?.let { "–$it" } ?: "+"),
             )
         }
@@ -1376,10 +1382,10 @@ private fun WorkshopDetailPage(
 
         val canInstall = localModule == null || localModule.version < d.card.version
         val installLabel = when {
-            busy -> "处理中…"
-            localModule == null -> "安装"
-            localModule.version < d.card.version -> "更新"
-            else -> "已安装"
+            busy -> t("处理中…")
+            localModule == null -> t("安装")
+            localModule.version < d.card.version -> t("更新")
+            else -> t("已安装")
         }
         Box(
             Modifier
@@ -1419,16 +1425,16 @@ private fun WorkshopDetailPage(
         Text(
             when {
                 localModule != null && localModule.version >= d.card.version ->
-                    "已在本机 · 到「模块」开启后才会运行"
+                    t("已在本机 · 到「模块」开启后才会运行")
                 else ->
-                    "安装后默认不启用，请到「模块」打开开关。"
+                    t("安装后默认不启用，请到「模块」打开开关。")
             },
             style = TextStyle(color = MainPalette.Secondary, fontSize = 12.sp),
         )
 
         Spacer(Modifier.height(22.dp))
         Text(
-            "关于此插件",
+            t("关于此插件"),
             style = TextStyle(
                 color = MainPalette.Ink,
                 fontWeight = FontWeight.Bold,
@@ -1449,7 +1455,7 @@ private fun WorkshopDetailPage(
         Spacer(Modifier.height(10.dp))
         if (readmeSource.isBlank()) {
             Text(
-                "暂无说明",
+                t("暂无说明"),
                 style = TextStyle(color = MainPalette.Secondary, fontSize = 14.sp),
             )
         } else {
@@ -1459,7 +1465,7 @@ private fun WorkshopDetailPage(
             )
             if (canExpandAbout) {
                 Text(
-                    if (aboutExpanded) "收起" else "查看更多",
+                    if (aboutExpanded) t("收起") else t("查看更多"),
                     modifier = Modifier
                         .padding(top = 8.dp)
                         .clickable(
@@ -1475,7 +1481,7 @@ private fun WorkshopDetailPage(
             }
             if (d.readmeTruncated && aboutExpanded) {
                 Text(
-                    "（服务端已截断）",
+                    t("（服务端已截断）"),
                     style = TextStyle(color = MainPalette.Secondary, fontSize = 12.sp),
                 )
             }
@@ -1483,7 +1489,7 @@ private fun WorkshopDetailPage(
 
         Spacer(Modifier.height(22.dp))
         Text(
-            "评分",
+            t("评分"),
             style = TextStyle(
                 color = MainPalette.Ink,
                 fontWeight = FontWeight.Bold,
@@ -1535,12 +1541,12 @@ private fun WorkshopDetailPage(
                 }
                 Spacer(Modifier.height(2.dp))
                 Text(
-                    if (myRating > 0) "已评 $myRating 星 · 点击可改" else "点星评分",
+                    if (myRating > 0) t("已评 %s 星 · 点击可改", myRating) else t("点星评分"),
                     style = TextStyle(color = MainPalette.Secondary, fontSize = 12.sp),
                 )
                 if (myRating > 0) {
                     Text(
-                        "取消评分",
+                        t("取消评分"),
                         modifier = Modifier
                             .padding(top = 2.dp)
                             .clickable(
@@ -1607,16 +1613,12 @@ private fun formatWorkshopBytes(bytes: Long): String {
     return if (mb < 10) String.format("%.1fMB", mb) else String.format("%.0fMB", mb)
 }
 
-private fun formatWorkshopCount(n: Int): String = when {
-    n < 1000 -> n.toString()
-    n < 10_000 -> String.format("%.1f千", n / 1000.0)
-    else -> String.format("%.1f万", n / 10_000.0)
-}
+private fun formatWorkshopCount(n: Int): String = com.kite.zmusic.i18n.I18n.formatCompactCount(n.toLong())
 
 private fun Throwable.toUserMessage(): String = when (this) {
-    is WorkshopApiError.Unauthorized -> "需要重新确认社区身份"
-    is WorkshopApiError.RateLimited -> "请求太频繁，稍后再试"
-    is WorkshopApiError.Missing -> "插件不存在或已下架"
+    is WorkshopApiError.Unauthorized -> t("需要重新确认社区身份")
+    is WorkshopApiError.RateLimited -> t("请求太频繁，稍后再试")
+    is WorkshopApiError.Missing -> t("插件不存在或已下架")
     is WorkshopApiError.Message -> message
-    else -> message?.takeIf { it.isNotBlank() } ?: "网络出错"
+    else -> message?.takeIf { it.isNotBlank() } ?: t("网络出错")
 }

@@ -1,13 +1,15 @@
 package com.kite.zmusic.data
 
+import com.kite.zmusic.i18n.t
+
 /**
  * 网易云 `/song/url/v1` 的 `level`。默认 [EXHIGH] 对齐当前客户端（约 320 kbps）。
  */
 enum class AudioQuality(
     val level: String,
-    val title: String,
-    val compactTitle: String,
-    val caption: String,
+    private val titleZh: String,
+    private val compactTitleZh: String,
+    private val captionZh: String,
     val encodeType: String,
     val needsPcOs: Boolean,
     val legacyBr: Int,
@@ -22,6 +24,10 @@ enum class AudioQuality(
     DOLBY("dolby", "杜比全景声", "杜比", "Atmos", "flac", true, 999_000),
     JYMASTER("jymaster", "超清母带", "母带", "Master", "flac", true, 999_000),
     ;
+
+    val title: String get() = t(titleZh)
+    val compactTitle: String get() = t(compactTitleZh)
+    val caption: String get() = t(captionZh)
 
     /** 空间音频档：比特流/对象音频，本机调音按立体声 PCM 处理，可能听不出环绕。 */
     val isSpatial: Boolean

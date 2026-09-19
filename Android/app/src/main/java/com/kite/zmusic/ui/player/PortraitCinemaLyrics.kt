@@ -72,6 +72,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import com.kite.zmusic.i18n.t
 
 private val PortraitLyricFallbackDim = Color(0xFF7A8899)
 private val PortraitBrowseSelect = Color(0xFFDCE6F0)
@@ -136,7 +137,7 @@ fun PortraitCinemaLyrics(
             contentAlignment = Alignment.Center,
         ) {
             Text(
-                text = "暂无逐行歌词",
+                text = t("暂无逐行歌词"),
                 style = TextStyle(
                     color = PortraitLyricFallbackDim.copy(alpha = 0.38f),
                     fontFamily = FontFamily.SansSerif,

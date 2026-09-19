@@ -48,15 +48,16 @@ import kotlin.math.abs
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
+import com.kite.zmusic.i18n.t
 
 private val PanelRowShape = RoundedCornerShape(14.dp)
 private val WheelItemHeight = 36.dp
 private const val WheelVisibleCount = 5
 
 internal fun sleepTimerRowSubtitle(timer: SleepTimerUi): String = when {
-    timer.pendingStopAfterTrack -> "本首结束后停止"
-    timer.active -> "${formatSleepClock(timer.remainingMs)} 后停止"
-    else -> "到点自动停止播放"
+    timer.pendingStopAfterTrack -> t("本首结束后停止")
+    timer.active -> t("%s 后停止", formatSleepClock(timer.remainingMs))
+    else -> t("到点自动停止播放")
 }
 
 internal fun formatSleepClock(ms: Long): String {
@@ -84,7 +85,7 @@ internal fun PortraitSleepTimerPanel(
         if (timer.running) {
             Text(
                 text = if (timer.pendingStopAfterTrack) {
-                    "本首结束后停止"
+                    t("本首结束后停止")
                 } else {
                     formatSleepClock(timer.remainingMs)
                 },
@@ -99,7 +100,7 @@ internal fun PortraitSleepTimerPanel(
             if (!timer.pendingStopAfterTrack) {
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    text = "后停止播放",
+                    text = t("后停止播放"),
                     style = TextStyle(color = MainPalette.Secondary, fontSize = 13.sp),
                     modifier = Modifier.align(Alignment.CenterHorizontally),
                 )
@@ -126,7 +127,7 @@ internal fun PortraitSleepTimerPanel(
         ) {
             Column(Modifier.weight(1f)) {
                 Text(
-                    text = "时间到后等当前歌曲播完",
+                    text = t("时间到后等当前歌曲播完"),
                     style = TextStyle(
                         color = MainPalette.Ink,
                         fontWeight = FontWeight.SemiBold,
@@ -135,7 +136,7 @@ internal fun PortraitSleepTimerPanel(
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
-                    text = "到点不切歌，本首结束后再停",
+                    text = t("到点不切歌，本首结束后再停"),
                     style = TextStyle(
                         color = MainPalette.Secondary,
                         fontSize = 12.sp,
@@ -155,7 +156,7 @@ internal fun PortraitSleepTimerPanel(
         }
         Spacer(Modifier.height(14.dp))
         Text(
-            text = "预设",
+            text = t("预设"),
             style = TextStyle(
                 color = MainPalette.Secondary,
                 fontWeight = FontWeight.Medium,
@@ -193,7 +194,7 @@ internal fun PortraitSleepTimerPanel(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = "${preset}分",
+                        text = t("%s分", preset),
                         style = TextStyle(
                             color = if (selected) MainPalette.Accent else MainPalette.Ink,
                             fontWeight = FontWeight.SemiBold,
@@ -205,7 +206,7 @@ internal fun PortraitSleepTimerPanel(
         }
         Spacer(Modifier.height(14.dp))
         Text(
-            text = "自定义",
+            text = t("自定义"),
             style = TextStyle(
                 color = MainPalette.Secondary,
                 fontWeight = FontWeight.Medium,
@@ -225,14 +226,14 @@ internal fun PortraitSleepTimerPanel(
         Spacer(Modifier.height(14.dp))
         if (timer.running) {
             SleepTimerActionButton(
-                text = "取消定时",
+                text = t("取消定时"),
                 filled = false,
                 onClick = onCancel,
             )
             Spacer(Modifier.height(8.dp))
         }
         SleepTimerActionButton(
-            text = if (timer.running) "重新开始" else "开始",
+            text = if (timer.running) t("重新开始") else t("开始"),
             filled = true,
             onClick = { onStart(minutes, wait) },
         )
@@ -359,7 +360,7 @@ private fun SleepMinuteWheel(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = "${value} 分钟",
+                        text = t("%s 分钟", value),
                         modifier = Modifier.graphicsLayer {
                             alpha = when {
                                 dist == 0 -> 1f

@@ -26,6 +26,7 @@ import com.kite.zmusic.plugin.PluginFaultKind
 import com.kite.zmusic.ui.common.GlassAlertDialog
 import com.kite.zmusic.ui.notice.showIslandNotice
 import com.kite.zmusic.ui.theme.MainPalette
+import com.kite.zmusic.i18n.t
 
 @Composable
 fun PluginFaultHost() {
@@ -38,16 +39,16 @@ fun PluginFaultHost() {
     if (shown == null || blocking) return
     val log = shown.log.trim()
     GlassAlertDialog(
-        title = if (shown.kind == PluginFaultKind.Crash) "插件崩溃" else "插件错误",
+        title = if (shown.kind == PluginFaultKind.Crash) t("插件崩溃") else t("插件错误"),
         message = faultMessage(shown),
-        confirmLabel = "我知道了",
+        confirmLabel = t("我知道了"),
         onConfirm = { app.pluginEngine.dismissFault() },
         onDismiss = { app.pluginEngine.dismissFault() },
         cancelLabel = null,
-        tertiaryLabel = if (log.isNotEmpty()) "复制日志" else null,
+        tertiaryLabel = if (log.isNotEmpty()) t("复制日志") else null,
         onTertiary = {
             copyLog(context, log)
-            context.showIslandNotice("已复制日志")
+            context.showIslandNotice(t("已复制日志"))
         },
         extraContent = if (log.isNotEmpty()) {
             {
@@ -78,13 +79,13 @@ private fun faultMessage(fault: PluginFault): String {
     val name = fault.name.ifBlank { fault.id }
     return when (fault.kind) {
         PluginFaultKind.Error ->
-            "「$name」发生错误，本次已停止运行。其他插件不受影响。"
+            t("「%s」发生错误，本次已停止运行。其他插件不受影响。", name)
         PluginFaultKind.Crash ->
-            "「$name」上次运行时崩溃，已暂停该插件，以免再次导致应用退出。"
+            t("「%s」上次运行时崩溃，已暂停该插件，以免再次导致应用退出。", name)
     }
 }
 
 private fun copyLog(context: Context, log: String) {
     val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return
-    cm.setPrimaryClip(ClipData.newPlainText("插件日志", log))
+    cm.setPrimaryClip(ClipData.newPlainText(t("插件日志"), log))
 }

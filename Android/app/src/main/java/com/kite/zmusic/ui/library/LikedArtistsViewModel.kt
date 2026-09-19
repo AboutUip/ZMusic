@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import com.kite.zmusic.i18n.t
 
 private const val PageSize = 30
 private const val SearchPage = 50
@@ -132,7 +133,7 @@ class LikedArtistsViewModel(
         val cookie = session?.cookie.orEmpty()
         if (cookie.isBlank() || session?.isGuest == true) {
             unfollowBusy.remove(artist.id)
-            islandNotices.show("请先登录")
+            islandNotices.show(t("请先登录"))
             return
         }
         val snapshot = _ui.value.artists
@@ -149,7 +150,7 @@ class LikedArtistsViewModel(
                 val code = NcmJson.apiCode(json)
                 if (code == 301 || code == 302) {
                     restore(snapshot)
-                    islandNotices.show("请先登录")
+                    islandNotices.show(t("请先登录"))
                     return@launch
                 }
                 if (code != 200) {
@@ -160,7 +161,7 @@ class LikedArtistsViewModel(
                     )
                     return@launch
                 }
-                islandNotices.show("已取消收藏", artist.coverUrl)
+                islandNotices.show(t("已取消收藏"), artist.coverUrl)
             } catch (e: CancellationException) {
                 restore(snapshot)
                 throw e
@@ -176,12 +177,12 @@ class LikedArtistsViewModel(
     private suspend fun fetchFirst() {
         val session = sessionRepository.session.value
         if (session == null) {
-            _ui.update { it.copy(loading = false, refreshing = false, error = "未登录") }
+            _ui.update { it.copy(loading = false, refreshing = false, error = t("未登录")) }
             return
         }
         if (session.isGuest) {
             _ui.update {
-                it.copy(loading = false, refreshing = false, error = "登录后查看喜欢的歌手")
+                it.copy(loading = false, refreshing = false, error = t("登录后查看喜欢的歌手"))
             }
             return
         }
@@ -226,7 +227,7 @@ class LikedArtistsViewModel(
     private suspend fun fetchUsersFirst() {
         val session = sessionRepository.session.value
         if (session == null) {
-            _ui.update { it.copy(usersLoading = false, usersRefreshing = false, usersError = "未登录") }
+            _ui.update { it.copy(usersLoading = false, usersRefreshing = false, usersError = t("未登录")) }
             return
         }
         if (session.isGuest) {
@@ -234,7 +235,7 @@ class LikedArtistsViewModel(
                 it.copy(
                     usersLoading = false,
                     usersRefreshing = false,
-                    usersError = "登录后查看关注的用户",
+                    usersError = t("登录后查看关注的用户"),
                 )
             }
             return
@@ -253,7 +254,7 @@ class LikedArtistsViewModel(
                     it.copy(
                         usersLoading = false,
                         usersRefreshing = false,
-                        usersError = "无法获取用户信息",
+                        usersError = t("无法获取用户信息"),
                     )
                 }
                 return

@@ -71,6 +71,7 @@ import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.plugin.PluginSurfaces
 import com.kite.zmusic.plugin.PluginUiTarget
 import com.kite.zmusic.ui.plugin.pluginSurface
+import com.kite.zmusic.i18n.t
 
 private const val HotPreviewCount = 5
 private const val AlbumPreviewCount = 8
@@ -118,7 +119,7 @@ fun ArtistScreen(
         when {
             ui.error != null && ui.songs.isEmpty() && ui.albums.isEmpty() && !ui.loading -> {
                 Text(
-                    text = ui.error ?: "暂时无法打开这位歌手",
+                    text = ui.error ?: t("暂时无法打开这位歌手"),
                     color = MainPalette.Secondary,
                     fontSize = 14.sp,
                     modifier = Modifier
@@ -169,9 +170,9 @@ fun ArtistScreen(
 
     if (confirmUnfollow) {
         GlassAlertDialog(
-            title = "取消收藏这位歌手？",
-            message = "「${ui.name}」将从你的收藏中移除",
-            confirmLabel = "取消收藏",
+            title = t("取消收藏这位歌手？"),
+            message = t("「%s」将从你的收藏中移除", ui.name),
+            confirmLabel = t("取消收藏"),
             confirmDestructive = true,
             onConfirm = {
                 confirmUnfollow = false
@@ -230,9 +231,9 @@ private fun ArtistBody(
         ui.bio?.let { bio ->
             item(key = "artist-bio") {
                 ArtistSectionTitle(
-                    title = "简介",
+                    title = t("简介"),
                     action = if (bioNeedsExpand(bio)) {
-                        if (bioExpanded) "收起" else "展开"
+                        if (bioExpanded) t("收起") else t("展开")
                     } else {
                         null
                     },
@@ -262,8 +263,8 @@ private fun ArtistBody(
         if (ui.songs.isNotEmpty()) {
             item(key = "artist-songs-title") {
                 ArtistSectionTitle(
-                    title = "热门歌曲",
-                    action = "查看全部",
+                    title = t("热门歌曲"),
+                    action = t("查看全部"),
                     onAction = onOpenSongs,
                 )
                 Spacer(Modifier.height(8.dp))
@@ -292,8 +293,8 @@ private fun ArtistBody(
         if (showAlbums) {
             item(key = "artist-albums") {
                 ArtistSectionTitle(
-                    title = "专辑",
-                    action = "查看全部",
+                    title = t("专辑"),
+                    action = t("查看全部"),
                     onAction = onOpenAlbums,
                 )
                 if (previewAlbums.isNotEmpty()) {
@@ -310,7 +311,7 @@ private fun ArtistBody(
             item(key = "artist-mvs") {
                 ArtistSectionTitle(
                     title = "MV",
-                    action = "查看全部",
+                    action = t("查看全部"),
                     onAction = onOpenMvs,
                 )
                 if (previewMvs.isNotEmpty()) {
@@ -325,7 +326,7 @@ private fun ArtistBody(
         }
         if (ui.similar.isNotEmpty()) {
             item(key = "artist-similar") {
-                ArtistSectionTitle(title = "相似歌手")
+                ArtistSectionTitle(title = t("相似歌手"))
                 Spacer(Modifier.height(12.dp))
                 ArtistSimilarStrip(
                     artists = ui.similar,
@@ -351,10 +352,10 @@ private fun ArtistHeader(
         ui.rankLabel,
     ) {
         buildList {
-            if (ui.musicSize > 0) add("${ui.musicSize}首")
-            if (ui.albumSize > 0) add("${ui.albumSize}张专辑")
-            if (ui.mvSize > 0) add("${ui.mvSize}个MV")
-            if (ui.fansCount > 0L) add("${NcmHomeParse.formatPlayCount(ui.fansCount)}粉丝")
+            if (ui.musicSize > 0) add(t("%s首", ui.musicSize))
+            if (ui.albumSize > 0) add(t("%s张专辑", ui.albumSize))
+            if (ui.mvSize > 0) add(t("%s个MV", ui.mvSize))
+            if (ui.fansCount > 0L) add(t("%s粉丝", NcmHomeParse.formatPlayCount(ui.fansCount)))
             ui.rankLabel?.let { add(it) }
         }.joinToString("  ·  ").takeIf { it.isNotBlank() }
     }
@@ -443,13 +444,13 @@ private fun ArtistHeader(
                 ) {
                     Icon(
                         imageVector = ZIcons.Play,
-                        contentDescription = "播放热门",
+                        contentDescription = t("播放热门"),
                         tint = Color.White,
                         modifier = Modifier.size(18.dp),
                     )
                     Spacer(Modifier.width(4.dp))
                     Text(
-                        "播放热门",
+                        t("播放热门"),
                         color = Color.White,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.SemiBold,
@@ -482,13 +483,13 @@ private fun ArtistHeader(
                         } else {
                             ZIcons.CollectPlaylist
                         },
-                        contentDescription = if (followed) "取消收藏" else "收藏歌手",
+                        contentDescription = if (followed) t("取消收藏") else t("收藏歌手"),
                         tint = MainPalette.Accent,
                         modifier = Modifier.size(18.dp),
                     )
                     Spacer(Modifier.width(4.dp))
                     Text(
-                        text = if (followed) "已收藏" else "收藏歌手",
+                        text = if (followed) t("已收藏") else t("收藏歌手"),
                         color = MainPalette.Accent,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.SemiBold,
@@ -574,7 +575,7 @@ private fun ArtistAlbumStrip(
                 )
                 val sub = buildList {
                     album.year?.let { add(it) }
-                    if (album.size > 0) add("${album.size}首")
+                    if (album.size > 0) add(t("%s首", album.size))
                 }.joinToString(" · ")
                 if (sub.isNotEmpty()) {
                     Text(

@@ -79,6 +79,7 @@ import androidx.compose.runtime.mutableStateSetOf
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.snapshots.SnapshotStateSet
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -186,6 +187,7 @@ import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
 import androidx.compose.ui.unit.lerp as lerpDp
+import com.kite.zmusic.i18n.t
 
 
 /** 右侧悬浮板离场：滑过面板宽 + 右缝，避免缝里还留一条再被卸掉。 */
@@ -387,6 +389,20 @@ internal fun LandscapePlayerBody(
     val vinylCenterEasing = remember { CubicBezierEasing(0.33f, 0f, 0.2f, 1f) }
     val vinylCenterMs = 480
     val pickScope = rememberCoroutineScope()
+    val app = LocalContext.current.applicationContext as ZMusicApplication
+    val playbackFmActive by remember {
+        app.playbackBridge.ui.map { it.fmActive }.distinctUntilChanged()
+    }.collectAsStateWithLifecycle(initialValue = app.playbackBridge.ui.value.fmActive)
+    val fmChoice by app.personalFmModeStore.choice.collectAsStateWithLifecycle()
+    var fmPickerOpen by remember { mutableStateOf(false) }
+    var fmPickerOrigin by remember { mutableStateOf(Offset.Zero) }
+    var fmApplying by remember { mutableStateOf(false) }
+    LaunchedEffect(playbackFmActive) {
+        if (!playbackFmActive) {
+            fmPickerOpen = false
+            fmApplying = false
+        }
+    }
 
     LaunchedEffect(transportPinned, forceVinylYCentered) {
         if (transportPinned && !forceVinylYCentered) controlsVisible = true
@@ -1639,7 +1655,7 @@ internal fun LandscapePlayerBody(
                                             pluginEngine.handleSurfaceLongPress(
                                                 PluginSurfaces.PLAYER_COVER,
                                                 PluginUiTarget.track(track),
-                                                hostDefaultLabel = if (canLongPressPick) "选择歌曲" else null,
+                                                hostDefaultLabel = if (canLongPressPick) t("选择歌曲") else null,
                                                 onHostDefault = if (canLongPressPick) {
                                                     { openVinylSongPick() }
                                                 } else {
@@ -1768,8 +1784,7 @@ internal fun LandscapePlayerBody(
                 enabled = settingsOpen && !backgroundEditorOpen,
                 modifier = Modifier
                     .fillMaxSize()
-                    .zIndex(8f)
-                    .graphicsLayer { alpha = settingsT.coerceIn(0f, 1f) },
+                    .zIndex(8f),
             )
             BoxWithConstraints(
                 Modifier
@@ -1832,8 +1847,7 @@ internal fun LandscapePlayerBody(
                 enabled = scoreOpen,
                 modifier = Modifier
                     .fillMaxSize()
-                    .zIndex(8f)
-                    .graphicsLayer { alpha = scoreT.coerceIn(0f, 1f) },
+                    .zIndex(8f),
             )
             Box(
                 Modifier
@@ -2248,6 +2262,14 @@ internal fun LandscapePlayerBody(
                 NowPlayingDismissIconButton(
                     onClick = onDismiss,
                 )
+                if (playbackFmActive) {
+                    NowPlayingFmModeButton(
+                        onClick = { origin ->
+                            fmPickerOrigin = origin
+                            fmPickerOpen = true
+                        },
+                    )
+                }
                 NowPlayingRotationLockButton(
                     locked = rotationLocked,
                     forceToLandscape = if (systemAutoRotate) null else false,
@@ -2284,6 +2306,25 @@ internal fun LandscapePlayerBody(
                     scaleY = uiScale
                     transformOrigin = TransformOrigin(1f, 0f)
                 },
+        )
+
+        PersonalFmModePickerOverlay(
+            visible = fmPickerOpen,
+            originInWindow = fmPickerOrigin,
+            current = fmChoice,
+            applying = fmApplying,
+            onDismiss = { if (!fmApplying) fmPickerOpen = false },
+            onSelect = { choice ->
+                if (choice == fmChoice) {
+                    fmPickerOpen = false
+                    return@PersonalFmModePickerOverlay
+                }
+                fmApplying = true
+                app.playbackBridge.applyPersonalFmMode(choice) {
+                    fmApplying = false
+                    fmPickerOpen = false
+                }
+            },
         )
     }
 }

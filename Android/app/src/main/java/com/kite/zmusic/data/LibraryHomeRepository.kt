@@ -16,6 +16,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
 import java.io.File
+import com.kite.zmusic.i18n.t
 
 data class LibraryHomeSnapshot(
     val loading: Boolean = false,
@@ -73,7 +74,7 @@ class LibraryHomeRepository(
             if (session == null) {
                 playlistCollection.clear()
                 albumCollection.clear()
-                _snapshot.value = LibraryHomeSnapshot(error = "未登录")
+                _snapshot.value = LibraryHomeSnapshot(error = t("未登录"))
                 return
             }
             if (!force && _snapshot.value.isWarm && playlistCollection.playlists.value.isNotEmpty()) {
@@ -95,7 +96,7 @@ class LibraryHomeRepository(
                         it.copy(
                             loading = false,
                             refreshing = false,
-                            error = "无法获取用户信息：登录状态里缺少用户 ID，请重新登录或检查 API 返回格式",
+                            error = t("无法获取用户信息：登录状态里缺少用户 ID，请重新登录或检查 API 返回格式"),
                             isGuest = session.isGuest,
                         )
                     }
@@ -150,7 +151,7 @@ class LibraryHomeRepository(
                 var profile = fetched.detail?.let { NcmLibraryParse.userProfileFromDetail(it) }
                     ?: UserProfileBrief(
                         userId = uid,
-                        nickname = session.displayLabel?.trim().orEmpty().ifBlank { "用户" },
+                        nickname = session.displayLabel?.trim().orEmpty().ifBlank { t("用户") },
                         avatarUrl = null,
                         signature = null,
                         level = null,
@@ -223,7 +224,7 @@ class LibraryHomeRepository(
     }
 
     suspend fun unsubscribeAlbum(album: CollectedAlbum): String {
-        val session = sessionRepository.session.value ?: return "请先登录"
+        val session = sessionRepository.session.value ?: return t("请先登录")
         albumCollection.setSubscribed(album.id, false)
         return try {
             val json = userClient.albumSub(album.id, false, session.cookie)
@@ -231,7 +232,7 @@ class LibraryHomeRepository(
                 albumCollection.setSubscribed(album.id, true, album)
                 NcmJson.userFacingMessage(json, "取消收藏失败")
             } else {
-                "已取消收藏"
+                t("已取消收藏")
             }
         } catch (e: CancellationException) {
             throw e
@@ -293,7 +294,7 @@ class LibraryHomeRepository(
         birthdayMs: Long,
     ): CatalogApiAck {
         val session = sessionRepository.session.value
-            ?: return CatalogApiAck(false, "未登录")
+            ?: return CatalogApiAck(false, t("未登录"))
         val current = _snapshot.value.profile
         val json = runCatching {
             userClient.userUpdate(
@@ -317,7 +318,7 @@ class LibraryHomeRepository(
 
     suspend fun checkNicknameAvailable(nickname: String): CatalogApiAck {
         val session = sessionRepository.session.value
-            ?: return CatalogApiAck(false, "未登录")
+            ?: return CatalogApiAck(false, t("未登录"))
         val json = runCatching {
             userClient.nicknameCheck(nickname.trim(), session.cookie)
         }.getOrElse {
@@ -327,14 +328,14 @@ class LibraryHomeRepository(
             return CatalogApiAck(false, NcmJson.userFacingMessage(json, "昵称不可用"))
         }
         if (NcmJson.nicknameDuplicated(json)) {
-            return CatalogApiAck(false, "这个昵称已被占用")
+            return CatalogApiAck(false, t("这个昵称已被占用"))
         }
         return CatalogApiAck(true, "")
     }
 
     suspend fun uploadSelfAvatar(file: File): CatalogApiAck {
         val session = sessionRepository.session.value
-            ?: return CatalogApiAck(false, "未登录")
+            ?: return CatalogApiAck(false, t("未登录"))
         val json = runCatching {
             userClient.avatarUpload(session.cookie, file)
         }.getOrElse {

@@ -29,12 +29,13 @@ import com.kite.zmusic.ui.common.GlassAlertDialog
 import com.kite.zmusic.ui.main.MainControls
 import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.player.AudioQualityGrid
+import com.kite.zmusic.i18n.t
 
 @Composable
 internal fun TrackExportOptionsDialog(
     onConfirm: (TrackExportOptions) -> Unit,
     onDismiss: () -> Unit,
-    title: String = "下载",
+    title: String = t("下载"),
     message: String? = null,
 ) {
     val app = LocalContext.current.applicationContext as ZMusicApplication
@@ -47,7 +48,7 @@ internal fun TrackExportOptionsDialog(
     GlassAlertDialog(
         title = title,
         message = message,
-        confirmLabel = "下载",
+        confirmLabel = t("下载"),
         onConfirm = {
             val options = TrackExportOptions(
                 quality = quality,
@@ -61,7 +62,7 @@ internal fun TrackExportOptionsDialog(
         onDismiss = onDismiss,
         extraContent = {
             Text(
-                text = "音质",
+                text = t("音质"),
                 style = TextStyle(
                     color = MainPalette.Secondary,
                     fontSize = 12.sp,
@@ -85,22 +86,22 @@ internal fun TrackExportOptionsDialog(
             )
             Spacer(Modifier.height(14.dp))
             ExportToggleRow(
-                title = "封面",
-                subtitle = "封面图单独存一份",
+                title = t("封面"),
+                subtitle = t("封面图单独存一份"),
                 checked = includeCover,
                 switchColors = switchColors,
                 onCheckedChange = { includeCover = it },
             )
             ExportToggleRow(
-                title = "歌词",
-                subtitle = "原文和翻译各一份 .lrc",
+                title = t("歌词"),
+                subtitle = t("原文和翻译各一份 .lrc"),
                 checked = includeLyrics,
                 switchColors = switchColors,
                 onCheckedChange = { includeLyrics = it },
             )
             ExportToggleRow(
-                title = "元数据",
-                subtitle = "歌名、歌手、专辑写入 music.json",
+                title = t("元数据"),
+                subtitle = t("歌名、歌手、专辑写入 music.json"),
                 checked = includeMetadata,
                 switchColors = switchColors,
                 onCheckedChange = { includeMetadata = it },

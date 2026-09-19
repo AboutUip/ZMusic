@@ -71,6 +71,7 @@ import dev.chrisbanes.haze.HazeTint
 import dev.chrisbanes.haze.hazeEffect
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
+import com.kite.zmusic.i18n.t
 
 /** 选句弹窗磨砂玻璃（整块外壳；歌词孔内由歌词层直角玻璃贴合） */
 val LyricSelectGlassStyle = HazeStyle(
@@ -406,7 +407,7 @@ fun LyricSelectOverlay(
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     Text(
-                        text = "已选",
+                        text = t("已选"),
                         style = TextStyle(
                             color = SelectAccent.copy(alpha = 0.7f),
                             fontFamily = FontFamily.Monospace,
@@ -425,7 +426,7 @@ fun LyricSelectOverlay(
                         ),
                     )
                     Text(
-                        text = "条",
+                        text = t("条"),
                         style = TextStyle(
                             color = SelectHint.copy(alpha = 0.55f),
                             fontFamily = FontFamily.Monospace,
@@ -436,19 +437,19 @@ fun LyricSelectOverlay(
                     Spacer(Modifier.weight(1f))
 
                     SelectActionButton(
-                        label = "退出",
+                        label = t("退出"),
                         onClick = onDismissUpdated,
                         icon = { SelectExitIcon() },
                     )
                     Spacer(Modifier.height(4.dp))
                     SelectActionButton(
-                        label = "全部取消",
+                        label = t("全部取消"),
                         onClick = onClearSelection,
                         icon = { SelectClearIcon() },
                     )
                     Spacer(Modifier.height(4.dp))
                     SelectActionButton(
-                        label = "复制",
+                        label = t("复制"),
                         onClick = onCopy,
                         enabled = selectedCount > 0,
                         icon = { SelectCopyIcon() },

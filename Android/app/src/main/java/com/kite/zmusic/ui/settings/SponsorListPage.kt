@@ -26,6 +26,7 @@ import com.kite.zmusic.ZMusicApplication
 import com.kite.zmusic.data.SponsorEntry
 import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.main.wallpaperItemChrome
+import com.kite.zmusic.i18n.t
 
 private const val SponsorQueryLimit = 64
 
@@ -46,11 +47,11 @@ fun SponsorListPage(
         onQueryChange = vm::onQueryChange,
         onLoadMore = vm::loadMore,
         onRefresh = vm::refresh,
-        intro = "谢谢每一位投喂。",
-        searchPlaceholder = "搜索名字、金额或日期",
+        intro = t("谢谢每一位投喂。"),
+        searchPlaceholder = t("搜索名字、金额或日期"),
         queryLimit = SponsorQueryLimit,
-        emptyQueryMessage = "暂时还没有记录。",
-        emptySearchMessage = "没有匹配的记录。",
+        emptyQueryMessage = t("暂时还没有记录。"),
+        emptySearchMessage = t("没有匹配的记录。"),
         contentBottomInset = contentBottomInset,
         modifier = modifier,
         itemKey = { it.listKey },

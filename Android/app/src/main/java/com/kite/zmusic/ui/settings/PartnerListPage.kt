@@ -39,6 +39,7 @@ import com.kite.zmusic.ui.common.UrlImage
 import com.kite.zmusic.ui.common.UrlImageCache
 import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.main.wallpaperItemChrome
+import com.kite.zmusic.i18n.t
 
 /** 官网链接用蓝，区别于设置里条款/赞赏的品牌红。 */
 private val PartnerLinkBlue = Color(0xFF3478F6)
@@ -62,11 +63,11 @@ fun PartnerListPage(
         onQueryChange = vm::onQueryChange,
         onLoadMore = vm::loadMore,
         onRefresh = vm::refresh,
-        intro = "感谢支持本应用的伙伴。",
-        searchPlaceholder = "搜索名称或简介",
+        intro = t("感谢支持本应用的伙伴。"),
+        searchPlaceholder = t("搜索名称或简介"),
         queryLimit = PartnerQueryLimit,
-        emptyQueryMessage = "暂时还没有赞助商。",
-        emptySearchMessage = "没有匹配的赞助商。",
+        emptyQueryMessage = t("暂时还没有赞助商。"),
+        emptySearchMessage = t("没有匹配的赞助商。"),
         contentBottomInset = contentBottomInset,
         modifier = modifier,
         itemKey = { it.listKey },

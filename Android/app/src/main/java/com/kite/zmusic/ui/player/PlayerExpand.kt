@@ -192,6 +192,17 @@ internal class PlayerExpandState(
     var fullDurationTime by mutableStateOf(Rect.Zero)
         private set
 
+    /**
+     * 播放页黑胶当前连转角。飞层每帧只读数组，不进 Compose 快照。
+     */
+    internal val vinylSpinHolder = floatArrayOf(0f)
+
+    /**
+     * 离场开始时冻结的最短归正角：飞层 [flightVinylRotationDeg] 从它收到 0°。
+     */
+    var flightSpinFromDeg = 0f
+        private set
+
     val visualProgress: Float
         get() = override ?: anim.value
 
@@ -255,6 +266,7 @@ internal class PlayerExpandState(
     }
 
     fun report(slot: PlayerExpandSlot, rect: Rect) {
+        if (shouldIgnoreMiniReport(slot)) return
         if (!rect.isAnchorValid() &&
             slot != PlayerExpandSlot.MiniBar &&
             slot != PlayerExpandSlot.MiniProgress &&
@@ -306,6 +318,17 @@ internal class PlayerExpandState(
         look = null
     }
 
+    internal fun writeVinylSpin(deg: Float) {
+        vinylSpinHolder[0] = deg
+        if (pastHandoff) {
+            flightSpinFromDeg = vinylShortestUprightDeg(deg)
+        }
+    }
+
+    private fun captureFlightSpinFromVinyl() {
+        flightSpinFromDeg = vinylShortestUprightDeg(vinylSpinHolder[0])
+    }
+
     fun toShell(rect: Rect): Rect {
         val o = shellOrigin
         return Rect(rect.left - o.x, rect.top - o.y, rect.right - o.x, rect.bottom - o.y)
@@ -314,9 +337,19 @@ internal class PlayerExpandState(
     fun miniBarInShell(): Rect =
         resolveMiniBarInShell(targetOpen, toShell(miniBar), fallbackMiniBar)
 
+    /**
+     * 离场后 window AABB 会闪一帧。迷你锚点在展开过程 / 收起时冻结，
+     * 飞层才不会跟裁切各落各的 Y。
+     */
+    private fun shouldIgnoreMiniReport(slot: PlayerExpandSlot): Boolean {
+        if (!slot.isMiniAnchor()) return false
+        return mounted && (visualProgress > PlayerExpandMiniHide || !targetOpen)
+    }
+
     fun open() {
         targetOpen = true
         mounted = true
+        flightSpinFromDeg = 0f
         clearFullDestinations()
         val my = ++gen
         job?.cancel()
@@ -351,6 +384,7 @@ internal class PlayerExpandState(
 
     fun close() {
         targetOpen = false
+        captureFlightSpinFromVinyl()
         val my = ++gen
         job?.cancel()
         job = scope.launch {
@@ -370,6 +404,7 @@ internal class PlayerExpandState(
 
     fun snapClosed() {
         targetOpen = false
+        flightSpinFromDeg = 0f
         val my = ++gen
         job?.cancel()
         override = null
@@ -383,6 +418,7 @@ internal class PlayerExpandState(
     }
 
     fun beginScrub() {
+        if (visualProgress >= PlayerExpandHandoff) captureFlightSpinFromVinyl()
         job?.cancel()
         override = visualProgress
         val freeze = override ?: 0f
@@ -420,24 +456,57 @@ internal fun resolveMiniBarInShell(targetOpen: Boolean, live: Rect, fallback: Re
         if (abs(live.height - fallback.height) > 4f) return fallback
         if (abs(live.width - fallback.width) > 4f) return fallback
         if (abs(live.left - fallback.left) > 4f) return fallback
+        if (abs(live.top - fallback.top) > 4f) return fallback
     }
     return live
 }
 
-/** 底栏在 shell 坐标系里的公式矩形。横屏要让出左侧导航轨。 */
+/**
+ * 关闭瞬间不要用“少了导航条”的重算结果覆盖进场时钉住的底栏。
+ * 宽/左变了才是旋转或侧栏变化，只挪 top 几乎都是 insets 闪断。
+ */
+internal fun preferCloseMiniBar(held: Rect, recomputed: Rect): Rect {
+    if (!held.isAnchorValid()) return recomputed
+    if (!recomputed.isAnchorValid()) return held
+    if (abs(recomputed.height - held.height) > 4f) return recomputed
+    if (abs(recomputed.width - held.width) > 24f) return recomputed
+    if (abs(recomputed.left - held.left) > 24f) return recomputed
+    return held
+}
+
+/** 底栏在 shell 坐标系里的公式矩形。横屏要让出左侧导航轨；竖屏跟 520.dp 居中对齐。 */
 internal fun formulaMiniBarRect(
     shell: Rect,
     sidePx: Float,
     railPx: Float,
     barH: Float,
     homeFromBottom: Float,
+    maxBarWidthPx: Float = Float.POSITIVE_INFINITY,
 ): Rect {
     if (shell.width <= 8f || shell.height <= 8f || barH <= 0f) return Rect.Zero
     val home = maxOf(homeFromBottom, barH)
     val top = (shell.height - home).coerceAtLeast(0f)
-    val left = (railPx + sidePx).coerceAtLeast(0f)
-    val right = (shell.width - sidePx).coerceAtLeast(left + 1f)
-    return Rect(left, top, right, top + barH)
+    val contentLeft = (railPx + sidePx).coerceAtLeast(0f)
+    val contentRight = (shell.width - sidePx).coerceAtLeast(contentLeft + 1f)
+    val contentW = contentRight - contentLeft
+    val barW = if (maxBarWidthPx.isFinite() && maxBarWidthPx > 0f) {
+        contentW.coerceAtMost(maxBarWidthPx)
+    } else {
+        contentW
+    }
+    val left = contentLeft + (contentW - barW) / 2f
+    return Rect(left, top, left + barW, top + barH)
+}
+
+private fun PlayerExpandSlot.isMiniAnchor(): Boolean = when (this) {
+    PlayerExpandSlot.MiniBar,
+    PlayerExpandSlot.MiniCover,
+    PlayerExpandSlot.MiniTitle,
+    PlayerExpandSlot.MiniArtist,
+    PlayerExpandSlot.MiniPlay,
+    PlayerExpandSlot.MiniProgress,
+    -> true
+    else -> false
 }
 
 internal fun Rect.isProgressAnchorValid(): Boolean =

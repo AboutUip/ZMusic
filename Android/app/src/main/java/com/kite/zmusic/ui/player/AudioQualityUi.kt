@@ -39,6 +39,7 @@ import com.kite.zmusic.data.AudioQuality
 import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.main.wallpaperItemChrome
 import kotlin.math.min
+import com.kite.zmusic.i18n.t
 
 /**
  * 竖屏底栏音质钮：与曲谱同框线语言，内里是四柱电平。
@@ -143,21 +144,21 @@ fun AudioQualityGroupedList(
 ) {
     Column(modifier.fillMaxWidth()) {
         AudioQualityGroup(
-            label = "有损",
+            label = t("有损"),
             items = listOf(AudioQuality.STANDARD, AudioQuality.HIGHER, AudioQuality.EXHIGH),
             selected = selected,
             onSelect = onSelect,
         )
         Spacer(Modifier.height(18.dp))
         AudioQualityGroup(
-            label = "无损",
+            label = t("无损"),
             items = listOf(AudioQuality.LOSSLESS, AudioQuality.HIRES),
             selected = selected,
             onSelect = onSelect,
         )
         Spacer(Modifier.height(18.dp))
         AudioQualityGroup(
-            label = "空间与母带",
+            label = t("空间与母带"),
             items = listOf(
                 AudioQuality.JYEFFECT,
                 AudioQuality.SKY,
@@ -262,7 +263,7 @@ private fun AudioQualitySettingsRow(
         }
         if (selected) {
             Text(
-                text = "当前",
+                text = t("当前"),
                 style = TextStyle(
                     color = MainPalette.Accent,
                     fontSize = 12.sp,

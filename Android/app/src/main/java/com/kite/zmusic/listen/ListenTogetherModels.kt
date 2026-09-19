@@ -91,6 +91,9 @@ object ListenTogetherClock {
     const val SEEK_JUMP_MS = 1_800L
     const val DRIFT_MS = 3_000L
     const val DRIFT_CHECK_MS = 8_000L
+    /** 切歌后起始进度宽限：大于此值才可能是旧曲带过来的 origin。 */
+    const val NEW_TRACK_ORIGIN_GRACE_MS = 2_000L
+    const val NEW_TRACK_TAIL_MS = 1_500L
 
     fun positionMs(
         clock: ListenPlaybackClock,
@@ -114,9 +117,17 @@ object ListenTogetherClock {
 
     fun shouldApply(nextHlc: Long, appliedHlc: Long): Boolean = nextHlc > appliedHlc
 
+    fun isOwnClock(actor: String, selfUid: String): Boolean {
+        val self = selfUid.trim()
+        return self.isNotEmpty() && actor.trim() == self
+    }
+
+    /** 客人跟远端时钟切歌；房主仍用本机队列在曲末推进。 */
+    fun followRemoteAdvance(inRoom: Boolean, hosting: Boolean): Boolean = inRoom && !hosting
+
     /**
-     * 谁改了听谁的：自己的回声不落地，更旧的时钟丢弃。
-     * 同 HLC 且本机还没跟上时允许再对齐一次。
+     * 谁改了听谁的：自己的回声永远不落地（含 postOp 尚未写回 lastPostedHlc 的新 HLC）。
+     * 更旧的时钟丢弃；同 HLC 且本机还没跟上时允许再对齐一次。
      */
     fun takeRemoteClock(
         remoteHlc: Long,
@@ -145,6 +156,42 @@ object ListenTogetherClock {
         val expected = (previous + expectedElapsed.coerceAtLeast(0L)).coerceAtLeast(0L)
         val delta = kotlin.math.abs(next - expected)
         return delta > SEEK_JUMP_MS
+    }
+
+    /**
+     * 切到另一首歌时，本机进度条上残留的旧曲位置不能当成新曲 origin。
+     * 本机切歌总是从头（或 2s 内缓冲起点）起播；中途加入一起听走 playListenTrack，不会走这条本地上报。
+     */
+    fun originMsForNewTrack(
+        previousTrackId: Long,
+        previousPositionMs: Long,
+        newTrackId: Long,
+        positionMs: Long,
+        durationMs: Long,
+    ): Long {
+        val pos = positionMs.coerceAtLeast(0L)
+        if (previousTrackId <= 0L || previousTrackId == newTrackId) {
+            return clampOrigin(pos, durationMs)
+        }
+        if (pos <= NEW_TRACK_ORIGIN_GRACE_MS) return pos
+        if (durationMs > 0L && pos >= durationMs - NEW_TRACK_TAIL_MS) return 0L
+        if (previousPositionMs > NEW_TRACK_ORIGIN_GRACE_MS &&
+            kotlin.math.abs(pos - previousPositionMs) <= NEW_TRACK_ORIGIN_GRACE_MS
+        ) {
+            return 0L
+        }
+        return 0L
+    }
+
+    fun clampOrigin(positionMs: Long, durationMs: Long): Long {
+        val pos = positionMs.coerceAtLeast(0L)
+        if (durationMs > 0L && pos > durationMs) return durationMs
+        return pos
+    }
+
+    fun looksLikeCarryOver(positionMs: Long, carryOverMs: Long): Boolean {
+        if (carryOverMs < 0L) return false
+        return kotlin.math.abs(positionMs - carryOverMs) <= NEW_TRACK_ORIGIN_GRACE_MS
     }
 }
 

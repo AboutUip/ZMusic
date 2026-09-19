@@ -103,6 +103,7 @@ import com.kite.zmusic.ui.search.SearchViewModelFactory
 import com.kite.zmusic.ui.settings.SettingsScreen
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import com.kite.zmusic.i18n.t
 
 import com.kite.zmusic.ui.main.MainOverlay
 @Composable
@@ -119,7 +120,7 @@ internal fun ChartsScreen(
             .chromePage()
             .statusBarsPadding(),
     ) {
-        CatalogTopBar(title = "排行榜", onBack = onBack)
+        CatalogTopBar(title = t("排行榜"), onBack = onBack)
         when {
             state.loading && state.charts.isEmpty() -> {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

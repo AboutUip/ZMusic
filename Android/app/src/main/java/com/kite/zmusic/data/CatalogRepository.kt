@@ -1,5 +1,7 @@
 package com.kite.zmusic.data
 
+import com.kite.zmusic.i18n.t
+
 data class CatalogApiAck(
     val ok: Boolean,
     val message: String,
@@ -22,9 +24,13 @@ data class ArtistSongsPage(
  */
 class CatalogRepository(
     private val userClient: NcmUserClient,
+    private val fmModeStore: PersonalFmModeStore,
 ) {
-    suspend fun personalFm(cookie: String): Pair<List<TrackRow>, String?> {
-        val json = userClient.personalFm(cookie)
+    suspend fun personalFm(
+        cookie: String,
+        choice: PersonalFmModeChoice = fmModeStore.current(),
+    ): Pair<List<TrackRow>, String?> {
+        val json = userClient.personalFm(cookie, choice)
         val tracks = NcmHomeParse.personalFmTracks(json)
         val err = if (tracks.isEmpty()) {
             NcmJson.userFacingMessage(json, "暂时没有漫游歌曲")
@@ -70,14 +76,14 @@ class CatalogRepository(
     suspend fun playlistSubscribe(id: Long, subscribe: Boolean, cookie: String): CatalogApiAck {
         val json = userClient.playlistSubscribe(id, subscribe, cookie)
         val ok = NcmJson.apiCode(json) == 200
-        val fallback = if (subscribe) "收藏失败" else "取消收藏失败"
+        val fallback = if (subscribe) t("收藏失败") else t("取消收藏失败")
         return CatalogApiAck(ok, if (ok) "" else NcmJson.userFacingMessage(json, fallback))
     }
 
     suspend fun albumSubscribe(id: Long, subscribe: Boolean, cookie: String): CatalogApiAck {
         val json = userClient.albumSub(id, subscribe, cookie)
         val ok = NcmJson.apiCode(json) == 200
-        val fallback = if (subscribe) "收藏失败" else "取消收藏失败"
+        val fallback = if (subscribe) t("收藏失败") else t("取消收藏失败")
         return CatalogApiAck(ok, if (ok) "" else NcmJson.userFacingMessage(json, fallback))
     }
 

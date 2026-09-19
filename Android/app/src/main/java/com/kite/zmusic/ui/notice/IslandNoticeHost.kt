@@ -3,12 +3,11 @@ package com.kite.zmusic.ui.notice
 import android.content.res.Configuration
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
@@ -22,6 +21,7 @@ import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -30,20 +30,19 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.graphics.BlendMode
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -52,9 +51,11 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
@@ -71,6 +72,7 @@ import com.kite.zmusic.ui.plugin.PluginAlertHost
 import com.kite.zmusic.ui.plugin.PluginContextMenuHost
 import com.kite.zmusic.ui.plugin.PluginFaultHost
 import com.kite.zmusic.ui.plugin.PluginSheetHost
+import com.kite.zmusic.ui.easter.MjEasterEggHost
 import com.kite.zmusic.ui.update.AppUpdateHost
 import com.kite.zmusic.ui.player.ListenMatchHost
 import com.kite.zmusic.ui.player.LocalShareSheetHost
@@ -94,6 +96,7 @@ import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
@@ -198,6 +201,9 @@ fun IslandNoticeRoot(
             PluginContextMenuHost()
             AppUpdateHost()
             ListenMatchHost()
+            MjEasterEggHost(
+                modifier = Modifier.align(Alignment.TopCenter),
+            )
         }
     }
 }
@@ -214,6 +220,7 @@ private fun IslandNoticeHost(
     val densityState = rememberUpdatedState(density)
     val landscapeState = rememberUpdatedState(landscape)
     val configuration = LocalConfiguration.current
+    val configState = rememberUpdatedState(configuration)
     val measurer = rememberTextMeasurer()
 
     var notice by remember { mutableStateOf<IslandNotice?>(null) }
@@ -379,7 +386,17 @@ private fun IslandNoticeHost(
                     var shown = work.notice
                     appear(shown)
                     while (isActive) {
-                        when (val next = center.awaitQueuedOrStickyOrTimeout(dwellMs(shown))) {
+                        when (
+                            val next = center.awaitQueuedOrStickyOrTimeout(
+                                queuedDwellMs(
+                                    notice = shown,
+                                    landscape = landscapeState.value,
+                                    screenW = configState.value.screenWidthDp.dp,
+                                    measurer = measurer,
+                                    density = densityState.value,
+                                ),
+                            )
+                        ) {
                             null -> {
                                 dismiss()
                                 break
@@ -525,7 +542,6 @@ private fun IslandGlyph(
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun IslandMarqueeText(
     text: String,
@@ -533,52 +549,46 @@ private fun IslandMarqueeText(
     overflowing: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    var marqueeOn by remember(text) { mutableStateOf(false) }
-    LaunchedEffect(text, overflowing) {
-        marqueeOn = false
-        if (!overflowing) return@LaunchedEffect
-        delay(720L)
-        marqueeOn = true
-    }
-    val marqueeMod = if (marqueeOn) {
-        Modifier.basicMarquee(
-            iterations = Int.MAX_VALUE,
-            initialDelayMillis = 0,
-            repeatDelayMillis = 1100,
-            velocity = 26.dp,
+    if (!overflowing) {
+        Text(
+            text = text,
+            style = style,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            softWrap = false,
+            modifier = modifier,
         )
-    } else {
-        Modifier
+        return
     }
-    Text(
-        text = text,
-        style = style,
-        maxLines = 1,
-        overflow = if (marqueeOn) TextOverflow.Clip else TextOverflow.Ellipsis,
-        softWrap = false,
-        modifier = modifier
-            .then(marqueeMod)
-            .then(
-                if (overflowing) {
-                    Modifier
-                        .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-                        .drawWithContent {
-                            drawContent()
-                            drawRect(
-                                brush = Brush.horizontalGradient(
-                                    0f to Color.Transparent,
-                                    0.06f to Color.Black,
-                                    0.88f to Color.Black,
-                                    1f to Color.Transparent,
-                                ),
-                                blendMode = BlendMode.DstIn,
-                            )
-                        }
-                } else {
-                    Modifier
-                },
-            ),
-    )
+    val offset = remember(text) { Animatable(0f) }
+    var slotPx by remember(text) { mutableFloatStateOf(0f) }
+    var contentPx by remember(text) { mutableFloatStateOf(0f) }
+    val density = LocalDensity.current
+    LaunchedEffect(text) {
+        offset.snapTo(0f)
+        val distance = snapshotFlow { contentPx - slotPx }.first { it > 1f }
+        delay(IslandMarqueeHoldMs)
+        val pxPerSec = with(density) { IslandMarqueeVelocity.toPx() }.coerceAtLeast(1f)
+        val ms = ((distance / pxPerSec) * 1_000f).toInt().coerceAtLeast(1)
+        offset.animateTo(distance, tween(ms, easing = LinearEasing))
+    }
+    Box(
+        modifier
+            .clipToBounds()
+            .onSizeChanged { slotPx = it.width.toFloat() },
+    ) {
+        Text(
+            text = text,
+            style = style,
+            maxLines = 1,
+            overflow = TextOverflow.Clip,
+            softWrap = false,
+            modifier = Modifier
+                .wrapContentWidth(Alignment.Start, unbounded = true)
+                .onSizeChanged { contentPx = it.width.toFloat() }
+                .graphicsLayer { translationX = -offset.value },
+        )
+    }
 }
 
 private fun islandTextStyle(landscape: Boolean) = TextStyle(
@@ -590,11 +600,37 @@ private fun islandTextStyle(landscape: Boolean) = TextStyle(
     platformStyle = PlatformTextStyle(includeFontPadding = false),
 )
 
-private fun dwellMs(notice: IslandNotice): Long {
-    val n = notice.message.length
-    return when {
-        n > 18 -> 4200L
-        n > 10 -> 3200L
-        else -> 2400L
+private val IslandMarqueeVelocity = 28.dp
+private const val IslandMarqueeHoldMs = 420L
+private const val IslandMarqueeEndRestMs = 500L
+private const val IslandFitDwellMs = 2_400L
+
+private fun islandMaxTextSlot(landscape: Boolean, screenW: Dp): Dp {
+    val islandH = if (landscape) 36.dp else 40.dp
+    val coverSize = islandH - 8.dp
+    val maxCapsule = if (landscape) {
+        minOf(screenW * 0.42f, 320.dp)
+    } else {
+        minOf(screenW * 0.78f, 300.dp)
     }
+    return (maxCapsule - 6.dp - coverSize - 8.dp - 14.dp).coerceAtLeast(24.dp)
+}
+
+private fun queuedDwellMs(
+    notice: IslandNotice,
+    landscape: Boolean,
+    screenW: Dp,
+    measurer: TextMeasurer,
+    density: Density,
+): Long {
+    val textPx = measurer.measure(
+        text = notice.message,
+        style = islandTextStyle(landscape),
+        maxLines = 1,
+    ).size.width
+    val textWant = with(density) { textPx.toDp() }
+    val overflow = textWant - islandMaxTextSlot(landscape, screenW)
+    if (overflow <= 1.dp) return IslandFitDwellMs
+    val scrollMs = ((overflow / IslandMarqueeVelocity) * 1_000f).toLong()
+    return maxOf(IslandFitDwellMs, IslandMarqueeHoldMs + scrollMs + IslandMarqueeEndRestMs)
 }

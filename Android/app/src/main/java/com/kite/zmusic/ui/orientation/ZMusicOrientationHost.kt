@@ -52,6 +52,7 @@ import com.kite.zmusic.ui.main.MainLightSystemBars
 import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.notice.IslandNoticeRoot
 import kotlinx.coroutines.delay
+import com.kite.zmusic.i18n.t
 
 /** 方向落地后蒙版再停留，遮挡横屏重建跳变 */
 private const val OrientationMaskHoldMs = 480L
@@ -213,7 +214,7 @@ private fun OrientationSwitchMask() {
                 contentScale = ContentScale.Crop,
             )
             Text(
-                text = "正在适配方向",
+                text = t("正在适配方向"),
                 modifier = Modifier.padding(top = 18.dp),
                 style = TextStyle(
                     color = MainPalette.Secondary,

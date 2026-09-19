@@ -54,6 +54,7 @@ import kotlin.math.cos
 import kotlin.math.pow
 import com.kite.zmusic.plugin.PluginSplashCopy
 import com.kite.zmusic.ui.theme.MainPalette
+import com.kite.zmusic.i18n.t
 
 private val Page get() = MainPalette.Page
 private val Ink get() = MainPalette.Ink
@@ -194,7 +195,7 @@ fun SplashScreen(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        text = "把世界调小一点",
+                        text = t("把世界调小一点"),
                         style = taglineStyle,
                     )
                     Box(
@@ -205,7 +206,7 @@ fun SplashScreen(
                             .background(InkSecondary.copy(alpha = 0.55f)),
                     )
                     Text(
-                        text = "把歌开大一点",
+                        text = t("把歌开大一点"),
                         style = taglineStyle,
                     )
                 }

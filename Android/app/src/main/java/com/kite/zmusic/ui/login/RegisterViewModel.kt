@@ -17,6 +17,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.json.JSONObject
+import com.kite.zmusic.i18n.t
 
 class RegisterViewModel(
     private val sessionRepository: SessionRepository,
@@ -79,7 +80,7 @@ class RegisterViewModel(
             if (captchaCooldownSec > 0 || captchaSending || busy) return@launch
             val p = phone.trim()
             if (!PHONE_REGEX.matches(p)) {
-                bannerError = "请输入正确的手机号"
+                bannerError = t("请输入正确的手机号")
                 return@launch
             }
             busy = true
@@ -90,7 +91,7 @@ class RegisterViewModel(
                 NcmLog.i("register exist ${NcmLog.summarize(existJson)} body=${NcmLog.json(existJson)}")
                 when (NcmJson.phoneAlreadyRegistered(existJson)) {
                     true -> {
-                        bannerError = "该手机号已注册，请返回登录"
+                        bannerError = t("该手机号已注册，请返回登录")
                         NcmLog.w("register exist already-registered")
                         return@launch
                     }
@@ -124,7 +125,7 @@ class RegisterViewModel(
             val p = phone.trim()
             val code = captcha.trim()
             if (code.isBlank()) {
-                bannerError = "请输入验证码"
+                bannerError = t("请输入验证码")
                 return@launch
             }
             busy = true
@@ -167,7 +168,7 @@ class RegisterViewModel(
             val nick = nickname.trim()
             val pwd = password
             if (!PHONE_REGEX.matches(p) || code.isBlank()) {
-                bannerError = "请先完成手机号与验证码"
+                bannerError = t("请先完成手机号与验证码")
                 return@launch
             }
             passwordError(pwd)?.let {
@@ -175,11 +176,11 @@ class RegisterViewModel(
                 return@launch
             }
             if (nick.isBlank()) {
-                bannerError = "请填写昵称"
+                bannerError = t("请填写昵称")
                 return@launch
             }
             if (nick.length > 30) {
-                bannerError = "昵称请控制在 30 个字符以内"
+                bannerError = t("昵称请控制在 30 个字符以内")
                 return@launch
             }
             busy = true
@@ -278,14 +279,14 @@ class RegisterViewModel(
         private val PHONE_REGEX = Regex("^1[3-9]\\d{9}$")
 
         fun passwordError(password: String): String? {
-            if (password.contains(' ')) return "密码不能包含空格"
-            if (password.length !in 8..20) return "密码长度为 8–20 位"
+            if (password.contains(' ')) return t("密码不能包含空格")
+            if (password.length !in 8..20) return t("密码长度为 8–20 位")
             val kinds = listOf(
                 password.any { it.isLetter() },
                 password.any { it.isDigit() },
                 password.any { !it.isLetterOrDigit() },
             ).count { it }
-            if (kinds < 2) return "密码须包含字母、数字、符号中至少两种"
+            if (kinds < 2) return t("密码须包含字母、数字、符号中至少两种")
             return null
         }
     }

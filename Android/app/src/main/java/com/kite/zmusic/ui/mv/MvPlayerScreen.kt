@@ -125,6 +125,7 @@ import dev.chrisbanes.haze.hazeSource
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
+import com.kite.zmusic.i18n.t
 
 private val MvSpeeds = listOf(0.75f, 1f, 1.25f, 1.5f, 2f)
 private val SkipMs = 5_000L
@@ -210,7 +211,7 @@ fun MvPlayerScreen(
     val duration = ui.durationMs.coerceAtLeast(0L)
     val pos = if (seeking) seekValue.toLong() else ui.positionMs
     val metaLine = buildList {
-        if (ui.playCount > 0L) add("${NcmHomeParse.formatPlayCount(ui.playCount)}播放")
+        if (ui.playCount > 0L) add(t("%s播放", NcmHomeParse.formatPlayCount(ui.playCount)))
         ui.publishTime?.let { add(it) }
     }.joinToString("  ·  ")
     val artists = ui.artists.ifEmpty {
@@ -366,10 +367,10 @@ fun MvPlayerScreen(
     }
     if (speedSheet) {
         GlassActionSheet(
-            title = "播放速度",
+            title = t("播放速度"),
             onDismiss = { speedSheet = false },
             actions = MvSpeeds.map { speed ->
-                val label = if (speed == 1f) "1.0x 正常" else "${trimSpeed(speed)}x"
+                val label = if (speed == 1f) t("1.0x 正常") else "${trimSpeed(speed)}x"
                 GlassSheetAction(label) {
                     playback.setSpeed(speed)
                     speedSheet = false
@@ -607,7 +608,7 @@ private fun MvLandTop(
             ) {
                 Icon(
                     imageVector = ZIcons.Back,
-                    contentDescription = "返回",
+                    contentDescription = t("返回"),
                     tint = Color.White,
                     modifier = Modifier.size(16.dp),
                 )
@@ -979,7 +980,7 @@ private fun MvWatchTopBar(
         MvPlainIcon(onClick = onBack) {
             Icon(
                 imageVector = ZIcons.Back,
-                contentDescription = "返回",
+                contentDescription = t("返回"),
                 tint = Color.White,
                 modifier = Modifier.size(22.dp),
             )
@@ -1009,7 +1010,7 @@ private fun MvWatchDock(
         MvPlainIcon(onClick = onToggle) {
             Icon(
                 imageVector = if (playing) ZIcons.Pause else ZIcons.Play,
-                contentDescription = if (playing) "暂停" else "播放",
+                contentDescription = if (playing) t("暂停") else t("播放"),
                 tint = Color.White,
                 modifier = Modifier.size(22.dp),
             )
@@ -1022,7 +1023,7 @@ private fun MvWatchDock(
         )
         Spacer(Modifier.weight(1f))
         Text(
-            text = if (speed == 1f) "倍速" else "${trimSpeed(speed)}x",
+            text = if (speed == 1f) t("倍速") else "${trimSpeed(speed)}x",
             color = Color.White,
             fontSize = 12.sp,
             fontWeight = FontWeight.Medium,
@@ -1199,7 +1200,7 @@ private fun MvTopBar(
         ) {
             Icon(
                 imageVector = ZIcons.Back,
-                contentDescription = "返回",
+                contentDescription = t("返回"),
                 tint = Color.White,
                 modifier = Modifier.size(16.dp),
             )
@@ -1266,7 +1267,7 @@ private fun MvBottomChrome(
         ) {
             Icon(
                 imageVector = if (ui.playWhenReady) ZIcons.Pause else ZIcons.Play,
-                contentDescription = if (ui.playWhenReady) "暂停" else "播放",
+                contentDescription = if (ui.playWhenReady) t("暂停") else t("播放"),
                 tint = Color.White,
                 modifier = Modifier.size(16.dp),
             )
@@ -1290,7 +1291,7 @@ private fun MvBottomChrome(
             }
         }
         MvTextChip(
-            text = if (ui.speed == 1f) "倍速" else "${trimSpeed(ui.speed)}x",
+            text = if (ui.speed == 1f) t("倍速") else "${trimSpeed(ui.speed)}x",
             liquid = liquid,
             backdrop = backdrop,
             onClick = onSpeed,
@@ -1461,7 +1462,7 @@ private fun MvRelatedToggle(
     ) {
         Icon(
             imageVector = if (open) ZIcons.Close else ZIcons.RelatedMv,
-            contentDescription = if (open) "收起相关 MV" else "相关 MV",
+            contentDescription = if (open) t("收起相关 MV") else t("相关 MV"),
             tint = Color.White,
             modifier = Modifier.size(16.dp),
         )
@@ -1525,7 +1526,7 @@ private fun MvFullscreenButton(
     ) {
         Icon(
             imageVector = if (exit) ZIcons.FullscreenExit else ZIcons.Fullscreen,
-            contentDescription = if (exit) "退出全屏" else "全屏",
+            contentDescription = if (exit) t("退出全屏") else t("全屏"),
             tint = Color.White,
             modifier = Modifier.size(22.dp),
         )

@@ -5,6 +5,7 @@ import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import com.kite.zmusic.i18n.t
 
 /**
  * 解析 `/comment/new` 与旧版 `/comment/music` 响应（字段兼容实测差异）。
@@ -114,7 +115,7 @@ object NcmCommentParse {
         val id = o.optLong("commentId", o.optLong("commentid", 0L))
         if (id <= 0L) return null
         val user = o.optJSONObject("user") ?: o.optJSONObject("userInfo")
-        val nickname = user?.optString("nickname").orEmpty().ifBlank { "用户" }
+        val nickname = user?.optString("nickname").orEmpty().ifBlank { t("用户") }
         val avatar = user?.optString("avatarUrl")
             ?.takeIf { it.isNotBlank() && it != "null" }
             ?: user?.optString("avatarUrlStr")?.takeIf { it.isNotBlank() }
@@ -174,7 +175,7 @@ object NcmCommentParse {
                 users.add(
                     CommentHugUser(
                         userId = uid,
-                        nickname = user.optString("nickname").orEmpty().ifBlank { "用户" },
+                        nickname = user.optString("nickname").orEmpty().ifBlank { t("用户") },
                         avatarUrl = user.optString("avatarUrl")
                             .takeIf { it.isNotBlank() && it != "null" },
                     ),
@@ -195,10 +196,10 @@ object NcmCommentParse {
         val now = System.currentTimeMillis()
         val diff = (now - timeMs).coerceAtLeast(0L)
         return when {
-            diff < 60_000L -> "刚刚"
-            diff < 3_600_000L -> "${diff / 60_000L} 分钟前"
-            diff < 86_400_000L -> "${diff / 3_600_000L} 小时前"
-            diff < 86_400_000L * 7 -> "${diff / 86_400_000L} 天前"
+            diff < 60_000L -> t("刚刚")
+            diff < 3_600_000L -> t("%s 分钟前", diff / 60_000L)
+            diff < 86_400_000L -> t("%s 小时前", diff / 3_600_000L)
+            diff < 86_400_000L * 7 -> t("%s 天前", diff / 86_400_000L)
             else -> {
                 val fmt = SimpleDateFormat("yyyy-MM-dd", Locale.CHINA)
                 fmt.format(Date(timeMs))

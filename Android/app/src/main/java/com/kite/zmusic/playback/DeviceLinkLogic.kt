@@ -1,5 +1,7 @@
 package com.kite.zmusic.playback
 
+import com.kite.zmusic.i18n.t
+
 /**
  * 蓝牙音频路由变化、充电状态变化的纯逻辑。
  * 不读 AudioDeviceInfo / BatteryManager，便于单测。
@@ -26,7 +28,7 @@ internal fun isBluetoothAudioOutputType(type: Int): Boolean = when (type) {
 }
 
 internal fun bluetoothDisplayName(raw: String): String =
-    raw.trim().ifBlank { "蓝牙设备" }
+    raw.trim().ifBlank { t("蓝牙设备") }
 
 internal fun bluetoothAudioKey(device: AudioOutputDevice): String {
     val address = device.address.trim()
@@ -58,16 +60,16 @@ internal fun diffBluetoothAudio(
     disconnected = previous.filterKeys { it !in current },
 )
 
-internal fun bluetoothConnectNotice(name: String): String = "${bluetoothDisplayName(name)} 已连接"
+internal fun bluetoothConnectNotice(name: String): String = t("%s 已连接", bluetoothDisplayName(name))
 
-internal fun bluetoothDisconnectNotice(name: String): String = "${bluetoothDisplayName(name)} 已断开"
+internal fun bluetoothDisconnectNotice(name: String): String = t("%s 已断开", bluetoothDisplayName(name))
 
 internal fun powerNotice(snapshot: PowerSnapshot): String {
     val pct = snapshot.percent?.takeIf { it in 0..100 }?.let { " · $it%" }.orEmpty()
     return when {
-        !snapshot.plugged -> "已断开电源$pct"
-        snapshot.wireless -> "已开始无线充电$pct"
-        else -> "已开始充电$pct"
+        !snapshot.plugged -> t("已断开电源%s", pct)
+        snapshot.wireless -> t("已开始无线充电%s", pct)
+        else -> t("已开始充电%s", pct)
     }
 }
 

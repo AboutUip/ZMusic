@@ -81,6 +81,7 @@ import com.kite.zmusic.plugin.PluginUiTarget
 import com.kite.zmusic.ui.plugin.pluginSurface
 import kotlinx.coroutines.delay
 import java.util.Calendar
+import com.kite.zmusic.i18n.t
 
 @Composable
 fun HomeScreen(
@@ -110,28 +111,28 @@ fun HomeScreen(
 
     val onBanner: (HomeBanner) -> Unit = { b ->
         when (b.targetType) {
-            1 -> if (b.targetId > 0L) onPlaySong(b.targetId) else onHint("暂时无法打开")
+            1 -> if (b.targetId > 0L) onPlaySong(b.targetId) else onHint(t("暂时无法打开"))
             10 -> if (b.targetId > 0L) {
-                onOpenOverlay(MainOverlay.Album(b.targetId, b.title ?: "专辑"))
+                onOpenOverlay(MainOverlay.Album(b.targetId, b.title ?: t("专辑")))
             } else {
-                onHint("暂时无法打开该专辑")
+                onHint(t("暂时无法打开该专辑"))
             }
             1000 -> if (b.targetId > 0L) {
-                onOpenOverlay(MainOverlay.Playlist(b.targetId, b.title ?: "歌单", b.picUrl))
+                onOpenOverlay(MainOverlay.Playlist(b.targetId, b.title ?: t("歌单"), b.picUrl))
             } else {
-                onHint("暂时无法打开该歌单")
+                onHint(t("暂时无法打开该歌单"))
             }
             1004 -> if (b.targetId > 0L) {
                 onOpenOverlay(MainOverlay.Mv(b.targetId, b.title ?: "MV", b.picUrl))
             } else {
-                onHint("暂时无法打开")
+                onHint(t("暂时无法打开"))
             }
             100 -> if (b.targetId > 0L) {
-                onOpenOverlay(MainOverlay.Artist(b.targetId, b.title ?: "歌手", b.picUrl))
+                onOpenOverlay(MainOverlay.Artist(b.targetId, b.title ?: t("歌手"), b.picUrl))
             } else {
-                onHint("暂时无法打开这位歌手")
+                onHint(t("暂时无法打开这位歌手"))
             }
-            else -> onHint("该内容暂未支持打开")
+            else -> onHint(t("该内容暂未支持打开"))
         }
     }
 
@@ -174,7 +175,7 @@ fun HomeScreen(
                     ) {
                         Icon(
                             imageVector = ZIcons.Settings,
-                            contentDescription = "设置",
+                            contentDescription = t("设置"),
                             tint = MainPalette.Ink,
                             modifier = Modifier.size(22.dp),
                         )
@@ -259,7 +260,7 @@ fun HomeScreen(
                             )
                             DailySongStrip(
                                 songs = ui.dailySongs,
-                                onPlayAt = { i -> onPlayTracks(ui.dailySongs, i, null, "每日推荐") },
+                                onPlayAt = { i -> onPlayTracks(ui.dailySongs, i, null, t("每日推荐")) },
                                 modifier = Modifier.weight(1f),
                             )
                         }
@@ -268,7 +269,7 @@ fun HomeScreen(
                 }
                 if (ui.playlists.isNotEmpty()) {
                     item(key = "playlists-title", contentType = "section-title") {
-                        SectionTitle("推荐歌单")
+                        SectionTitle(t("推荐歌单"))
                         Spacer(Modifier.height(12.dp))
                     }
                     homePlaylistRowItems(
@@ -293,18 +294,18 @@ fun HomeScreen(
                             }
                         }
                         Spacer(Modifier.height(22.dp))
-                        SectionTitle("新歌")
+                        SectionTitle(t("新歌"))
                         Spacer(Modifier.height(12.dp))
                         CoverStrip(
                             items = items,
-                            onOpen = { i -> onPlayTracks(ui.newSongs, i, null, "新歌") },
+                            onOpen = { i -> onPlayTracks(ui.newSongs, i, null, t("新歌")) },
                         )
                     }
                 }
                 if (ui.mvs.isNotEmpty()) {
                     item(key = "mvs") {
                         Spacer(Modifier.height(22.dp))
-                        SectionTitle("推荐 MV")
+                        SectionTitle(t("推荐 MV"))
                         Spacer(Modifier.height(12.dp))
                         MvStrip(
                             mvs = ui.mvs,
@@ -331,7 +332,7 @@ fun HomeScreen(
                             }
                         }
                         Spacer(Modifier.height(22.dp))
-                        SectionTitle("每日歌单")
+                        SectionTitle(t("每日歌单"))
                         Spacer(Modifier.height(12.dp))
                         CoverStrip(
                             items = items,
@@ -408,7 +409,7 @@ private fun HomeSearchEntry(
         )
         Spacer(Modifier.width(8.dp))
         Text(
-            text = "搜索歌曲、歌单、MV、歌手",
+            text = t("搜索歌曲、歌单、MV、歌手"),
             style = TextStyle(color = MainPalette.Hint, fontSize = 14.sp),
         )
     }
@@ -565,7 +566,7 @@ private fun DailyRecommendCard(
             .padding(10.dp),
     ) {
         Text(
-            text = "每日推荐",
+            text = t("每日推荐"),
             color = Color.White.copy(alpha = 0.92f),
             fontSize = 11.sp,
             fontWeight = FontWeight.Medium,
@@ -578,7 +579,7 @@ private fun DailyRecommendCard(
             modifier = Modifier.align(Alignment.BottomStart),
         )
         Text(
-            text = "${songs.size} 首",
+            text = t("%s 首", songs.size),
             color = Color.White.copy(alpha = 0.8f),
             fontSize = 10.sp,
             modifier = Modifier.align(Alignment.BottomEnd),
@@ -1012,7 +1013,7 @@ private fun HomeLandscapeBody(
                         LandscapeDailyPanel(
                             songs = ui.dailySongs,
                             onOpenDaily = { onOpenOverlay(MainOverlay.Daily) },
-                            onPlayAt = { i -> onPlayTracks(ui.dailySongs, i, null, "每日推荐") },
+                            onPlayAt = { i -> onPlayTracks(ui.dailySongs, i, null, t("每日推荐")) },
                             modifier = Modifier
                                 .weight(0.85f)
                                 .fillMaxHeight(),
@@ -1024,7 +1025,7 @@ private fun HomeLandscapeBody(
             }
             if (ui.playlists.isNotEmpty()) {
                 item(key = "playlists-title", contentType = "section-title") {
-                    SectionTitle("推荐歌单")
+                    SectionTitle(t("推荐歌单"))
                     Spacer(Modifier.height(14.dp))
                 }
                 homePlaylistRowItems(
@@ -1038,7 +1039,7 @@ private fun HomeLandscapeBody(
             if (ui.newSongs.isNotEmpty()) {
                 item(key = "newsongs-title", contentType = "section-title") {
                     Spacer(Modifier.height(28.dp))
-                    SectionTitle("新歌")
+                    SectionTitle(t("新歌"))
                     Spacer(Modifier.height(14.dp))
                 }
                 homePlaylistRowItems(
@@ -1054,7 +1055,7 @@ private fun HomeLandscapeBody(
                     columns = 6,
                     onOpen = { card ->
                         val i = ui.newSongs.indexOfFirst { it.id == card.id }.coerceAtLeast(0)
-                        onPlayTracks(ui.newSongs, i, null, "新歌")
+                        onPlayTracks(ui.newSongs, i, null, t("新歌"))
                     },
                 )
             }
@@ -1062,7 +1063,7 @@ private fun HomeLandscapeBody(
             if (ui.mvs.isNotEmpty()) {
                 item(key = "mvs") {
                 Spacer(Modifier.height(28.dp))
-                SectionTitle("推荐 MV")
+                SectionTitle(t("推荐 MV"))
                 Spacer(Modifier.height(14.dp))
                 LandscapeMvGrid(
                     mvs = ui.mvs,
@@ -1076,7 +1077,7 @@ private fun HomeLandscapeBody(
             if (ui.dailyPlaylists.isNotEmpty()) {
                 item(key = "dailyPlaylists-title", contentType = "section-title") {
                     Spacer(Modifier.height(28.dp))
-                    SectionTitle("每日歌单")
+                    SectionTitle(t("每日歌单"))
                     Spacer(Modifier.height(14.dp))
                 }
                 homePlaylistRowItems(
@@ -1115,7 +1116,7 @@ private fun LandscapeDailyPanel(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "每日推荐",
+                text = t("每日推荐"),
                 style = TextStyle(
                     color = MainPalette.Ink,
                     fontSize = 16.sp,
@@ -1124,7 +1125,7 @@ private fun LandscapeDailyPanel(
                 modifier = Modifier.weight(1f),
             )
             Text(
-                text = "${day}日 · ${songs.size} 首",
+                text = t("%s日 · %s 首", day, songs.size),
                 style = TextStyle(color = MainPalette.Secondary, fontSize = 12.sp),
             )
         }

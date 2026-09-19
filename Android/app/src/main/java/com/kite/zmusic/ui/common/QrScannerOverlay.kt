@@ -67,6 +67,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.min
+import com.kite.zmusic.i18n.t
 
 private val ScanCurve = CubicBezierEasing(0.16f, 1.02f, 0.3f, 1f)
 
@@ -156,7 +157,7 @@ fun QrScannerOverlay(
                                     lastReject.set(text)
                                     lastRejectAt.set(android.os.SystemClock.elapsedRealtime())
                                     detected.set(false)
-                                    feedback = "无法识别该二维码"
+                                    feedback = t("无法识别该二维码")
                                 }
                             }
                         } catch (_: Throwable) {
@@ -174,7 +175,7 @@ fun QrScannerOverlay(
                             analysis,
                         )
                     }.onFailure {
-                        previewView.post { feedback = "无法打开相机，请从相册选取" }
+                        previewView.post { feedback = t("无法打开相机，请从相册选取") }
                     }
                 }
                 previewView.addOnAttachStateChangeListener(
@@ -269,8 +270,8 @@ fun QrScannerOverlay(
                 .padding(horizontal = 28.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
         ) {
-            ScannerActionChip(label = "相册", onClick = onOpenGallery)
-            ScannerActionChip(label = "关闭", onClick = onClose)
+            ScannerActionChip(label = t("相册"), onClick = onOpenGallery)
+            ScannerActionChip(label = t("关闭"), onClick = onClose)
         }
     }
 }

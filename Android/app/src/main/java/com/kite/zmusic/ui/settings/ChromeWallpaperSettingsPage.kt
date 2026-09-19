@@ -81,6 +81,7 @@ import com.kite.zmusic.ui.main.wallpaperItemChrome
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.kite.zmusic.i18n.t
 
 private val PreviewMorphSpec = tween<Float>(durationMillis = 420, easing = FastOutSlowInEasing)
 private val PreviewDpSpec = tween<Dp>(durationMillis = 420, easing = FastOutSlowInEasing)
@@ -166,8 +167,8 @@ fun ChromeWallpaperSettingsPage(
     val hasImage = path.isNotBlank()
     val editable = !locked
     val switchColors = MainControls.switchColors()
-    val sceneLabel = if (editSurface == null) "通用" else editSurface!!.title
-    val sideLabel = if (editLandscape) "横屏" else "竖屏"
+    val sceneLabel = if (editSurface == null) t("通用") else editSurface!!.title
+    val sideLabel = if (editLandscape) t("横屏") else t("竖屏")
 
     Column(
         modifier
@@ -178,7 +179,7 @@ fun ChromeWallpaperSettingsPage(
     ) {
         Spacer(Modifier.height(8.dp))
         Text(
-            text = "打开开关后，只铺在你勾选的页面，默认只有主页。弹窗、通知、播放页不铺。这一页始终不铺，方便对着预览构图。",
+            text = t("打开开关后，只铺在你勾选的页面，默认只有主页。弹窗、通知、播放页不铺。这一页始终不铺，方便对着预览构图。"),
             style = TextStyle(
                 color = MainPalette.Secondary,
                 fontSize = 13.sp,
@@ -193,8 +194,8 @@ fun ChromeWallpaperSettingsPage(
                 .padding(horizontal = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            SettingsAccentLink("使用说明") { helpTopic = WallpaperHelpTopic.Guide }
-            SettingsAccentLink("不会铺的地方") { helpTopic = WallpaperHelpTopic.Limits }
+            SettingsAccentLink(t("使用说明")) { helpTopic = WallpaperHelpTopic.Guide }
+            SettingsAccentLink(t("不会铺的地方")) { helpTopic = WallpaperHelpTopic.Limits }
         }
         Spacer(Modifier.height(16.dp))
         Row(
@@ -211,7 +212,7 @@ fun ChromeWallpaperSettingsPage(
         ) {
             Column(Modifier.weight(1f)) {
                 Text(
-                    text = "启用自定义背景",
+                    text = t("启用自定义背景"),
                     style = TextStyle(
                         color = MainPalette.Ink,
                         fontSize = 15.sp,
@@ -220,9 +221,9 @@ fun ChromeWallpaperSettingsPage(
                 )
                 Text(
                     text = if (state.enabled) {
-                        "已开启 · 只铺在勾选的页面"
+                        t("已开启 · 只铺在勾选的页面")
                     } else {
-                        "已关闭 · 各页用主题底色，构图还在"
+                        t("已关闭 · 各页用主题底色，构图还在")
                     },
                     style = TextStyle(color = MainPalette.Secondary, fontSize = 12.sp),
                 )
@@ -241,15 +242,15 @@ fun ChromeWallpaperSettingsPage(
             onChromeHelp = { helpTopic = WallpaperHelpTopic.Chrome },
         )
         Spacer(Modifier.height(22.dp))
-        SectionLabel("预览与构图")
+        SectionLabel(t("预览与构图"))
         Spacer(Modifier.height(6.dp))
         SettingsAccentLink(
-            "构图怎么算",
+            t("构图怎么算"),
             modifier = Modifier.padding(horizontal = 4.dp),
         ) { helpTopic = WallpaperHelpTopic.Canvas }
         Spacer(Modifier.height(8.dp))
         Text(
-            text = "切场景不会丢掉缩放和位置。图可以小于屏幕，拖动画布即可。没单独配图的勾选页会继承通用。",
+            text = t("切场景不会丢掉缩放和位置。图可以小于屏幕，拖动画布即可。没单独配图的勾选页会继承通用。"),
             style = TextStyle(color = MainPalette.Secondary, fontSize = 12.sp, lineHeight = 16.sp),
             modifier = Modifier.padding(horizontal = 4.dp),
         )
@@ -281,7 +282,7 @@ fun ChromeWallpaperSettingsPage(
                 append(sceneLabel)
                 append(" · ")
                 append(sideLabel)
-                if (inherited) append(" · 继承通用")
+                if (inherited) append(t(" · 继承通用"))
             },
             onTransform = { panX, panY, zoom, width, height, imgW, imgH ->
                 if (!editable || !hasImage) return@WallpaperPreviewCard
@@ -311,7 +312,7 @@ fun ChromeWallpaperSettingsPage(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             ActionChip(
-                label = if (editable) "相册选图" else "已锁定",
+                label = if (editable) t("相册选图") else t("已锁定"),
                 enabled = editable,
                 accent = true,
                 modifier = Modifier.weight(1f),
@@ -322,7 +323,7 @@ fun ChromeWallpaperSettingsPage(
                 },
             )
             ActionChip(
-                label = if (locked) "解锁" else "锁定",
+                label = if (locked) t("解锁") else t("锁定"),
                 enabled = hasImage || locked,
                 accent = true,
                 modifier = Modifier.weight(1f),
@@ -333,7 +334,7 @@ fun ChromeWallpaperSettingsPage(
                 },
             )
             ActionChip(
-                label = "清除",
+                label = t("清除"),
                 enabled = !inherited && (hasImage || locked),
                 accent = false,
                 modifier = Modifier.weight(1f),
@@ -341,16 +342,16 @@ fun ChromeWallpaperSettingsPage(
             )
         }
         Spacer(Modifier.height(22.dp))
-        SectionLabel("铺在哪些页面")
+        SectionLabel(t("铺在哪些页面"))
         Spacer(Modifier.height(6.dp))
         SettingsAccentLink(
-            "覆盖、通用和分场景",
+            t("覆盖、通用和分场景"),
             modifier = Modifier.padding(horizontal = 4.dp),
         ) { helpTopic = WallpaperHelpTopic.Coverage }
         Spacer(Modifier.height(8.dp))
         if (editSurface == null) {
             Text(
-                text = "没单独配图、且已勾选覆盖的页面会用这张通用图。默认只铺主页。",
+                text = t("没单独配图、且已勾选覆盖的页面会用这张通用图。默认只铺主页。"),
                 style = TextStyle(color = MainPalette.Secondary, fontSize = 12.sp, lineHeight = 16.sp),
                 modifier = Modifier.padding(horizontal = 4.dp),
             )
@@ -372,7 +373,7 @@ fun ChromeWallpaperSettingsPage(
             ) {
                 Column(Modifier.weight(1f)) {
                     Text(
-                        text = "覆盖此页",
+                        text = t("覆盖此页"),
                         style = TextStyle(
                             color = MainPalette.Ink,
                             fontSize = 15.sp,
@@ -381,9 +382,9 @@ fun ChromeWallpaperSettingsPage(
                     )
                     Text(
                         text = if (covering) {
-                            "已开启 · 这一页用这张图"
+                            t("已开启 · 这一页用这张图")
                         } else {
-                            "已关闭 · 这一页仍用主题底色"
+                            t("已关闭 · 这一页仍用主题底色")
                         },
                         style = TextStyle(color = MainPalette.Secondary, fontSize = 12.sp),
                     )
@@ -402,14 +403,14 @@ fun ChromeWallpaperSettingsPage(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             ActionChip(
-                label = "全部覆盖",
+                label = t("全部覆盖"),
                 enabled = true,
                 accent = false,
                 modifier = Modifier.weight(1f),
                 onClick = { store.setCoverage(ChromeWallpaperSurface.entries.toSet()) },
             )
             ActionChip(
-                label = "恢复默认",
+                label = t("恢复默认"),
                 enabled = true,
                 accent = false,
                 modifier = Modifier.weight(1f),
@@ -418,7 +419,7 @@ fun ChromeWallpaperSettingsPage(
         }
         Spacer(Modifier.height(12.dp))
         SettingsAccentLink(
-            "个人页和用户空间图",
+            t("个人页和用户空间图"),
             modifier = Modifier.padding(horizontal = 4.dp),
         ) { helpTopic = WallpaperHelpTopic.Profile }
     }
@@ -430,7 +431,7 @@ fun ChromeWallpaperSettingsPage(
                 store.markHelpSeen()
                 helpTopic = null
             },
-            confirmLabel = "知道了",
+            confirmLabel = t("知道了"),
             cancelLabel = null,
             onConfirm = {
                 store.markHelpSeen()
@@ -506,7 +507,7 @@ private fun SideToggle(landscape: Boolean, onChange: (Boolean) -> Unit) {
             .padding(4.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        listOf(false to "竖屏", true to "横屏").forEach { (land, label) ->
+        listOf(false to t("竖屏"), true to t("横屏")).forEach { (land, label) ->
             val on = landscape == land
             val bg by animateColorAsState(
                 targetValue = if (on) MainPalette.Accent.copy(alpha = 0.14f) else Color.Transparent,
@@ -560,7 +561,7 @@ private fun SceneChips(
     ) {
         val genericHas = if (editLandscape) genericLandscape.hasImage else genericPortrait.hasImage
         CoverageChip(
-            title = if (genericHas) "通用 · 有图" else "通用",
+            title = if (genericHas) t("通用 · 有图") else t("通用"),
             selected = selected == null,
             onClick = { onSelect(null) },
         )
@@ -572,8 +573,8 @@ private fun SceneChips(
             }
             CoverageChip(
                 title = when {
-                    has -> "${surface.title} · 有图"
-                    genericHas -> "${surface.title} · 继承"
+                    has -> t("%s · 有图", surface.title)
+                    genericHas -> t("%s · 继承", surface.title)
                     else -> surface.title
                 },
                 selected = selected == surface,
@@ -790,7 +791,7 @@ private fun WallpaperPreviewCard(
                         }
                         if (!frame.hasImage) {
                             Text(
-                                text = "从相册选一张图",
+                                text = t("从相册选一张图"),
                                 style = TextStyle(color = MainPalette.Secondary, fontSize = 12.sp),
                                 modifier = Modifier.align(Alignment.Center),
                             )
@@ -807,7 +808,7 @@ private fun WallpaperPreviewCard(
             Column {
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    text = "在画布里拖动、捏合来构图。位置按图的边缘对齐画面，和缩放无关；图不必铺满。",
+                    text = t("在画布里拖动、捏合来构图。位置按图的边缘对齐画面，和缩放无关；图不必铺满。"),
                     style = TextStyle(color = MainPalette.Hint, fontSize = 11.sp),
                 )
             }
@@ -823,25 +824,25 @@ private fun ItemChromePicker(
     onChromeHelp: () -> Unit,
 ) {
     val modes = listOf(
-        ChromeGlassMode.Solid to "纯色",
-        ChromeGlassMode.Frosted to "磨砂",
-        ChromeGlassMode.Liquid to "液态玻璃",
+        ChromeGlassMode.Solid to t("纯色"),
+        ChromeGlassMode.Frosted to t("磨砂"),
+        ChromeGlassMode.Liquid to t("液态玻璃"),
     )
     Column(
         Modifier
             .fillMaxWidth()
             .graphicsLayer { alpha = if (enabled) 1f else 0.46f },
     ) {
-        SectionLabel("组件边界")
+        SectionLabel(t("组件边界"))
         Spacer(Modifier.height(6.dp))
         SettingsAccentLink(
-            "三种边界怎么选",
+            t("三种边界怎么选"),
             modifier = Modifier.padding(horizontal = 4.dp),
             onClick = onChromeHelp,
         )
         Spacer(Modifier.height(8.dp))
         Text(
-            text = "只在已铺背景的页面生效。模糊和折射跟「液态玻璃样式」。主页和功能页不改组件；个人页只改下面的歌单列表。",
+            text = t("只在已铺背景的页面生效。模糊和折射跟「液态玻璃样式」。主页和功能页不改组件；个人页只改下面的歌单列表。"),
             style = TextStyle(color = MainPalette.Secondary, fontSize = 12.sp, lineHeight = 16.sp),
             modifier = Modifier.padding(horizontal = 4.dp),
         )

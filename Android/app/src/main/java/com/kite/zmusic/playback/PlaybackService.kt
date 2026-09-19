@@ -73,6 +73,7 @@ class PlaybackService : MediaSessionService() {
             persistentPlaybackStore = app.persistentPlaybackStore,
             userClient = app.ncmUserClient,
             audioOutputController = app.audioOutputController,
+            fmModeStore = app.personalFmModeStore,
             onClearAndStopService = {
                 pauseAllPlayersAndStopSelf()
             },

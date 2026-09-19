@@ -9,6 +9,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.platform.LocalContext
@@ -18,6 +19,8 @@ import androidx.compose.ui.unit.Density
 import androidx.core.view.WindowCompat
 import com.kite.zmusic.ZMusicApplication
 import com.kite.zmusic.data.AppAppearance
+import com.kite.zmusic.i18n.AppLanguage
+import com.kite.zmusic.i18n.I18n
 import com.kite.zmusic.plugin.PluginLookPresent
 import kotlinx.coroutines.flow.MutableStateFlow
 
@@ -63,6 +66,12 @@ fun ZMusicTheme(content: @Composable () -> Unit) {
             ?: MutableStateFlow(AppAppearance.Light)
     }
     val appearance by appearanceFlow.collectAsState()
+    val languageFlow = remember(context) {
+        (context.applicationContext as? ZMusicApplication)?.languageStore?.language
+            ?: MutableStateFlow(AppLanguage.Chinese)
+    }
+    val language by languageFlow.collectAsState()
+    I18n.setLanguage(language)
     val overlayAppearance = PluginLookPresent.appearance()
     val dark = (overlayAppearance ?: appearance).resolveDark(isSystemInDarkTheme())
     val colors = if (dark) MainColors.Dark else MainColors.Light
@@ -83,9 +92,11 @@ fun ZMusicTheme(content: @Composable () -> Unit) {
             fontScale = AppFontScale,
         ),
     ) {
-        MaterialTheme(
-            colorScheme = zMusicColorScheme(MainPalette.isDark),
-            content = content,
-        )
+        key(language) {
+            MaterialTheme(
+                colorScheme = zMusicColorScheme(MainPalette.isDark),
+                content = content,
+            )
+        }
     }
 }

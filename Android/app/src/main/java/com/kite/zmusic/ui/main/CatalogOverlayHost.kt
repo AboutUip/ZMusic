@@ -60,6 +60,7 @@ import com.kite.zmusic.ui.workshop.CreativeWorkshopScreen
 import com.kite.zmusic.ui.user.UserRelationsScreen
 import com.kite.zmusic.ui.user.UserScreen
 import kotlinx.coroutines.delay
+import com.kite.zmusic.i18n.t
 
 private val OverlaySlideSpec = tween<IntOffset>(durationMillis = 320, easing = FastOutSlowInEasing)
 private val OverlayFadeSpec = tween<Float>(durationMillis = 220)
@@ -201,8 +202,8 @@ private fun CatalogOverlayPage(
                         .fillMaxSize()
                         .chromePage()
                         .statusBarsPadding(),
-                    title = "搜索需要网络",
-                    caption = "联网后即可继续找歌",
+                    title = t("搜索需要网络"),
+                    caption = t("联网后即可继续找歌"),
                     actionLabel = null,
                     onBack = onBack,
                     contentBottomInset = contentBottomInset,
@@ -225,14 +226,14 @@ private fun CatalogOverlayPage(
                         if (hit.id > 0L) {
                             onPushOverlay(MainOverlay.Artist(hit.id, hit.name, hit.coverUrl))
                         } else {
-                            onHint("暂时无法打开这位歌手")
+                            onHint(t("暂时无法打开这位歌手"))
                         }
                     },
                     onOpenUser = { hit ->
                         if (hit.id > 0L) {
                             onPushOverlay(MainOverlay.User(hit.id, hit.name, hit.avatarUrl))
                         } else {
-                            onHint("暂时无法打开这位用户")
+                            onHint(t("暂时无法打开这位用户"))
                         }
                     },
                     onHint = onHint,
@@ -329,7 +330,7 @@ private fun CatalogOverlayPage(
                     if (artist.id > 0L) {
                         onPushOverlay(MainOverlay.Artist(artist.id, artist.name, artist.avatarUrl))
                     } else {
-                        onHint("暂时无法打开这位歌手")
+                        onHint(t("暂时无法打开这位歌手"))
                     }
                 },
             )
@@ -490,7 +491,7 @@ private fun CatalogOverlayPage(
                     if (id > 0L) {
                         onPushOverlay(MainOverlay.Artist(id, name, cover))
                     } else {
-                        onHint("暂时无法打开这位歌手")
+                        onHint(t("暂时无法打开这位歌手"))
                     }
                 },
             )

@@ -74,6 +74,7 @@ import com.kite.zmusic.ui.icons.ZIcons
 import com.kite.zmusic.ui.main.MainPalette
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import com.kite.zmusic.i18n.t
 
 private const val LikedArtistsVmKey = "liked-artists"
 
@@ -162,7 +163,7 @@ fun LikedArtistsScreen(
     )
 }
 
-private val FollowTabs = listOf("歌手", "用户")
+private fun followTabs() = listOf(t("歌手"), t("用户"))
 
 @Composable
 private fun FollowsTopBar(
@@ -191,7 +192,7 @@ private fun FollowsTopBar(
         ) {
             Icon(
                 imageVector = ZIcons.Back,
-                contentDescription = "返回",
+                contentDescription = t("返回"),
                 tint = MainPalette.Ink,
                 modifier = Modifier.size(22.dp),
             )
@@ -200,7 +201,7 @@ private fun FollowsTopBar(
             Modifier.align(Alignment.Center),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            FollowTabs.forEachIndexed { index, label ->
+            followTabs().forEachIndexed { index, label ->
                 FollowTab(
                     label = label,
                     selected = selected == index,
@@ -222,7 +223,7 @@ private fun FollowsTopBar(
         ) {
             Icon(
                 imageVector = ZIcons.Search,
-                contentDescription = "搜索",
+                contentDescription = t("搜索"),
                 tint = MainPalette.Ink,
                 modifier = Modifier.size(22.dp),
             )
@@ -297,10 +298,10 @@ private fun FollowArtistsPane(
         when {
             ui.loading && ui.artists.isEmpty() -> FollowLoading()
             ui.error != null && ui.artists.isEmpty() -> FollowMessage(
-                text = ui.error ?: "加载失败",
+                text = ui.error ?: t("加载失败"),
                 onClick = onRetry,
             )
-            ui.artists.isEmpty() -> FollowMessage(text = "还没有喜欢的歌手")
+            ui.artists.isEmpty() -> FollowMessage(text = t("还没有喜欢的歌手"))
             else -> {
                 LazyColumn(
                     state = listState,
@@ -314,8 +315,8 @@ private fun FollowArtistsPane(
                 ) {
                     items(ui.artists, key = { it.id }) { artist ->
                         val sub = buildList {
-                            if (artist.musicSize > 0) add("${artist.musicSize} 首")
-                            if (artist.albumSize > 0) add("${artist.albumSize} 张专辑")
+                            if (artist.musicSize > 0) add(t("%s 首", artist.musicSize))
+                            if (artist.albumSize > 0) add(t("%s 张专辑", artist.albumSize))
                         }.joinToString(" · ")
                         FollowPersonRow(
                             name = artist.name,
@@ -364,10 +365,10 @@ private fun FollowUsersPane(
         when {
             ui.usersLoading && ui.users.isEmpty() -> FollowLoading()
             ui.usersError != null && ui.users.isEmpty() -> FollowMessage(
-                text = ui.usersError ?: "加载失败",
+                text = ui.usersError ?: t("加载失败"),
                 onClick = onRetry,
             )
-            ui.users.isEmpty() -> FollowMessage(text = "还没有关注的用户")
+            ui.users.isEmpty() -> FollowMessage(text = t("还没有关注的用户"))
             else -> {
                 LazyColumn(
                     state = listState,
@@ -492,7 +493,7 @@ fun LikedArtistsSearchScreen(
         }
     }
 
-    val noun = if (searchUsers) "用户" else "歌手"
+    val noun = if (searchUsers) t("用户") else t("歌手")
     val loaded = if (searchUsers) ui.users.size else ui.artists.size
     val hasMore = if (searchUsers) ui.usersHasMore else ui.hasMore
     val hitsSize = if (searchUsers) ui.userHits.size else ui.hits.size
@@ -529,13 +530,13 @@ fun LikedArtistsSearchScreen(
             ) {
                 Icon(
                     imageVector = ZIcons.Back,
-                    contentDescription = "返回",
+                    contentDescription = t("返回"),
                     tint = MainPalette.Ink,
                     modifier = Modifier.size(22.dp),
                 )
             }
             Text(
-                text = "搜索$noun",
+                text = t("搜索%s", noun),
                 modifier = Modifier
                     .weight(1f)
                     .padding(start = 4.dp),
@@ -558,22 +559,22 @@ fun LikedArtistsSearchScreen(
             },
             focusRequester = searchFocus,
             canFocus = isTop,
-            placeholder = if (searchUsers) "搜索关注的用户" else "搜索收藏的歌手",
+            placeholder = if (searchUsers) t("搜索关注的用户") else t("搜索收藏的歌手"),
             modifier = Modifier.padding(horizontal = 20.dp),
         )
         val q = ui.query.trim()
         val status = when {
             q.isEmpty() -> {
-                if (hasMore && loaded > 0) "输入${noun}名 · 已加载 $loaded 位"
-                else if (loaded > 0) "输入${noun}名 · 共 $loaded 位"
-                else "输入${noun}名"
+                if (hasMore && loaded > 0) t("输入%s名 · 已加载 %s 位", noun, loaded)
+                else if (loaded > 0) t("输入%s名 · 共 %s 位", noun, loaded)
+                else t("输入%s名", noun)
             }
             ui.scanning -> {
-                val extra = if (hitsSize > 0) " · 已找到 $hitsSize 位" else ""
-                "正在搜索剩余$noun$extra"
+                val extra = if (hitsSize > 0) t(" · 已找到 %s 位", hitsSize) else ""
+                t("正在搜索剩余%s%s", noun, extra)
             }
-            hitsSize > 0 -> "找到 $hitsSize 位"
-            !hasMore || loaded > 0 -> "没有找到相关$noun"
+            hitsSize > 0 -> t("找到 %s 位", hitsSize)
+            !hasMore || loaded > 0 -> t("没有找到相关%s", noun)
             else -> null
         }
         if (status != null) {
@@ -620,8 +621,8 @@ fun LikedArtistsSearchScreen(
                     } else {
                         items(ui.hits, key = { "a-${it.id}" }) { artist ->
                             val sub = buildList {
-                                if (artist.musicSize > 0) add("${artist.musicSize} 首")
-                                if (artist.albumSize > 0) add("${artist.albumSize} 张专辑")
+                                if (artist.musicSize > 0) add(t("%s 首", artist.musicSize))
+                                if (artist.albumSize > 0) add(t("%s 张专辑", artist.albumSize))
                             }.joinToString(" · ")
                             FollowPersonRow(
                                 name = artist.name,
@@ -703,11 +704,11 @@ private fun LikedArtistOverflow(
             coverUrl = artist.coverUrl,
             onDismiss = onDismissMore,
             actions = listOf(
-                GlassSheetAction("查看歌手") {
+                GlassSheetAction(t("查看歌手")) {
                     onDismissMore()
                     onOpenArtist(artist.id, artist.name, artist.coverUrl)
                 },
-                GlassSheetAction("取消收藏", destructive = true) {
+                GlassSheetAction(t("取消收藏"), destructive = true) {
                     onAskUnfollow(artist)
                 },
             ),
@@ -715,9 +716,9 @@ private fun LikedArtistOverflow(
     }
     confirmUnfollow?.let { artist ->
         GlassAlertDialog(
-            title = "取消收藏这位歌手？",
-            message = "「${artist.name}」将从你的收藏中移除",
-            confirmLabel = "取消收藏",
+            title = t("取消收藏这位歌手？"),
+            message = t("「%s」将从你的收藏中移除", artist.name),
+            confirmLabel = t("取消收藏"),
             confirmDestructive = true,
             onConfirm = { onConfirmUnfollow(artist) },
             onDismiss = onDismissConfirm,
@@ -733,7 +734,7 @@ private fun LikedArtistSearchField(
     onClear: () -> Unit,
     focusRequester: FocusRequester,
     canFocus: Boolean = true,
-    placeholder: String = "搜索收藏的歌手",
+    placeholder: String = t("搜索收藏的歌手"),
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -788,7 +789,7 @@ private fun LikedArtistSearchField(
             ) {
                 Icon(
                     imageVector = ZIcons.Close,
-                    contentDescription = "清空",
+                    contentDescription = t("清空"),
                     tint = MainPalette.Secondary,
                     modifier = Modifier.size(18.dp),
                 )
@@ -870,7 +871,7 @@ private fun FollowPersonRow(
             ) {
                 Icon(
                     imageVector = ZIcons.More,
-                    contentDescription = "更多",
+                    contentDescription = t("更多"),
                     tint = MainPalette.Hint,
                     modifier = Modifier.size(20.dp),
                 )

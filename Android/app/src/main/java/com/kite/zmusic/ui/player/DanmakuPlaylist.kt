@@ -5,6 +5,7 @@ import com.kite.zmusic.data.SongComment
 import java.util.ArrayDeque
 import kotlin.math.abs
 import kotlin.random.Random
+import com.kite.zmusic.i18n.t
 
 internal data class DanmakuLine(
     val commentId: Long,
@@ -51,7 +52,7 @@ internal object DanmakuPlaylist {
 
     fun fromComment(comment: SongComment): DanmakuLine? {
         val content = singleLineContent(comment.content) ?: return null
-        val nick = comment.nickname.trim().ifBlank { "用户" }
+        val nick = comment.nickname.trim().ifBlank { t("用户") }
         return DanmakuLine(
             commentId = comment.commentId,
             nickname = nick,

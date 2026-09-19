@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.sp
 import com.kite.zmusic.data.ChangelogEntry
 import com.kite.zmusic.data.ChangelogItem
 import com.kite.zmusic.ui.main.MainPalette
+import com.kite.zmusic.i18n.t
 
 internal val ChangelogKindTestColor = Color(0xFFC9A227)
 internal val ChangelogKindReleaseColor = Color(0xFF3D9B6E)
@@ -59,7 +60,7 @@ internal fun ChangelogPreviewBody(
         Spacer(Modifier.height(10.dp))
         ChangelogHairline()
         Spacer(Modifier.height(10.dp))
-        ChangelogMetaRow(label = "版本", value = entry.versionLabel)
+        ChangelogMetaRow(label = t("版本"), value = entry.versionLabel)
         Spacer(Modifier.height(8.dp))
         ChangelogKindRow(entry)
         ChangelogNotice(entry)
@@ -109,7 +110,7 @@ private fun ChangelogKindRow(entry: ChangelogEntry) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            text = "性质",
+            text = t("性质"),
             style = TextStyle(
                 color = MainPalette.Secondary,
                 fontSize = 12.sp,
@@ -134,7 +135,7 @@ private fun ChangelogNotice(entry: ChangelogEntry) {
     Spacer(Modifier.height(8.dp))
     Column(Modifier.fillMaxWidth()) {
         Text(
-            text = "声明",
+            text = t("声明"),
             style = TextStyle(
                 color = MainPalette.Secondary,
                 fontSize = 12.sp,
@@ -157,7 +158,7 @@ private fun ChangelogNotice(entry: ChangelogEntry) {
 private fun ChangelogItems(entry: ChangelogEntry) {
     if (entry.items.isEmpty()) {
         Text(
-            text = "暂无更新说明",
+            text = t("暂无更新说明"),
             style = TextStyle(
                 color = MainPalette.Secondary,
                 fontSize = 13.sp,

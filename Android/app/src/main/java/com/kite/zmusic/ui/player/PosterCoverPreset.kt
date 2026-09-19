@@ -61,10 +61,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
+import com.kite.zmusic.i18n.t
 
 /** 默认预设 id / 显示名 */
 const val PosterPresetCoverId = "song_cover"
-const val PosterPresetCoverTitle = "歌曲封面图"
+val PosterPresetCoverTitle: String get() = t("歌曲封面图")
 
 /**
  * 预设目录项：封面为「样式示意」，不是当前歌曲封面；[thumbAspectRatio] 可弹性，便于日后瀑布流。
@@ -77,11 +78,11 @@ data class PosterPresetDef(
     val thumbAspectRatio: Float,
 )
 
-val PosterPresetCatalog: List<PosterPresetDef> = listOf(
+fun posterPresetCatalog(): List<PosterPresetDef> = listOf(
     PosterPresetDef(
         id = PosterPresetCoverId,
         title = PosterPresetCoverTitle,
-        description = "封面为主视觉，展示所选歌词、歌名、制作人与 ZMusic 品牌。",
+        description = t("封面为主视觉，展示所选歌词、歌名、制作人与 ZMusic 品牌。"),
         // 略偏竖版，瀑布流中可与其他比例卡片混排
         thumbAspectRatio = 0.78f,
     ),
@@ -202,7 +203,7 @@ fun PosterSongCoverStyleThumb(
             }
             Spacer(Modifier.weight(1f))
             Text(
-                text = "样式预览",
+                text = t("样式预览"),
                 style = TextStyle(
                     color = Color(0xFFD4C4A8).copy(alpha = 0.55f),
                     fontSize = 9.sp,
@@ -489,8 +490,8 @@ private fun buildPosterCoverPlan(
     val sigPaint = sharpTextPaint(palette.sigArgb, w * 0.027f, bold = false).apply {
         typeface = Typeface.create(Typeface.SERIF, Typeface.NORMAL)
     }
-    val titleText = track.name.ifBlank { "未知歌曲" }
-    val artistText = track.artists.ifBlank { "未知制作人" }
+    val titleText = track.name.ifBlank { t("未知歌曲") }
+    val artistText = track.artists.ifBlank { t("未知制作人") }
     val sigText = signature.trim().let { if (it.isEmpty()) "" else "「$it」" }
     val lines = lyricLines.map { it.trim() }.filter { it.isNotEmpty() }
 
@@ -640,7 +641,7 @@ private fun buildPosterCoverPlan(
         ruleY = ruleY,
         ruleW = w * 0.14f,
         lyricLayouts = placedLyrics,
-        emptyLyric = if (lyrics.isEmpty()) "未选择歌词" else null,
+        emptyLyric = if (lyrics.isEmpty()) t("未选择歌词") else null,
         emptyLyricPaint = emptyPaint,
         emptyLyricY = emptyY,
         sigLayout = sigLayout,

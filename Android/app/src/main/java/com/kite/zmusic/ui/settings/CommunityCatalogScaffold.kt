@@ -43,6 +43,7 @@ import com.kite.zmusic.ui.common.ZPullRefresh
 import com.kite.zmusic.ui.icons.ZIcons
 import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.main.wallpaperItemChrome
+import com.kite.zmusic.i18n.t
 
 @Composable
 fun <T> CommunityCatalogScaffold(
@@ -122,7 +123,7 @@ fun <T> CommunityCatalogScaffold(
                     }
                     ui.failed && filtered.isEmpty() -> {
                         item(key = "catalog-busy") {
-                            CatalogStatusText("社区服务器繁忙")
+                            CatalogStatusText(t("社区服务器繁忙"))
                         }
                     }
                     filtered.isEmpty() -> {
@@ -206,7 +207,7 @@ private fun CatalogSearchField(
         if (value.isNotEmpty()) {
             Icon(
                 imageVector = ZIcons.Close,
-                contentDescription = "清除",
+                contentDescription = t("清除"),
                 tint = MainPalette.Hint,
                 modifier = Modifier
                     .size(18.dp)

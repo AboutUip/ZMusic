@@ -4,6 +4,7 @@ import android.content.Context
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import com.kite.zmusic.i18n.t
 
 enum class AppAppearance {
     Light,
@@ -13,16 +14,16 @@ enum class AppAppearance {
 
     val title: String
         get() = when (this) {
-            Light -> "浅色"
-            Dark -> "深色"
-            System -> "跟随系统"
+            Light -> t("浅色")
+            Dark -> t("深色")
+            System -> t("跟随系统")
         }
 
     val subtitle: String
         get() = when (this) {
-            Light -> "始终使用浅色界面"
-            Dark -> "始终使用深色界面"
-            System -> "与系统外观保持一致"
+            Light -> t("始终使用浅色界面")
+            Dark -> t("始终使用深色界面")
+            System -> t("与系统外观保持一致")
         }
 
     fun resolveDark(systemDark: Boolean): Boolean = when (this) {

@@ -64,6 +64,7 @@ import com.kite.zmusic.ui.notice.showIslandNotice
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeEffect
 import kotlinx.coroutines.launch
+import com.kite.zmusic.i18n.t
 
 private val ListenPanelShape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp)
 private val ListenCardShape = RoundedCornerShape(14.dp)
@@ -171,7 +172,7 @@ internal fun PortraitListenTogetherSheet(
                     .padding(bottom = 12.dp),
             ) {
                 Text(
-                    text = "一起听",
+                    text = t("一起听"),
                     style = TextStyle(
                         color = MainPalette.Ink,
                         fontWeight = FontWeight.Bold,
@@ -182,10 +183,10 @@ internal fun PortraitListenTogetherSheet(
                 Spacer(Modifier.height(6.dp))
                 Text(
                     text = if (ui.inRoom) {
-                        if (ui.hosting) "已开启 · 清空播放列表后会自动结束"
-                        else "已加入 · 进度按各自时钟对齐，不会互相拖跳"
+                        if (ui.hosting) t("已开启 · 清空播放列表后会自动结束")
+                        else t("已加入 · 进度按各自时钟对齐，不会互相拖跳")
                     } else {
-                        "邀请朋友进入一起听。仅本次有效，没有歌曲时会自动结束。"
+                        t("邀请朋友进入一起听。仅本次有效，没有歌曲时会自动结束。")
                     },
                     style = TextStyle(
                         color = MainPalette.Secondary,
@@ -195,17 +196,17 @@ internal fun PortraitListenTogetherSheet(
                 )
                 Spacer(Modifier.height(16.dp))
                 if (!loggedIn) {
-                    ListenPrimaryButton(title = "登录社区后开启", enabled = !ui.busy) {
+                    ListenPrimaryButton(title = t("登录社区后开启"), enabled = !ui.busy) {
                         onNeedLogin()
                     }
                     Spacer(Modifier.height(10.dp))
-                    ListenGhostButton(title = "扫描一起听邀请", enabled = !ui.busy) {
+                    ListenGhostButton(title = t("扫描一起听邀请"), enabled = !ui.busy) {
                         onScanJoin()
                     }
                 } else if (!ui.inRoom) {
                     ListenSwitchRow(
-                        title = "开启一起听",
-                        subtitle = "仅本次有效，没有歌曲时会自动结束",
+                        title = t("开启一起听"),
+                        subtitle = t("仅本次有效，没有歌曲时会自动结束"),
                         checked = false,
                         enabled = !ui.busy,
                         switchColors = switchColors,
@@ -221,14 +222,14 @@ internal fun PortraitListenTogetherSheet(
                         onChange = { listen.setDraftSeats(it) },
                     )
                     Spacer(Modifier.height(12.dp))
-                    ListenGhostButton(title = "扫描邀请加入", enabled = !ui.busy) {
+                    ListenGhostButton(title = t("扫描邀请加入"), enabled = !ui.busy) {
                         onScanJoin()
                     }
                 } else {
                     val room = ui.room
                     ListenSwitchRow(
-                        title = if (ui.hosting) "一起听进行中" else "正在一起听",
-                        subtitle = if (ui.hosting) "关闭后房间立刻结束" else "离开不影响其他人",
+                        title = if (ui.hosting) t("一起听进行中") else t("正在一起听"),
+                        subtitle = if (ui.hosting) t("关闭后房间立刻结束") else t("离开不影响其他人"),
                         checked = true,
                         enabled = !ui.busy && ui.hosting,
                         switchColors = switchColors,
@@ -245,7 +246,7 @@ internal fun PortraitListenTogetherSheet(
                     )
                     Spacer(Modifier.height(14.dp))
                     Text(
-                        text = "在听 ${ui.memberCount}/${room?.maxMembers ?: 2}",
+                        text = t("在听 %s/%s", ui.memberCount, room?.maxMembers ?: 2),
                         style = TextStyle(
                             color = MainPalette.Secondary,
                             fontSize = 12.sp,
@@ -260,17 +261,17 @@ internal fun PortraitListenTogetherSheet(
                     Spacer(Modifier.height(8.dp))
                     if (ui.hosting) {
                         ListenPrimaryButton(
-                            title = if (sharing) "正在生成邀请卡…" else "分享一起听",
+                            title = if (sharing) t("正在生成邀请卡…") else t("分享一起听"),
                             enabled = !ui.busy && !sharing,
                         ) {
                             val snap = ui.room ?: return@ListenPrimaryButton
                             sharing = true
                             scope.launch {
-                                context.showIslandNotice("正在生成邀请卡")
+                                context.showIslandNotice(t("正在生成邀请卡"))
                                 val uri = ShareListenCard.prepareShareUri(app, snap)
                                 sharing = false
                                 if (uri == null) {
-                                    context.showIslandNotice("邀请卡生成失败")
+                                    context.showIslandNotice(t("邀请卡生成失败"))
                                     return@launch
                                 }
                                 shareUri = uri
@@ -280,9 +281,9 @@ internal fun PortraitListenTogetherSheet(
                         Spacer(Modifier.height(10.dp))
                         ListenPrimaryButton(
                             title = when {
-                                ui.outgoingPending -> "等待回应…"
-                                ui.matching -> "正在匹配…"
-                                else -> "匹配一起听"
+                                ui.outgoingPending -> t("等待回应…")
+                                ui.matching -> t("正在匹配…")
+                                else -> t("匹配一起听")
                             },
                             enabled = !ui.busy && !sharing && ui.matchPeer == null && !ui.outgoingPending,
                         ) {
@@ -291,7 +292,7 @@ internal fun PortraitListenTogetherSheet(
                         Spacer(Modifier.height(10.dp))
                     }
                     ListenGhostButton(
-                        title = if (ui.hosting) "结束一起听" else "离开一起听",
+                        title = if (ui.hosting) t("结束一起听") else t("离开一起听"),
                         enabled = !ui.busy,
                     ) {
                         scope.launch { listen.stop(hostEnd = ui.hosting) }
@@ -321,22 +322,22 @@ internal fun PortraitListenTogetherSheet(
                         val text = room?.qrText?.ifBlank { null }
                             ?: room?.id?.let(ZMusicListenLink::format)
                         if (text != null && copyText(context, text)) {
-                            context.showIslandNotice("已复制邀请码")
+                            context.showIslandNotice(t("已复制邀请码"))
                         } else {
-                            context.showIslandNotice("复制失败")
+                            context.showIslandNotice(t("复制失败"))
                         }
                         return@PortraitShareSheet
                     }
                     if (uri == null) {
-                        context.showIslandNotice("邀请卡还没准备好")
+                        context.showIslandNotice(t("邀请卡还没准备好"))
                         return@PortraitShareSheet
                     }
                     when (val result = NcmShare.sendImage(context, uri, target)) {
                         NcmShareResult.Opened -> Unit
-                        NcmShareResult.Failed -> context.showIslandNotice("分享失败")
+                        NcmShareResult.Failed -> context.showIslandNotice(t("分享失败"))
                         is NcmShareResult.MissingApp ->
-                            context.showIslandNotice("未安装${result.appName}")
-                        else -> context.showIslandNotice("分享失败")
+                            context.showIslandNotice(t("未安装%s", result.appName))
+                        else -> context.showIslandNotice(t("分享失败"))
                     }
                 },
                 hazeState = hazeState,
@@ -355,7 +356,11 @@ internal fun PortraitListenTogetherSheet(
             Box(
                 Modifier
                     .fillMaxSize()
-                    .background(Color.Transparent),
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = {},
+                    ),
                 contentAlignment = Alignment.Center,
             ) {
                 CircularProgressIndicator(
@@ -406,7 +411,7 @@ private fun ListenMemberRow(member: ListenMember) {
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                text = if (member.host) "发起人" else "一起听",
+                text = if (member.host) t("发起人") else t("一起听"),
                 style = TextStyle(color = MainPalette.Secondary, fontSize = 11.sp),
             )
         }
@@ -429,7 +434,7 @@ private fun ListenSeatsRow(
     ) {
         Column(Modifier.weight(1f)) {
             Text(
-                text = "听歌最大人数",
+                text = t("听歌最大人数"),
                 style = TextStyle(
                     color = MainPalette.Ink,
                     fontWeight = FontWeight.SemiBold,
@@ -438,7 +443,7 @@ private fun ListenSeatsRow(
             )
             Spacer(Modifier.height(2.dp))
             Text(
-                text = "默认 2 人，开启后不可再改",
+                text = t("默认 2 人，开启后不可再改"),
                 style = TextStyle(color = MainPalette.Secondary, fontSize = 12.sp),
             )
         }
@@ -592,6 +597,6 @@ private fun ListenGhostButton(title: String, enabled: Boolean, onClick: () -> Un
 private fun copyText(context: Context, text: String): Boolean {
     val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
         ?: return false
-    cm.setPrimaryClip(ClipData.newPlainText("ZMusic一起听", text))
+    cm.setPrimaryClip(ClipData.newPlainText(t("ZMusic一起听"), text))
     return true
 }

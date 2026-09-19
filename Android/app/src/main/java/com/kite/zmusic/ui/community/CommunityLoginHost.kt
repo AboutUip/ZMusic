@@ -74,6 +74,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.kite.zmusic.i18n.t
 
 private sealed class CommunityLoginPhase {
     data object Hidden : CommunityLoginPhase()
@@ -131,7 +132,7 @@ fun rememberCommunityLoginOpener(
             phase = CommunityLoginPhase.Hidden
             val current = app.listenTogether.ui.value
             if (current.inRoom && current.room?.id == listenId) {
-                toast("你已经在这间一起听")
+                toast(t("你已经在这间一起听"))
                 return true
             }
             if (!app.workshopAuthStore.hasToken()) {
@@ -148,7 +149,7 @@ fun rememberCommunityLoginOpener(
         if (songId != null) {
             previewJob?.cancel()
             phase = CommunityLoginPhase.Hidden
-            pendingSong = PendingSongScan(songId, "这首歌", "")
+            pendingSong = PendingSongScan(songId, t("这首歌"), "")
             previewJob = scope.launch {
                 val cookie = app.sessionRepository.session.value?.cookie.orEmpty()
                 val track = withContext(Dispatchers.IO) {
@@ -158,7 +159,7 @@ fun rememberCommunityLoginOpener(
                 if (pendingSong?.songId != songId) return@launch
                 pendingSong = PendingSongScan(
                     songId = songId,
-                    title = track?.name?.trim()?.ifBlank { null } ?: "这首歌",
+                    title = track?.name?.trim()?.ifBlank { null } ?: t("这首歌"),
                     artists = track?.artists?.trim().orEmpty(),
                 )
             }
@@ -176,7 +177,7 @@ fun rememberCommunityLoginOpener(
             result.fold(
                 onSuccess = { phase = CommunityLoginPhase.Authorize(it) },
                 onFailure = { e ->
-                    toast(e.message?.takeIf { it.isNotBlank() } ?: "无法读取当前账号")
+                    toast(e.message?.takeIf { it.isNotBlank() } ?: t("无法读取当前账号"))
                     phase = CommunityLoginPhase.Hidden
                 },
             )
@@ -206,11 +207,11 @@ fun rememberCommunityLoginOpener(
                 PlayerDisplayQr.decodeUri(context, uri)
             }
             if (text.isNullOrBlank()) {
-                toast("未识别到二维码，请换一张更清晰的图片")
+                toast(t("未识别到二维码，请换一张更清晰的图片"))
                 return@launch
             }
             if (!looksLikeKnownQr(text)) {
-                toast("无法识别该二维码")
+                toast(t("无法识别该二维码"))
                 return@launch
             }
             if (phase is CommunityLoginPhase.Scanner) {
@@ -227,7 +228,7 @@ fun rememberCommunityLoginOpener(
         if (granted) {
             phase = CommunityLoginPhase.Scanner
         } else {
-            toast("没有相机权限，已改为从相册选取")
+            toast(t("没有相机权限，已改为从相册选取"))
             galleryLauncher.launch(
                 PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
             )
@@ -251,7 +252,7 @@ fun rememberCommunityLoginOpener(
         val ok = runCatching {
             context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
         }.isSuccess
-        if (!ok) toast("无法打开社区网站")
+        if (!ok) toast(t("无法打开社区网站"))
     }
 
     if (phase is CommunityLoginPhase.Scanner) {
@@ -265,8 +266,8 @@ fun rememberCommunityLoginOpener(
             ),
         ) {
             QrScannerOverlay(
-                title = "扫描二维码",
-                subtitle = "对准分享海报或社区登录码，也可从相册选取",
+                title = t("扫描二维码"),
+                subtitle = t("对准分享海报或社区登录码，也可从相册选取"),
                 onDetected = { raw ->
                     if (!looksLikeKnownQr(raw)) return@QrScannerOverlay false
                     queuedQr = raw
@@ -322,25 +323,25 @@ fun rememberCommunityLoginOpener(
                                         toast(
                                             if (!ack.appToken.isNullOrBlank()) {
                                                 if (app.listenTogether.ui.value.pendingJoinId != null) {
-                                                    "已确认，正在加入一起听"
+                                                    t("已确认，正在加入一起听")
                                                 } else {
-                                                    "已确认，创意工坊可用"
+                                                    t("已确认，创意工坊可用")
                                                 }
-                                            } else "已授权",
+                                            } else t("已授权"),
                                         )
                                         phase = CommunityLoginPhase.Hidden
                                     }
                                     ack.status == "forbidden" ->
-                                        toast("授权未通过，请刷新社区页二维码后再扫")
+                                        toast(t("授权未通过，请刷新社区页二维码后再扫"))
                                     ack.status == "expired" ->
-                                        toast("二维码已过期，请刷新后再扫")
-                                    ack.status == "denied" -> toast("该次授权已结束")
-                                    ack.status == "consumed" -> toast("该二维码已经用过")
+                                        toast(t("二维码已过期，请刷新后再扫"))
+                                    ack.status == "denied" -> toast(t("该次授权已结束"))
+                                    ack.status == "consumed" -> toast(t("该二维码已经用过"))
                                     ack.status == "missing" ->
-                                        toast("二维码已失效，请刷新后再扫")
+                                        toast(t("二维码已失效，请刷新后再扫"))
                                     else -> toast(
-                                        if (ack.status.isBlank()) "授权未完成"
-                                        else "授权未完成（${ack.status}）",
+                                        if (ack.status.isBlank()) t("授权未完成")
+                                        else t("授权未完成（%s）", ack.status),
                                     )
                                 }
                                 if (!ack.ok && ack.status != "forbidden") {
@@ -348,7 +349,7 @@ fun rememberCommunityLoginOpener(
                                 }
                             },
                             onFailure = {
-                                toast("网络出错，请稍后重试")
+                                toast(t("网络出错，请稍后重试"))
                             },
                         )
                     }
@@ -363,11 +364,11 @@ fun rememberCommunityLoginOpener(
                         busy = false
                         result.fold(
                             onSuccess = {
-                                toast("已拒绝授权")
+                                toast(t("已拒绝授权"))
                                 phase = CommunityLoginPhase.Hidden
                             },
                             onFailure = {
-                                toast("网络出错，请稍后重试")
+                                toast(t("网络出错，请稍后重试"))
                             },
                         )
                     }
@@ -385,9 +386,9 @@ fun rememberCommunityLoginOpener(
             }
         }
         GlassAlertDialog(
-            title = "播放这首歌？",
+            title = t("播放这首歌？"),
             message = message,
-            confirmLabel = "播放",
+            confirmLabel = t("播放"),
             onConfirm = {
                 val id = pending.songId
                 pendingSong = null
@@ -395,7 +396,7 @@ fun rememberCommunityLoginOpener(
                 if (play != null) {
                     play(id)
                 } else {
-                    toast("暂时无法播放")
+                    toast(t("暂时无法播放"))
                 }
             },
             onDismiss = { pendingSong = null },
@@ -405,9 +406,9 @@ fun rememberCommunityLoginOpener(
     pendingListenId?.let { roomId ->
         if (pendingListenNeedLogin) {
             GlassAlertDialog(
-                title = "先登录社区",
-                message = "加入一起听需要先登录过社区，和创意工坊是同一套确认。",
-                confirmLabel = "去登录",
+                title = t("先登录社区"),
+                message = t("加入一起听需要先登录过社区，和创意工坊是同一套确认。"),
+                confirmLabel = t("去登录"),
                 onConfirm = {
                     pendingListenNeedLogin = false
                     pendingListenId = null
@@ -421,15 +422,15 @@ fun rememberCommunityLoginOpener(
             )
         } else {
             GlassAlertDialog(
-                title = "加入一起听？",
-                message = "加入后会同步播放、暂停和切歌，进度按各自时钟对齐。",
-                confirmLabel = "加入",
+                title = t("加入一起听？"),
+                message = t("加入后会同步播放、暂停和切歌，进度按各自时钟对齐。"),
+                confirmLabel = t("加入"),
                 onConfirm = {
                     pendingListenId = null
                     scope.launch {
                         val ok = app.listenTogether.join(roomId)
                         if (!ok && !app.workshopAuthStore.hasToken()) {
-                            toast("加入一起听需要先登录社区")
+                            toast(t("加入一起听需要先登录社区"))
                             if (offerWebsite) showChoice = true else openScanner()
                         }
                     }
@@ -441,11 +442,11 @@ fun rememberCommunityLoginOpener(
 
     if (offerWebsite && showChoice) {
         GlassAlertDialog(
-            title = "如何确认？",
-            message = "可扫描社区页上的登录码，或先打开社区网站。",
-            confirmLabel = "去扫码",
+            title = t("如何确认？"),
+            message = t("可扫描社区页上的登录码，或先打开社区网站。"),
+            confirmLabel = t("去扫码"),
             cancelLabel = null,
-            tertiaryLabel = "打开社区网站",
+            tertiaryLabel = t("打开社区网站"),
             onConfirm = {
                 showChoice = false
                 openScanner()
@@ -521,7 +522,7 @@ private fun CommunityAuthorizeLayer(
                     )
                     Spacer(Modifier.height(16.dp))
                     Text(
-                        text = "正在读取账号…",
+                        text = t("正在读取账号…"),
                         style = TextStyle(color = MainPalette.Secondary, fontSize = 14.sp),
                     )
                 }
@@ -537,7 +538,7 @@ private fun CommunityAuthorizeLayer(
                     )
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        text = "将允许该社区识别你的网易云账号，并读取昵称、头像",
+                        text = t("将允许该社区识别你的网易云账号，并读取昵称、头像"),
                         style = TextStyle(
                             color = MainPalette.Secondary,
                             fontSize = 13.sp,
@@ -561,7 +562,7 @@ private fun CommunityAuthorizeLayer(
                     }
                     Spacer(Modifier.height(12.dp))
                     Text(
-                        text = phase.preview.nickname.ifBlank { "未命名" },
+                        text = phase.preview.nickname.ifBlank { t("未命名") },
                         style = TextStyle(
                             color = MainPalette.Ink,
                             fontSize = 16.sp,
@@ -576,14 +577,14 @@ private fun CommunityAuthorizeLayer(
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
                         AuthTextButton(
-                            text = "拒绝",
+                            text = t("拒绝"),
                             filled = false,
                             enabled = !busy,
                             onClick = onDeny,
                             modifier = Modifier.weight(1f),
                         )
                         AuthTextButton(
-                            text = if (busy) "提交中" else "允许",
+                            text = if (busy) t("提交中") else t("允许"),
                             filled = true,
                             enabled = !busy,
                             onClick = onAllow,
@@ -645,7 +646,7 @@ fun HomeCommunityScanButton(onClick: () -> Unit, modifier: Modifier = Modifier) 
     ) {
         Icon(
             imageVector = ZIcons.QrScan,
-            contentDescription = "扫描",
+            contentDescription = t("扫描"),
             tint = MainPalette.Ink,
             modifier = Modifier.size(22.dp),
         )

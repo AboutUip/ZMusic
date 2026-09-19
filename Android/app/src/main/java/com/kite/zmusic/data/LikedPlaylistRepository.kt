@@ -24,6 +24,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import com.kite.zmusic.ui.notice.showIslandNotice
+import com.kite.zmusic.i18n.t
 
 /**
  * 「我喜欢的音乐」缓存：
@@ -191,7 +192,7 @@ class LikedPlaylistRepository(
             applyLocalLike(track, liked = !liked, scheduleSync = false)
             withContext(Dispatchers.Main.immediate) {
                 appContext.showIslandNotice(
-                    if (liked) "喜欢失败" else "取消喜欢失败",
+                    if (liked) t("喜欢失败") else t("取消喜欢失败"),
                     track.coverUrl,
                 )
             }
@@ -304,7 +305,7 @@ class LikedPlaylistRepository(
         rememberPendingLike(track, liked)
         val next = Snapshot(
             playlistId = current?.playlistId ?: 0L,
-            title = current?.title?.takeIf { it.isNotBlank() } ?: "我喜欢的音乐",
+            title = current?.title?.takeIf { it.isNotBlank() } ?: t("我喜欢的音乐"),
             coverUrl = current?.coverUrl ?: track.coverUrl,
             tracks = nextTracks,
             updatedAtMs = System.currentTimeMillis(),
@@ -454,7 +455,7 @@ class LikedPlaylistRepository(
             if (mergedIds.isEmpty() && displayIds.isEmpty()) {
                 val empty = Snapshot(
                     playlistId = playlistId,
-                    title = heart?.name ?: previous?.title ?: "我喜欢的音乐",
+                    title = heart?.name ?: previous?.title ?: t("我喜欢的音乐"),
                     coverUrl = heart?.coverUrl ?: previous?.coverUrl,
                     tracks = emptyList(),
                     updatedAtMs = System.currentTimeMillis(),
@@ -491,7 +492,7 @@ class LikedPlaylistRepository(
             )
             val snap = Snapshot(
                 playlistId = playlistId,
-                title = heart?.name ?: previous?.title ?: "我喜欢的音乐",
+                title = heart?.name ?: previous?.title ?: t("我喜欢的音乐"),
                 coverUrl = heart?.coverUrl ?: previous?.coverUrl,
                 tracks = tracks,
                 updatedAtMs = System.currentTimeMillis(),
@@ -674,7 +675,7 @@ class LikedPlaylistRepository(
         return runCatching {
             val root = JSONObject(cacheFile.readText(Charsets.UTF_8))
             val playlistId = root.optLong("playlistId", 0L)
-            val title = root.optString("title", "我喜欢的音乐")
+            val title = root.optString("title", t("我喜欢的音乐"))
             val coverUrl = root.optString("coverUrl", "").takeIf { it.isNotBlank() }
             val updatedAtMs = root.optLong("updatedAtMs", 0L)
             val arr = root.optJSONArray("tracks") ?: JSONArray()

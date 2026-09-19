@@ -1,5 +1,7 @@
 package com.kite.zmusic.data
 
+import com.kite.zmusic.i18n.t
+
 /**
  * 「我的」页与歌单详情展示用模型（无播放逻辑）。
  */
@@ -198,7 +200,7 @@ data class CollectedAlbum(
     fun metaLine(): String = buildList {
         yearLabel?.let { add(it) }
         typeLabel?.let { add(it) }
-        if (size > 0) add("${size}首")
+        if (size > 0) add(t("%s首", size))
     }.joinToString(" · ")
 }
 
@@ -210,13 +212,13 @@ fun formatAlbumYear(publishTime: Long): String? {
 }
 
 fun formatAlbumType(raw: String?): String? {
-    val t = raw?.trim().orEmpty()
-    if (t.isEmpty() || t == "null") return null
-    return when (t.lowercase()) {
+    val kind = raw?.trim().orEmpty()
+    if (kind.isEmpty() || kind == "null") return null
+    return when (kind.lowercase()) {
         "ep" -> "EP"
-        "single", "单曲" -> "单曲"
-        "album", "专辑" -> "专辑"
-        else -> t
+        "single", "单曲" -> t("单曲")
+        "album", "专辑" -> t("专辑")
+        else -> kind
     }
 }
 

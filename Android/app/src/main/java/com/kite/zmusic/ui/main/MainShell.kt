@@ -63,10 +63,13 @@ import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kite.zmusic.ZMusicApplication
 import com.kite.zmusic.data.ChromeGlassMode
@@ -110,6 +113,8 @@ import com.kite.zmusic.ui.player.PlayerExpandFlightProgress
 import com.kite.zmusic.ui.player.PlayerExpandHost
 import com.kite.zmusic.ui.player.PlayerExpandState
 import com.kite.zmusic.ui.player.formulaMiniBarRect
+import com.kite.zmusic.ui.player.isAnchorValid
+import com.kite.zmusic.ui.player.preferCloseMiniBar
 import com.kite.zmusic.ui.plugin.PluginPageChrome
 import com.kite.zmusic.ui.plugin.PluginPageScreen
 import com.kite.zmusic.ui.notice.showIslandNotice
@@ -120,7 +125,6 @@ import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 import kotlin.math.abs
 import kotlin.math.floor
-import kotlin.math.roundToInt
 import kotlin.math.sign
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -128,6 +132,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.kite.zmusic.i18n.t
 
 private val MainPagerDestinations = MainDestination.entries
 
@@ -161,8 +166,10 @@ fun MainShell(
     val overlay = overlayStack.lastOrNull()
     val context = LocalContext.current
     val app = context.applicationContext as ZMusicApplication
-    LaunchedEffect(playingSourceId) {
-        if (playingSourceId > 0L) {
+    LaunchedEffect(playingSourceId, playWhenReady) {
+        if (!playWhenReady || playingSourceId <= 0L) return@LaunchedEffect
+        val pl = app.playlistCollectionRepository.find(playingSourceId)
+        if (pl != null && !pl.isOwned) {
             app.recentCollectionStore.touchPlaylist(playingSourceId)
         }
     }
@@ -177,16 +184,16 @@ fun MainShell(
         val phase = net.phase
         val online = net.online
         if (!online && next is MainOverlay.Search) {
-            context.showIslandNotice("搜索需要网络")
+            context.showIslandNotice(t("搜索需要网络"))
             return
         }
         if (!online && next is MainOverlay.ProfileEdit) {
-            context.showIslandNotice("编辑资料需要网络")
+            context.showIslandNotice(t("编辑资料需要网络"))
             return
         }
         if (!online && next is MainOverlay.UserRelations) {
             context.showIslandNotice(
-                if (next.fans) "查看粉丝需要网络" else "查看关注需要网络",
+                if (next.fans) t("查看粉丝需要网络") else t("查看关注需要网络"),
             )
             return
         }
@@ -281,11 +288,8 @@ fun MainShell(
     val dockInsetHold = remember { mutableStateOf(0.dp) }
     val dockRestBottomHold = remember { mutableStateOf(0.dp) }
     val dockRestBottomLandscape = remember { mutableStateOf(landscape) }
-    val shellHpx = remember { mutableIntStateOf(0) }
-    val shellTopPx = remember { mutableFloatStateOf(0f) }
-    /** 迷你播放条顶边距屏幕底的距离；进出播放页的滑动原点，不是 dock 下边距。 */
-    val playerHomePx = remember { mutableIntStateOf(0) }
     val density = LocalDensity.current
+    val chromeView = LocalView.current
     val mvActive by remember(app.mvPlayback) {
         app.mvPlayback.ui.map { it.active }.distinctUntilChanged()
     }.collectAsStateWithLifecycle(app.mvPlayback.ui.value.active)
@@ -297,29 +301,41 @@ fun MainShell(
     LaunchedEffect(playerHeld) {
         app.listenTogether.setPlayerForeground(playerHeld)
     }
-    // 播放页卸掉后 insets 可能还有一两帧是 0，底栏会先抬高再掉回。多冻两帧。
+    // 播放页卸掉后 Compose insets 可能还有几帧是 0。多冻几帧，且冻结期内不要改 rest。
     var restPadLatch by remember { mutableIntStateOf(0) }
     LaunchedEffect(playerHeld) {
         if (playerHeld) {
             restPadLatch = 1
             return@LaunchedEffect
         }
-        withFrameNanos { }
-        withFrameNanos { }
+        repeat(8) { withFrameNanos { } }
         restPadLatch = 0
     }
 
     val navBarLive = remember { mutableStateOf(0.dp) }
 
+    fun readViewNavBarDp(): Dp {
+        val px = ViewCompat.getRootWindowInsets(chromeView)
+            ?.getInsetsIgnoringVisibility(WindowInsetsCompat.Type.navigationBars())
+            ?.bottom
+            ?: 0
+        return with(density) { px.toDp() }
+    }
+
+    fun stableNavBarDp(composeNav: Dp): Dp {
+        val fromView = readViewNavBarDp()
+        return maxOf(composeNav, fromView)
+    }
+
     fun rememberDockRestBottom(navBottom: Dp) {
         val next = navBottom + FloatingChromeBottom
         val held = dockRestBottomHold.value
         val sameOrient = dockRestBottomLandscape.value == landscape
-        // 同一方向下 navigationBars 瞬时塌成 0 时不要把休息底距改小。
-        if (sameOrient && held > FloatingChromeBottom && next + 1.dp < held) {
+        // 横竖屏都不要把瞬时塌掉的 navigationBars 写成新的休息底距。
+        if (navBottom <= 0.dp && held > FloatingChromeBottom) {
             return
         }
-        if (!landscape && navBottom <= 0.dp && held > 0.dp) {
+        if (sameOrient && held > FloatingChromeBottom && next + 1.dp < held) {
             return
         }
         dockRestBottomHold.value = next
@@ -327,10 +343,10 @@ fun MainShell(
     }
 
     fun formulaPlayerHomePx(): Int {
-        val bottomGap = if (dockRestBottomHold.value > 0.dp) {
+        val bottomGap = if (dockRestBottomHold.value > FloatingChromeBottom) {
             dockRestBottomHold.value
         } else {
-            navBarLive.value + FloatingChromeBottom
+            stableNavBarDp(navBarLive.value) + FloatingChromeBottom
         }
         val dockPart = if (landscape || overlay != null) {
             0.dp
@@ -342,10 +358,6 @@ fun MainShell(
         }
     }
 
-    fun rememberPlayerHomeFromBottom(fromBottomPx: Int) {
-        if (fromBottomPx > 0) playerHomePx.intValue = fromBottomPx
-    }
-
     fun formulaMiniBarInShell(): Rect {
         val side = with(density) {
             (if (landscape) 20.dp else FloatingChromeSide).toPx()
@@ -354,24 +366,27 @@ fun MainShell(
             if (landscape) LandscapeRailWidth.toPx() else 0f
         }
         val barH = with(density) { MiniPlayerStackHeight.toPx() }
-        val measured = playerHomePx.intValue.toFloat()
-        val formula = formulaPlayerHomePx().toFloat()
-        val home = maxOf(measured, formula, barH)
+        val maxBarW = if (landscape) {
+            Float.POSITIVE_INFINITY
+        } else {
+            with(density) { MiniPlayerMaxWidth.toPx() }
+        }
         return formulaMiniBarRect(
             shell = expand.shellRect,
             sidePx = side,
             railPx = rail,
             barH = barH,
-            homeFromBottom = home,
+            homeFromBottom = formulaPlayerHomePx().toFloat(),
+            maxBarWidthPx = maxBarW,
         )
     }
 
     fun captureDockForPlayer() {
-        rememberDockRestBottom(navBarLive.value)
-        if (playerHomePx.intValue <= 0) {
-            rememberPlayerHomeFromBottom(formulaPlayerHomePx())
+        rememberDockRestBottom(stableNavBarDp(navBarLive.value))
+        val next = formulaMiniBarInShell()
+        if (next.isAnchorValid()) {
+            expand.fallbackMiniBar = next
         }
-        expand.fallbackMiniBar = formulaMiniBarInShell()
     }
 
     fun openFullPlayer() {
@@ -381,7 +396,13 @@ fun MainShell(
     }
 
     fun closeFullPlayer() {
-        expand.fallbackMiniBar = formulaMiniBarInShell()
+        if (dockRestBottomLandscape.value != landscape) {
+            rememberDockRestBottom(stableNavBarDp(navBarLive.value))
+        }
+        expand.fallbackMiniBar = preferCloseMiniBar(
+            expand.fallbackMiniBar,
+            formulaMiniBarInShell(),
+        )
         showFullPlayer = false
         expand.close()
     }
@@ -417,23 +438,23 @@ fun MainShell(
             playback.playQueue(pending.tracks, pending.startIndex, pending.playlistId, pending.playlistTitle)
             openFullPlayer()
             if (!granted) {
-                context.showIslandNotice("未开启通知时，系统可能在息屏后限制后台播放")
+                context.showIslandNotice(t("未开启通知时，系统可能在息屏后限制后台播放"))
             }
         } else if (insert != null) {
             playback.playInsertAfterCurrent(insert)
             openFullPlayer()
             if (!granted) {
-                context.showIslandNotice("未开启通知时，系统可能在息屏后限制后台播放")
+                context.showIslandNotice(t("未开启通知时，系统可能在息屏后限制后台播放"))
             }
         } else if (startFm) {
             playback.startPersonalFm { openFullPlayer() }
             if (!granted) {
-                context.showIslandNotice("未开启通知时，系统可能在息屏后限制后台播放")
+                context.showIslandNotice(t("未开启通知时，系统可能在息屏后限制后台播放"))
             }
         } else if (intelCtx) {
             playback.startIntelligenceFromContext { openFullPlayer() }
             if (!granted) {
-                context.showIslandNotice("未开启通知时，系统可能在息屏后限制后台播放")
+                context.showIslandNotice(t("未开启通知时，系统可能在息屏后限制后台播放"))
             }
         }
     }
@@ -486,14 +507,14 @@ fun MainShell(
             if (track != null) {
                 playInsertAfterCurrentWithNotificationPermission(track)
             } else {
-                context.showIslandNotice("暂时无法打开这首歌")
+                context.showIslandNotice(t("暂时无法打开这首歌"))
             }
         }
     }
 
     fun startFmWithPermission() {
         if (!net.online) {
-            context.showIslandNotice("当前无网络")
+            context.showIslandNotice(t("当前无网络"))
             return
         }
         if (Build.VERSION.SDK_INT >= 33) {
@@ -512,7 +533,7 @@ fun MainShell(
 
     fun startIntelligenceFromContextWithPermission() {
         if (!net.online) {
-            context.showIslandNotice("当前无网络")
+            context.showIslandNotice(t("当前无网络"))
             return
         }
         if (Build.VERSION.SDK_INT >= 33) {
@@ -579,7 +600,7 @@ fun MainShell(
 
     fun goToProbe() {
         if (!showProbeTab) {
-            context.showIslandNotice("探针未就绪")
+            context.showIslandNotice(t("探针未就绪"))
             return
         }
         if (landscape) {
@@ -770,7 +791,8 @@ fun MainShell(
     }
     val navBarDp = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val freezeChromePad = holdChrome || restPadLatch != 0
-    val liveRestBottom = navBarDp + FloatingChromeBottom
+    val stableNav = stableNavBarDp(navBarDp)
+    val liveRestBottom = stableNav + FloatingChromeBottom
     val heldRest = dockRestBottomHold.value
     val chromeBottomGap = when {
         freezeChromePad && heldRest > 0.dp -> heldRest
@@ -791,15 +813,19 @@ fun MainShell(
                 8.dp
         }
     SideEffect {
-        navBarLive.value = navBarDp
-        if (!holdChrome) {
-            rememberDockRestBottom(navBarDp)
-            if (!showMini) {
-                rememberPlayerHomeFromBottom(formulaPlayerHomePx())
-            }
+        if (stableNav > 0.dp) {
+            navBarLive.value = stableNav
+        }
+        // 冻结期内不要把塌掉的 Compose insets 写进 rest，否则底栏会先掉再弹回。
+        if (!freezeChromePad || dockRestBottomLandscape.value != landscape) {
+            rememberDockRestBottom(stableNav)
         }
         if (!freezeChromePad) {
             dockInsetHold.value = liveChromeInset
+            val resting = formulaMiniBarInShell()
+            if (resting.isAnchorValid()) {
+                expand.fallbackMiniBar = resting
+            }
         }
     }
     val chromeInset =
@@ -844,8 +870,6 @@ fun MainShell(
             .fillMaxSize()
             .background(MainPalette.Page)
             .onGloballyPositioned {
-                shellHpx.intValue = it.size.height
-                shellTopPx.floatValue = it.positionInWindow().y
                 val origin = it.positionInWindow()
                 expand.setShell(
                     Rect(0f, 0f, it.size.width.toFloat(), it.size.height.toFloat()),
@@ -1100,7 +1124,7 @@ fun MainShell(
                     Modifier
                         .then(
                             if (landscape) Modifier.fillMaxWidth()
-                            else Modifier.widthIn(max = 520.dp).fillMaxWidth(),
+                            else Modifier.widthIn(max = MiniPlayerMaxWidth).fillMaxWidth(),
                         )
                         .height(MiniPlayerStackHeight),
                 ) {
@@ -1119,16 +1143,7 @@ fun MainShell(
                                     pushOverlay(overlayMv)
                                 }
                             },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .onGloballyPositioned { coords ->
-                                    if (holdChrome) return@onGloballyPositioned
-                                    val topInShell =
-                                        coords.positionInWindow().y - shellTopPx.floatValue
-                                    rememberPlayerHomeFromBottom(
-                                        (shellHpx.intValue - topInShell).roundToInt(),
-                                    )
-                                },
+                            modifier = Modifier.fillMaxWidth(),
                         )
                     }
                     androidx.compose.animation.AnimatedVisibility(
@@ -1150,14 +1165,14 @@ fun MainShell(
                             busy = playlistManage.busy,
                             onRemove = {
                                 if (playlistManage.selectedCount <= 0) {
-                                    hint("请先选择歌曲")
+                                    hint(t("请先选择歌曲"))
                                 } else {
                                     playlistManage.onRemove()
                                 }
                             },
                             onDownload = {
                                 if (playlistManage.selectedCount <= 0) {
-                                    hint("请先选择歌曲")
+                                    hint(t("请先选择歌曲"))
                                 } else {
                                     playlistManage.onDownload()
                                 }
@@ -1167,9 +1182,9 @@ fun MainShell(
                             modifier = Modifier.fillMaxWidth(),
                             canDownload = playlistManage.canDownload,
                             removeLabel = when (overlay) {
-                                is MainOverlay.CachedSongs -> "删除所选"
-                                is MainOverlay.CloudDisk -> "从云盘删除"
-                                else -> "全部移出歌单"
+                                is MainOverlay.CachedSongs -> t("删除所选")
+                                is MainOverlay.CloudDisk -> t("从云盘删除")
+                                else -> t("全部移出歌单")
                             },
                         )
                     }
@@ -1250,7 +1265,7 @@ fun MainShell(
                         if (artist.id > 0L) {
                             pushOverlay(MainOverlay.Artist(artist.id, artist.name, artist.avatarUrl))
                         } else {
-                            hint("暂时无法打开这位歌手")
+                            hint(t("暂时无法打开这位歌手"))
                         }
                     },
                     modifier = Modifier.fillMaxSize(),
@@ -1553,7 +1568,7 @@ private fun FullPlayerSlot(
         onOpenPlaylist = onOpenSourcePlaylist,
         onOpenSourcePlaylist = st.sourcePlaylistId?.let { plId ->
             {
-                val title = st.sourcePlaylistTitle ?: "歌单"
+                val title = st.sourcePlaylistTitle ?: t("歌单")
                 onOpenSourcePlaylist(plId, title, st.currentTrack?.coverUrl)
             }
         },
@@ -1564,7 +1579,7 @@ private fun FullPlayerSlot(
                 val found = resolveTrackArtists(track, cookie, app.songRepository)
                 val a = found.firstOrNull()
                 if (a == null) {
-                    app.islandNoticeCenter.show("暂时无法打开这位歌手", track.coverUrl)
+                    app.islandNoticeCenter.show(t("暂时无法打开这位歌手"), track.coverUrl)
                 } else {
                     onOpenArtist(a.id, a.name, track.coverUrl)
                     onDismiss()

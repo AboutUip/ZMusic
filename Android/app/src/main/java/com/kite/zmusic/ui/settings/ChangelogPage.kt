@@ -43,6 +43,7 @@ import com.kite.zmusic.data.ChangelogRoster
 import com.kite.zmusic.ui.icons.ZIcons
 import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.main.wallpaperItemChrome
+import com.kite.zmusic.i18n.t
 
 private val ExpandEnter = fadeIn(tween(180)) + expandVertically(
     animationSpec = tween(260, easing = FastOutSlowInEasing),
@@ -76,11 +77,11 @@ fun ChangelogPage(
         onQueryChange = vm::onQueryChange,
         onLoadMore = vm::loadMore,
         onRefresh = vm::refresh,
-        intro = "点开版本查看结构化预览。可用版本号搜索。",
-        searchPlaceholder = "搜索版本，例如 1.2.2",
+        intro = t("点开版本查看结构化预览。可用版本号搜索。"),
+        searchPlaceholder = t("搜索版本，例如 1.2.2"),
         queryLimit = ChangelogQueryLimit,
-        emptyQueryMessage = "暂时还没有记录。",
-        emptySearchMessage = "没有匹配的版本。",
+        emptyQueryMessage = t("暂时还没有记录。"),
+        emptySearchMessage = t("没有匹配的版本。"),
         contentBottomInset = contentBottomInset,
         modifier = modifier,
         itemKey = { it.listKey },
@@ -147,7 +148,7 @@ private fun ChangelogVersionCard(
             }
             Icon(
                 imageVector = ZIcons.ExpandMore,
-                contentDescription = if (expanded) "收起" else "展开",
+                contentDescription = if (expanded) t("收起") else t("展开"),
                 tint = MainPalette.Hint,
                 modifier = Modifier
                     .size(22.dp)

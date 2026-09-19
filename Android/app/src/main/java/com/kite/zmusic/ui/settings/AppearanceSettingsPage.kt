@@ -37,6 +37,7 @@ import com.kite.zmusic.ui.icons.ZIcons
 import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.main.wallpaperItemChrome
 import com.kite.zmusic.ui.theme.MainColors
+import com.kite.zmusic.i18n.t
 
 @Composable
 fun AppearanceSettingsPage(
@@ -54,7 +55,7 @@ fun AppearanceSettingsPage(
     ) {
         Spacer(Modifier.height(8.dp))
         Text(
-            text = "播放页本身仍按封面走氛围。这里改的是首页、设置、歌单和「更多」这些界面的底色。",
+            text = t("播放页本身仍按封面走氛围。这里改的是首页、设置、歌单和「更多」这些界面的底色。"),
             style = TextStyle(
                 color = MainPalette.Secondary,
                 fontSize = 13.sp,

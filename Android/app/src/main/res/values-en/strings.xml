@@ -1,0 +1,12 @@
+<resources>
+    <string name="app_name">ZMusic</string>
+    <string name="poster_make">Make poster</string>
+    <string name="playback_notification_channel_name">Now playing</string>
+    <string name="playback_notification_channel_desc">Playback controls and status</string>
+    <string name="playback_mode_order">Repeat all</string>
+    <string name="playback_mode_repeat_one">Repeat one</string>
+    <string name="playback_mode_shuffle">Shuffle</string>
+    <string name="playback_lyrics_overlay_on">Hide lyrics</string>
+    <string name="playback_lyrics_overlay_off">Show lyrics</string>
+    <string name="playback_lyrics_overlay_unlock">Unlock</string>
+</resources>

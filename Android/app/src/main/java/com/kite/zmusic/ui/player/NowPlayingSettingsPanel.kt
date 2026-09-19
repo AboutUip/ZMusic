@@ -24,6 +24,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.BoxWithConstraintsScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -59,6 +60,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -66,11 +68,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -96,6 +101,7 @@ import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlinx.coroutines.launch
+import com.kite.zmusic.i18n.t
 
 private val IconTint = Color(0xFFD5DEE8)
 /** 右上 chrome 图标尺寸；间距取宽度 1/3。 */
@@ -263,6 +269,68 @@ fun NowPlayingSettingsIconButton(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
                     onClick = onClick,
+                ),
+            contentAlignment = Alignment.Center,
+            content = { icon() },
+        )
+    }
+}
+
+@Composable
+fun NowPlayingFmModeButton(
+    onClick: (Offset) -> Unit,
+    modifier: Modifier = Modifier,
+    chromeBackground: Boolean = true,
+) {
+    val iconSize = if (chromeBackground) 18.dp else 15.dp
+    val icon: @Composable () -> Unit = {
+        Canvas(Modifier.size(iconSize)) {
+            val strokeW = size.minDimension * if (chromeBackground) 0.11f else 0.085f
+            val pad = size.minDimension * 0.14f
+            val gap = size.minDimension * 0.12f
+            val cell = (size.minDimension - pad * 2f - gap * 2f) / 3f
+            val r = cell * 0.28f
+            for (row in 0..2) {
+                for (col in 0..2) {
+                    val x = pad + col * (cell + gap)
+                    val y = pad + row * (cell + gap)
+                    if (chromeBackground) {
+                        drawRoundRect(
+                            color = IconTint,
+                            topLeft = Offset(x, y),
+                            size = androidx.compose.ui.geometry.Size(cell, cell),
+                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(r, r),
+                        )
+                    } else {
+                        drawRoundRect(
+                            color = IconTint,
+                            topLeft = Offset(x, y),
+                            size = androidx.compose.ui.geometry.Size(cell, cell),
+                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(r, r),
+                            style = Stroke(width = strokeW, cap = StrokeCap.Round),
+                        )
+                    }
+                }
+            }
+        }
+    }
+    var origin by remember { mutableStateOf(Offset.Zero) }
+    val locate = Modifier.onGloballyPositioned { coords ->
+        val b = coords.boundsInWindow()
+        origin = Offset(b.left + b.width / 2f, b.top + b.height / 2f)
+    }
+    val fire = { onClick(origin) }
+    if (chromeBackground) {
+        ChromeIconShell(onClick = fire, modifier = modifier.then(locate), content = icon)
+    } else {
+        Box(
+            modifier
+                .then(locate)
+                .size(width = NowPlayingChromeIconWidth, height = NowPlayingChromeIconHeight)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = fire,
                 ),
             contentAlignment = Alignment.Center,
             content = { icon() },
@@ -621,7 +689,7 @@ fun NowPlayingSettingsSheet(
     /** 竖屏：仅悬浮标题名，无 SETTINGS 眉题。 */
     titleOnlyHeader: Boolean = false,
     /** 面板主标题（竖屏可改为「竖屏显示」以示隔离）。 */
-    headerTitle: String = "播放显示",
+    headerTitle: String = t("播放显示"),
     panelShape: RoundedCornerShape = PanelShape,
     /** 磨砂模糊半径；竖屏可加大以增强玻璃感。 */
     glassBlurRadius: Dp = 84.dp,
@@ -833,12 +901,12 @@ fun NowPlayingSettingsSheet(
                         .verticalScroll(scrollState, enabled = previewKey == null),
                     verticalArrangement = Arrangement.spacedBy(18.dp),
                 ) {
-                    SettingsCategory(title = "氛围", titleAlpha = dim) {
+                    SettingsCategory(title = t("氛围"), titleAlpha = dim) {
                         SettingsAlpha(dim) {
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 SettingsSwitchRow(
-                                    title = "自定义背景",
-                                    subtitle = "开启后可配置并启用全屏沉浸背景",
+                                    title = t("自定义背景"),
+                                    subtitle = t("开启后可配置并启用全屏沉浸背景"),
                                     checked = prefs.customBackgroundEnabled,
                                     colors = switchColors,
                                     onCheckedChange = {
@@ -846,25 +914,25 @@ fun NowPlayingSettingsSheet(
                                     },
                                 )
                                 SettingsActionRow(
-                                    title = "背景调控",
+                                    title = t("背景调控"),
                                     subtitle = if (prefs.customBackgroundEnabled) {
-                                        "5 预设 · 图片 / GIF / 静音视频"
+                                        t("5 预设 · 图片 / GIF / 静音视频")
                                     } else {
-                                        "先开启自定义背景"
+                                        t("先开启自定义背景")
                                     },
-                                    actionLabel = "编辑",
+                                    actionLabel = t("编辑"),
                                     enabled = prefs.customBackgroundEnabled,
                                     onClick = onOpenCustomBackgroundEditor,
                                 )
                                 SettingsActionRow(
-                                    title = "歌词样式",
-                                    subtitle = "字号 / 斜体 / 粗体 / 颜色 · 条数与间距",
-                                    actionLabel = "编辑",
+                                    title = t("歌词样式"),
+                                    subtitle = t("字号 / 斜体 / 粗体 / 颜色 · 条数与间距"),
+                                    actionLabel = t("编辑"),
                                     onClick = onOpenLyricStyleEditor,
                                 )
                                 SettingsSwitchRow(
-                                    title = "自动播放",
-                                    subtitle = "点选歌词跳转后自动开始播放；播放中切歌始终播放",
+                                    title = t("自动播放"),
+                                    subtitle = t("点选歌词跳转后自动开始播放；播放中切歌始终播放"),
                                     checked = prefs.lyricTapAutoPlay,
                                     colors = switchColors,
                                     onCheckedChange = {
@@ -872,8 +940,8 @@ fun NowPlayingSettingsSheet(
                                     },
                                 )
                                 SettingsSwitchRow(
-                                    title = "启用预览歌词",
-                                    subtitle = "封面态进度条上方显示当前与待播歌词",
+                                    title = t("启用预览歌词"),
+                                    subtitle = t("封面态进度条上方显示当前与待播歌词"),
                                     checked = prefs.portraitPreviewLyricEnabled,
                                     colors = switchColors,
                                     onCheckedChange = {
@@ -881,8 +949,8 @@ fun NowPlayingSettingsSheet(
                                     },
                                 )
                                 SettingsSwitchRow(
-                                    title = "播放页屏幕常亮",
-                                    subtitle = "仅竖屏播放页生效，停留时屏幕不自动熄灭",
+                                    title = t("播放页屏幕常亮"),
+                                    subtitle = t("仅竖屏播放页生效，停留时屏幕不自动熄灭"),
                                     checked = prefs.keepScreenOn,
                                     colors = switchColors,
                                     onCheckedChange = {
@@ -895,7 +963,7 @@ fun NowPlayingSettingsSheet(
                         SettingsAlpha(rowAlpha(SettingsPreviewKey.PreviewLyric)) {
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 SettingsSliderRow(
-                                    title = "预览歌词数",
+                                    title = t("预览歌词数"),
                                     valueLabel = prefs.portraitPreviewLyricCount.toString(),
                                     value = prefs.portraitPreviewLyricCount.toFloat(),
                                     valueRange = PlayerDisplayPrefs.PREVIEW_LYRIC_COUNT_MIN.toFloat()..
@@ -919,7 +987,7 @@ fun NowPlayingSettingsSheet(
                                     },
                                 )
                                 SettingsSliderRow(
-                                    title = "播放中字号",
+                                    title = t("播放中字号"),
                                     valueLabel = String.format(
                                         "%.0f",
                                         prefs.portraitPreviewLyricPlayingFontSp,
@@ -938,7 +1006,7 @@ fun NowPlayingSettingsSheet(
                                     },
                                 )
                                 SettingsSliderRow(
-                                    title = "待播放字号",
+                                    title = t("待播放字号"),
                                     valueLabel = String.format(
                                         "%.0f",
                                         prefs.portraitPreviewLyricUpcomingFontSp,
@@ -957,7 +1025,7 @@ fun NowPlayingSettingsSheet(
                                     },
                                 )
                                 SettingsPreviewColorRow(
-                                    title = "播放中颜色",
+                                    title = t("播放中颜色"),
                                     argb = prefs.portraitPreviewLyricPlayingArgb,
                                     enabled = previewOn,
                                     onArgbChange = {
@@ -967,7 +1035,7 @@ fun NowPlayingSettingsSheet(
                                     },
                                 )
                                 SettingsPreviewColorRow(
-                                    title = "待播放歌词颜色",
+                                    title = t("待播放歌词颜色"),
                                     argb = prefs.portraitPreviewLyricUpcomingArgb,
                                     enabled = previewOn,
                                     onArgbChange = {
@@ -977,8 +1045,8 @@ fun NowPlayingSettingsSheet(
                                     },
                                 )
                                 SettingsSwitchRow(
-                                    title = "精美动画",
-                                    subtitle = "开启后切句动画与歌词页一致，并尊重逐字渲染",
+                                    title = t("精美动画"),
+                                    subtitle = t("开启后切句动画与歌词页一致，并尊重逐字渲染"),
                                     checked = prefs.portraitPreviewLyricFancy,
                                     colors = switchColors,
                                     enabled = previewOn,
@@ -1001,7 +1069,7 @@ fun NowPlayingSettingsSheet(
                                     },
                                 )
                                 SettingsSliderRow(
-                                    title = "预览歌词垂直位置",
+                                    title = t("预览歌词垂直位置"),
                                     valueLabel = String.format(
                                         "%+.0f",
                                         prefs.portraitPreviewLyricOffsetYDp,
@@ -1020,7 +1088,7 @@ fun NowPlayingSettingsSheet(
                                     },
                                 )
                                 SettingsSliderRow(
-                                    title = "预览歌词行间距",
+                                    title = t("预览歌词行间距"),
                                     valueLabel = String.format(
                                         "%.0f",
                                         prefs.portraitPreviewLyricLineSpacingDp,
@@ -1042,7 +1110,7 @@ fun NowPlayingSettingsSheet(
                         }
                         SettingsAlpha(rowAlpha(SettingsPreviewKey.LyricOffsetY)) {
                             SettingsSliderRow(
-                                title = "歌词垂直位置",
+                                title = t("歌词垂直位置"),
                                 valueLabel = String.format("%+.0f", prefs.lyricOffsetYDp),
                                 value = prefs.lyricOffsetYDp,
                                 valueRange = PlayerDisplayPrefs.LYRIC_OFFSET_MIN..
@@ -1057,7 +1125,7 @@ fun NowPlayingSettingsSheet(
                         }
                         SettingsAlpha(rowAlpha(SettingsPreviewKey.LyricBackgroundTransparency)) {
                             SettingsSliderRow(
-                                title = "歌词页背景透明度",
+                                title = t("歌词页背景透明度"),
                                 valueLabel = String.format(
                                     "%.0f%%",
                                     prefs.lyricBackgroundTransparency * 100f,
@@ -1076,11 +1144,11 @@ fun NowPlayingSettingsSheet(
                         SettingsAlpha(dim) {
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 SettingsSwitchRow(
-                                    title = "活跃光晕",
+                                    title = t("活跃光晕"),
                                     subtitle = if (prefs.customBackgroundEnabled) {
-                                        "自定义背景开启时不可用"
+                                        t("自定义背景开启时不可用")
                                     } else {
-                                        "低/中/高互斥高亮，同时仅一球发光，运动略加快"
+                                        t("低/中/高互斥高亮，同时仅一球发光，运动略加快")
                                     },
                                     checked = prefs.activeHalo,
                                     colors = switchColors,
@@ -1092,12 +1160,12 @@ fun NowPlayingSettingsSheet(
                             }
                         }
                     }
-                    SettingsCategory(title = "个性化", titleAlpha = dim) {
+                    SettingsCategory(title = t("个性化"), titleAlpha = dim) {
                         SettingsAlpha(dim) {
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 SettingsSwitchRow(
-                                    title = "歌词页自动清屏",
-                                    subtitle = "无操作后隐藏所选区域；清屏时歌词会在整屏垂直居中",
+                                    title = t("歌词页自动清屏"),
+                                    subtitle = t("无操作后隐藏所选区域；清屏时歌词会在整屏垂直居中"),
                                     checked = prefs.portraitLyricAutoClear,
                                     colors = switchColors,
                                     onCheckedChange = { on ->
@@ -1105,8 +1173,8 @@ fun NowPlayingSettingsSheet(
                                     },
                                 )
                                 SettingsSliderRow(
-                                    title = "清屏时间",
-                                    valueLabel = "${prefs.portraitLyricAutoClearSeconds} 秒",
+                                    title = t("清屏时间"),
+                                    valueLabel = t("%s 秒", prefs.portraitLyricAutoClearSeconds),
                                     value = prefs.portraitLyricAutoClearSeconds.toFloat(),
                                     valueRange = PlayerDisplayPrefs.AUTO_CLEAR_SECONDS_MIN.toFloat()..
                                         PlayerDisplayPrefs.AUTO_CLEAR_SECONDS_MAX.toFloat(),
@@ -1139,11 +1207,11 @@ fun NowPlayingSettingsSheet(
                             }
                         }
                     }
-                    SettingsCategory(title = "黑胶", titleAlpha = dim) {
+                    SettingsCategory(title = t("黑胶"), titleAlpha = dim) {
                         SettingsAlpha(dim) {
                             SettingsSwitchRow(
-                                title = "完整封面",
-                                subtitle = "封面铺满中心，隐藏轴心镂空",
+                                title = t("完整封面"),
+                                subtitle = t("封面铺满中心，隐藏轴心镂空"),
                                 checked = prefs.vinylFullCover,
                                 colors = switchColors,
                                 onCheckedChange = {
@@ -1151,7 +1219,7 @@ fun NowPlayingSettingsSheet(
                                 },
                             )
                             SettingsSliderRow(
-                                title = "黑胶转速",
+                                title = t("黑胶转速"),
                                 valueLabel = String.format("%.1f×", prefs.vinylSpinSpeed),
                                 value = prefs.vinylSpinSpeed,
                                 valueRange = PlayerDisplayPrefs.VINYL_SPIN_SPEED_MIN..
@@ -1163,7 +1231,7 @@ fun NowPlayingSettingsSheet(
                         }
                         SettingsAlpha(rowAlpha(SettingsPreviewKey.VinylSize)) {
                             SettingsSliderRow(
-                                title = "黑胶大小（整体）",
+                                title = t("黑胶大小（整体）"),
                                 valueLabel = String.format("%.0f%%", prefs.vinylSizeScale * 100f),
                                 value = prefs.vinylSizeScale,
                                 valueRange = PlayerDisplayPrefs.VINYL_SIZE_SCALE_MIN..
@@ -1178,7 +1246,7 @@ fun NowPlayingSettingsSheet(
                         }
                         SettingsAlpha(rowAlpha(SettingsPreviewKey.VinylOffsetY)) {
                             SettingsSliderRow(
-                                title = "黑胶垂直位置",
+                                title = t("黑胶垂直位置"),
                                 valueLabel = String.format("%+.0f", prefs.vinylOffsetYDp),
                                 value = prefs.vinylOffsetYDp,
                                 valueRange = PlayerDisplayPrefs.VINYL_OFFSET_Y_MIN..
@@ -1192,10 +1260,10 @@ fun NowPlayingSettingsSheet(
                             )
                         }
                     }
-                    SettingsCategory(title = "布局", titleAlpha = dim) {
+                    SettingsCategory(title = t("布局"), titleAlpha = dim) {
                         SettingsAlpha(rowAlpha(SettingsPreviewKey.UiScale)) {
                             SettingsSliderRow(
-                                title = "整体 UI 缩放",
+                                title = t("整体 UI 缩放"),
                                 valueLabel = String.format("%.0f%%", prefs.uiScale * 100f),
                                 value = prefs.uiScale,
                                 valueRange = PlayerDisplayPrefs.UI_MIN..PlayerDisplayPrefs.UI_MAX,
@@ -1209,7 +1277,7 @@ fun NowPlayingSettingsSheet(
                         }
                         SettingsAlpha(rowAlpha(SettingsPreviewKey.TransportOffsetY)) {
                             SettingsSliderRow(
-                                title = "播放控件垂直位置",
+                                title = t("播放控件垂直位置"),
                                 valueLabel = String.format("%+.0f", prefs.portraitTransportOffsetYDp),
                                 value = prefs.portraitTransportOffsetYDp,
                                 valueRange = PlayerDisplayPrefs.PORTRAIT_TRANSPORT_OFFSET_Y_MIN..
@@ -1224,8 +1292,8 @@ fun NowPlayingSettingsSheet(
                         }
                         SettingsAlpha(dim) {
                             SettingsSwitchRow(
-                                title = "容器包含",
-                                subtitle = "半透明底包裹控件；留边与内边距，避免贴边",
+                                title = t("容器包含"),
+                                subtitle = t("半透明底包裹控件；留边与内边距，避免贴边"),
                                 checked = prefs.portraitTransportContainerInclude,
                                 colors = switchColors,
                                 onCheckedChange = {
@@ -1246,12 +1314,12 @@ fun NowPlayingSettingsSheet(
                         .verticalScroll(scrollState, enabled = previewKey == null),
                 verticalArrangement = Arrangement.spacedBy(18.dp),
             ) {
-                SettingsCategory(title = "氛围", titleAlpha = dim) {
+                SettingsCategory(title = t("氛围"), titleAlpha = dim) {
                     SettingsAlpha(dim) {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             SettingsSwitchRow(
-                                title = "自定义背景",
-                                subtitle = "开启后可配置并启用全屏沉浸背景",
+                                title = t("自定义背景"),
+                                subtitle = t("开启后可配置并启用全屏沉浸背景"),
                                 checked = prefs.customBackgroundEnabled,
                                 colors = switchColors,
                                 onCheckedChange = {
@@ -1259,29 +1327,29 @@ fun NowPlayingSettingsSheet(
                                 },
                             )
                             SettingsActionRow(
-                                title = "背景调控",
+                                title = t("背景调控"),
                                 subtitle = if (prefs.customBackgroundEnabled) {
-                                    "5 预设 · 图片 / GIF / 静音视频"
+                                    t("5 预设 · 图片 / GIF / 静音视频")
                                 } else {
-                                    "先开启自定义背景"
+                                    t("先开启自定义背景")
                                 },
-                                actionLabel = "编辑",
+                                actionLabel = t("编辑"),
                                 enabled = prefs.customBackgroundEnabled,
                                 onClick = onOpenCustomBackgroundEditor,
                             )
                             SettingsSwitchRow(
-                                title = "雨夜效果",
-                                subtitle = "斜雨磨砂玻璃氛围",
+                                title = t("雨夜效果"),
+                                subtitle = t("斜雨磨砂玻璃氛围"),
                                 checked = prefs.rainNightEnabled,
                                 colors = switchColors,
                                 onCheckedChange = { onPrefsChange(prefs.copy(rainNightEnabled = it)) },
                             )
                             SettingsSwitchRow(
-                                title = "活跃光晕",
+                                title = t("活跃光晕"),
                                 subtitle = if (prefs.customBackgroundEnabled) {
-                                    "自定义背景开启时不可用"
+                                    t("自定义背景开启时不可用")
                                 } else {
-                                    "低/中/高互斥高亮，同时仅一球发光，运动略加快"
+                                    t("低/中/高互斥高亮，同时仅一球发光，运动略加快")
                                 },
                                 checked = prefs.activeHalo,
                                 colors = switchColors,
@@ -1291,8 +1359,8 @@ fun NowPlayingSettingsSheet(
                                 },
                             )
                             SettingsSwitchRow(
-                                title = "播放页屏幕常亮",
-                                subtitle = "仅横屏播放页生效，停留时屏幕不自动熄灭",
+                                title = t("播放页屏幕常亮"),
+                                subtitle = t("仅横屏播放页生效，停留时屏幕不自动熄灭"),
                                 checked = prefs.keepScreenOn,
                                 colors = switchColors,
                                 onCheckedChange = { onPrefsChange(prefs.copy(keepScreenOn = it)) },
@@ -1301,12 +1369,12 @@ fun NowPlayingSettingsSheet(
                     }
                 }
 
-                SettingsCategory(title = "弹幕", titleAlpha = dim) {
+                SettingsCategory(title = t("弹幕"), titleAlpha = dim) {
                     SettingsAlpha(dim) {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             SettingsSwitchRow(
-                                title = "弹幕陪伴",
-                                subtitle = "用高赞评论做单向弹幕，关时仍可看当前参数",
+                                title = t("弹幕陪伴"),
+                                subtitle = t("用高赞评论做单向弹幕，关时仍可看当前参数"),
                                 checked = prefs.danmakuCompanionEnabled,
                                 colors = switchColors,
                                 onCheckedChange = {
@@ -1314,7 +1382,7 @@ fun NowPlayingSettingsSheet(
                                 },
                             )
                             SettingsSliderRow(
-                                title = "弹幕密度",
+                                title = t("弹幕密度"),
                                 valueLabel = prefs.danmakuDensity.toString(),
                                 value = prefs.danmakuDensity.toFloat(),
                                 valueRange = PlayerDisplayPrefs.DANMAKU_DENSITY_MIN.toFloat()..
@@ -1339,7 +1407,7 @@ fun NowPlayingSettingsSheet(
                                 onSelect = { onPrefsChange(prefs.copy(danmakuRegion = it)) },
                             )
                             SettingsSliderRow(
-                                title = "流速",
+                                title = t("流速"),
                                 valueLabel = String.format("%.1f×", prefs.danmakuSpeed),
                                 value = prefs.danmakuSpeed,
                                 valueRange = PlayerDisplayPrefs.DANMAKU_SPEED_MIN..
@@ -1350,7 +1418,7 @@ fun NowPlayingSettingsSheet(
                                 },
                             )
                             SettingsSliderRow(
-                                title = "弹幕大小",
+                                title = t("弹幕大小"),
                                 valueLabel = String.format("%.0f%%", prefs.danmakuScale * 100f),
                                 value = prefs.danmakuScale,
                                 valueRange = PlayerDisplayPrefs.DANMAKU_SCALE_MIN..
@@ -1364,33 +1432,33 @@ fun NowPlayingSettingsSheet(
                     }
                 }
 
-                SettingsCategory(title = "文字", titleAlpha = dim) {
+                SettingsCategory(title = t("文字"), titleAlpha = dim) {
                     SettingsAlpha(dim) {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             SettingsSwitchRow(
-                                title = "动态歌词",
-                                subtitle = "宽度避开黑胶，左右对称保持中心",
+                                title = t("动态歌词"),
+                                subtitle = t("宽度避开黑胶，左右对称保持中心"),
                                 checked = prefs.dynamicLyrics,
                                 colors = switchColors,
                                 onCheckedChange = { onPrefsChange(prefs.copy(dynamicLyrics = it)) },
                             )
                             SettingsSwitchRow(
-                                title = "自动播放",
-                                subtitle = "点选歌词跳转后自动开始播放；播放中切歌始终播放",
+                                title = t("自动播放"),
+                                subtitle = t("点选歌词跳转后自动开始播放；播放中切歌始终播放"),
                                 checked = prefs.lyricTapAutoPlay,
                                 colors = switchColors,
                                 onCheckedChange = { onPrefsChange(prefs.copy(lyricTapAutoPlay = it)) },
                             )
                             SettingsActionRow(
-                                title = "歌词样式",
-                                subtitle = "斜体 / 粗体 / 颜色 / 字号",
-                                actionLabel = "编辑",
+                                title = t("歌词样式"),
+                                subtitle = t("斜体 / 粗体 / 颜色 / 字号"),
+                                actionLabel = t("编辑"),
                                 onClick = onOpenLyricStyleEditor,
                             )
                             SettingsActionRow(
-                                title = "标题样式",
-                                subtitle = "歌名 / 歌手 · 颜色与字号",
-                                actionLabel = "编辑",
+                                title = t("标题样式"),
+                                subtitle = t("歌名 / 歌手 · 颜色与字号"),
+                                actionLabel = t("编辑"),
                                 onClick = onOpenTitleStyleEditor,
                             )
                             SettingsTitleAlignRow(
@@ -1398,7 +1466,7 @@ fun NowPlayingSettingsSheet(
                                 onSelect = { onPrefsChange(prefs.copy(titleAlign = it)) },
                             )
                             SettingsSliderRow(
-                                title = "标题垂直位置",
+                                title = t("标题垂直位置"),
                                 valueLabel = String.format("%+.0f", prefs.titleOffsetYDp),
                                 value = prefs.titleOffsetYDp,
                                 valueRange = PlayerDisplayPrefs.TITLE_OFFSET_Y_MIN..
@@ -1409,7 +1477,7 @@ fun NowPlayingSettingsSheet(
                     }
                     SettingsAlpha(rowAlpha(SettingsPreviewKey.LineSpacing)) {
                         SettingsSliderRow(
-                            title = "歌词行间距",
+                            title = t("歌词行间距"),
                             valueLabel = String.format("%.0f", prefs.lyricLineSpacingDp),
                             value = prefs.lyricLineSpacingDp,
                             valueRange = PlayerDisplayPrefs.LINE_SPACING_MIN..PlayerDisplayPrefs.LINE_SPACING_MAX,
@@ -1422,7 +1490,7 @@ fun NowPlayingSettingsSheet(
                     SettingsAlpha(dim) {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             SettingsSliderRow(
-                                title = "已播放歌词数",
+                                title = t("已播放歌词数"),
                                 valueLabel = prefs.lyricPlayedCount.toString(),
                                 value = prefs.lyricPlayedCount.toFloat(),
                                 valueRange = PlayerDisplayPrefs.LYRIC_AROUND_MIN.toFloat()..
@@ -1441,7 +1509,7 @@ fun NowPlayingSettingsSheet(
                                 },
                             )
                             SettingsSliderRow(
-                                title = "待播放歌词数",
+                                title = t("待播放歌词数"),
                                 valueLabel = prefs.lyricUpcomingCount.toString(),
                                 value = prefs.lyricUpcomingCount.toFloat(),
                                 valueRange = PlayerDisplayPrefs.LYRIC_AROUND_MIN.toFloat()..
@@ -1463,7 +1531,7 @@ fun NowPlayingSettingsSheet(
                     }
                     SettingsAlpha(rowAlpha(SettingsPreviewKey.OffsetX)) {
                         SettingsSliderRow(
-                            title = "歌词水平位置",
+                            title = t("歌词水平位置"),
                             valueLabel = String.format("%+.0f", prefs.lyricOffsetXDp),
                             value = prefs.lyricOffsetXDp,
                             valueRange = PlayerDisplayPrefs.LYRIC_OFFSET_MIN..
@@ -1476,10 +1544,10 @@ fun NowPlayingSettingsSheet(
                     }
                 }
 
-                SettingsCategory(title = "布局", titleAlpha = dim) {
+                SettingsCategory(title = t("布局"), titleAlpha = dim) {
                     SettingsAlpha(rowAlpha(SettingsPreviewKey.UiScale)) {
                         SettingsSliderRow(
-                            title = "整体 UI 缩放",
+                            title = t("整体 UI 缩放"),
                             valueLabel = String.format("%.0f%%", prefs.uiScale * 100f),
                             value = prefs.uiScale,
                             valueRange = PlayerDisplayPrefs.UI_MIN..PlayerDisplayPrefs.UI_MAX,
@@ -1492,8 +1560,8 @@ fun NowPlayingSettingsSheet(
                     SettingsAlpha(dim) {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             SettingsSwitchRow(
-                                title = "播放组件常显",
-                                subtitle = "底部控件保持展开",
+                                title = t("播放组件常显"),
+                                subtitle = t("底部控件保持展开"),
                                 checked = prefs.transportAlwaysVisible,
                                 colors = switchColors,
                                 onCheckedChange = {
@@ -1501,8 +1569,8 @@ fun NowPlayingSettingsSheet(
                                 },
                             )
                             SettingsSwitchRow(
-                                title = "吸附式播放组件",
-                                subtitle = "贴底吸附；关闭后悬浮并四角圆角",
+                                title = t("吸附式播放组件"),
+                                subtitle = t("贴底吸附；关闭后悬浮并四角圆角"),
                                 checked = prefs.transportDocked,
                                 colors = switchColors,
                                 onCheckedChange = {
@@ -1510,7 +1578,7 @@ fun NowPlayingSettingsSheet(
                                 },
                             )
                             SettingsSliderRow(
-                                title = "播放组件离底距离",
+                                title = t("播放组件离底距离"),
                                 valueLabel = String.format("%.0f", prefs.transportBottomInsetDp),
                                 value = prefs.transportBottomInsetDp,
                                 valueRange = PlayerDisplayPrefs.TRANSPORT_BOTTOM_INSET_MIN..
@@ -1521,8 +1589,8 @@ fun NowPlayingSettingsSheet(
                                 },
                             )
                             SettingsSwitchRow(
-                                title = "黑胶选歌",
-                                subtitle = "横屏长按黑胶进入扑克牌式选歌",
+                                title = t("黑胶选歌"),
+                                subtitle = t("横屏长按黑胶进入扑克牌式选歌"),
                                 checked = prefs.vinylSongPickEnabled,
                                 colors = switchColors,
                                 onCheckedChange = {
@@ -1530,8 +1598,8 @@ fun NowPlayingSettingsSheet(
                                 },
                             )
                             SettingsSwitchRow(
-                                title = "黑胶绝对居中",
-                                subtitle = "垂直对齐屏幕中心，忽略垂直偏移",
+                                title = t("黑胶绝对居中"),
+                                subtitle = t("垂直对齐屏幕中心，忽略垂直偏移"),
                                 checked = prefs.vinylAbsoluteCenter,
                                 colors = switchColors,
                                 onCheckedChange = {
@@ -1539,8 +1607,8 @@ fun NowPlayingSettingsSheet(
                                 },
                             )
                             SettingsSwitchRow(
-                                title = "完整封面",
-                                subtitle = "封面铺满中心，隐藏轴心镂空",
+                                title = t("完整封面"),
+                                subtitle = t("封面铺满中心，隐藏轴心镂空"),
                                 checked = prefs.vinylFullCover,
                                 colors = switchColors,
                                 onCheckedChange = {
@@ -1548,7 +1616,7 @@ fun NowPlayingSettingsSheet(
                                 },
                             )
                             SettingsSliderRow(
-                                title = "黑胶转速",
+                                title = t("黑胶转速"),
                                 valueLabel = String.format("%.1f×", prefs.vinylSpinSpeed),
                                 value = prefs.vinylSpinSpeed,
                                 valueRange = PlayerDisplayPrefs.VINYL_SPIN_SPEED_MIN..
@@ -1558,7 +1626,7 @@ fun NowPlayingSettingsSheet(
                                 },
                             )
                             SettingsSliderRow(
-                                title = "黑胶大小（整体）",
+                                title = t("黑胶大小（整体）"),
                                 valueLabel = String.format("%.0f%%", prefs.vinylSizeScale * 100f),
                                 value = prefs.vinylSizeScale,
                                 valueRange = PlayerDisplayPrefs.VINYL_SIZE_SCALE_MIN..
@@ -1566,7 +1634,7 @@ fun NowPlayingSettingsSheet(
                                 onValueChange = { onPrefsChange(prefs.copy(vinylSizeScale = it)) },
                             )
                             SettingsSliderRow(
-                                title = "外圈黑胶半径",
+                                title = t("外圈黑胶半径"),
                                 valueLabel = String.format("%.0f%%", prefs.vinylOuterScale * 100f),
                                 value = prefs.vinylOuterScale,
                                 valueRange = PlayerDisplayPrefs.VINYL_OUTER_SCALE_MIN..
@@ -1574,9 +1642,9 @@ fun NowPlayingSettingsSheet(
                                 onValueChange = { onPrefsChange(prefs.copy(vinylOuterScale = it)) },
                             )
                             SettingsSliderRow(
-                                title = "中心黑胶半径",
+                                title = t("中心黑胶半径"),
                                 valueLabel = String.format(
-                                    "基准 %.0f%%",
+                                    t("基准 %.0f%%"),
                                     prefs.vinylCenterRadiusFrac * 100f,
                                 ),
                                 value = prefs.vinylCenterRadiusFrac,
@@ -1593,7 +1661,7 @@ fun NowPlayingSettingsSheet(
                                 onOpenCustomEditor = onOpenVinylColorEditor,
                             )
                             SettingsSliderRow(
-                                title = "黑胶阻尼",
+                                title = t("黑胶阻尼"),
                                 valueLabel = String.format("%.2f", prefs.vinylGestureDamping),
                                 value = prefs.vinylGestureDamping,
                                 valueRange = PlayerDisplayPrefs.VINYL_GESTURE_DAMPING_MIN..
@@ -1603,7 +1671,7 @@ fun NowPlayingSettingsSheet(
                                 },
                             )
                             SettingsSliderRow(
-                                title = "黑胶水平位置",
+                                title = t("黑胶水平位置"),
                                 valueLabel = String.format("%+.0f", prefs.vinylOffsetXDp),
                                 value = prefs.vinylOffsetXDp,
                                 valueRange = PlayerDisplayPrefs.VINYL_OFFSET_MIN..
@@ -1611,7 +1679,7 @@ fun NowPlayingSettingsSheet(
                                 onValueChange = { onPrefsChange(prefs.copy(vinylOffsetXDp = it)) },
                             )
                             SettingsSliderRow(
-                                title = "黑胶垂直位置",
+                                title = t("黑胶垂直位置"),
                                 valueLabel = String.format("%+.0f", prefs.vinylOffsetYDp),
                                 value = prefs.vinylOffsetYDp,
                                 valueRange = PlayerDisplayPrefs.VINYL_OFFSET_Y_MIN..
@@ -1642,7 +1710,7 @@ private fun SettingsVinylColorRow(
 ) {
     val chrome = LocalSettingsChrome.current
     val styles = VinylColorStyle.entries
-    val labels = listOf("黑色", "金色", "白色", "自选")
+    val labels = listOf(t("黑色"), t("金色"), t("白色"), t("自选"))
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
     val selected = prefs.vinylColorStyle
@@ -1675,7 +1743,7 @@ private fun SettingsVinylColorRow(
         ) {
             Column(Modifier.weight(1f)) {
                 Text(
-                    text = "黑胶颜色",
+                    text = t("黑胶颜色"),
                     style = TextStyle(
                         color = chrome.label,
                         fontFamily = FontFamily.SansSerif,
@@ -1685,7 +1753,7 @@ private fun SettingsVinylColorRow(
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
-                    text = "滑动切换预设 · 自选时点色环编辑",
+                    text = t("滑动切换预设 · 自选时点色环编辑"),
                     style = TextStyle(
                         color = chrome.hint,
                         fontFamily = FontFamily.SansSerif,
@@ -1856,7 +1924,7 @@ private fun SettingsTitleAlignRow(
 ) {
     val chrome = LocalSettingsChrome.current
     val modes = TitleAlignMode.entries
-    val labels = listOf("左对齐", "黑胶", "居中", "歌词")
+    val labels = listOf(t("左对齐"), t("黑胶"), t("居中"), t("歌词"))
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
     val indicator = remember { Animatable(selected.ordinal.toFloat()) }
@@ -1877,7 +1945,7 @@ private fun SettingsTitleAlignRow(
             .padding(horizontal = 12.dp, vertical = 10.dp),
     ) {
         Text(
-            text = "标题对齐位置",
+            text = t("标题对齐位置"),
             style = TextStyle(
                 color = chrome.label,
                 fontFamily = FontFamily.SansSerif,
@@ -1887,7 +1955,7 @@ private fun SettingsTitleAlignRow(
         )
         Spacer(Modifier.height(2.dp))
         Text(
-            text = "歌名 / 歌手 · 滑动或点选切换",
+            text = t("歌名 / 歌手 · 滑动或点选切换"),
             style = TextStyle(
                 color = chrome.hint,
                 fontFamily = FontFamily.SansSerif,
@@ -2119,15 +2187,15 @@ private fun SettingsAutoClearTargetsRow(
     )
     data class Target(val label: String, val on: Boolean, val set: (Boolean) -> Unit)
     val items = listOf(
-        Target("顶部区域", top) { next ->
+        Target(t("顶部区域"), top) { next ->
             if (!next && !transport && !toolbar) return@Target
             onChange(next, transport, toolbar)
         },
-        Target("播放控件", transport) { next ->
+        Target(t("播放控件"), transport) { next ->
             if (!next && !top && !toolbar) return@Target
             onChange(top, next, toolbar)
         },
-        Target("底部工具栏", toolbar) { next ->
+        Target(t("底部工具栏"), toolbar) { next ->
             if (!next && !top && !transport) return@Target
             onChange(top, transport, next)
         },
@@ -2141,7 +2209,7 @@ private fun SettingsAutoClearTargetsRow(
             .padding(horizontal = 12.dp, vertical = 10.dp),
     ) {
         Text(
-            text = "清屏包含",
+            text = t("清屏包含"),
             style = TextStyle(
                 color = chrome.label,
                 fontFamily = FontFamily.SansSerif,
@@ -2152,7 +2220,7 @@ private fun SettingsAutoClearTargetsRow(
         )
         Spacer(Modifier.height(2.dp))
         Text(
-            text = "可多选；至少保留一项",
+            text = t("可多选；至少保留一项"),
             style = TextStyle(
                 color = chrome.hint,
                 fontFamily = if (chrome.light) FontFamily.SansSerif else FontFamily.Monospace,
@@ -2217,7 +2285,7 @@ private fun SettingsDanmakuRegionRow(
 ) {
     val chrome = LocalSettingsChrome.current
     val modes = DanmakuRegion.entries
-    val labels = listOf("顶部", "上半屏", "下半屏", "底部", "全屏")
+    val labels = listOf(t("顶部"), t("上半屏"), t("下半屏"), t("底部"), t("全屏"))
     val enT by androidx.compose.animation.core.animateFloatAsState(
         targetValue = if (enabled) 1f else 0.40f,
         animationSpec = tween(280, easing = FastOutSlowInEasing),
@@ -2232,7 +2300,7 @@ private fun SettingsDanmakuRegionRow(
             .padding(horizontal = 12.dp, vertical = 10.dp),
     ) {
         Text(
-            text = "弹幕区域",
+            text = t("弹幕区域"),
             style = TextStyle(
                 color = chrome.label,
                 fontFamily = FontFamily.SansSerif,
@@ -2242,7 +2310,7 @@ private fun SettingsDanmakuRegionRow(
         )
         Spacer(Modifier.height(2.dp))
         Text(
-            text = "单选出现范围",
+            text = t("单选出现范围"),
             style = TextStyle(
                 color = chrome.hint,
                 fontFamily = FontFamily.SansSerif,
@@ -2295,7 +2363,7 @@ private fun SettingsPreviewAlignRow(
 ) {
     val chrome = LocalSettingsChrome.current
     val modes = PreviewLyricAlign.entries
-    val labels = listOf("左侧", "居中", "右侧")
+    val labels = listOf(t("左侧"), t("居中"), t("右侧"))
     val enT by androidx.compose.animation.core.animateFloatAsState(
         targetValue = if (enabled) 1f else 0.40f,
         animationSpec = tween(280, easing = FastOutSlowInEasing),
@@ -2312,7 +2380,7 @@ private fun SettingsPreviewAlignRow(
             .padding(horizontal = 12.dp, vertical = 10.dp),
     ) {
         Text(
-            text = "歌词位置",
+            text = t("歌词位置"),
             style = TextStyle(
                 color = chrome.label,
                 fontFamily = FontFamily.SansSerif,
@@ -2679,6 +2747,7 @@ private fun SettingsSliderRow(
 /**
  * 点击外部收回设置：无蒙版、无变暗，仅透明命中层。
  * [enabled]=false 时不挂 clickable，避免收起动画尾帧继续吞全屏单击。
+ * 不要再给这层加 graphicsLayer alpha：全透明图层会被跳过命中，点击就会漏到播放页。
  */
 @Composable
 fun NowPlayingSettingsOutsideDismiss(
@@ -2701,4 +2770,41 @@ fun NowPlayingSettingsOutsideDismiss(
                 },
             ),
     )
+}
+
+/**
+ * 竖屏底部面板宿主：量高与外部点按收回必须同树。
+ * 全屏空 Box 盖在命中层前面时，面板空白处会把点击漏给播放键 / 黑胶。
+ */
+@Composable
+internal fun PortraitBottomSheetViewport(
+    onDismiss: () -> Unit,
+    dismissEnabled: Boolean,
+    modifier: Modifier = Modifier,
+    content: @Composable BoxWithConstraintsScope.() -> Unit,
+) {
+    BoxWithConstraints(modifier.fillMaxSize()) {
+        NowPlayingSettingsOutsideDismiss(
+            onDismiss = onDismiss,
+            enabled = dismissEnabled,
+            modifier = Modifier.fillMaxSize(),
+        )
+        content()
+    }
+}
+
+/** 命中层在 graphicsLayer 之外，避免 alpha=0 时整层被跳过、点到面板下的播放键。 */
+internal fun Modifier.portraitSheetSurface(
+    progress: Float,
+    sheetHPx: Float,
+): Modifier = composed {
+    clickable(
+        interactionSource = remember { MutableInteractionSource() },
+        indication = null,
+        onClick = {},
+    ).graphicsLayer {
+        transformOrigin = TransformOrigin(0.5f, 1f)
+        translationY = (1f - progress) * sheetHPx
+        alpha = progress
+    }
 }

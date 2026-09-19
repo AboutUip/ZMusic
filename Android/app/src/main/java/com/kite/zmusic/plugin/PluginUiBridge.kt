@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import com.kite.zmusic.i18n.t
 
 data class PluginSlotEntry(
     val pluginId: String,
@@ -635,12 +636,12 @@ class PluginUiBridge {
                 else -> return null
             }
             val confirm = when (val c = map["confirm"]) {
-                null -> "确定"
+                null -> t("确定")
                 is String -> c.trim().takeIf { it.isNotEmpty() && it.length <= MAX_BUTTON } ?: return null
                 else -> return null
             }
             val cancel = when (val c = map["cancel"]) {
-                null -> "取消"
+                null -> t("取消")
                 false -> null
                 is String -> c.trim().takeIf { it.isNotEmpty() && it.length <= MAX_BUTTON } ?: return null
                 else -> return null

@@ -48,6 +48,7 @@ import com.kite.zmusic.ui.common.UrlImageCache
 import com.kite.zmusic.ui.common.ZPullRefresh
 import com.kite.zmusic.ui.main.MainOverlay
 import com.kite.zmusic.ui.main.MainPalette
+import com.kite.zmusic.i18n.t
 
 @Composable
 fun UserRelationsScreen(
@@ -110,7 +111,7 @@ fun UserRelationsScreen(
                 }
                 ui.error != null && ui.people.isEmpty() -> {
                     Text(
-                        text = ui.error ?: "加载失败",
+                        text = ui.error ?: t("加载失败"),
                         color = MainPalette.Secondary,
                         fontSize = 14.sp,
                         modifier = Modifier
@@ -124,7 +125,7 @@ fun UserRelationsScreen(
                 }
                 ui.people.isEmpty() -> {
                     Text(
-                        text = if (ui.fans) "还没有粉丝" else "还没有关注的人",
+                        text = if (ui.fans) t("还没有粉丝") else t("还没有关注的人"),
                         color = MainPalette.Secondary,
                         fontSize = 14.sp,
                         modifier = Modifier.padding(24.dp),

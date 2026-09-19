@@ -7,6 +7,7 @@ import java.io.DataOutputStream
 import java.util.Base64
 import java.util.zip.GZIPInputStream
 import java.util.zip.GZIPOutputStream
+import com.kite.zmusic.i18n.t
 
 /**
  * 横屏播放显示偏好的紧凑编解码，供二维码导入/导出。
@@ -33,14 +34,14 @@ object PlayerDisplayPrefsCodec {
 
     fun decode(payload: String): Result<PlayerDisplayPrefs> = runCatching {
         val trimmed = payload.trim()
-        require(trimmed.startsWith(PREFIX)) { "不是 ZMusic 横屏配置二维码" }
+        require(trimmed.startsWith(PREFIX)) { t("不是 ZMusic 横屏配置二维码") }
         val b64 = trimmed.removePrefix(PREFIX)
         val compressed = Base64.getUrlDecoder().decode(b64)
         val prefs = ByteArrayInputStream(compressed).use { bytes ->
             GZIPInputStream(bytes).use { gzip ->
                 DataInputStream(gzip).use { input ->
                     val version = input.readByte()
-                    require(version == VERSION) { "不支持的配置版本（$version）" }
+                    require(version == VERSION) { t("不支持的配置版本（%s）", version) }
                     readV1(input)
                 }
             }

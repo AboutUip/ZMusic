@@ -9,6 +9,7 @@ import android.content.Intent
 import android.net.Uri
 import android.util.Log
 import com.kite.zmusic.data.TrackRow
+import com.kite.zmusic.i18n.t
 
 internal enum class NcmShareTarget {
     WeChatMoments,
@@ -74,7 +75,7 @@ internal object NcmShare {
         return when (target) {
             NcmShareTarget.WeChatFriend, NcmShareTarget.WeChatMoments ->
                 if (!isInstalled(context, PKG_WECHAT)) {
-                    NcmShareResult.MissingApp("微信")
+                    NcmShareResult.MissingApp(t("微信"))
                 } else {
                     NcmShareResult.Failed
                 }
@@ -126,7 +127,7 @@ internal object NcmShare {
     private fun copyUrl(context: Context, url: String): Boolean {
         val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
             ?: return false
-        cm.setPrimaryClip(ClipData.newPlainText("网易云链接", url))
+        cm.setPrimaryClip(ClipData.newPlainText(t("网易云链接"), url))
         return true
     }
 

@@ -76,6 +76,7 @@ import com.kite.zmusic.ui.main.MainOverlay
 import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.main.wallpaperItemChrome
 import androidx.compose.runtime.rememberCoroutineScope
+import com.kite.zmusic.i18n.t
 
 @Composable
 fun UserScreen(
@@ -133,7 +134,7 @@ fun UserScreen(
         when {
             ui.error != null && ui.created.isEmpty() && ui.collected.isEmpty() && !ui.loading -> {
                 Text(
-                    text = ui.error ?: "暂时无法打开这位用户",
+                    text = ui.error ?: t("暂时无法打开这位用户"),
                     color = MainPalette.Secondary,
                     fontSize = 14.sp,
                     modifier = Modifier
@@ -226,7 +227,7 @@ fun UserScreen(
                                 left = {
                                     UserPlaylistPane(
                                         playlists = ui.created,
-                                        emptyText = "还没有公开的歌单",
+                                        emptyText = t("还没有公开的歌单"),
                                         loading = ui.loading,
                                         onOpen = onOpenPlaylist,
                                     )
@@ -234,7 +235,7 @@ fun UserScreen(
                                 right = {
                                     UserPlaylistPane(
                                         playlists = ui.collected,
-                                        emptyText = "还没有收藏的歌单",
+                                        emptyText = t("还没有收藏的歌单"),
                                         loading = ui.loading,
                                         onOpen = onOpenPlaylist,
                                     )
@@ -285,12 +286,12 @@ fun UserScreen(
                                     playing = current && isPlaying,
                                     onClick = {
                                         val list = listens.take(10).map { it.track }
-                                        onPlayTracks(list, i, null, "${ui.name}的听歌排行")
+                                        onPlayTracks(list, i, null, t("%s的听歌排行", ui.name))
                                     },
                                     onMore = { moreTrack = hit.track },
                                 )
                                 Text(
-                                    text = "听了 ${NcmHomeParse.formatPlayCount(hit.playCount.toLong())} 次",
+                                    text = t("听了 %s 次", NcmHomeParse.formatPlayCount(hit.playCount.toLong())),
                                     color = MainPalette.Hint,
                                     fontSize = 11.sp,
                                     modifier = Modifier.padding(start = 36.dp, bottom = 6.dp),
@@ -305,9 +306,9 @@ fun UserScreen(
 
     if (confirmUnfollow) {
         GlassAlertDialog(
-            title = "取消关注？",
-            message = "将不再关注「${ui.name}」",
-            confirmLabel = "取消关注",
+            title = t("取消关注？"),
+            message = t("将不再关注「%s」", ui.name),
+            confirmLabel = t("取消关注"),
             confirmDestructive = true,
             onConfirm = {
                 confirmUnfollow = false
@@ -441,21 +442,21 @@ private fun UserStatRow(
     ) {
         UserStatCell(
             value = ui.follows?.let { NcmHomeParse.formatPlayCount(it) } ?: "—",
-            label = "关注",
+            label = t("关注"),
             onClick = onOpenFollows,
         )
         UserStatCell(
             value = ui.followeds?.let { NcmHomeParse.formatPlayCount(it) } ?: "—",
-            label = "粉丝",
+            label = t("粉丝"),
             onClick = onOpenFans,
         )
         UserStatCell(
             value = ui.listenSongs?.let { NcmHomeParse.formatPlayCount(it) } ?: "—",
-            label = "听歌",
+            label = t("听歌"),
             onClick = null,
         )
         ui.level?.let { lv ->
-            UserStatCell(value = "Lv.$lv", label = "等级", onClick = null)
+            UserStatCell(value = "Lv.$lv", label = t("等级"), onClick = null)
         }
     }
 }
@@ -506,7 +507,7 @@ private fun UserActionRow(
     ) {
         if (ui.isSelf) {
             Text(
-                text = "这是你",
+                text = t("这是你"),
                 color = MainPalette.Secondary,
                 fontSize = 13.sp,
                 modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
@@ -553,13 +554,13 @@ private fun UserActionRow(
             ) {
                 Icon(
                     imageVector = if (followed) ZIcons.Check else ZIcons.Add,
-                    contentDescription = if (followed) "已关注" else "关注",
+                    contentDescription = if (followed) t("已关注") else t("关注"),
                     tint = followFg,
                     modifier = Modifier.size(16.dp),
                 )
                 Spacer(Modifier.width(4.dp))
                 Text(
-                    text = if (followed) "已关注" else "关注",
+                    text = if (followed) t("已关注") else t("关注"),
                     color = followFg,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold,
@@ -568,7 +569,7 @@ private fun UserActionRow(
         }
         if (ui.artistId > 0L) {
             Text(
-                text = "歌手页",
+                text = t("歌手页"),
                 color = MainPalette.Accent,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.SemiBold,
@@ -585,7 +586,7 @@ private fun UserActionRow(
         }
         ui.medalCount?.takeIf { it > 0 }?.let { n ->
             Text(
-                text = "${n}枚徽章",
+                text = t("%s枚徽章", n),
                 color = MainPalette.Secondary,
                 fontSize = 12.sp,
             )
@@ -604,7 +605,7 @@ private fun UserShelfTabs(
     val t = progress.coerceIn(0f, 1f)
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         UserChip(
-            label = if (createdCount > 0) "创建的歌单 $createdCount" else "创建的歌单",
+            label = if (createdCount > 0) t("创建的歌单 %s", createdCount) else t("创建的歌单"),
             active = 1f - t,
             onClick = {
                 if (t >= 0.5f) {
@@ -614,7 +615,7 @@ private fun UserShelfTabs(
             },
         )
         UserChip(
-            label = if (collectedCount > 0) "收藏的歌单 $collectedCount" else "收藏的歌单",
+            label = if (collectedCount > 0) t("收藏的歌单 %s", collectedCount) else t("收藏的歌单"),
             active = t,
             onClick = {
                 if (t < 0.5f) {
@@ -638,7 +639,7 @@ private fun UserListenTabs(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            text = "听歌排行",
+            text = t("听歌排行"),
             modifier = Modifier.weight(1f),
             color = MainPalette.Ink,
             fontSize = 16.sp,
@@ -646,7 +647,7 @@ private fun UserListenTabs(
         )
         if (hasWeek) {
             UserChip(
-                label = "近一周",
+                label = t("近一周"),
                 active = if (shelf == UserListenShelf.Week || !hasAll) 1f else 0f,
                 onClick = { onShelf(UserListenShelf.Week) },
             )
@@ -654,7 +655,7 @@ private fun UserListenTabs(
         }
         if (hasAll) {
             UserChip(
-                label = "所有时间",
+                label = t("所有时间"),
                 active = if (shelf == UserListenShelf.All || !hasWeek) 1f else 0f,
                 onClick = { onShelf(UserListenShelf.All) },
             )
@@ -762,7 +763,7 @@ private fun UserPlaylistRow(
             )
             Spacer(Modifier.height(4.dp))
             Text(
-                text = "${pl.trackCount} 首 · 播放 ${NcmHomeParse.formatPlayCount(pl.playCount)}",
+                text = t("%s 首 · 播放 %s", pl.trackCount, NcmHomeParse.formatPlayCount(pl.playCount)),
                 style = TextStyle(color = MainPalette.Secondary, fontSize = 12.sp),
             )
         }

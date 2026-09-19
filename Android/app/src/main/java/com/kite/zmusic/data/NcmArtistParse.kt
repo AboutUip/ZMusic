@@ -5,6 +5,7 @@ import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import com.kite.zmusic.i18n.t
 
 data class ArtistDetail(
     val id: Long,
@@ -66,7 +67,7 @@ internal object NcmArtistParse {
         val artist = data.optJSONObject("artist") ?: return null
         val id = artist.optLong("id", fallbackId).takeIf { it > 0L } ?: fallbackId
         if (id <= 0L) return null
-        val name = artist.optString("name", fallbackName).ifBlank { fallbackName }.ifBlank { "歌手" }
+        val name = artist.optString("name", fallbackName).ifBlank { fallbackName }.ifBlank { t("歌手") }
         val identify = firstNonBlank(
             data.optJSONObject("identify")?.optString("imageDesc"),
             artist.optJSONArray("identifyTag")?.let { stringList(it).firstOrNull() },
@@ -155,7 +156,7 @@ internal object NcmArtistParse {
                 add(
                     ArtistAlbumCard(
                         id = id,
-                        name = o.optString("name", "专辑").ifBlank { "专辑" },
+                        name = o.optString("name", t("专辑")).ifBlank { t("专辑") },
                         coverUrl = NcmLibraryParse.ncmHttpsImage(
                             firstNonBlank(
                                 o.optString("picUrl"),
@@ -252,7 +253,7 @@ internal object NcmArtistParse {
                     if (body.isEmpty() || body == "null") continue
                     add(
                         ArtistBioBlock(
-                            title = title.takeIf { it.isNotEmpty() && it != "null" } ?: "简介",
+                            title = title.takeIf { it.isNotEmpty() && it != "null" } ?: t("简介"),
                             body = body,
                         ),
                     )
@@ -274,11 +275,11 @@ internal object NcmArtistParse {
         val n = rank.optInt("rank", 0)
         if (n <= 0) return null
         val type = when (rank.optInt("type", 0)) {
-            1 -> "华语榜"
-            2 -> "欧美榜"
-            3 -> "韩国榜"
-            4 -> "日本榜"
-            else -> "歌手榜"
+            1 -> t("华语榜")
+            2 -> t("欧美榜")
+            3 -> t("韩国榜")
+            4 -> t("日本榜")
+            else -> t("歌手榜")
         }
         return "$type #$n"
     }

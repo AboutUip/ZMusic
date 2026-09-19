@@ -2,6 +2,7 @@ package com.kite.zmusic.data
 
 import org.json.JSONArray
 import org.json.JSONObject
+import com.kite.zmusic.i18n.t
 
 internal data class SongWikiFact(
     val label: String,
@@ -142,16 +143,16 @@ internal object SongWikiParse {
                         val title = titleOf(rui, "mainTitle") ?: return@forEach
                         val sub = firstSubTitle(rui)
                         val text = if (sub.isNullOrBlank()) title else "$title · $sub"
-                        facts += SongWikiFact(label ?: if (type == "songAward") "奖项" else "影视", text)
+                        facts += SongWikiFact(label ?: if (type == "songAward") t("奖项") else t("影视"), text)
                     }
                 }
                 "songComment" -> {
                     resources(creative).forEach { res ->
                         val rui = res.optJSONObject("uiElement")
                         val body = firstDescription(rui) ?: return@forEach
-                        val who = titleOf(rui, "mainTitle")?.removePrefix("乐评来自")?.trim()
+                        val who = titleOf(rui, "mainTitle")?.removePrefix(t("乐评来自"))?.trim()
                         notes += SongWikiFact(
-                            if (who.isNullOrBlank()) "乐评" else "乐评 · $who",
+                            if (who.isNullOrBlank()) t("乐评") else t("乐评 · %s", who),
                             body,
                         )
                     }
@@ -222,15 +223,15 @@ internal object SongWikiParse {
             val value = firstText(data, keys) ?: return
             facts += SongWikiFact(label, value)
         }
-        takeFact("语种", listOf("language", "lang", "songLanguage"))
-        takeFact("风格", listOf("genre", "style", "songGenre"))
+        takeFact(t("语种"), listOf("language", "lang", "songLanguage"))
+        takeFact(t("风格"), listOf("genre", "style", "songGenre"))
         takeFact("BPM", listOf("bpm", "BPM"))
-        takeFact("曲调", listOf("tone", "key", "songKey"))
-        takeFact("作词", listOf("lyricist", "lyricists", "lyricWriter"))
-        takeFact("作曲", listOf("composer", "composers"))
-        takeFact("编曲", listOf("arranger", "arrangement"))
-        takeFact("出品", listOf("company", "publishCompany", "label"))
-        takeFact("发行", listOf("publishTime", "publishDate", "pubTime"))
+        takeFact(t("曲调"), listOf("tone", "key", "songKey"))
+        takeFact(t("作词"), listOf("lyricist", "lyricists", "lyricWriter"))
+        takeFact(t("作曲"), listOf("composer", "composers"))
+        takeFact(t("编曲"), listOf("arranger", "arrangement"))
+        takeFact(t("出品"), listOf("company", "publishCompany", "label"))
+        takeFact(t("发行"), listOf("publishTime", "publishDate", "pubTime"))
         firstText(data, listOf("alias", "transName", "transNames", "alia"))?.let {
             chips += it.split(Regex("[,，/、|]")).map { part -> part.trim() }.filter { it.isNotEmpty() }
         }
@@ -238,7 +239,7 @@ internal object SongWikiParse {
         listOf("briefDesc", "description", "desc", "introduction", "intro", "wiki", "content", "summary")
             .mapNotNull { key -> cleanText(data.opt(key)) }
             .distinct()
-            .forEach { notes += SongWikiFact("介绍", it) }
+            .forEach { notes += SongWikiFact(t("介绍"), it) }
         return SongWikiPage(facts = facts, chips = chips, notes = notes).takeUnless { it.isEmpty }
     }
 

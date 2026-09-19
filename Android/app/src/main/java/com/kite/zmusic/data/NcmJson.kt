@@ -1,5 +1,6 @@
 package com.kite.zmusic.data
 
+import com.kite.zmusic.i18n.t
 import java.util.concurrent.CancellationException
 import org.json.JSONObject
 
@@ -198,20 +199,20 @@ internal object NcmJson {
         )
         for (raw in candidates) {
             val sanitized = sanitizeUserMessage(raw)
-            if (sanitized != null) return sanitized
+            if (sanitized != null) return t(sanitized)
         }
-        return messageForCode(apiCode(json), fallback)
+        return t(messageForCode(apiCode(json), fallback))
     }
 
     fun userFacingThrowable(error: Throwable, fallback: String): String {
-        if (error is CancellationException) return fallback
+        if (error is CancellationException) return t(fallback)
         val raw = error.message.orEmpty()
         if (raw.contains("coroutine", ignoreCase = true) &&
             raw.contains("cancelled", ignoreCase = true)
         ) {
-            return fallback
+            return t(fallback)
         }
-        return sanitizeUserMessage(error.message) ?: fallback
+        return t(sanitizeUserMessage(error.message) ?: fallback)
     }
 
     private fun sanitizeUserMessage(raw: String?): String? {

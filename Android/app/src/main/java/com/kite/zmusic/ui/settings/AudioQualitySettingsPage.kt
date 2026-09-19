@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.sp
 import com.kite.zmusic.data.AudioQuality
 import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.player.AudioQualityGroupedList
+import com.kite.zmusic.i18n.t
 
 @Composable
 fun AudioQualitySettingsPage(
@@ -35,7 +36,7 @@ fun AudioQualitySettingsPage(
     ) {
         Spacer(Modifier.height(8.dp))
         Text(
-            text = "之后点播、切歌都按这个档去拉音源。账号到不了的档会自动降到能播的最高一档。",
+            text = t("之后点播、切歌都按这个档去拉音源。账号到不了的档会自动降到能播的最高一档。"),
             style = TextStyle(
                 color = MainPalette.Secondary,
                 fontSize = 13.sp,

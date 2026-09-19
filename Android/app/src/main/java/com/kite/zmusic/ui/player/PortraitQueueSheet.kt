@@ -69,6 +69,7 @@ import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.main.pageSheetHazeStyle
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeEffect
+import com.kite.zmusic.i18n.t
 
 private val QueueLabel get() = MainPalette.Ink
 private val QueueAccent get() = MainPalette.Accent
@@ -284,7 +285,7 @@ fun PortraitQueueSheet(
                 )
             }
             Text(
-                text = "曲谱",
+                text = t("曲谱"),
                 style = TextStyle(
                     color = QueueLabel,
                     fontWeight = FontWeight.Bold,
@@ -306,10 +307,10 @@ fun PortraitQueueSheet(
             Spacer(Modifier.height(10.dp))
             Text(
                 text = when {
-                    tracks.isEmpty() -> "暂无播放列表"
-                    searching && visibleRows.isEmpty() -> "没有找到相关歌曲"
-                    searching -> "找到 ${visibleRows.size} 首"
-                    else -> "共 ${tracks.size} 首"
+                    tracks.isEmpty() -> t("暂无播放列表")
+                    searching && visibleRows.isEmpty() -> t("没有找到相关歌曲")
+                    searching -> t("找到 %s 首", visibleRows.size)
+                    else -> t("共 %s 首", tracks.size)
                 },
                 style = TextStyle(
                     color = QueueHint,
@@ -327,7 +328,7 @@ fun PortraitQueueSheet(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = "队列为空",
+                        text = t("队列为空"),
                         style = TextStyle(
                             color = QueueHint,
                             fontSize = 14.sp,
@@ -343,7 +344,7 @@ fun PortraitQueueSheet(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = "换个关键词试试",
+                        text = t("换个关键词试试"),
                         style = TextStyle(
                             color = QueueHint,
                             fontSize = 14.sp,
@@ -419,7 +420,7 @@ private fun PortraitQueueSearchField(
             decorationBox = { inner ->
                 if (value.isEmpty()) {
                     Text(
-                        "搜索歌名、歌手或专辑",
+                        t("搜索歌名、歌手或专辑"),
                         style = TextStyle(color = MainPalette.Hint, fontSize = 15.sp),
                     )
                 }
@@ -440,7 +441,7 @@ private fun PortraitQueueSearchField(
             ) {
                 Icon(
                     imageVector = ZIcons.Close,
-                    contentDescription = "清空",
+                    contentDescription = t("清空"),
                     tint = MainPalette.Secondary,
                     modifier = Modifier.size(18.dp),
                 )

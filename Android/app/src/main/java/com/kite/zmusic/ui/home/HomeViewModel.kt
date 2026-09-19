@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import com.kite.zmusic.i18n.t
 
 data class HomeUiState(
     val loading: Boolean = true,
@@ -65,7 +66,7 @@ class HomeViewModel(
         viewModelScope.launch {
             val (tracks, err) = homeFeed.loadPersonalFm()
             if (tracks.isEmpty()) {
-                onError(err ?: "暂时没有漫游歌曲")
+                onError(err ?: t("暂时没有漫游歌曲"))
             } else {
                 onReady(tracks)
             }

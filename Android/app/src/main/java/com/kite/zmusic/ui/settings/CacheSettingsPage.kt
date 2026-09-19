@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.sp
 import com.kite.zmusic.ui.main.MainControls
 import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.main.wallpaperItemChrome
+import com.kite.zmusic.i18n.t
 
 @Composable
 fun CacheSettingsPage(
@@ -44,7 +45,7 @@ fun CacheSettingsPage(
     ) {
         Spacer(Modifier.height(8.dp))
         Text(
-            text = "下载加速会在开启时预先扫描 Download/ZMusic。之后播放某首歌时，若本机已有对应缓存，就直接用这份文件，不再向网络拉取音源。",
+            text = t("下载加速会在开启时预先扫描 Download/ZMusic。之后播放某首歌时，若本机已有对应缓存，就直接用这份文件，不再向网络拉取音源。"),
             style = TextStyle(
                 color = MainPalette.Secondary,
                 fontSize = 13.sp,
@@ -56,7 +57,7 @@ fun CacheSettingsPage(
         )
         Spacer(Modifier.height(12.dp))
         Text(
-            text = "开启后请知晓：命中本地缓存时会无视当前的音质设置，以这份已下载的文件为准，用来换取起播速度。关闭后仍按音质档位在线拉取。扫描只在本功能开启时进行。",
+            text = t("开启后请知晓：命中本地缓存时会无视当前的音质设置，以这份已下载的文件为准，用来换取起播速度。关闭后仍按音质档位在线拉取。扫描只在本功能开启时进行。"),
             style = TextStyle(
                 color = MainPalette.Secondary,
                 fontSize = 13.sp,
@@ -81,7 +82,7 @@ fun CacheSettingsPage(
         ) {
             Column(Modifier.weight(1f)) {
                 Text(
-                    text = "下载加速",
+                    text = t("下载加速"),
                     style = TextStyle(
                         color = MainPalette.Ink,
                         fontSize = 15.sp,
@@ -90,9 +91,9 @@ fun CacheSettingsPage(
                 )
                 Text(
                     text = if (downloadAccel) {
-                        "已开启 · 命中本机缓存则跳过网络"
+                        t("已开启 · 命中本机缓存则跳过网络")
                     } else {
-                        "已关闭 · 始终按音质在线拉取"
+                        t("已关闭 · 始终按音质在线拉取")
                     },
                     style = TextStyle(
                         color = MainPalette.Secondary,

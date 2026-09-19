@@ -38,6 +38,7 @@ import com.kite.zmusic.ZMusicApplication
 import com.kite.zmusic.data.SessionRepository
 import com.kite.zmusic.playback.PlaybackViewModel
 import com.kite.zmusic.playback.PlaybackViewModelFactory
+import com.kite.zmusic.i18n.t
 
 private enum class MainGate {
     Checking,
@@ -168,7 +169,7 @@ private fun ColumnishGate() {
             strokeWidth = 2.dp,
         )
         Text(
-            text = "正在进入",
+            text = t("正在进入"),
             modifier = Modifier.padding(top = 14.dp),
             style = TextStyle(
                 color = MainPalette.Secondary,

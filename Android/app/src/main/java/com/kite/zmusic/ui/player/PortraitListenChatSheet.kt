@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
@@ -53,10 +54,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
@@ -65,11 +68,13 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kite.zmusic.ZMusicApplication
 import com.kite.zmusic.listen.ListenChatMsg
 import com.kite.zmusic.ui.common.UrlImage
+import com.kite.zmusic.ui.easter.MjEasterEgg
 import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.main.pageSheetHazeStyle
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeEffect
 import kotlinx.coroutines.delay
+import com.kite.zmusic.i18n.t
 
 private val ChatBubbleShape = RoundedCornerShape(14.dp)
 private val ChatComposerShape = RoundedCornerShape(18.dp)
@@ -128,6 +133,7 @@ internal fun PortraitListenChatSheet(
     fun send() {
         val text = draft.trim()
         if (text.isEmpty()) return
+        MjEasterEgg.consider(text)
         draft = ""
         listen.sendChat(text)
     }
@@ -178,7 +184,7 @@ internal fun PortraitListenChatSheet(
             ) {
                 Column(Modifier.weight(1f)) {
                     Text(
-                        text = "聊天室",
+                        text = t("聊天室"),
                         style = TextStyle(
                             color = MainPalette.Ink,
                             fontFamily = FontFamily.SansSerif,
@@ -188,7 +194,7 @@ internal fun PortraitListenChatSheet(
                         ),
                     )
                     Text(
-                        text = if (chat.isEmpty()) "结束一起听后记录会清空" else "共 ${chat.size} 条",
+                        text = if (chat.isEmpty()) t("结束一起听后记录会清空") else t("共 %s 条", chat.size),
                         style = TextStyle(
                             color = MainPalette.Secondary,
                             fontFamily = FontFamily.SansSerif,
@@ -212,7 +218,7 @@ internal fun PortraitListenChatSheet(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = "还没有人发言",
+                        text = t("还没有人发言"),
                         color = MainPalette.Secondary.copy(alpha = 0.7f),
                         fontSize = 14.sp,
                     )
@@ -270,7 +276,7 @@ private fun ChatRow(
             modifier = Modifier.widthIn(max = 280.dp),
         ) {
             Text(
-                text = if (self) "我" else msg.nickname.ifBlank { msg.uid },
+                text = if (self) t("我") else msg.nickname.ifBlank { msg.uid },
                 color = MainPalette.Secondary,
                 fontSize = 11.sp,
                 maxLines = 1,
@@ -356,17 +362,22 @@ private fun ChatComposerBar(
         Box(
             Modifier
                 .weight(1f)
+                .heightIn(min = 40.dp)
                 .clip(ChatComposerShape)
                 .background(MainPalette.Placeholder)
                 .padding(horizontal = 14.dp, vertical = 10.dp),
+            contentAlignment = Alignment.CenterStart,
         ) {
-            if (draft.isEmpty()) {
-                Text(
-                    text = "发条消息…",
-                    color = MainPalette.Hint,
-                    fontSize = 14.sp,
-                )
-            }
+            val composerStyle = TextStyle(
+                color = MainPalette.Ink,
+                fontSize = 14.sp,
+                lineHeight = 20.sp,
+                platformStyle = PlatformTextStyle(includeFontPadding = false),
+                lineHeightStyle = LineHeightStyle(
+                    alignment = LineHeightStyle.Alignment.Center,
+                    trim = LineHeightStyle.Trim.None,
+                ),
+            )
             BasicTextField(
                 value = draft,
                 onValueChange = onDraftChange,
@@ -374,14 +385,25 @@ private fun ChatComposerBar(
                     .fillMaxWidth()
                     .focusRequester(focusRequester)
                     .onFocusChanged { onFocusChange(it.isFocused) },
-                textStyle = TextStyle(
-                    color = MainPalette.Ink,
-                    fontSize = 14.sp,
-                ),
+                textStyle = composerStyle,
                 cursorBrush = SolidColor(MainPalette.Accent),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                 keyboardActions = KeyboardActions(onSend = { onSend() }),
                 maxLines = 4,
+                decorationBox = { inner ->
+                    Box(
+                        Modifier.fillMaxWidth(),
+                        contentAlignment = Alignment.CenterStart,
+                    ) {
+                        if (draft.isEmpty()) {
+                            Text(
+                                text = t("发条消息…"),
+                                style = composerStyle.copy(color = MainPalette.Hint),
+                            )
+                        }
+                        inner()
+                    }
+                },
             )
         }
         Spacer(Modifier.width(10.dp))
@@ -398,7 +420,7 @@ private fun ChatComposerBar(
             contentAlignment = Alignment.Center,
         ) {
             Text(
-                text = "发送",
+                text = t("发送"),
                 color = Color.White,
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 14.sp,

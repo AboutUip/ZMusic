@@ -38,6 +38,7 @@ import com.kite.zmusic.data.LyricWord
 import com.kite.zmusic.data.karaokeWords
 import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.main.wallpaperItemChrome
+import com.kite.zmusic.i18n.t
 
 private val PreviewShape = RoundedCornerShape(16.dp)
 private val ChipShape = RoundedCornerShape(12.dp)
@@ -59,7 +60,7 @@ internal fun WordLyricSettingsPage(
     ) {
         Spacer(Modifier.height(8.dp))
         Text(
-            text = "仅当正在播放的歌曲提供逐字歌词时才会按字渲染，否则仍按行显示。",
+            text = t("仅当正在播放的歌曲提供逐字歌词时才会按字渲染，否则仍按行显示。"),
             style = TextStyle(
                 color = MainPalette.Secondary,
                 fontSize = 13.sp,
@@ -72,13 +73,13 @@ internal fun WordLyricSettingsPage(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             RenderModeChip(
-                title = "按行渲染",
+                title = t("按行渲染"),
                 selected = !wordByWord,
                 onClick = { onWordByWordChange(false) },
                 modifier = Modifier.weight(1f),
             )
             RenderModeChip(
-                title = "按字渲染",
+                title = t("按字渲染"),
                 selected = wordByWord,
                 onClick = { onWordByWordChange(true) },
                 modifier = Modifier.weight(1f),
@@ -155,7 +156,7 @@ private fun WordLyricPreview(
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Text(
-            text = "预览",
+            text = t("预览"),
             style = TextStyle(
                 color = MainPalette.Secondary,
                 fontSize = 12.sp,
@@ -209,27 +210,24 @@ private fun demoWordLyricLines(): List<LrcLine> {
         }
         return LrcLine(start, words.joinToString("") { it.text }, words)
     }
-    return listOf(
-        line(0L, listOf("在" to 280L, "这" to 240L, "个" to 220L, "夜" to 320L, "晚" to 480L)),
-        line(
-            1600L,
-            listOf(
-                "我" to 220L,
-                "听" to 240L,
-                "见" to 260L,
-                "你" to 280L,
-                "的" to 200L,
-                "声" to 280L,
-                "音" to 520L,
-            ),
-        ),
-        line(
-            3600L,
-            listOf("像" to 240L, "风" to 260L, "穿" to 240L, "过" to 220L, "走" to 280L, "廊" to 520L),
-        ),
-        line(
-            5600L,
-            listOf("只" to 220L, "把" to 240L, "心" to 260L, "事" to 280L, "留" to 260L, "下" to 560L),
-        ),
-    )
+    return when (com.kite.zmusic.i18n.I18n.language) {
+        com.kite.zmusic.i18n.AppLanguage.English -> listOf(
+            line(0L, listOf("In" to 280L, " this" to 240L, " late" to 220L, " night" to 800L)),
+            line(1600L, listOf("I" to 220L, " hear" to 240L, " your" to 260L, " voice" to 800L)),
+            line(3600L, listOf("like" to 240L, " wind" to 260L, " down" to 240L, " the" to 220L, " hall" to 800L)),
+            line(5600L, listOf("leaving" to 320L, " thoughts" to 280L, " behind" to 800L)),
+        )
+        com.kite.zmusic.i18n.AppLanguage.Japanese -> listOf(
+            line(0L, listOf("こ" to 200L, "の" to 180L, "夜" to 280L, "に" to 400L)),
+            line(1600L, listOf("君" to 240L, "の" to 180L, "声" to 280L, "が" to 400L)),
+            line(3600L, listOf("風" to 240L, "の" to 180L, "よう" to 280L, "に" to 400L)),
+            line(5600L, listOf("心" to 240L, "を" to 180L, "残" to 240L, "して" to 500L)),
+        )
+        else -> listOf(
+            line(0L, listOf("在" to 280L, "这" to 240L, "个" to 220L, "夜" to 320L, "晚" to 480L)),
+            line(1600L, listOf("我" to 220L, "听" to 240L, "见" to 260L, "你" to 280L, "的" to 200L, "声" to 280L, "音" to 520L)),
+            line(3600L, listOf("像" to 240L, "风" to 260L, "穿" to 240L, "过" to 220L, "走" to 280L, "廊" to 520L)),
+            line(5600L, listOf("只" to 220L, "把" to 240L, "心" to 260L, "事" to 280L, "留" to 260L, "下" to 560L)),
+        )
+    }
 }

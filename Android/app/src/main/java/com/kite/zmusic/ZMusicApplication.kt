@@ -1,15 +1,18 @@
 package com.kite.zmusic
 
 import android.app.Application
+import android.content.Context
 import android.content.res.Configuration
+import com.kite.zmusic.data.LanguageStore
 import com.kite.zmusic.data.AlbumCollectionRepository
 import com.kite.zmusic.data.AlbumTracksCache
 import com.kite.zmusic.data.AudioQualityStore
 import com.kite.zmusic.data.LyricOverlayStore
 import com.kite.zmusic.data.LyricRenderStore
 import com.kite.zmusic.data.PersistentPlaybackStore
+import com.kite.zmusic.data.PersonalFmModeStore
 import com.kite.zmusic.data.ChromeGlassStore
-import com.kite.zmusic.data.ThemeStore
+import com.kite.zmusic.i18n.I18n
 import com.kite.zmusic.data.HomeFeedRepository
 import com.kite.zmusic.data.LibraryHomeRepository
 import com.kite.zmusic.data.LikedPlaylistRepository
@@ -58,10 +61,12 @@ class ZMusicApplication : Application() {
     val splashAccelStore get() = container.splashAccelStore
     val miniQuickSkipStore get() = container.miniQuickSkipStore
     val recentCollectionStore get() = container.recentCollectionStore
+    val personalFmModeStore get() = container.personalFmModeStore
     val lyricRenderStore: LyricRenderStore get() = container.lyricRenderStore
     val lyricOverlayStore: LyricOverlayStore get() = container.lyricOverlayStore
     val chromeGlassStore: ChromeGlassStore get() = container.chromeGlassStore
-    val themeStore: ThemeStore get() = container.themeStore
+    val themeStore get() = container.themeStore
+    val languageStore get() = container.languageStore
     val chromeWallpaperStore get() = container.chromeWallpaperStore
     val downloadAccelStore get() = container.downloadAccelStore
     val downloadAccelIndex get() = container.downloadAccelIndex
@@ -103,9 +108,17 @@ class ZMusicApplication : Application() {
     private lateinit var lyricOverlayController: LyricOverlayController
     internal val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
+    override fun attachBaseContext(base: Context) {
+        val language = LanguageStore.peek(base)
+        I18n.setLanguage(language)
+        super.attachBaseContext(I18n.wrapContext(base, language))
+    }
+
     override fun onCreate() {
         super.onCreate()
         container = AppContainer(this)
+        I18n.install(this, languageStore.current())
+        I18n.applyToApp(languageStore.current())
         container.networkMode.start()
         container.deviceLinkMonitor.start()
         container.trackExportRepository.onLibraryChanged = {

@@ -10,6 +10,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
+import com.kite.zmusic.i18n.t
 
 class CloudDiskRepository(
     context: Context,
@@ -52,11 +53,11 @@ class CloudDiskRepository(
     }
 
     suspend fun list(offset: Int, limit: Int = PAGE): Result<CloudDiskPage> = withContext(Dispatchers.IO) {
-        val cookie = cookieOrNull() ?: return@withContext Result.failure(IllegalStateException("请先登录"))
+        val cookie = cookieOrNull() ?: return@withContext Result.failure(IllegalStateException(t("请先登录")))
         runCatching {
             val json = userClient.userCloud(cookie, limit = limit, offset = offset)
             if (NcmJson.apiCode(json) != 200) {
-                error(NcmCloudParse.apiMessage(json, "暂时无法打开云盘"))
+                error(NcmCloudParse.apiMessage(json, t("暂时无法打开云盘")))
             }
             val page = NcmCloudParse.page(json)
             lastPage = if (offset <= 0) page else {
@@ -69,12 +70,12 @@ class CloudDiskRepository(
     }
 
     suspend fun delete(ids: List<Long>): String = withContext(Dispatchers.IO) {
-        val cookie = cookieOrNull() ?: return@withContext "请先登录"
-        if (ids.isEmpty()) return@withContext "请先选择歌曲"
+        val cookie = cookieOrNull() ?: return@withContext t("请先登录")
+        if (ids.isEmpty()) return@withContext t("请先选择歌曲")
         runCatching {
             val json = userClient.userCloudDel(ids, cookie)
             if (NcmJson.apiCode(json) != 200) {
-                NcmCloudParse.apiMessage(json, "删除失败")
+                NcmCloudParse.apiMessage(json, t("删除失败"))
             } else {
                 lastPage = lastPage?.let { prev ->
                     prev.copy(
@@ -82,25 +83,25 @@ class CloudDiskRepository(
                         count = (prev.count - ids.size).coerceAtLeast(0),
                     )
                 }
-                if (ids.size == 1) "已从云盘删除" else "已删除 ${ids.size} 首"
+                if (ids.size == 1) t("已从云盘删除") else t("已删除 %s 首", ids.size)
             }
-        }.getOrElse { "删除失败" }
+        }.getOrElse { t("删除失败") }
     }
 
     suspend fun match(sid: Long, asid: Long): String = withContext(Dispatchers.IO) {
-        val cookie = cookieOrNull() ?: return@withContext "请先登录"
+        val cookie = cookieOrNull() ?: return@withContext t("请先登录")
         val userId = requireUid()
-        if (userId <= 0L) return@withContext "暂时无法匹配"
+        if (userId <= 0L) return@withContext t("暂时无法匹配")
         runCatching {
             val json = userClient.cloudMatch(userId, sid, asid, cookie)
             if (NcmJson.apiCode(json) != 200) {
-                NcmCloudParse.apiMessage(json, if (asid == 0L) "取消匹配失败" else "匹配失败")
+                NcmCloudParse.apiMessage(json, if (asid == 0L) t("取消匹配失败") else t("匹配失败"))
             } else if (asid == 0L) {
-                "已取消匹配"
+                t("已取消匹配")
             } else {
-                "已匹配歌曲信息"
+                t("已匹配歌曲信息")
             }
-        }.getOrElse { if (asid == 0L) "取消匹配失败" else "匹配失败" }
+        }.getOrElse { if (asid == 0L) t("取消匹配失败") else t("匹配失败") }
     }
 
     suspend fun lyric(sid: Long): String? = withContext(Dispatchers.IO) {
@@ -119,12 +120,12 @@ class CloudDiskRepository(
     }
 
     suspend fun importPublicTrack(track: TrackRow): String = withContext(Dispatchers.IO) {
-        val cookie = cookieOrNull() ?: return@withContext "请先登录"
-        if (track.id <= 0L) return@withContext "这首歌无法保存到云盘"
+        val cookie = cookieOrNull() ?: return@withContext t("请先登录")
+        if (track.id <= 0L) return@withContext t("这首歌无法保存到云盘")
         runCatching {
             val urlJson = userClient.songUrlV1(listOf(track.id), cookie)
             val meta = NcmCloudParse.songFileMeta(urlJson, track.id)
-                ?: error("暂时拿不到音源信息")
+                ?: error(t("暂时拿不到音源信息"))
             val br = if (meta.bitrate >= 1000) meta.bitrate / 1000 else meta.bitrate.coerceAtLeast(1)
             val json = userClient.cloudImport(
                 cookie = cookie,
@@ -138,25 +139,25 @@ class CloudDiskRepository(
                 id = track.id,
             )
             if (NcmJson.apiCode(json) != 200) {
-                NcmCloudParse.apiMessage(json, "保存到云盘失败")
+                NcmCloudParse.apiMessage(json, t("保存到云盘失败"))
             } else {
-                "已保存到云盘"
+                t("已保存到云盘")
             }
         }.getOrElse { e ->
-            e.message?.takeIf { it.isNotBlank() } ?: "保存到云盘失败"
+            e.message?.takeIf { it.isNotBlank() } ?: t("保存到云盘失败")
         }
     }
 
     suspend fun upload(uri: Uri): String = withContext(Dispatchers.IO) {
-        val cookie = cookieOrNull() ?: return@withContext "请先登录"
+        val cookie = cookieOrNull() ?: return@withContext t("请先登录")
         val tmp = File(app.cacheDir, "cloud-up-${System.nanoTime()}")
         try {
             val name = displayName(uri)
             val mime = app.contentResolver.getType(uri).orEmpty().ifBlank { "audio/mpeg" }
             app.contentResolver.openInputStream(uri)?.use { input ->
                 tmp.outputStream().use { input.copyTo(it) }
-            } ?: return@withContext "无法读取文件"
-            if (!tmp.isFile || tmp.length() <= 0L) return@withContext "文件是空的"
+            } ?: return@withContext t("无法读取文件")
+            if (!tmp.isFile || tmp.length() <= 0L) return@withContext t("文件是空的")
             val tags = readTags(uri, name)
             val md5 = md5Hex(tmp)
             val tokenJson = runCatching {
@@ -168,7 +169,7 @@ class CloudDiskRepository(
                     val ok = uploadClient.putUpload(token.uploadUrl, tmp, token.uploadToken, mime)
                     if (!ok) {
                         val fallback = uploadClient.cloudUploadFile(cookie, tmp, name, mime)
-                        return@withContext finishUpload(fallback, "上传失败")
+                        return@withContext finishUpload(fallback, t("上传失败"))
                     }
                 }
                 val done = uploadClient.cloudUploadComplete(
@@ -181,9 +182,9 @@ class CloudDiskRepository(
                     artist = tags.artist,
                     album = tags.album,
                 )
-                return@withContext finishUpload(done, "上传失败")
+                return@withContext finishUpload(done, t("上传失败"))
             }
-            finishUpload(uploadClient.cloudUploadFile(cookie, tmp, name, mime), "上传失败")
+            finishUpload(uploadClient.cloudUploadFile(cookie, tmp, name, mime), t("上传失败"))
         } finally {
             runCatching { tmp.delete() }
         }
@@ -191,7 +192,7 @@ class CloudDiskRepository(
 
     private fun finishUpload(json: org.json.JSONObject, fallback: String): String {
         return if (NcmJson.apiCode(json) == 200) {
-            "已上传到云盘"
+            t("已上传到云盘")
         } else {
             NcmCloudParse.apiMessage(json, fallback)
         }

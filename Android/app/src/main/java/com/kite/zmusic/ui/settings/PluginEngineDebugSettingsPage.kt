@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.sp
 import com.kite.zmusic.ui.main.MainControls
 import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.main.wallpaperItemChrome
+import com.kite.zmusic.i18n.t
 
 @Composable
 fun PluginEngineDebugSettingsPage(
@@ -44,7 +45,7 @@ fun PluginEngineDebugSettingsPage(
     ) {
         Spacer(Modifier.height(8.dp))
         Text(
-            text = "仅在排查插件问题时打开。下次冷启动后生效；开启后 Dock 会出现「调优」。",
+            text = t("仅在排查插件问题时打开。下次冷启动后生效；开启后 Dock 会出现「调优」。"),
             style = TextStyle(
                 color = MainPalette.Secondary,
                 fontSize = 13.sp,
@@ -69,7 +70,7 @@ fun PluginEngineDebugSettingsPage(
         ) {
             Column(Modifier.weight(1f)) {
                 Text(
-                    text = "插件引擎调试",
+                    text = t("插件引擎调试"),
                     style = TextStyle(
                         color = MainPalette.Ink,
                         fontSize = 15.sp,
@@ -95,4 +96,4 @@ fun PluginEngineDebugSettingsPage(
 }
 
 internal fun pluginEngineDebugSubtitle(enabled: Boolean): String =
-    if (enabled) "已开启" else "已关闭"
+    if (enabled) t("已开启") else t("已关闭")

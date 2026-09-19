@@ -77,6 +77,8 @@ import com.kite.zmusic.data.AppAppearance
 import com.kite.zmusic.data.ChromeGlassStyle
 import com.kite.zmusic.data.MiniQuickSkipAxis
 import com.kite.zmusic.data.ServerConfigRepository
+import com.kite.zmusic.i18n.I18n
+import com.kite.zmusic.i18n.t
 import com.kite.zmusic.plugin.PluginEngineVersion
 import com.kite.zmusic.ui.common.GlassAlertDialog
 import com.kite.zmusic.ui.common.GlassPromptField
@@ -157,6 +159,7 @@ fun SettingsScreen(
     val pluginEngineDebugVisible = remember { MutableTransitionState(false) }
     val glassVisible = remember { MutableTransitionState(false) }
     val appearanceVisible = remember { MutableTransitionState(false) }
+    val languageVisible = remember { MutableTransitionState(false) }
     val wallpaperVisible = remember { MutableTransitionState(false) }
     var permissionSnapshot by remember { mutableStateOf(AppPermissionSnapshot.read(context)) }
     val audioQualityStore = remember {
@@ -209,6 +212,10 @@ fun SettingsScreen(
         (context.applicationContext as ZMusicApplication).themeStore
     }
     val appearance by themeStore.appearance.collectAsStateWithLifecycle()
+    val languageStore = remember {
+        (context.applicationContext as ZMusicApplication).languageStore
+    }
+    val language by languageStore.language.collectAsStateWithLifecycle()
     val wallpaperStore = remember {
         (context.applicationContext as ZMusicApplication).chromeWallpaperStore
     }
@@ -231,7 +238,7 @@ fun SettingsScreen(
     fun applyGlass() {
         if (glassDraft == glassStyle) return
         glassStore.apply(glassDraft)
-        context.showIslandNotice("样式已应用")
+        context.showIslandNotice(t("样式已应用"))
     }
     fun closeGlassPage() {
         confirmGlassLeave = false
@@ -256,7 +263,7 @@ fun SettingsScreen(
                 .statusBarsPadding(),
         ) {
             SettingsTopBar(
-                title = "设置",
+                title = t("设置"),
                 onBack = onBack,
             )
             Column(
@@ -269,12 +276,12 @@ fun SettingsScreen(
             ) {
                 Spacer(Modifier.height(8.dp))
                 SettingsGroup(
-                    title = "连接",
+                    title = t("连接"),
                     reveal = reveal.value,
                     delay = 0f,
                 ) {
                     SettingsRow(
-                        title = "服务器",
+                        title = t("服务器"),
                         subtitle = endpointLabel,
                         icon = ZIcons.Server,
                         tint = Color(0xFF5070F0),
@@ -291,7 +298,7 @@ fun SettingsScreen(
                             .background(MainPalette.Hairline),
                     )
                     SettingsRow(
-                        title = "社区服务器",
+                        title = t("社区服务器"),
                         subtitle = communityLabel,
                         icon = ZIcons.Handshake,
                         tint = Color(0xFF6B5CE7),
@@ -303,12 +310,12 @@ fun SettingsScreen(
                 }
                 Spacer(Modifier.height(22.dp))
                 SettingsGroup(
-                    title = "播放",
+                    title = t("播放"),
                     reveal = reveal.value,
                     delay = 0.08f,
                 ) {
                     SettingsRow(
-                        title = "音源默认质量",
+                        title = t("音源默认质量"),
                         subtitle = "${audioQuality.title} · ${audioQuality.caption}",
                         icon = ZIcons.GraphicEq,
                         tint = Color(0xFFB08D57),
@@ -322,11 +329,11 @@ fun SettingsScreen(
                             .background(MainPalette.Hairline),
                     )
                     SettingsRow(
-                        title = "持续播放",
+                        title = t("持续播放"),
                         subtitle = if (persistentPlayback) {
-                            "已开启 · 与其他应用同时出声"
+                            t("已开启 · 与其他应用同时出声")
                         } else {
-                            "已关闭 · 按系统规则让出"
+                            t("已关闭 · 按系统规则让出")
                         },
                         icon = ZIcons.Headset,
                         tint = Color(0xFF2E9B6B),
@@ -340,11 +347,11 @@ fun SettingsScreen(
                             .background(MainPalette.Hairline),
                     )
                     SettingsRow(
-                        title = "逐字歌词",
+                        title = t("逐字歌词"),
                         subtitle = if (lyricWordByWord) {
-                            "按字渲染 · 需歌曲提供逐字歌词"
+                            t("按字渲染 · 需歌曲提供逐字歌词")
                         } else {
-                            "按行渲染"
+                            t("按行渲染")
                         },
                         icon = ZIcons.Lyrics,
                         tint = Color(0xFF5B8DEF),
@@ -358,7 +365,7 @@ fun SettingsScreen(
                             .background(MainPalette.Hairline),
                     )
                     SettingsRow(
-                        title = "快速切歌",
+                        title = t("快速切歌"),
                         subtitle = quickSkipSubtitle(miniQuickSkip),
                         icon = ZIcons.SkipNext,
                         tint = Color(0xFFC45C7A),
@@ -367,16 +374,16 @@ fun SettingsScreen(
                 }
                 Spacer(Modifier.height(22.dp))
                 SettingsGroup(
-                    title = "缓存",
+                    title = t("缓存"),
                     reveal = reveal.value,
                     delay = 0.12f,
                 ) {
                     SettingsRow(
-                        title = "下载加速",
+                        title = t("下载加速"),
                         subtitle = if (downloadAccel) {
-                            "已开启 · 命中本机缓存则跳过网络"
+                            t("已开启 · 命中本机缓存则跳过网络")
                         } else {
-                            "已关闭 · 始终按音质在线拉取"
+                            t("已关闭 · 始终按音质在线拉取")
                         },
                         icon = ZIcons.Speed,
                         tint = Color(0xFF3D9B8F),
@@ -390,11 +397,11 @@ fun SettingsScreen(
                             .background(MainPalette.Hairline),
                     )
                     SettingsRow(
-                        title = "实时缓存",
+                        title = t("实时缓存"),
                         subtitle = if (realtimeCachePrefs.enabled) {
-                            "已开启 · ${realtimeCachePrefs.mode.title}模式"
+                            t("已开启 · %s模式", realtimeCachePrefs.mode.title)
                         } else {
-                            "已关闭 · 不采样不走本地缓存"
+                            t("已关闭 · 不采样不走本地缓存")
                         },
                         icon = ZIcons.Storage,
                         tint = Color(0xFF5070F0),
@@ -403,12 +410,26 @@ fun SettingsScreen(
                 }
                 Spacer(Modifier.height(22.dp))
                 SettingsGroup(
-                    title = "主题",
+                    title = t("主题"),
                     reveal = reveal.value,
                     delay = 0.14f,
                 ) {
                     SettingsRow(
-                        title = "外观",
+                        title = t("语言"),
+                        subtitle = language.nativeName,
+                        icon = ZIcons.Translate,
+                        tint = Color(0xFF3D8BFF),
+                        onClick = { languageVisible.targetState = true },
+                    )
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(start = 62.dp)
+                            .height(0.5.dp)
+                            .background(MainPalette.Hairline),
+                    )
+                    SettingsRow(
+                        title = t("外观"),
                         subtitle = appearance.subtitle,
                         icon = ZIcons.DarkMode,
                         tint = Color(0xFF6B7CFF),
@@ -422,7 +443,7 @@ fun SettingsScreen(
                             .background(MainPalette.Hairline),
                     )
                     SettingsRow(
-                        title = "液态玻璃样式",
+                        title = t("液态玻璃样式"),
                         subtitle = glassStyle.settingsSubtitle,
                         icon = ZIcons.BlurOn,
                         tint = Color(0xFF2BB3B0),
@@ -439,7 +460,7 @@ fun SettingsScreen(
                             .background(MainPalette.Hairline),
                     )
                     SettingsRow(
-                        title = "自定义背景",
+                        title = t("自定义背景"),
                         subtitle = wallpaper.settingsSubtitle,
                         icon = ZIcons.Wallpaper,
                         tint = Color(0xFF8B6BFF),
@@ -448,12 +469,12 @@ fun SettingsScreen(
                 }
                 Spacer(Modifier.height(22.dp))
                 SettingsGroup(
-                    title = "应用",
+                    title = t("应用"),
                     reveal = reveal.value,
                     delay = 0.20f,
                 ) {
                     SettingsRow(
-                        title = "权限",
+                        title = t("权限"),
                         subtitle = permissionSnapshot.subtitle,
                         icon = ZIcons.Security,
                         tint = Color(0xFF5E5CE6),
@@ -467,11 +488,11 @@ fun SettingsScreen(
                             .background(MainPalette.Hairline),
                     )
                     SettingsRow(
-                        title = "预测性返回",
+                        title = t("预测性返回"),
                         subtitle = if (predictiveBack) {
-                            "已开启 · 侧滑跟手预览"
+                            t("已开启 · 侧滑跟手预览")
                         } else {
-                            "已关闭 · 返回不跟手（默认）"
+                            t("已关闭 · 返回不跟手（默认）")
                         },
                         icon = ZIcons.Swipe,
                         tint = Color(0xFF3D7CFF),
@@ -485,7 +506,7 @@ fun SettingsScreen(
                             .background(MainPalette.Hairline),
                     )
                     SettingsRow(
-                        title = "加速启动动画",
+                        title = t("加速启动动画"),
                         subtitle = splashAccelSubtitle(splashAccel),
                         icon = ZIcons.Speed,
                         tint = Color(0xFFE07A3D),
@@ -499,7 +520,7 @@ fun SettingsScreen(
                             .background(MainPalette.Hairline),
                     )
                     SettingsRow(
-                        title = "横屏模式",
+                        title = t("横屏模式"),
                         subtitle = landscapeModeSubtitle(landscapeMode),
                         icon = ZIcons.ScreenRotation,
                         tint = Color(0xFF4A8FA8),
@@ -509,7 +530,7 @@ fun SettingsScreen(
                 if (pluginSettingRows.isNotEmpty()) {
                     Spacer(Modifier.height(22.dp))
                     SettingsGroup(
-                        title = "插件",
+                        title = t("插件"),
                         reveal = reveal.value,
                         delay = 0.24f,
                     ) {
@@ -543,8 +564,8 @@ fun SettingsScreen(
                     delay = 0.26f,
                 ) {
                     SettingsRow(
-                        title = "关于",
-                        subtitle = "版本、开发者与协议",
+                        title = t("关于"),
+                        subtitle = t("版本、开发者与协议"),
                         icon = ZIcons.Info,
                         tint = Color(0xFF5B7CFA),
                         onClick = { aboutVisible.targetState = true },
@@ -557,8 +578,8 @@ fun SettingsScreen(
                             .background(MainPalette.Hairline),
                     )
                     SettingsRow(
-                        title = "更新日志",
-                        subtitle = "按版本查阅更新预览",
+                        title = t("更新日志"),
+                        subtitle = t("按版本查阅更新预览"),
                         icon = ZIcons.History,
                         tint = Color(0xFF2A9D8F),
                         onClick = { changelogVisible.targetState = true },
@@ -571,7 +592,7 @@ fun SettingsScreen(
                             .background(MainPalette.Hairline),
                     )
                     SettingsRow(
-                        title = "参与测试计划",
+                        title = t("参与测试计划"),
                         subtitle = testPlanSubtitle(testPlan),
                         icon = ZIcons.Science,
                         tint = Color(0xFFC9A227),
@@ -585,7 +606,7 @@ fun SettingsScreen(
                             .background(MainPalette.Hairline),
                     )
                     SettingsRow(
-                        title = "插件引擎调试",
+                        title = t("插件引擎调试"),
                         subtitle = pluginEngineDebugSubtitle(pluginEngineDebug),
                         icon = ZIcons.BugReport,
                         tint = Color(0xFF7B6B9E),
@@ -599,8 +620,8 @@ fun SettingsScreen(
                             .background(MainPalette.Hairline),
                     )
                     SettingsRow(
-                        title = "赞赏",
-                        subtitle = "请小萱喝一口热乎的",
+                        title = t("赞赏"),
+                        subtitle = t("请小萱喝一口热乎的"),
                         icon = ZIcons.Favorite,
                         tint = Color(0xFFE85D75),
                         onClick = { showAppreciate = true },
@@ -613,8 +634,8 @@ fun SettingsScreen(
                             .background(MainPalette.Hairline),
                     )
                     SettingsRow(
-                        title = "赞助名单",
-                        subtitle = "谢谢投喂的人",
+                        title = t("赞助名单"),
+                        subtitle = t("谢谢投喂的人"),
                         icon = ZIcons.Sponsor,
                         tint = Color(0xFFE0A85C),
                         onClick = { sponsorVisible.targetState = true },
@@ -627,8 +648,8 @@ fun SettingsScreen(
                             .background(MainPalette.Hairline),
                     )
                     SettingsRow(
-                        title = "赞助商",
-                        subtitle = "支持本应用的伙伴",
+                        title = t("赞助商"),
+                        subtitle = t("支持本应用的伙伴"),
                         icon = ZIcons.Handshake,
                         tint = Color(0xFF3478F6),
                         onClick = { partnersVisible.targetState = true },
@@ -636,13 +657,13 @@ fun SettingsScreen(
                 }
                 Spacer(Modifier.height(22.dp))
                 SettingsGroup(
-                    title = "账号",
+                    title = t("账号"),
                     reveal = reveal.value,
                     delay = 0.34f,
                 ) {
                     SettingsRow(
-                        title = "退出登录",
-                        subtitle = "当前账号会退出，播放也会停止",
+                        title = t("退出登录"),
+                        subtitle = t("当前账号会退出，播放也会停止"),
                         icon = ZIcons.Logout,
                         tint = MainPalette.Accent,
                         destructive = true,
@@ -654,7 +675,7 @@ fun SettingsScreen(
         SettingsDrillHost(
             visibleState = qualityVisible,
             landscape = landscape,
-            title = "音源默认质量",
+            title = t("音源默认质量"),
             onBack = { qualityVisible.targetState = false },
         ) {
             AudioQualitySettingsPage(
@@ -662,7 +683,7 @@ fun SettingsScreen(
                 onSelect = { next ->
                     if (next != audioQuality) {
                         audioQualityStore.set(next)
-                        context.showIslandNotice("已切换到${next.title}")
+                        context.showIslandNotice(t("已切换到%s", next.title))
                     }
                 },
                 contentBottomInset = contentBottomInset,
@@ -672,7 +693,7 @@ fun SettingsScreen(
         SettingsDrillHost(
             visibleState = persistentPlaybackVisible,
             landscape = landscape,
-            title = "持续播放",
+            title = t("持续播放"),
             onBack = { persistentPlaybackVisible.targetState = false },
         ) {
             PersistentPlaybackSettingsPage(
@@ -680,7 +701,7 @@ fun SettingsScreen(
                 onEnabledChange = { next ->
                     if (next == persistentPlayback) return@PersistentPlaybackSettingsPage
                     persistentPlaybackStore.setEnabled(next)
-                    context.showIslandNotice(if (next) "已开启持续播放" else "已关闭持续播放")
+                    context.showIslandNotice(if (next) t("已开启持续播放") else t("已关闭持续播放"))
                 },
                 contentBottomInset = contentBottomInset,
                 modifier = Modifier.fillMaxSize(),
@@ -689,7 +710,7 @@ fun SettingsScreen(
         SettingsDrillHost(
             visibleState = wordLyricVisible,
             landscape = landscape,
-            title = "逐字歌词",
+            title = t("逐字歌词"),
             onBack = { wordLyricVisible.targetState = false },
         ) {
             WordLyricSettingsPage(
@@ -697,7 +718,7 @@ fun SettingsScreen(
                 onWordByWordChange = { next ->
                     if (next == lyricWordByWord) return@WordLyricSettingsPage
                     lyricRenderStore.setWordByWord(next)
-                    context.showIslandNotice(if (next) "已切换到按字渲染" else "已切换到按行渲染")
+                    context.showIslandNotice(if (next) t("已切换到按字渲染") else t("已切换到按行渲染"))
                 },
                 contentBottomInset = contentBottomInset,
                 modifier = Modifier.fillMaxSize(),
@@ -706,7 +727,7 @@ fun SettingsScreen(
         SettingsDrillHost(
             visibleState = quickSkipVisible,
             landscape = landscape,
-            title = "快速切歌",
+            title = t("快速切歌"),
             onBack = { quickSkipVisible.targetState = false },
         ) {
             QuickSkipSettingsPage(
@@ -715,7 +736,7 @@ fun SettingsScreen(
                     if (next == miniQuickSkip.enabled) return@QuickSkipSettingsPage
                     miniQuickSkipStore.setEnabled(next)
                     context.showIslandNotice(
-                        if (next) "已开启快速切歌" else "已关闭快速切歌",
+                        if (next) t("已开启快速切歌") else t("已关闭快速切歌"),
                     )
                 },
                 onAxisChange = { next ->
@@ -723,9 +744,9 @@ fun SettingsScreen(
                     miniQuickSkipStore.setAxis(next)
                     context.showIslandNotice(
                         if (next == MiniQuickSkipAxis.Vertical) {
-                            "已切换到上下切歌"
+                            t("已切换到上下切歌")
                         } else {
-                            "已切换到左右切歌"
+                            t("已切换到左右切歌")
                         },
                     )
                 },
@@ -736,7 +757,7 @@ fun SettingsScreen(
         SettingsDrillHost(
             visibleState = cacheVisible,
             landscape = landscape,
-            title = "下载加速",
+            title = t("下载加速"),
             onBack = { cacheVisible.targetState = false },
         ) {
             CacheSettingsPage(
@@ -745,7 +766,7 @@ fun SettingsScreen(
                     if (next == downloadAccel) return@CacheSettingsPage
                     downloadAccelStore.setEnabled(next)
                     context.showIslandNotice(
-                        if (next) "已开启下载加速" else "已关闭下载加速",
+                        if (next) t("已开启下载加速") else t("已关闭下载加速"),
                     )
                 },
                 contentBottomInset = contentBottomInset,
@@ -755,7 +776,7 @@ fun SettingsScreen(
         SettingsDrillHost(
             visibleState = realtimeCacheVisible,
             landscape = landscape,
-            title = "实时缓存",
+            title = t("实时缓存"),
             onBack = { realtimeCacheVisible.targetState = false },
         ) {
             RealtimeCacheSettingsPage(
@@ -764,14 +785,14 @@ fun SettingsScreen(
                     if (next == realtimeCachePrefs.enabled) return@RealtimeCacheSettingsPage
                     realtimeCacheStore.setEnabled(next)
                     context.showIslandNotice(
-                        if (next) "已开启实时缓存" else "已关闭实时缓存",
+                        if (next) t("已开启实时缓存") else t("已关闭实时缓存"),
                     )
                 },
                 mode = realtimeCachePrefs.mode,
                 onModeChange = { next ->
                     if (!next.available || next == realtimeCachePrefs.mode) return@RealtimeCacheSettingsPage
                     realtimeCacheStore.setMode(next)
-                    context.showIslandNotice("已切换到${next.title}模式")
+                    context.showIslandNotice(t("已切换到%s模式", next.title))
                 },
                 spaceValue = realtimeCachePrefs.spaceValue,
                 spaceUnit = realtimeCachePrefs.spaceUnit,
@@ -782,7 +803,7 @@ fun SettingsScreen(
                 onClearCache = {
                     settingsScope.launch {
                         realtimeCache.clearAudioCache()
-                        context.showIslandNotice("已清空缓存")
+                        context.showIslandNotice(t("已清空缓存"))
                     }
                 },
                 contentBottomInset = contentBottomInset,
@@ -792,10 +813,10 @@ fun SettingsScreen(
         SettingsDrillHost(
             visibleState = glassVisible,
             landscape = landscape,
-            title = "液态玻璃样式",
+            title = t("液态玻璃样式"),
             onBack = { requestCloseGlass() },
             backEnabled = !confirmGlassLeave,
-            actionLabel = "应用",
+            actionLabel = t("应用"),
             actionEnabled = glassDraft != glassStyle,
             onAction = { applyGlass() },
         ) {
@@ -812,9 +833,27 @@ fun SettingsScreen(
             )
         }
         SettingsDrillHost(
+            visibleState = languageVisible,
+            landscape = landscape,
+            title = t("语言"),
+            onBack = { languageVisible.targetState = false },
+        ) {
+            LanguageSettingsPage(
+                selected = language,
+                onSelect = { next ->
+                    if (next == language) return@LanguageSettingsPage
+                    languageStore.set(next)
+                    I18n.applyToApp(next)
+                    I18n.relaunchApp(context)
+                },
+                contentBottomInset = contentBottomInset,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        SettingsDrillHost(
             visibleState = appearanceVisible,
             landscape = landscape,
-            title = "外观",
+            title = t("外观"),
             onBack = { appearanceVisible.targetState = false },
         ) {
             AppearanceSettingsPage(
@@ -824,9 +863,9 @@ fun SettingsScreen(
                     themeStore.set(next)
                     context.showIslandNotice(
                         when (next) {
-                            AppAppearance.Light -> "已切换到浅色"
-                            AppAppearance.Dark -> "已切换到深色"
-                            AppAppearance.System -> "已跟随系统外观"
+                            AppAppearance.Light -> t("已切换到浅色")
+                            AppAppearance.Dark -> t("已切换到深色")
+                            AppAppearance.System -> t("已跟随系统外观")
                         },
                     )
                 },
@@ -837,7 +876,7 @@ fun SettingsScreen(
         SettingsDrillHost(
             visibleState = wallpaperVisible,
             landscape = landscape,
-            title = "自定义背景",
+            title = t("自定义背景"),
             onBack = { wallpaperVisible.targetState = false },
             skipWallpaper = true,
         ) {
@@ -851,7 +890,7 @@ fun SettingsScreen(
         SettingsDrillHost(
             visibleState = aboutVisible,
             landscape = landscape,
-            title = "关于",
+            title = t("关于"),
             onBack = { aboutVisible.targetState = false },
             backEnabled = legalKind == null && !showAppreciate,
         ) {
@@ -865,7 +904,7 @@ fun SettingsScreen(
         SettingsDrillHost(
             visibleState = changelogVisible,
             landscape = landscape,
-            title = "更新日志",
+            title = t("更新日志"),
             onBack = { changelogVisible.targetState = false },
         ) {
             ChangelogPage(
@@ -876,7 +915,7 @@ fun SettingsScreen(
         SettingsDrillHost(
             visibleState = sponsorVisible,
             landscape = landscape,
-            title = "赞助名单",
+            title = t("赞助名单"),
             onBack = { sponsorVisible.targetState = false },
         ) {
             SponsorListPage(
@@ -887,7 +926,7 @@ fun SettingsScreen(
         SettingsDrillHost(
             visibleState = partnersVisible,
             landscape = landscape,
-            title = "赞助商",
+            title = t("赞助商"),
             onBack = { partnersVisible.targetState = false },
         ) {
             PartnerListPage(
@@ -898,7 +937,7 @@ fun SettingsScreen(
         SettingsDrillHost(
             visibleState = permissionsVisible,
             landscape = landscape,
-            title = "权限",
+            title = t("权限"),
             onBack = { closePermissions() },
         ) {
             PermissionSettingsPage(
@@ -909,7 +948,7 @@ fun SettingsScreen(
         SettingsDrillHost(
             visibleState = predictiveBackVisible,
             landscape = landscape,
-            title = "预测性返回",
+            title = t("预测性返回"),
             onBack = { predictiveBackVisible.targetState = false },
         ) {
             PredictiveBackSettingsPage(
@@ -918,7 +957,7 @@ fun SettingsScreen(
                     if (next == predictiveBack) return@PredictiveBackSettingsPage
                     predictiveBackStore.setEnabled(next)
                     context.showIslandNotice(
-                        if (next) "已开启预测性返回" else "已关闭预测性返回",
+                        if (next) t("已开启预测性返回") else t("已关闭预测性返回"),
                     )
                 },
                 contentBottomInset = contentBottomInset,
@@ -928,7 +967,7 @@ fun SettingsScreen(
         SettingsDrillHost(
             visibleState = splashAccelVisible,
             landscape = landscape,
-            title = "加速启动动画",
+            title = t("加速启动动画"),
             onBack = { splashAccelVisible.targetState = false },
         ) {
             SplashAccelSettingsPage(
@@ -937,7 +976,7 @@ fun SettingsScreen(
                     if (next == splashAccel) return@SplashAccelSettingsPage
                     splashAccelStore.setEnabled(next)
                     context.showIslandNotice(
-                        if (next) "已开启加速启动动画" else "已关闭加速启动动画",
+                        if (next) t("已开启加速启动动画") else t("已关闭加速启动动画"),
                     )
                 },
                 contentBottomInset = contentBottomInset,
@@ -947,7 +986,7 @@ fun SettingsScreen(
         SettingsDrillHost(
             visibleState = landscapeModeVisible,
             landscape = landscape,
-            title = "横屏模式",
+            title = t("横屏模式"),
             onBack = { landscapeModeVisible.targetState = false },
         ) {
             LandscapeModeSettingsPage(
@@ -956,7 +995,7 @@ fun SettingsScreen(
                     if (next == landscapeMode) return@LandscapeModeSettingsPage
                     landscapeModeStore.setEnabled(next)
                     context.showIslandNotice(
-                        if (next) "已开启横屏模式" else "已关闭横屏模式",
+                        if (next) t("已开启横屏模式") else t("已关闭横屏模式"),
                     )
                 },
                 contentBottomInset = contentBottomInset,
@@ -966,7 +1005,7 @@ fun SettingsScreen(
         SettingsDrillHost(
             visibleState = testPlanVisible,
             landscape = landscape,
-            title = "参与测试计划",
+            title = t("参与测试计划"),
             onBack = { testPlanVisible.targetState = false },
         ) {
             TestPlanSettingsPage(
@@ -975,7 +1014,7 @@ fun SettingsScreen(
                     if (next == testPlan) return@TestPlanSettingsPage
                     appUpdateStore.testPlan = next
                     context.showIslandNotice(
-                        if (next) "已开启测试计划" else "已关闭测试计划",
+                        if (next) t("已开启测试计划") else t("已关闭测试计划"),
                     )
                 },
                 contentBottomInset = contentBottomInset,
@@ -985,7 +1024,7 @@ fun SettingsScreen(
         SettingsDrillHost(
             visibleState = pluginEngineDebugVisible,
             landscape = landscape,
-            title = "插件引擎调试",
+            title = t("插件引擎调试"),
             onBack = { pluginEngineDebugVisible.targetState = false },
         ) {
             PluginEngineDebugSettingsPage(
@@ -994,7 +1033,7 @@ fun SettingsScreen(
                     if (next == pluginEngineDebug) return@PluginEngineDebugSettingsPage
                     pluginDebugStore.setEnabled(next)
                     context.showIslandNotice(
-                        if (next) "已开启" else "已关闭",
+                        if (next) t("已开启") else t("已关闭"),
                     )
                 },
                 contentBottomInset = contentBottomInset,
@@ -1005,15 +1044,15 @@ fun SettingsScreen(
 
     if (editServer) {
         GlassAlertDialog(
-            title = "服务器",
-            message = "测试通过后才会保存",
-            confirmLabel = "保存",
+            title = t("服务器"),
+            message = t("测试通过后才会保存"),
+            confirmLabel = t("保存"),
             confirmEnabled = !vm.busy,
             onConfirm = {
                 vm.saveAndConnect {
                     endpointLabel = maskEndpoint(serverConfig.currentEndpoint())
                     editServer = false
-                    context.showIslandNotice("服务器已更新")
+                    context.showIslandNotice(t("服务器已更新"))
                 }
             },
             onDismiss = { if (!vm.busy) editServer = false },
@@ -1021,7 +1060,7 @@ fun SettingsScreen(
                 GlassPromptField(
                     value = vm.host,
                     onValueChange = vm::onHostChange,
-                    placeholder = "主机 / IP",
+                    placeholder = t("主机 / IP"),
                     maxLength = 253,
                     keyboardOptions = KeyboardOptions(
                         keyboardType = KeyboardType.Uri,
@@ -1032,7 +1071,7 @@ fun SettingsScreen(
                 GlassPromptField(
                     value = vm.portText,
                     onValueChange = vm::onPortChange,
-                    placeholder = "端口",
+                    placeholder = t("端口"),
                     maxLength = 5,
                     keyboardOptions = KeyboardOptions(
                         keyboardType = KeyboardType.Number,
@@ -1069,15 +1108,15 @@ fun SettingsScreen(
     }
     if (editCommunity) {
         GlassAlertDialog(
-            title = "社区服务器",
-            message = "仅用于社区登录提交，与音乐服务器分开。测试通过后才会保存。",
-            confirmLabel = "保存",
+            title = t("社区服务器"),
+            message = t("仅用于社区登录提交，与音乐服务器分开。测试通过后才会保存。"),
+            confirmLabel = t("保存"),
             confirmEnabled = !communityVm.busy,
             onConfirm = {
                 communityVm.saveAndConnect {
                     communityLabel = maskEndpoint(communityStore.current())
                     editCommunity = false
-                    context.showIslandNotice("社区服务器已更新")
+                    context.showIslandNotice(t("社区服务器已更新"))
                 }
             },
             onDismiss = { if (!communityVm.busy) editCommunity = false },
@@ -1085,7 +1124,7 @@ fun SettingsScreen(
                 GlassPromptField(
                     value = communityVm.host,
                     onValueChange = communityVm::onHostChange,
-                    placeholder = "主机 / IP",
+                    placeholder = t("主机 / IP"),
                     maxLength = 253,
                     keyboardOptions = KeyboardOptions(
                         keyboardType = KeyboardType.Uri,
@@ -1096,7 +1135,7 @@ fun SettingsScreen(
                 GlassPromptField(
                     value = communityVm.portText,
                     onValueChange = communityVm::onPortChange,
-                    placeholder = "端口",
+                    placeholder = t("端口"),
                     maxLength = 5,
                     keyboardOptions = KeyboardOptions(
                         keyboardType = KeyboardType.Number,
@@ -1133,9 +1172,9 @@ fun SettingsScreen(
     }
     if (confirmLogout) {
         GlassAlertDialog(
-            title = "退出登录",
-            message = "当前账号会退出，播放也会停止。",
-            confirmLabel = "退出",
+            title = t("退出登录"),
+            message = t("当前账号会退出，播放也会停止。"),
+            confirmLabel = t("退出"),
             confirmDestructive = true,
             onConfirm = {
                 confirmLogout = false
@@ -1148,7 +1187,7 @@ fun SettingsScreen(
         GlassAlertDialog(
             title = aboutLegalTitle(kind),
             message = null,
-            confirmLabel = "我知道了",
+            confirmLabel = t("我知道了"),
             cancelLabel = null,
             onConfirm = { legalKind = null },
             onDismiss = { legalKind = null },
@@ -1157,9 +1196,9 @@ fun SettingsScreen(
     }
     if (showAppreciate) {
         GlassAlertDialog(
-            title = "感谢投喂小小萱哦～",
-            message = "扫一扫这份微信赞赏码，就像把热乎的奶茶递到小萱手边。不投喂也没关系，你愿意听，他就已经很开心了。",
-            confirmLabel = "收下这份心意",
+            title = t("感谢投喂小小萱哦～"),
+            message = t("扫一扫这份微信赞赏码，就像把热乎的奶茶递到小萱手边。不投喂也没关系，你愿意听，他就已经很开心了。"),
+            confirmLabel = t("收下这份心意"),
             cancelLabel = null,
             onConfirm = { showAppreciate = false },
             onDismiss = { showAppreciate = false },
@@ -1168,7 +1207,7 @@ fun SettingsScreen(
                     android.content.res.Configuration.ORIENTATION_LANDSCAPE
                 Image(
                     painter = painterResource(R.drawable.img_wechat_appreciate),
-                    contentDescription = "小萱baibai 的微信赞赏码",
+                    contentDescription = t("小萱baibai 的微信赞赏码"),
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(max = if (landscape) 148.dp else 260.dp)
@@ -1180,10 +1219,10 @@ fun SettingsScreen(
     }
     if (confirmGlassLeave) {
         GlassAlertDialog(
-            title = "保存这次调整？",
-            message = "还没应用到 Dock、迷你条、弹窗和灵动岛。",
-            confirmLabel = "保存",
-            cancelLabel = "忽略",
+            title = t("保存这次调整？"),
+            message = t("还没应用到 Dock、迷你条、弹窗和灵动岛。"),
+            confirmLabel = t("保存"),
+            cancelLabel = t("忽略"),
             onConfirm = {
                 applyGlass()
                 closeGlassPage()
@@ -1316,7 +1355,7 @@ private fun AboutPage(
         )
         Spacer(Modifier.height(6.dp))
         Text(
-            text = "给认真听歌的人",
+            text = t("给认真听歌的人"),
             style = TextStyle(
                 color = MainPalette.Secondary,
                 fontSize = 13.sp,
@@ -1334,22 +1373,22 @@ private fun AboutPage(
             )
             AboutBrandIcon(
                 drawableRes = R.drawable.ic_brand_tencentqq,
-                contentDescription = "QQ 群",
+                contentDescription = t("QQ 群"),
                 onClick = { openAboutQqGroup(context) },
             )
         }
         Spacer(Modifier.height(28.dp))
         AboutMetaCard(
             rows = listOf(
-                "版本" to version,
-                "插件引擎" to PluginEngineVersion.DISPLAY,
-                "开发者" to "小萱baibai",
-                "开源协议" to "GNU GPL-2.0",
+                t("版本") to version,
+                t("插件引擎") to PluginEngineVersion.DISPLAY,
+                t("开发者") to t("小萱baibai"),
+                t("开源协议") to "GNU GPL-2.0",
             ),
         )
         Spacer(Modifier.height(22.dp))
         Text(
-            text = "使用本软件，即表示你了解并同意下列约定。点开可阅读完整说明。",
+            text = t("使用本软件，即表示你了解并同意下列约定。点开可阅读完整说明。"),
             style = TextStyle(
                 color = MainPalette.Secondary,
                 fontSize = 12.sp,
@@ -1363,8 +1402,8 @@ private fun AboutPage(
             horizontalArrangement = Arrangement.spacedBy(18.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            AboutLegalLink("《服务条款》", onClick = onOpenTerms)
-            AboutLegalLink("《隐私政策》", onClick = onOpenPrivacy)
+            AboutLegalLink(t("《服务条款》"), onClick = onOpenTerms)
+            AboutLegalLink(t("《隐私政策》"), onClick = onOpenPrivacy)
         }
     }
 }
@@ -1399,7 +1438,7 @@ private fun openAboutGithub(context: Context) {
     val ok = runCatching {
         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(AboutGithubUrl)))
     }.isSuccess
-    if (!ok) context.showIslandNotice("无法打开 GitHub")
+    if (!ok) context.showIslandNotice(t("无法打开 GitHub"))
 }
 
 private fun openAboutQqGroup(context: Context) {
@@ -1412,9 +1451,9 @@ private fun openAboutQqGroup(context: Context) {
     if (opened) return
     runCatching {
         val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        cm.setPrimaryClip(ClipData.newPlainText("QQ群", AboutQqGroupId))
+        cm.setPrimaryClip(ClipData.newPlainText(t("QQ群"), AboutQqGroupId))
     }
-    context.showIslandNotice("未安装 QQ，群号已复制：$AboutQqGroupId")
+    context.showIslandNotice(t("未安装 QQ，群号已复制：%s", AboutQqGroupId))
 }
 
 @Composable
@@ -1510,7 +1549,7 @@ private fun SettingsTopBar(
         ) {
             Icon(
                 imageVector = ZIcons.Back,
-                contentDescription = "返回",
+                contentDescription = t("返回"),
                 tint = MainPalette.Ink,
                 modifier = Modifier.size(22.dp),
             )

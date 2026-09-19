@@ -1,5 +1,7 @@
 package com.kite.zmusic.data
 
+import com.kite.zmusic.i18n.t
+
 data class ChangelogItem(
     /** 任意动词标签（删除 / 调整 / 支持…）；旧数据可能是 add/support/fix */
     val type: String,
@@ -33,17 +35,17 @@ data class ChangelogDocument(
  * type 为任意标签；社区按「某某了某某」解析写入。远程目录走 XAIOP 树。
  */
 object ChangelogRoster {
-    const val DefaultTitle = "ZMusic更新预览"
+    val DefaultTitle: String get() = t("ZMusic更新预览")
 
     fun displayLabel(type: String): String {
         val raw = type.trim()
-        if (raw.isEmpty()) return "说明"
+        if (raw.isEmpty()) return t("说明")
         return when (raw.lowercase()) {
-            "add", "new" -> "新增"
-            "support", "feat", "feature" -> "支持"
-            "improve", "opt", "optimize" -> "优化"
-            "fix", "bugfix" -> "修复"
-            "note" -> "说明"
+            "add", "new" -> t("新增")
+            "support", "feat", "feature" -> t("支持")
+            "improve", "opt", "optimize" -> t("优化")
+            "fix", "bugfix" -> t("修复")
+            "note" -> t("说明")
             else -> raw
         }
     }

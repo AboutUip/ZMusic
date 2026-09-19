@@ -57,6 +57,7 @@ import com.kite.zmusic.ui.common.UrlImageCache
 import com.kite.zmusic.ui.plugin.pluginSurface
 import com.kite.zmusic.ui.theme.MainPalette
 import com.kite.zmusic.ui.theme.TextTheme
+import com.kite.zmusic.i18n.t
 
 /** 少于此数量时双行横滑会空、不齐，改单行。 */
 private const val WikiDualRowMinCount = 4
@@ -127,7 +128,7 @@ internal fun PortraitSongWikiOverlay(
                 pointingUp = true,
             )
             Text(
-                text = "百科",
+                text = t("百科"),
                 style = TextStyle(
                     color = title,
                     fontFamily = FontFamily.SansSerif,
@@ -163,7 +164,7 @@ internal fun PortraitSongWikiOverlay(
                         .weight(1f),
                     contentAlignment = Alignment.Center,
                 ) {
-                    WikiEmptyHint(text = "百科加载失败", color = meta)
+                    WikiEmptyHint(text = t("百科加载失败"), color = meta)
                 }
             }
             else -> {
@@ -175,7 +176,7 @@ internal fun PortraitSongWikiOverlay(
                             .weight(1f),
                         contentAlignment = Alignment.Center,
                     ) {
-                        WikiEmptyHint(text = "暂无这首歌的百科", color = meta)
+                        WikiEmptyHint(text = t("暂无这首歌的百科"), color = meta)
                     }
                     return@Column
                 }
@@ -215,7 +216,7 @@ internal fun PortraitSongWikiOverlay(
                     if (wiki.similar.isNotEmpty()) {
                         item(key = "wiki-similar-${track.id}") {
                             WikiCoverStripSection(
-                                title = "相似歌曲",
+                                title = t("相似歌曲"),
                                 items = wiki.similar,
                                 titleColor = title,
                                 subtitleColor = subtitle,
@@ -230,7 +231,7 @@ internal fun PortraitSongWikiOverlay(
                     if (wiki.playlists.isNotEmpty()) {
                         item(key = "wiki-playlist-${track.id}") {
                             WikiCoverStripSection(
-                                title = "相关歌单",
+                                title = t("相关歌单"),
                                 items = wiki.playlists,
                                 titleColor = title,
                                 subtitleColor = subtitle,
@@ -330,7 +331,7 @@ private fun WikiInfoCard(
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Text(
-            text = "歌曲信息",
+            text = t("歌曲信息"),
             color = titleColor,
             fontSize = 15.sp,
             fontWeight = FontWeight.SemiBold,
@@ -406,7 +407,7 @@ private enum class WikiCoverKind { Track, Playlist }
 private fun wikiCoverSubtitle(item: SongWikiCoverItem, coverKind: WikiCoverKind): String {
     if (item.subtitle.isNotBlank()) return item.subtitle
     if (coverKind == WikiCoverKind.Playlist && item.playCount > 0L) {
-        return "${NcmHomeParse.formatPlayCount(item.playCount)}次播放"
+        return t("%s次播放", NcmHomeParse.formatPlayCount(item.playCount))
     }
     return " "
 }

@@ -2,6 +2,7 @@ package com.kite.zmusic.data
 
 import org.json.JSONArray
 import org.json.JSONObject
+import com.kite.zmusic.i18n.t
 
 internal object NcmLibraryParse {
 
@@ -38,7 +39,7 @@ internal object NcmLibraryParse {
             ).distinct().take(4)
         return UserProfileBrief(
             userId = uid,
-            nickname = profile.optString("nickname", "用户").ifBlank { "用户" },
+            nickname = profile.optString("nickname", t("用户")).ifBlank { t("用户") },
             avatarUrl = ncmHttpsImage(profile.optString("avatarUrl", "")),
             signature = profile.optString("signature", "").takeIf { it.isNotBlank() && it != "null" },
             level = lv,
@@ -439,7 +440,7 @@ internal object NcmLibraryParse {
 
     private fun parsePlaylistItem(o: JSONObject, selfUserId: Long): PlaylistSummary {
         val id = o.optLong("id", 0L)
-        val name = o.optString("name", "歌单")
+        val name = o.optString("name", t("歌单"))
         val cover = o.optString("coverImgUrl", o.optString("coverUrl", "")).takeIf { it.isNotBlank() }
         val trackCount = o.optInt("trackCount", 0)
         val specialType = o.optInt("specialType", 0)
@@ -481,7 +482,7 @@ internal object NcmLibraryParse {
             ?.takeIf { it.isNotBlank() && it != "null" }
         return PlaylistSummary(
             id = id,
-            name = name.ifBlank { "新建歌单" },
+            name = name.ifBlank { t("新建歌单") },
             coverUrl = cover,
             trackCount = pl?.optInt("trackCount", 0) ?: 0,
             isHeartPlaylist = false,
@@ -514,7 +515,7 @@ internal object NcmLibraryParse {
         val pl = json.optJSONObject("playlist") ?: return null
         val id = pl.optLong("id", 0L)
         if (id <= 0L) return null
-        val name = pl.optString("name", "歌单").ifBlank { "歌单" }
+        val name = pl.optString("name", t("歌单")).ifBlank { t("歌单") }
         val cover = pl.optString("coverImgUrl", pl.optString("coverUrl", ""))
             .takeIf { it.isNotBlank() }
         val creator = pl.optJSONObject("creator")

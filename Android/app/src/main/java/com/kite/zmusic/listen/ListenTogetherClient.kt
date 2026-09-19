@@ -78,16 +78,32 @@ class ListenTogetherClient(
         }
     }
 
-    suspend fun match(wait: Boolean): ListenPeer =
+    suspend fun match(wait: Boolean, skipUids: Collection<String> = emptyList()): ListenPeer =
         withContext(Dispatchers.IO) {
             val q = if (wait) "?wait=1" else ""
             val client = if (wait) waiting else immediate
-            client.newCall(request("POST", "/match$q", null)).execute().use { resp ->
+            val body = if (skipUids.isEmpty()) {
+                null
+            } else {
+                JSONObject().put(
+                    "skip_uids",
+                    JSONArray().also { arr -> skipUids.forEach { arr.put(it) } },
+                )
+            }
+            client.newCall(request("POST", "/match$q", body)).execute().use { resp ->
                 val json = parseObject(resp.body?.string().orEmpty())
                 parsePeer(json.optJSONObject("peer"))
                     ?: throw WorkshopApiError.Message("nobody")
             }
         }
+
+    suspend fun skipMatch(uid: String) {
+        withContext(Dispatchers.IO) {
+            immediate.newCall(
+                request("POST", "/match/skip", JSONObject().put("uid", uid.trim())),
+            ).execute().use { parseObject(it.body?.string().orEmpty()) }
+        }
+    }
 
     suspend fun invite(toUid: String): ListenInvite =
         withContext(Dispatchers.IO) {

@@ -67,6 +67,7 @@ import kotlin.math.roundToInt
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import com.kite.zmusic.i18n.t
 
 private val SettingsRevealSpec = tween<Float>(durationMillis = 280, easing = FastOutSlowInEasing)
 private val SettingsHideSpec = tween<Float>(durationMillis = 240, easing = FastOutSlowInEasing)
@@ -213,7 +214,7 @@ fun LyricOverlayContent(
         if (showClose) {
             OverlayIconBtn(
                 icon = ZIcons.Close,
-                label = "关闭悬浮窗",
+                label = t("关闭悬浮窗"),
                 buttonSize = closeBtn,
                 iconSize = closeIcon,
                 onClick = onClose,
@@ -285,16 +286,16 @@ private fun OverlayToolbar(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        OverlayIconBtn(ZIcons.Settings, if (settingsOpen) "收起设置" else "设置", buttonSize, iconSize, onToggleSettings)
+        OverlayIconBtn(ZIcons.Settings, if (settingsOpen) t("收起设置") else t("设置"), buttonSize, iconSize, onToggleSettings)
         Row(
             horizontalArrangement = Arrangement.spacedBy(2.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            OverlayIconBtn(ZIcons.SkipPrevious, "上一首", buttonSize, iconSize, onSkipPrevious)
-            OverlayIconBtn(if (playing) ZIcons.Pause else ZIcons.Play, if (playing) "暂停" else "播放", buttonSize, iconSize, onTogglePlay)
-            OverlayIconBtn(ZIcons.SkipNext, "下一首", buttonSize, iconSize, onSkipNext)
+            OverlayIconBtn(ZIcons.SkipPrevious, t("上一首"), buttonSize, iconSize, onSkipPrevious)
+            OverlayIconBtn(if (playing) ZIcons.Pause else ZIcons.Play, if (playing) t("暂停") else t("播放"), buttonSize, iconSize, onTogglePlay)
+            OverlayIconBtn(ZIcons.SkipNext, t("下一首"), buttonSize, iconSize, onSkipNext)
         }
-        OverlayIconBtn(ZIcons.Lock, "锁定", buttonSize, iconSize, onLock)
+        OverlayIconBtn(ZIcons.Lock, t("锁定"), buttonSize, iconSize, onLock)
     }
 }
 

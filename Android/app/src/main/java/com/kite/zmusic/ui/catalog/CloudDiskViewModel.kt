@@ -9,6 +9,7 @@ import com.kite.zmusic.data.CloudDiskSong
 import com.kite.zmusic.data.NcmCloudParse
 import com.kite.zmusic.data.SessionRepository
 import com.kite.zmusic.data.TrackRow
+import com.kite.zmusic.i18n.I18n
 import com.kite.zmusic.ui.notice.IslandNoticeCenter
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -18,6 +19,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import com.kite.zmusic.i18n.t
 
 class CloudDiskViewModel(
     private val sessionRepository: SessionRepository,
@@ -27,8 +29,8 @@ class CloudDiskViewModel(
 
     private val _list = MutableStateFlow(
         CatalogListState(
-            title = "音乐云盘",
-            creatorName = "网易云",
+            title = t("音乐云盘"),
+            creatorName = t("网易云"),
             loading = true,
             complete = false,
             canPage = true,
@@ -87,7 +89,7 @@ class CloudDiskViewModel(
                         loading = false,
                         refreshing = false,
                         tracks = emptyList(),
-                        error = "请先登录",
+                        error = t("请先登录"),
                         complete = true,
                     )
                 }
@@ -111,14 +113,14 @@ class CloudDiskViewModel(
                             loading = false,
                             refreshing = false,
                             error = if (cur.tracks.isEmpty()) {
-                                e.message?.ifBlank { null } ?: "暂时无法打开云盘，点这里重试"
+                                e.message?.ifBlank { null } ?: t("暂时无法打开云盘，点这里重试")
                             } else {
                                 cur.error
                             },
                         )
                     }
                     if (_songs.value.isNotEmpty()) {
-                        notices.show(e.message ?: "刷新失败")
+                        notices.show(e.message ?: t("刷新失败"))
                     }
                 }
         }
@@ -132,7 +134,7 @@ class CloudDiskViewModel(
                 applyPage(_songs.value + page.songs, page, replace = false)
             }
             .onFailure {
-                notices.show(it.message ?: "加载失败")
+                notices.show(it.message ?: t("加载失败"))
             }
         loadingMore = false
     }
@@ -141,7 +143,7 @@ class CloudDiskViewModel(
         viewModelScope.launch {
             val msg = repo.delete(listOf(track.id))
             notices.show(msg, track.coverUrl)
-            if (msg.startsWith("已")) load(force = true)
+            if (I18n.sourceOf(msg).startsWith("已")) load(force = true)
         }
     }
 
@@ -149,7 +151,7 @@ class CloudDiskViewModel(
         viewModelScope.launch {
             val msg = repo.delete(tracks.map { it.id })
             notices.show(msg, tracks.firstOrNull()?.coverUrl)
-            val ok = msg.startsWith("已")
+            val ok = I18n.sourceOf(msg).startsWith("已")
             if (ok) load(force = true)
             done(ok)
         }
@@ -159,7 +161,7 @@ class CloudDiskViewModel(
         viewModelScope.launch {
             val msg = repo.match(track.id, 0L)
             notices.show(msg, track.coverUrl)
-            if (msg.startsWith("已")) load(force = true)
+            if (I18n.sourceOf(msg).startsWith("已")) load(force = true)
         }
     }
 
@@ -167,7 +169,7 @@ class CloudDiskViewModel(
         viewModelScope.launch {
             val text = repo.lyric(track.id)
             if (text.isNullOrBlank()) {
-                notices.show("这首云盘文件没有内嵌歌词", track.coverUrl)
+                notices.show(t("这首云盘文件没有内嵌歌词"), track.coverUrl)
             } else {
                 _lyric.value = track.name to text
             }
@@ -180,9 +182,9 @@ class CloudDiskViewModel(
             uploading = true
             uris.forEachIndexed { i, uri ->
                 if (uris.size > 1) {
-                    notices.show("正在上传 ${i + 1}/${uris.size}")
+                    notices.show(t("正在上传 %s/%s", i + 1, uris.size))
                 } else {
-                    notices.show("正在上传")
+                    notices.show(t("正在上传"))
                 }
                 val msg = repo.upload(uri)
                 notices.show(msg)
@@ -212,7 +214,7 @@ class CloudDiskViewModel(
                 tracks = songs.map { s -> s.track },
                 coverUrl = songs.firstOrNull()?.track?.coverUrl,
                 subtitle = buildString {
-                    append("${count} 首")
+                    append(t("%s 首", count))
                     if (quota != null) append(" · $quota")
                 },
                 expectedCount = count,
@@ -222,7 +224,7 @@ class CloudDiskViewModel(
                 complete = !page.hasMore,
                 canPage = true,
                 isOwnedPlaylist = true,
-                creatorName = "网易云",
+                creatorName = t("网易云"),
             )
         }
     }

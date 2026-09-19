@@ -32,6 +32,7 @@ import com.kite.zmusic.ui.home.HomeScreen
 import com.kite.zmusic.ui.icons.ZIcons
 import com.kite.zmusic.ui.library.LibraryScreen
 import com.kite.zmusic.ui.offline.OfflineEmptyPage
+import com.kite.zmusic.i18n.t
 
 @Composable
 fun MainSectionContent(
@@ -139,7 +140,7 @@ private fun OfflineSectionPage(
                             ) {
                                 Icon(
                                     imageVector = ZIcons.Settings,
-                                    contentDescription = "设置",
+                                    contentDescription = t("设置"),
                                     tint = MainPalette.Ink,
                                     modifier = Modifier.size(22.dp),
                                 )
@@ -148,12 +149,12 @@ private fun OfflineSectionPage(
                     },
                 )
                 MainDestination.Features -> MainPageHeader(
-                    title = "功能",
+                    title = t("功能"),
                     landscape = false,
                     modifier = headerMod,
                 )
                 MainDestination.Profile -> MainPageHeader(
-                    title = "个人",
+                    title = t("个人"),
                     landscape = false,
                     modifier = headerMod,
                 )

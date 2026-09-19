@@ -72,6 +72,38 @@ class PlayerExpandMiniBarTest {
     }
 
     @Test
+    fun openDropsLiveWhenTopFlashesButSizeMatches() {
+        val liveShifted = Rect(20f, 820f, 1000f, 884f)
+        val got = resolveMiniBarInShell(
+            targetOpen = true,
+            live = liveShifted,
+            fallback = fallback,
+        )
+        assertEquals(fallback, got)
+    }
+
+    @Test
+    fun closeKeepsHeldBarWhenRecomputeOnlyDropsNav() {
+        val recomputed = Rect(20f, 948f, 1000f, 1012f)
+        val got = preferCloseMiniBar(fallback, recomputed)
+        assertEquals(fallback, got)
+    }
+
+    @Test
+    fun closeReplacesHeldBarWhenWidthChanges() {
+        val landscape = Rect(228f, 780f, 1980f, 844f)
+        val got = preferCloseMiniBar(fallback, landscape)
+        assertEquals(landscape, got)
+    }
+
+    @Test
+    fun closeUsesRecomputedWhenHeldIsInvalid() {
+        val recomputed = Rect(20f, 900f, 1000f, 964f)
+        val got = preferCloseMiniBar(Rect.Zero, recomputed)
+        assertEquals(recomputed, got)
+    }
+
+    @Test
     fun landscapeFormulaLeavesRail() {
         val shell = Rect(0f, 0f, 2000f, 900f)
         val rail = 208f
@@ -102,5 +134,25 @@ class PlayerExpandMiniBarTest {
         )
         assertEquals(18f, got.left, 0.01f)
         assertEquals(1080f - 18f, got.right, 0.01f)
+    }
+
+    @Test
+    fun portraitFormulaCentersMaxWidth() {
+        val shell = Rect(0f, 0f, 2000f, 1920f)
+        val maxW = 520f
+        val got = formulaMiniBarRect(
+            shell = shell,
+            sidePx = 18f,
+            railPx = 0f,
+            barH = 64f,
+            homeFromBottom = 200f,
+            maxBarWidthPx = maxW,
+        )
+        val contentW = 2000f - 36f
+        val expectedLeft = 18f + (contentW - maxW) / 2f
+        assertEquals(expectedLeft, got.left, 0.01f)
+        assertEquals(expectedLeft + maxW, got.right, 0.01f)
+        assertEquals(64f, got.height, 0.01f)
+        assertEquals(1920f - 200f, got.top, 0.01f)
     }
 }

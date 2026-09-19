@@ -6,7 +6,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * 个人页「收藏」快捷位：最近打开过的歌单 / 专辑优先排到前 10。
+ * 个人页「收藏」快捷位：最近播过的收藏歌单 / 专辑优先排到前 10。
+ * 只打开详情不算，要从里面播过任意一首。
  */
 class RecentCollectionStore(context: Context) {
 
@@ -55,7 +56,7 @@ class RecentCollectionStore(context: Context) {
     }
 }
 
-/** 最近打开的排前，其余保持原序。 */
+/** 最近播过的排前，其余保持原序。 */
 fun <T> List<T>.preferRecent(
     recentIds: List<Long>,
     idOf: (T) -> Long,

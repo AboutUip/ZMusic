@@ -30,6 +30,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.kite.zmusic.i18n.t
 
 data class CatalogListState(
     val title: String = "",
@@ -137,7 +138,7 @@ open class CatalogViewModel(
                 return@launch
             }
             if (warm.dailySongs.isEmpty()) {
-                _list.update { CatalogListState(title = "每日推荐", loading = true) }
+                _list.update { CatalogListState(title = t("每日推荐"), loading = true) }
             } else {
                 applyDaily(warm.dailySongs, null)
                 if (force) _list.update { it.copy(refreshing = true) }
@@ -148,7 +149,7 @@ open class CatalogViewModel(
                 applyDaily(
                     feed.dailySongs,
                     if (feed.dailySongs.isEmpty()) {
-                        feed.error ?: "今日还没有日推"
+                        feed.error ?: t("今日还没有日推")
                     } else {
                         null
                     },
@@ -162,7 +163,7 @@ open class CatalogViewModel(
                 }
                 _list.update {
                     CatalogListState(
-                        title = "每日推荐",
+                        title = t("每日推荐"),
                         error = NcmJson.userFacingThrowable(e, "加载失败"),
                     )
                 }
@@ -178,7 +179,7 @@ open class CatalogViewModel(
             if (keep != null) {
                 _list.update { it.copy(refreshing = true, error = null) }
             } else {
-                _list.update { CatalogListState(title = "私人漫游", loading = true) }
+                _list.update { CatalogListState(title = t("私人漫游"), loading = true) }
             }
             fetchFm(replace = true)
         }
@@ -406,19 +407,19 @@ open class CatalogViewModel(
                     likedPlaylistRepository.applyLocalLike(track, liked = false)
                     if (!likedPlaylistRepository.pushLike(track, liked = false, cookie)) {
                         likedPlaylistRepository.applyLocalLike(track, liked = true, scheduleSync = false)
-                        islandNotices.show("移除失败", track.coverUrl)
+                        islandNotices.show(t("移除失败"), track.coverUrl)
                         return@launch
                     }
-                    islandNotices.show("已从喜欢的音乐移除", track.coverUrl)
+                    islandNotices.show(t("已从喜欢的音乐移除"), track.coverUrl)
                     return@launch
                 }
                 if (!state.isOwnedPlaylist) {
-                    islandNotices.show("只能从自己创建的歌单移除歌曲", track.coverUrl)
+                    islandNotices.show(t("只能从自己创建的歌单移除歌曲"), track.coverUrl)
                     return@launch
                 }
                 val ack = catalog.deletePlaylistTracks(id, listOf(track.id), cookie)
                 if (!ack.ok) {
-                    islandNotices.show("无法从歌单移除", track.coverUrl)
+                    islandNotices.show(t("无法从歌单移除"), track.coverUrl)
                     return@launch
                 }
                 playlistTracksCache.removeTrack(id, track.id)
@@ -428,7 +429,7 @@ open class CatalogViewModel(
                         expectedCount = (it.expectedCount - 1).coerceAtLeast(0),
                     )
                 }
-                islandNotices.show("已从歌单移除", track.coverUrl)
+                islandNotices.show(t("已从歌单移除"), track.coverUrl)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -465,9 +466,9 @@ open class CatalogViewModel(
                     val ok = failed < unique.size
                     islandNotices.show(
                         when {
-                            failed == 0 -> "已从喜欢的音乐移除 ${unique.size} 首"
-                            ok -> "已移除 ${unique.size - failed} 首，${failed} 首失败"
-                            else -> "移除失败"
+                            failed == 0 -> t("已从喜欢的音乐移除 %s 首", unique.size)
+                            ok -> t("已移除 %s 首，%s 首失败", unique.size - failed, failed)
+                            else -> t("移除失败")
                         },
                         cover,
                     )
@@ -475,7 +476,7 @@ open class CatalogViewModel(
                     return@launch
                 }
                 if (!state.isOwnedPlaylist) {
-                    islandNotices.show("只能从自己创建的歌单移除歌曲", cover)
+                    islandNotices.show(t("只能从自己创建的歌单移除歌曲"), cover)
                     onFinished(false)
                     return@launch
                 }
@@ -483,7 +484,7 @@ open class CatalogViewModel(
                 for (chunk in ids.chunked(50)) {
                     val ack = catalog.deletePlaylistTracks(id, chunk, cookie)
                     if (!ack.ok) {
-                        islandNotices.show("无法从歌单移除", cover)
+                        islandNotices.show(t("无法从歌单移除"), cover)
                         onFinished(false)
                         return@launch
                     }
@@ -495,7 +496,7 @@ open class CatalogViewModel(
                         expectedCount = (it.expectedCount - ids.size).coerceAtLeast(0),
                     )
                 }
-                islandNotices.show("已从歌单移除 ${unique.size} 首", cover)
+                islandNotices.show(t("已从歌单移除 %s 首", unique.size), cover)
                 onFinished(true)
             } catch (e: CancellationException) {
                 throw e
@@ -514,11 +515,11 @@ open class CatalogViewModel(
             return
         }
         if (state.isHeartPlaylist) {
-            islandNotices.show("我喜欢的音乐不能收藏", state.coverUrl)
+            islandNotices.show(t("我喜欢的音乐不能收藏"), state.coverUrl)
             return
         }
         if (state.isOwnedPlaylist) {
-            islandNotices.show("自己创建的歌单无需收藏", state.coverUrl)
+            islandNotices.show(t("自己创建的歌单无需收藏"), state.coverUrl)
             return
         }
         if (!state.canSubscribe || state.playlistId <= 0L || state.subscribeBusy) return
@@ -556,7 +557,7 @@ open class CatalogViewModel(
                 if (!ack.ok) {
                     revertSubscribe(id, next)
                     islandNotices.show(
-                        ack.message.ifBlank { if (next) "收藏失败" else "取消收藏失败" },
+                        ack.message.ifBlank { if (next) t("收藏失败") else t("取消收藏失败") },
                         state.coverUrl,
                     )
                     return@launch
@@ -574,7 +575,7 @@ open class CatalogViewModel(
                     next,
                     insert = if (next) summaryForSubscribe(_list.value.takeIf { it.playlistId == id } ?: state) else null,
                 )
-                islandNotices.show(if (next) "已收藏歌单" else "已取消收藏", state.coverUrl)
+                islandNotices.show(if (next) t("已收藏歌单") else t("已取消收藏"), state.coverUrl)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -616,7 +617,7 @@ open class CatalogViewModel(
                 if (!ack.ok) {
                     revertAlbumSubscribe(id, next)
                     islandNotices.show(
-                        ack.message.ifBlank { if (next) "收藏失败" else "取消收藏失败" },
+                        ack.message.ifBlank { if (next) t("收藏失败") else t("取消收藏失败") },
                         state.coverUrl,
                     )
                     return@launch
@@ -630,7 +631,7 @@ open class CatalogViewModel(
                     insert = if (next) collectedFromState(_list.value.takeIf { it.albumId == id } ?: state) else null,
                 )
                 albumTracksCache.patchSubscribed(id, next, countDelta)
-                islandNotices.show(if (next) "已收藏专辑" else "已取消收藏", state.coverUrl)
+                islandNotices.show(if (next) t("已收藏专辑") else t("已取消收藏"), state.coverUrl)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -710,7 +711,7 @@ open class CatalogViewModel(
                             CatalogListState(
                                 title = title,
                                 albumId = id,
-                                error = payload.error ?: "专辑加载失败",
+                                error = payload.error ?: t("专辑加载失败"),
                             )
                         }
                     }
@@ -766,7 +767,7 @@ open class CatalogViewModel(
         val size = entry.size.takeIf { it > 0 } ?: entry.tracks.size
         _list.value = CatalogListState(
             title = entry.title.ifBlank { fallbackTitle },
-            subtitle = "${size}首",
+            subtitle = t("%s首", size),
             coverUrl = entry.coverUrl,
             tracks = entry.tracks,
             playlistId = 0L,
@@ -836,7 +837,7 @@ open class CatalogViewModel(
             } else {
                 _list.update {
                     CatalogListState(
-                        title = "热门歌曲",
+                        title = t("热门歌曲"),
                         coverUrl = coverUrl,
                         creatorName = name,
                         creatorAvatarUrl = coverUrl,
@@ -857,20 +858,20 @@ open class CatalogViewModel(
                 if (tracks.isEmpty()) {
                     _list.update {
                         CatalogListState(
-                            title = "热门歌曲",
+                            title = t("热门歌曲"),
                             coverUrl = coverUrl,
                             creatorName = name,
                             creatorAvatarUrl = coverUrl,
                             creatorId = artistId,
-                            error = songsErr ?: "暂时没有歌曲",
+                            error = songsErr ?: t("暂时没有歌曲"),
                         )
                     }
                     return@launch
                 }
                 _list.update {
                     CatalogListState(
-                        title = "热门歌曲",
-                        subtitle = if (total > tracks.size) "${tracks.size} / $total 首" else "${tracks.size} 首",
+                        title = t("热门歌曲"),
+                        subtitle = if (total > tracks.size) t("%s / %s 首", tracks.size, total) else t("%s 首", tracks.size),
                         coverUrl = coverUrl ?: tracks.firstOrNull()?.coverUrl,
                         tracks = tracks,
                         creatorName = name,
@@ -889,7 +890,7 @@ open class CatalogViewModel(
                         it.copy(refreshing = false, loading = false)
                     } else {
                         CatalogListState(
-                            title = "热门歌曲",
+                            title = t("热门歌曲"),
                             error = NcmJson.userFacingThrowable(e, "加载失败"),
                         )
                     }
@@ -927,7 +928,7 @@ open class CatalogViewModel(
                         tracks = merged,
                         complete = !more || songsPage.isEmpty(),
                         expectedCount = total.coerceAtLeast(merged.size),
-                        subtitle = if (total > merged.size) "${merged.size} / $total 首" else "${merged.size} 首",
+                        subtitle = if (total > merged.size) t("%s / %s 首", merged.size, total) else t("%s 首", merged.size),
                     )
                 }
                 if (artistSongsId == id) {
@@ -986,8 +987,8 @@ open class CatalogViewModel(
             }
             _list.update {
                 CatalogListState(
-                    title = "私人漫游",
-                    subtitle = "根据口味继续听",
+                    title = t("私人漫游"),
+                    subtitle = t("根据口味继续听"),
                     coverUrl = tracks.first().coverUrl,
                     tracks = if (replace) tracks else (it.tracks + tracks),
                 )
@@ -1417,17 +1418,17 @@ open class CatalogViewModel(
 
     private fun playlistSubtitle(loaded: Int, expected: Int, complete: Boolean): String {
         return if (!complete && expected > loaded) {
-            "$loaded / $expected 首"
+            t("%s / %s 首", loaded, expected)
         } else {
-            "$loaded 首"
+            t("%s 首", loaded)
         }
     }
 
     private fun applyDaily(tracks: List<TrackRow>, error: String?) {
         _list.update {
             CatalogListState(
-                title = "每日推荐",
-                subtitle = if (tracks.isEmpty()) null else "今日 ${tracks.size} 首",
+                title = t("每日推荐"),
+                subtitle = if (tracks.isEmpty()) null else t("今日 %s 首", tracks.size),
                 coverUrl = tracks.firstOrNull()?.coverUrl,
                 tracks = tracks,
                 error = error,
@@ -1439,7 +1440,7 @@ open class CatalogViewModel(
     private fun cookieOrNull(): String? {
         val cookie = sessionRepository.session.value?.cookie.orEmpty()
         if (cookie.isBlank()) {
-            _list.update { it.copy(loading = false, refreshing = false, error = "请先登录") }
+            _list.update { it.copy(loading = false, refreshing = false, error = t("请先登录")) }
             return null
         }
         return cookie

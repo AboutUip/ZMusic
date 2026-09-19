@@ -7,6 +7,7 @@ import com.kite.zmusic.ui.notice.IslandNoticeCenter
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import com.kite.zmusic.i18n.t
 
 class WorkshopRepository(
     private val client: WorkshopClient,
@@ -54,15 +55,15 @@ class WorkshopRepository(
             val dest = File(cacheDir, "workshop-${id.replace('.', '_')}-${detail.card.version}.zpp")
             var finishedOk = false
             try {
-                notices.setSticky("正在下载 ${detail.card.name}… 0%")
+                notices.setSticky(t("正在下载 %s… 0%%", detail.card.name))
                 val file = downloader.download(id, detail, dest) { received, total ->
                     val pct = if (total > 0) ((received * 100) / total).toInt().coerceIn(0, 100) else 0
-                    notices.setSticky("正在下载 ${detail.card.name}… $pct%")
+                    notices.setSticky(t("正在下载 %s… %s%%", detail.card.name, pct))
                 }.getOrElse { err ->
                     handleErr(err)
                     return@withContext Result.failure(err)
                 }
-                notices.setSticky("正在安装 ${detail.card.name}…")
+                notices.setSticky(t("正在安装 %s…", detail.card.name))
                 val installed = applyInstallResult(pluginEngine.installWorkshopZpp(file))
                 finishedOk = installed.isSuccess
                 installed
@@ -79,7 +80,7 @@ class WorkshopRepository(
         withContext(Dispatchers.IO) {
             var finishedOk = false
             try {
-                notices.setSticky("正在安装…")
+                notices.setSticky(t("正在安装…"))
                 val installed = applyInstallResult(pluginEngine.installWorkshopZpp(zpp))
                 finishedOk = installed.isSuccess
                 installed
@@ -92,12 +93,12 @@ class WorkshopRepository(
         when (result) {
             is PluginRegisterResult.Installed -> {
                 notices.clearSticky()
-                notices.show("已安装「${result.record.name}」，默认未启用")
+                notices.show(t("已安装「%s」，默认未启用", result.record.name))
                 Result.success(result.record)
             }
             is PluginRegisterResult.Replaced -> {
                 notices.clearSticky()
-                notices.show("已更新「${result.record.name}」")
+                notices.show(t("已更新「%s」", result.record.name))
                 Result.success(result.record)
             }
             is PluginRegisterResult.Skipped -> {
@@ -109,10 +110,10 @@ class WorkshopRepository(
 
     private fun handleErr(err: Throwable) {
         when (err) {
-            is WorkshopApiError.Unauthorized -> notices.show("需要重新确认社区身份")
-            is WorkshopApiError.RateLimited -> notices.show("请求太频繁，稍后再试")
-            is WorkshopApiError.Missing -> notices.show("插件不存在或已下架")
-            else -> notices.show(err.message?.takeIf { it.isNotBlank() } ?: "下载失败")
+            is WorkshopApiError.Unauthorized -> notices.show(t("需要重新确认社区身份"))
+            is WorkshopApiError.RateLimited -> notices.show(t("请求太频繁，稍后再试"))
+            is WorkshopApiError.Missing -> notices.show(t("插件不存在或已下架"))
+            else -> notices.show(err.message?.takeIf { it.isNotBlank() } ?: t("下载失败"))
         }
     }
 }

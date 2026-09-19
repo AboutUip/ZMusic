@@ -41,6 +41,7 @@ import com.kite.zmusic.ui.icons.ZIcons
 import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.notice.showIslandNotice
 import com.kite.zmusic.ui.settings.nearbyDevicesGranted
+import com.kite.zmusic.i18n.t
 
 private val OutputRowShape = RoundedCornerShape(14.dp)
 
@@ -58,9 +59,9 @@ internal fun PortraitAudioOutputPanel(
     ) { granted ->
         controller.refresh()
         if (granted) {
-            context.showIslandNotice("已开启附近的设备")
+            context.showIslandNotice(t("已开启附近的设备"))
         } else {
-            context.showIslandNotice("未开启时，蓝牙设备可能只显示通用名称")
+            context.showIslandNotice(t("未开启时，蓝牙设备可能只显示通用名称"))
         }
     }
 
@@ -71,7 +72,7 @@ internal fun PortraitAudioOutputPanel(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text(
-            text = "列出当前可发声的输出口。智能模式把选择交给系统。",
+            text = t("列出当前可发声的输出口。智能模式把选择交给系统。"),
             style = TextStyle(
                 color = MainPalette.Secondary,
                 fontSize = 12.sp,
@@ -81,8 +82,8 @@ internal fun PortraitAudioOutputPanel(
         )
         if (Build.VERSION.SDK_INT >= 31 && !nearbyGranted) {
             OutputHintRow(
-                title = "开启附近的设备权限",
-                subtitle = "才能显示蓝牙耳机、音箱的真实名称",
+                title = t("开启附近的设备权限"),
+                subtitle = t("才能显示蓝牙耳机、音箱的真实名称"),
                 onClick = {
                     permissionLauncher.launch(Manifest.permission.BLUETOOTH_CONNECT)
                 },
@@ -90,8 +91,8 @@ internal fun PortraitAudioOutputPanel(
         }
         OutputChoiceRow(
             icon = ZIcons.Speaker,
-            title = "智能模式",
-            subtitle = "由操作系统决定当前输出",
+            title = t("智能模式"),
+            subtitle = t("由操作系统决定当前输出"),
             selected = state.usingSmart,
             onClick = { controller.selectSmart() },
         )
@@ -106,7 +107,7 @@ internal fun PortraitAudioOutputPanel(
         }
         if (state.devices.isEmpty()) {
             Text(
-                text = "暂时没有检测到输出设备",
+                text = t("暂时没有检测到输出设备"),
                 style = TextStyle(
                     color = MainPalette.Secondary,
                     fontSize = 13.sp,
@@ -242,11 +243,11 @@ internal fun audioOutputIcon(type: Int): ImageVector = when (type) {
 internal fun audioOutputKindLabel(type: Int): String = when (type) {
     AudioOutputTypes.BUILTIN_SPEAKER,
     AudioOutputTypes.BUILTIN_SPEAKER_SAFE,
-    -> "本机"
-    AudioOutputTypes.BUILTIN_EARPIECE -> "听筒"
+    -> t("本机")
+    AudioOutputTypes.BUILTIN_EARPIECE -> t("听筒")
     AudioOutputTypes.WIRED_HEADSET,
     AudioOutputTypes.WIRED_HEADPHONES,
-    -> "有线"
+    -> t("有线")
     AudioOutputTypes.USB_HEADSET,
     AudioOutputTypes.USB_DEVICE,
     AudioOutputTypes.USB_ACCESSORY,
@@ -255,12 +256,12 @@ internal fun audioOutputKindLabel(type: Int): String = when (type) {
     AudioOutputTypes.BLE_HEADSET,
     AudioOutputTypes.BLE_SPEAKER,
     AudioOutputTypes.BLE_BROADCAST,
-    -> "蓝牙"
-    AudioOutputTypes.BLUETOOTH_SCO -> "蓝牙通话"
+    -> t("蓝牙")
+    AudioOutputTypes.BLUETOOTH_SCO -> t("蓝牙通话")
     AudioOutputTypes.HDMI,
     AudioOutputTypes.HDMI_ARC,
     AudioOutputTypes.HDMI_EARC,
     -> "HDMI"
-    AudioOutputTypes.HEARING_AID -> "听力设备"
-    else -> "输出"
+    AudioOutputTypes.HEARING_AID -> t("听力设备")
+    else -> t("输出")
 }

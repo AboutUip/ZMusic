@@ -58,6 +58,7 @@ import com.kite.zmusic.ui.theme.TextTheme
 import com.kite.zmusic.ui.theme.parseThemeColor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import com.kite.zmusic.i18n.t
 
 @Composable
 internal fun PluginUiTreeView(
@@ -190,7 +191,7 @@ internal fun PluginUiTreeView(
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    text = node.str("text") ?: "暂无内容",
+                    text = node.str("text") ?: t("暂无内容"),
                     style = TextStyle(color = TextTheme.Hint, fontSize = 14.sp),
                 )
             }

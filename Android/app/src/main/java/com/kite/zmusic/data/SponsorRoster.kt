@@ -1,6 +1,7 @@
 package com.kite.zmusic.data
 
 import org.json.JSONObject
+import com.kite.zmusic.i18n.t
 
 data class SponsorEntry(
     val id: String = "",
@@ -24,7 +25,7 @@ object SponsorRoster {
         val plain = text
             .removePrefix("¥")
             .removePrefix("￥")
-            .removeSuffix("元")
+            .removeSuffix(t("元"))
             .trim()
         val n = plain.toDoubleOrNull()
         return if (n != null) formatYuan(n) else text

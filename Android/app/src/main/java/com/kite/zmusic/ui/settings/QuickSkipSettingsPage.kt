@@ -33,6 +33,7 @@ import com.kite.zmusic.ui.icons.ZIcons
 import com.kite.zmusic.ui.main.MainControls
 import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.main.wallpaperItemChrome
+import com.kite.zmusic.i18n.t
 
 @Composable
 fun QuickSkipSettingsPage(
@@ -53,7 +54,7 @@ fun QuickSkipSettingsPage(
     ) {
         Spacer(Modifier.height(8.dp))
         Text(
-            text = "开启后，在底部迷你播放条的封面和歌名上滑动就能切歌。点一下仍会进入播放页。动画只作用在封面和歌名歌手，进度条和播放键不动，也不跟手：方向够了就会切。",
+            text = t("开启后，在底部迷你播放条的封面和歌名上滑动就能切歌。点一下仍会进入播放页。动画只作用在封面和歌名歌手，进度条和播放键不动，也不跟手：方向够了就会切。"),
             style = TextStyle(
                 color = MainPalette.Secondary,
                 fontSize = 13.sp,
@@ -65,7 +66,7 @@ fun QuickSkipSettingsPage(
         )
         Spacer(Modifier.height(12.dp))
         Text(
-            text = "左右切歌时，封面和歌名带着拖影横移。上下切歌时，它们做九十度立体翻转。默认关闭。",
+            text = t("左右切歌时，封面和歌名带着拖影横移。上下切歌时，它们做九十度立体翻转。默认关闭。"),
             style = TextStyle(
                 color = MainPalette.Secondary,
                 fontSize = 13.sp,
@@ -90,7 +91,7 @@ fun QuickSkipSettingsPage(
         ) {
             Column(Modifier.weight(1f)) {
                 Text(
-                    text = "快速切歌",
+                    text = t("快速切歌"),
                     style = TextStyle(
                         color = MainPalette.Ink,
                         fontSize = 15.sp,
@@ -114,7 +115,7 @@ fun QuickSkipSettingsPage(
         }
         Spacer(Modifier.height(22.dp))
         Text(
-            text = "滑动方向",
+            text = t("滑动方向"),
             style = TextStyle(
                 color = MainPalette.Secondary,
                 fontSize = 13.sp,
@@ -130,8 +131,8 @@ fun QuickSkipSettingsPage(
                 .wallpaperItemChrome(RoundedCornerShape(16.dp)),
         ) {
             AxisRow(
-                title = "左右切歌",
-                subtitle = "左右滑动，封面和歌名带着拖影横移",
+                title = t("左右切歌"),
+                subtitle = t("左右滑动，封面和歌名带着拖影横移"),
                 selected = prefs.axis == MiniQuickSkipAxis.Horizontal,
                 enabled = enabled,
                 onClick = { onAxisChange(MiniQuickSkipAxis.Horizontal) },
@@ -144,8 +145,8 @@ fun QuickSkipSettingsPage(
                     .background(MainPalette.Hairline),
             )
             AxisRow(
-                title = "上下切歌",
-                subtitle = "上下滑动，封面和歌名立体翻转九十度",
+                title = t("上下切歌"),
+                subtitle = t("上下滑动，封面和歌名立体翻转九十度"),
                 selected = prefs.axis == MiniQuickSkipAxis.Vertical,
                 enabled = enabled,
                 onClick = { onAxisChange(MiniQuickSkipAxis.Vertical) },
@@ -156,9 +157,9 @@ fun QuickSkipSettingsPage(
 
 internal fun quickSkipSubtitle(prefs: MiniQuickSkipPrefs): String =
     when {
-        !prefs.enabled -> "已关闭 · 仅点击进入播放页（默认）"
-        prefs.axis == MiniQuickSkipAxis.Vertical -> "已开启 · 上下滑动切歌"
-        else -> "已开启 · 左右滑动切歌"
+        !prefs.enabled -> t("已关闭 · 仅点击进入播放页（默认）")
+        prefs.axis == MiniQuickSkipAxis.Vertical -> t("已开启 · 上下滑动切歌")
+        else -> t("已开启 · 左右滑动切歌")
     }
 
 @Composable

@@ -1,15 +1,18 @@
 package com.kite.zmusic.data
 
 import android.content.Context
+import com.kite.zmusic.i18n.t
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-enum class RealtimeCacheMode(val title: String, val available: Boolean) {
-    Cautious("谨慎", true),
-    Realtime("实时", true),
-    Aggressive("激进", true),
+enum class RealtimeCacheMode(val available: Boolean, private val titleZh: String) {
+    Cautious(true, "谨慎"),
+    Realtime(true, "实时"),
+    Aggressive(true, "激进"),
     ;
+
+    val title: String get() = t(titleZh)
 
     companion object {
         fun fromName(raw: String?): RealtimeCacheMode =

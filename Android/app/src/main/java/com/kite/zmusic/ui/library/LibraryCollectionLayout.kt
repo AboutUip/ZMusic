@@ -32,6 +32,7 @@ import com.kite.zmusic.plugin.PluginCollectionPresent
 import com.kite.zmusic.ui.icons.ZIcons
 import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.main.wallpaperItemChrome
+import com.kite.zmusic.i18n.t
 
 internal data class LibraryCollectionEntry(
     val title: String,
@@ -248,7 +249,7 @@ private fun MoreButton(onMore: (() -> Unit)?) {
     ) {
         Icon(
             imageVector = ZIcons.More,
-            contentDescription = "更多",
+            contentDescription = t("更多"),
             tint = MainPalette.Hint,
             modifier = Modifier.size(20.dp),
         )

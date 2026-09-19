@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.kite.zmusic.ui.theme.MainPalette
+import com.kite.zmusic.i18n.t
 
 private enum class RegisterStep {
     Phone,
@@ -170,7 +171,7 @@ private fun RegisterPhonePane(
 ) {
     val phoneOk = LoginPhoneRegex.matches(vm.phone.trim())
     Column(Modifier.fillMaxSize()) {
-        LoginDrillTopBar(title = "注册", onBack = onBack)
+        LoginDrillTopBar(title = t("注册"), onBack = onBack)
         Column(
             Modifier
                 .fillMaxSize()
@@ -179,12 +180,12 @@ private fun RegisterPhonePane(
         ) {
             Spacer(Modifier.height(24.dp))
             Text(
-                text = "创建网易云账号",
+                text = t("创建网易云账号"),
                 style = TextStyle(color = Ink, fontSize = 20.sp, fontWeight = FontWeight.SemiBold),
             )
             Spacer(Modifier.height(8.dp))
             Text(
-                text = "注册仅用于在 ZMusic 内登录。该账号受网易云服务约束。",
+                text = t("注册仅用于在 ZMusic 内登录。该账号受网易云服务约束。"),
                 style = TextStyle(color = InkSecondary, fontSize = 13.sp, lineHeight = 20.sp),
             )
             Spacer(Modifier.height(28.dp))
@@ -195,7 +196,7 @@ private fun RegisterPhonePane(
                     if (filtered != vm.phone) vm.onPhoneChanged()
                     vm.phone = filtered
                 },
-                hint = "请输入手机号",
+                hint = t("请输入手机号"),
                 leading = {
                     Text(
                         text = "+86",
@@ -215,7 +216,7 @@ private fun RegisterPhonePane(
             LoginErrorLine(vm.bannerError, vm::dismissError)
             Spacer(Modifier.height(32.dp))
             CloudPillButton(
-                text = if (vm.captchaSending) "发送中…" else "下一步",
+                text = if (vm.captchaSending) t("发送中…") else t("下一步"),
                 enabled = phoneOk && !vm.captchaSending && !vm.busy,
                 onClick = onNext,
             )
@@ -230,7 +231,7 @@ private fun RegisterCaptchaPane(
     onNext: () -> Unit,
 ) {
     Column(Modifier.fillMaxSize()) {
-        LoginDrillTopBar(title = "填写验证码", onBack = onBack)
+        LoginDrillTopBar(title = t("填写验证码"), onBack = onBack)
         Column(
             Modifier
                 .fillMaxSize()
@@ -239,22 +240,22 @@ private fun RegisterCaptchaPane(
         ) {
             Spacer(Modifier.height(24.dp))
             Text(
-                text = "验证码已发送至 ${maskPhone(vm.phone)}",
+                text = t("验证码已发送至 %s", maskPhone(vm.phone)),
                 style = TextStyle(color = Ink, fontSize = 15.sp, fontWeight = FontWeight.Medium),
             )
             Spacer(Modifier.height(20.dp))
             LoginUnderlineField(
                 value = vm.captcha,
                 onValueChange = { vm.captcha = it.filter { ch -> ch.isDigit() }.take(8) },
-                hint = "请输入验证码",
+                hint = t("请输入验证码"),
                 keyboardType = KeyboardType.Number,
                 imeAction = ImeAction.Done,
                 onIme = onNext,
                 trailing = {
                     val label = when {
-                        vm.captchaSending -> "发送中"
+                        vm.captchaSending -> t("发送中")
                         vm.captchaCooldownSec > 0 -> "${vm.captchaCooldownSec}s"
-                        else -> "重获验证码"
+                        else -> t("重获验证码")
                     }
                     val can = !vm.captchaSending && vm.captchaCooldownSec == 0
                     Text(
@@ -273,7 +274,7 @@ private fun RegisterCaptchaPane(
             LoginErrorLine(vm.bannerError, vm::dismissError)
             Spacer(Modifier.height(32.dp))
             CloudPillButton(
-                text = "下一步",
+                text = t("下一步"),
                 enabled = vm.captcha.isNotBlank() && !vm.busy,
                 onClick = onNext,
             )
@@ -290,7 +291,7 @@ private fun RegisterProfilePane(
     val pwdOk = RegisterViewModel.passwordError(vm.password) == null
     val nickOk = vm.nickname.trim().isNotEmpty()
     Column(Modifier.fillMaxSize()) {
-        LoginDrillTopBar(title = "设置账号", onBack = onBack)
+        LoginDrillTopBar(title = t("设置账号"), onBack = onBack)
         Column(
             Modifier
                 .fillMaxSize()
@@ -299,34 +300,34 @@ private fun RegisterProfilePane(
         ) {
             Spacer(Modifier.height(24.dp))
             Text(
-                text = "取一个昵称，并设置登录密码",
+                text = t("取一个昵称，并设置登录密码"),
                 style = TextStyle(color = Ink, fontSize = 16.sp, fontWeight = FontWeight.SemiBold),
             )
             Spacer(Modifier.height(20.dp))
             LoginUnderlineField(
                 value = vm.nickname,
                 onValueChange = { vm.nickname = it.take(30) },
-                hint = "昵称",
+                hint = t("昵称"),
                 imeAction = ImeAction.Next,
             )
             Spacer(Modifier.height(8.dp))
             LoginUnderlineField(
                 value = vm.password,
                 onValueChange = { vm.password = it },
-                hint = "密码（8–20 位）",
+                hint = t("密码（8–20 位）"),
                 password = true,
                 imeAction = ImeAction.Done,
                 onIme = onSubmit,
             )
             Spacer(Modifier.height(12.dp))
             Text(
-                text = "密码不能包含空格，须包含字母、数字、符号中至少两种。",
+                text = t("密码不能包含空格，须包含字母、数字、符号中至少两种。"),
                 style = TextStyle(color = InkHint, fontSize = 12.sp, lineHeight = 18.sp),
             )
             LoginErrorLine(vm.bannerError, vm::dismissError)
             Spacer(Modifier.height(32.dp))
             CloudPillButton(
-                text = "完成注册",
+                text = t("完成注册"),
                 enabled = pwdOk && nickOk && !vm.busy,
                 onClick = onSubmit,
             )

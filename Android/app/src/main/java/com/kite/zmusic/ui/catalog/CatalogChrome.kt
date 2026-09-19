@@ -100,6 +100,7 @@ import com.kite.zmusic.ui.search.SearchViewModelFactory
 import com.kite.zmusic.ui.settings.SettingsScreen
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import com.kite.zmusic.i18n.t
 
 import com.kite.zmusic.ui.main.MainOverlay
 @Composable
@@ -110,7 +111,7 @@ internal fun CatalogTopBar(
     extraIcon: androidx.compose.ui.graphics.vector.ImageVector? = null,
     onExtra: (() -> Unit)? = null,
     onSearch: (() -> Unit)? = null,
-    searchContentDescription: String = "搜索歌单内歌曲",
+    searchContentDescription: String = t("搜索歌单内歌曲"),
     onManage: (() -> Unit)? = null,
     onSelectAll: (() -> Unit)? = null,
     allSelected: Boolean = false,
@@ -134,7 +135,7 @@ internal fun CatalogTopBar(
         ) {
             Icon(
                 imageVector = ZIcons.Back,
-                contentDescription = "返回",
+                contentDescription = t("返回"),
                 tint = TextTheme.CatalogTitle,
                 modifier = Modifier.size(22.dp),
             )
@@ -163,7 +164,7 @@ internal fun CatalogTopBar(
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    text = if (allSelected) "取消全选" else "全选",
+                    text = if (allSelected) t("取消全选") else t("全选"),
                     color = TextTheme.CatalogAction,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold,
@@ -184,7 +185,7 @@ internal fun CatalogTopBar(
             ) {
                 Icon(
                     imageVector = ZIcons.Manage,
-                    contentDescription = "管理",
+                    contentDescription = t("管理"),
                     tint = TextTheme.CatalogTitle,
                     modifier = Modifier.size(22.dp),
                 )

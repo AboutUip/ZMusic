@@ -194,6 +194,7 @@ import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
 import androidx.compose.ui.unit.lerp as lerpDp
+import com.kite.zmusic.i18n.t
 
 
 
@@ -245,7 +246,7 @@ internal fun PlayerTransport(
     val context = LocalContext.current
     val online = rememberNetworkOnline()
     fun requireOnline(action: () -> Unit) {
-        if (online) action() else context.showIslandNotice("当前无网络")
+        if (online) action() else context.showIslandNotice(t("当前无网络"))
     }
     val maxF = durationMs.toFloat().coerceAtLeast(1f)
     val sliderPos = if (sliderDragging) sliderValue else positionMs.toFloat()
@@ -670,7 +671,7 @@ internal fun PlayerTransport(
                 if (onOpenQuality != null) {
                     PortraitAccessoryIcon(
                         icon = ZIcons.GraphicEq,
-                        contentDescription = "音质",
+                        contentDescription = t("音质"),
                         tint = iconTint,
                         enabled = online,
                         onClick = { requireOnline(onOpenQuality) },
@@ -679,7 +680,7 @@ internal fun PlayerTransport(
                 if (onOpenComments != null) {
                     PortraitAccessoryIcon(
                         icon = ZIcons.Comments,
-                        contentDescription = if (commentsAsChat) "聊天室" else "评论",
+                        contentDescription = if (commentsAsChat) t("聊天室") else t("评论"),
                         tint = iconTint,
                         enabled = online,
                         onClick = { requireOnline(onOpenComments) },
@@ -689,7 +690,7 @@ internal fun PlayerTransport(
                 if (onOpenShare != null) {
                     PortraitAccessoryIcon(
                         icon = ZIcons.Share,
-                        contentDescription = "分享",
+                        contentDescription = t("分享"),
                         tint = iconTint,
                         onClick = onOpenShare,
                     )
@@ -697,7 +698,7 @@ internal fun PlayerTransport(
                 if (onOpenScore != null) {
                     PortraitAccessoryIcon(
                         icon = ZIcons.Playlist,
-                        contentDescription = "曲谱",
+                        contentDescription = t("曲谱"),
                         tint = iconTint,
                         onClick = onOpenScore,
                     )
@@ -705,7 +706,7 @@ internal fun PlayerTransport(
                 if (onOpenMore != null) {
                     PortraitAccessoryIcon(
                         icon = ZIcons.MoreHoriz,
-                        contentDescription = "更多",
+                        contentDescription = t("更多"),
                         tint = iconTint,
                         onClick = onOpenMore,
                     )

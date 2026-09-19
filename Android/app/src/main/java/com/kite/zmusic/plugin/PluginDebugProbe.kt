@@ -2,6 +2,7 @@ package com.kite.zmusic.plugin
 
 import android.content.res.AssetManager
 import java.io.File
+import com.kite.zmusic.i18n.t
 
 /**
  * 内置引擎探针 `dev.zmusic.probe`。
@@ -12,7 +13,7 @@ import java.io.File
 internal object PluginDebugProbe {
     const val ID = "dev.zmusic.probe"
     const val PAGE = "tune"
-    const val DOCK_LABEL = "调优"
+    val DOCK_LABEL: String get() = t("调优")
     const val ASSET_PATH = "plugin-engine/probe.zpp"
 
     fun shouldLaunch(id: String, debug: Boolean): Boolean = id != ID || debug

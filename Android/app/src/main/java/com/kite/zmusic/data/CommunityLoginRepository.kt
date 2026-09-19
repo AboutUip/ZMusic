@@ -5,6 +5,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import com.kite.zmusic.i18n.t
 
 data class CommunityLoginPreview(
     val sid: String,
@@ -23,11 +24,11 @@ class CommunityLoginRepository(
 ) {
     suspend fun preview(sid: String): CommunityLoginPreview {
         val session = sessionRepository.session.value
-            ?: error("请先登录网易云账号")
-        if (session.isGuest) error("游客无法授权，请先登录")
+            ?: error(t("请先登录网易云账号"))
+        if (session.isGuest) error(t("游客无法授权，请先登录"))
         val status = authClient.loginStatus(session.cookie)
         val uid = NcmJson.userIdFromLoginStatus(status) ?: 0L
-        if (uid <= 0L) error("当前账号无法授权")
+        if (uid <= 0L) error(t("当前账号无法授权"))
         var nickname = NcmJson.displayLabelFromLogin(status).orEmpty()
         var avatar = avatarFromStatus(status)
         if (nickname.isBlank() || avatar.isNullOrBlank()) {
@@ -78,7 +79,7 @@ class CommunityLoginRepository(
                 return ack
             }
         }
-        return firstForbidden ?: error("提交失败")
+        return firstForbidden ?: error(t("提交失败"))
     }
 
     suspend fun deny(sid: String): CommunitySubmitAck = withContext(Dispatchers.IO) {

@@ -8,6 +8,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
+import com.kite.zmusic.i18n.t
 
 data class CommunitySubmitAck(
     val ok: Boolean,
@@ -47,7 +48,7 @@ class CommunityLoginClient(
                 error("empty")
             }
             val json = runCatching { JSONObject(text) }.getOrElse {
-                error("提交失败")
+                error(t("提交失败"))
             }
             val bodyObj = json.optJSONObject("data") ?: json
             val ok = jsonOk(bodyObj) || jsonOk(json)

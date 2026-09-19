@@ -39,6 +39,7 @@ import org.json.JSONObject
 import java.io.IOException
 import java.net.SocketTimeoutException
 import kotlin.coroutines.cancellation.CancellationException
+import com.kite.zmusic.i18n.t
 
 /**
  * 一起听：房间状态走 LWW/HLC；进度只按 origin 插值，不传实时秒数。
@@ -63,12 +64,11 @@ class ListenTogetherController(
     @Volatile private var appliedHlc = 0L
     @Volatile private var lastPostedHlc = 0L
     @Volatile private var recvElapsed = 0L
-    @Volatile private var lastPosMs = 0L
-    @Volatile private var lastPosAt = 0L
-    @Volatile private var lastTrackId = 0L
-    @Volatile private var lastPlayWhenReady = false
-    @Volatile private var lastHasQueue = false
     @Volatile private var applyingRemote = false
+    private val postMutex = Mutex()
+    private val pendingLock = Any()
+    private var pendingOp: ListenPostedOp? = null
+    @Volatile private var localMemory = ListenLocalMemory()
     @Volatile private var lastDriftAt = 0L
     @Volatile private var lastNotifiedChatId = 0L
     @Volatile private var playerForeground = false
@@ -79,6 +79,8 @@ class ListenTogetherController(
     @Volatile private var pollAfter = 0L
     @Volatile private var leavingRoom = false
     private var matchJob: Job? = null
+    private val matchSkipUntil = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    @Volatile private var incomingQuietUntil = 0L
 
     fun start() {
         if (started) return
@@ -91,8 +93,10 @@ class ListenTogetherController(
                     join(pending, notice = true)
                 }
                 if (sess == null) {
-                    if (_ui.value.inRoom) dropLocal("社区登录已失效")
+                    if (_ui.value.inRoom) dropLocal(t("社区登录已失效"))
                     clearMatchState(clearIncoming = true)
+                    matchSkipUntil.clear()
+                    incomingQuietUntil = 0L
                     runCatching { client.leavePresence() }
                     return@collectLatest
                 }
@@ -112,6 +116,11 @@ class ListenTogetherController(
             _ui.map { it.inRoom }.distinctUntilChanged().collect { locked ->
                 playback.setPlaybackClockLocked(locked)
             }
+        }
+        scope.launch {
+            _ui.map { ListenTogetherClock.followRemoteAdvance(it.inRoom, it.hosting) }
+                .distinctUntilChanged()
+                .collect { playback.setListenFollowRemoteAdvance(it) }
         }
     }
 
@@ -140,7 +149,7 @@ class ListenTogetherController(
 
     fun toggleMatch() {
         if (_ui.value.matching) {
-            stopMatch("已停止匹配")
+            stopMatch(t("已停止匹配"))
         } else {
             startMatch()
         }
@@ -148,11 +157,11 @@ class ListenTogetherController(
 
     fun startMatch() {
         if (!auth.hasToken()) {
-            notices.show("需要先登录社区")
+            notices.show(t("需要先登录社区"))
             return
         }
         if (!_ui.value.hosting) {
-            notices.show("开启一起听后再匹配")
+            notices.show(t("开启一起听后再匹配"))
             return
         }
         _ui.update { it.copy(matching = true, matchPeer = null, rejectedInvite = null) }
@@ -167,15 +176,20 @@ class ListenTogetherController(
                     continue
                 }
                 try {
-                    val peer = client.match(wait = true)
+                    val peer = client.match(wait = true, skipUids = activeSkipUids())
                     if (!_ui.value.matching) return@launch
+                    if (listenUidSkipped(peer.uid, matchSkipUntil, nowElapsed())) {
+                        rememberSkip(peer.uid)
+                        runCatching { client.skipMatch(peer.uid) }
+                        continue
+                    }
                     _ui.update { it.copy(matchPeer = peer) }
                 } catch (e: SocketTimeoutException) {
                     continue
                 } catch (e: IOException) {
                     delay(1_200)
                 } catch (e: WorkshopApiError.Unauthorized) {
-                    notices.show("需要先登录社区")
+                    notices.show(t("需要先登录社区"))
                     stopMatch(null)
                     return@launch
                 } catch (e: WorkshopApiError.Message) {
@@ -183,12 +197,12 @@ class ListenTogetherController(
                         "nobody" -> continue
                         "busy" -> delay(800)
                         "full" -> {
-                            notices.show("一起听人数已满")
+                            notices.show(t("一起听人数已满"))
                             stopMatch(null)
                             return@launch
                         }
                         "forbidden" -> {
-                            notices.show("开启一起听后再匹配")
+                            notices.show(t("开启一起听后再匹配"))
                             stopMatch(null)
                             return@launch
                         }
@@ -222,7 +236,21 @@ class ListenTogetherController(
     }
 
     fun dismissMatchPeer() {
-        _ui.update { it.copy(matchPeer = null) }
+        val uid = _ui.value.matchPeer?.uid.orEmpty()
+        val gate = listenHostCancel(uid, nowElapsed(), matchSkipUntil)
+        matchJob?.cancel()
+        matchJob = null
+        matchSkipUntil.clear()
+        matchSkipUntil.putAll(gate.skipUntil)
+        _ui.update {
+            it.copy(
+                matching = gate.matching,
+                matchPeer = null,
+            )
+        }
+        if (uid.isNotBlank()) {
+            scope.launch { runCatching { client.skipMatch(uid) } }
+        }
     }
 
     fun inviteMatchedPeer() {
@@ -234,11 +262,11 @@ class ListenTogetherController(
             } catch (e: WorkshopApiError.Message) {
                 when (e.message) {
                     "nobody" -> {
-                        notices.show("对方已离线")
+                        notices.show(t("对方已离线"))
                         _ui.update { it.copy(matchPeer = null) }
                     }
                     "busy" -> {
-                        notices.show("对方正忙")
+                        notices.show(t("对方正忙"))
                         _ui.update { it.copy(matchPeer = null) }
                     }
                     else -> fail(e)
@@ -275,9 +303,13 @@ class ListenTogetherController(
                     val snap = client.acceptInvite(inv.id)
                     _ui.update { it.copy(incomingInvite = null) }
                     adopt(snap, seedClock = false)
-                    notices.show("已加入一起听")
+                    notices.show(t("已加入一起听"))
                 } else {
                     client.declineInvite(inv.id, today)
+                    val gate = listenGuestReject(inv.from.uid, nowElapsed(), matchSkipUntil)
+                    matchSkipUntil.clear()
+                    matchSkipUntil.putAll(gate.skipUntil)
+                    incomingQuietUntil = maxOf(incomingQuietUntil, gate.quietUntilMs)
                     _ui.update { it.copy(incomingInvite = null) }
                 }
             } catch (e: Exception) {
@@ -304,21 +336,28 @@ class ListenTogetherController(
     }
 
     private suspend fun inboxLoop() {
+        var backoffMs = INVITE_BACKOFF_MIN_MS
         while (currentCoroutineContext().isActive) {
             if (_ui.value.incomingInvite != null || _ui.value.rejectedInvite != null) {
                 delay(400)
                 continue
             }
             try {
-                applyInviteBox(client.getInvites(wait = true))
+                val hidden = applyInviteBox(client.getInvites(wait = true))
+                backoffMs = INVITE_BACKOFF_MIN_MS
+                if (hidden) delay(800)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: SocketTimeoutException) {
+                backoffMs = INVITE_BACKOFF_MIN_MS
                 continue
             } catch (e: IOException) {
                 delay(1_200)
             } catch (e: WorkshopApiError.Unauthorized) {
                 return
+            } catch (_: WorkshopApiError.RateLimited) {
+                delay(backoffMs)
+                backoffMs = (backoffMs * 2).coerceAtMost(INVITE_BACKOFF_MAX_MS)
             } catch (e: Exception) {
                 Log.w(TAG, "invites", e)
                 delay(1_600)
@@ -326,16 +365,32 @@ class ListenTogetherController(
         }
     }
 
-    private fun applyInviteBox(box: ListenInviteBox) {
-        val incoming = box.incoming
-        if (incoming != null && incoming.status == "pending") {
+    private fun applyInviteBox(box: ListenInviteBox): Boolean {
+        val incoming = listenIncomingVisible(
+            box.incoming,
+            nowElapsed(),
+            incomingQuietUntil,
+            matchSkipUntil,
+        )
+        var hiddenIncoming = box.incoming != null &&
+            box.incoming.status == "pending" &&
+            incoming == null
+        if (incoming != null) {
             val first = _ui.value.incomingInvite?.id != incoming.id
             _ui.update { it.copy(incomingInvite = incoming) }
             if (first && !appForeground) playChatPing()
+            hiddenIncoming = false
+        } else if (hiddenIncoming) {
+            val hid = box.incoming
+            if (hid != null) {
+                rememberSkip(hid.from.uid)
+                scope.launch { runCatching { client.declineInvite(hid.id, today = false) } }
+            }
         }
-        val outgoing = box.outgoing ?: return
+        val outgoing = box.outgoing ?: return hiddenIncoming
         when {
             listenInviteIsRejected(outgoing.status) -> {
+                rememberSkip(outgoing.to.uid)
                 _ui.update {
                     it.copy(
                         outgoingPending = false,
@@ -354,10 +409,22 @@ class ListenTogetherController(
                         rejectedInvite = null,
                     )
                 }
-                notices.show("对方已加入一起听")
+                notices.show(t("对方已加入一起听"))
             }
         }
+        return hiddenIncoming
     }
+
+    private fun nowElapsed(): Long = SystemClock.elapsedRealtime()
+
+    private fun rememberSkip(uid: String) {
+        val id = uid.trim()
+        if (id.isEmpty()) return
+        matchSkipUntil[id] = listenSkipUntil(nowElapsed())
+    }
+
+    private fun activeSkipUids(): List<String> =
+        listenActiveSkipUids(matchSkipUntil, nowElapsed())
 
     private fun clearMatchState(clearIncoming: Boolean) {
         matchJob?.cancel()
@@ -399,18 +466,18 @@ class ListenTogetherController(
                 val snap = client.postChat(id, body)
                 applySnapshot(snap, applyPlayer = false)
             } catch (e: WorkshopApiError.Unauthorized) {
-                notices.show("社区登录已失效")
+                notices.show(t("社区登录已失效"))
             } catch (e: WorkshopApiError.RateLimited) {
-                notices.show("发送太快了")
+                notices.show(t("发送太快了"))
             } catch (e: WorkshopApiError.Message) {
                 when (e.message) {
-                    "closed", "missing" -> dropLocal("一起听已结束")
-                    "forbidden" -> notices.show("无法发送")
-                    else -> notices.show(e.message?.ifBlank { "发送失败" } ?: "发送失败")
+                    "closed", "missing" -> dropLocal(t("一起听已结束"))
+                    "forbidden" -> notices.show(t("无法发送"))
+                    else -> notices.show(e.message?.ifBlank { t("发送失败") } ?: t("发送失败"))
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "chat", e)
-                notices.show("发送失败")
+                notices.show(t("发送失败"))
             }
         }
     }
@@ -427,7 +494,7 @@ class ListenTogetherController(
             try {
                 val snap = client.create(seats)
                 adopt(snap, seedClock = true)
-                notices.show("一起听已开启")
+                notices.show(t("一起听已开启"))
                 true
             } catch (e: Exception) {
                 fail(e)
@@ -446,7 +513,7 @@ class ListenTogetherController(
             return false
         }
         if (_ui.value.inRoom && _ui.value.room?.id == id) {
-            if (notice) notices.show("你已经在这间一起听")
+            if (notice) notices.show(t("你已经在这间一起听"))
             return true
         }
         return opMutex.withLock {
@@ -455,7 +522,7 @@ class ListenTogetherController(
                 val snap = client.join(id)
                 adopt(snap, seedClock = false)
                 _ui.update { it.copy(pendingJoinId = null) }
-                if (notice) notices.show("已加入一起听")
+                if (notice) notices.show(t("已加入一起听"))
                 true
             } catch (e: Exception) {
                 fail(e)
@@ -479,7 +546,7 @@ class ListenTogetherController(
                 }
             } finally {
                 clearMatchState(clearIncoming = false)
-                dropLocal(if (hostEnd) "一起听已结束" else "已离开一起听")
+                dropLocal(if (hostEnd) t("一起听已结束") else t("已离开一起听"))
                 _ui.update { it.copy(busy = false) }
             }
         }
@@ -491,16 +558,16 @@ class ListenTogetherController(
             val ui = playback.ui.value
             val track = ui.currentTrack
             if (track != null && track.id > 0L) {
-                postOp(
-                    JSONObject()
-                        .put("kind", "track")
-                        .put("track_id", track.id)
-                        .put("title", track.name)
-                        .put("artists", track.artists)
-                        .put("cover_url", track.coverUrl.orEmpty())
-                        .put("duration_ms", track.durationMs.coerceAtLeast(0L))
-                        .put("origin_ms", ui.positionMs.coerceAtLeast(0L))
-                        .put("playing", ui.playWhenReady),
+                enqueueOp(
+                    ListenPostedOp.track(
+                        trackId = track.id,
+                        title = track.name,
+                        artists = track.artists,
+                        coverUrl = track.coverUrl.orEmpty(),
+                        durationMs = track.durationMs.coerceAtLeast(0L),
+                        originMs = ui.positionMs.coerceAtLeast(0L),
+                        playing = ui.playWhenReady,
+                    ),
                 )
             }
         }
@@ -541,21 +608,21 @@ class ListenTogetherController(
         }
         if (ping) playChatPing()
         if (snap.closed) {
-            dropLocal("一起听已结束")
+            dropLocal(t("一起听已结束"))
             return
         }
         if (!applyPlayer) {
             appliedHlc = maxOf(appliedHlc, snap.clock.hlc)
             return
         }
-        val self = auth.current()?.uid.orEmpty()
+        val self = auth.current()?.uid.orEmpty().ifBlank { _ui.value.selfUid }
         val local = playback.ui.value
         val mismatch = ListenTogetherClock.playerNeedsClock(
             snap.clock,
             local.currentTrack?.id ?: 0L,
             local.playWhenReady,
         )
-        val isMine = snap.clock.actor == self && snap.clock.hlc <= lastPostedHlc
+        val isMine = ListenTogetherClock.isOwnClock(snap.clock.actor, self)
         if (!ListenTogetherClock.takeRemoteClock(
                 remoteHlc = snap.clock.hlc,
                 appliedHlc = appliedHlc,
@@ -586,10 +653,7 @@ class ListenTogetherController(
             val pos = ListenTogetherClock.positionMs(clock, snap.serverNow, recvElapsed, nowElapsed)
             playback.seekTo(pos)
             playback.setPlayWhenReady(clock.playing)
-            lastTrackId = clock.trackId
-            lastPlayWhenReady = clock.playing
-            lastPosMs = pos
-            lastPosAt = nowElapsed
+            rememberAppliedClock(clock.trackId, clock.playing, pos, nowElapsed)
             applyingRemote = false
             suppressLocalUntil = SystemClock.elapsedRealtime() + 400L
             return
@@ -610,10 +674,12 @@ class ListenTogetherController(
             } finally {
                 if (gen == applyGen) {
                     val ui = playback.ui.value
-                    lastTrackId = ui.currentTrack?.id ?: 0L
-                    lastPlayWhenReady = ui.playWhenReady
-                    lastPosMs = ui.positionMs
-                    lastPosAt = SystemClock.elapsedRealtime()
+                    rememberAppliedClock(
+                        ui.currentTrack?.id ?: 0L,
+                        ui.playWhenReady,
+                        ui.positionMs,
+                        SystemClock.elapsedRealtime(),
+                    )
                     applyingRemote = false
                     suppressLocalUntil = SystemClock.elapsedRealtime() + 500L
                 }
@@ -641,7 +707,7 @@ class ListenTogetherController(
         if (fetched != null) return fetched
         return TrackRow(
             id = clock.trackId,
-            name = clock.title.ifBlank { "一起听" },
+            name = clock.title.ifBlank { t("一起听") },
             artists = clock.artists,
             album = null,
             durationMs = clock.durationMs,
@@ -671,14 +737,14 @@ class ListenTogetherController(
                     failStreak = (failStreak + 1).coerceAtMost(4)
                     delay(1_000L shl (failStreak - 1))
                 } catch (e: WorkshopApiError.Unauthorized) {
-                    dropLocal("社区登录已失效")
+                    dropLocal(t("社区登录已失效"))
                     return@launch
                 } catch (e: WorkshopApiError.Missing) {
-                    dropLocal("一起听已结束")
+                    dropLocal(t("一起听已结束"))
                     return@launch
                 } catch (e: WorkshopApiError.Message) {
                     if (e.message == "closed" || e.message == "forbidden") {
-                        dropLocal("一起听已结束")
+                        dropLocal(t("一起听已结束"))
                         return@launch
                     }
                     failStreak = (failStreak + 1).coerceAtMost(4)
@@ -699,7 +765,7 @@ class ListenTogetherController(
         val clock = snap.clock
         if (clock.trackId <= 0L || applyingRemote) return
         val self = auth.current()?.uid.orEmpty().ifBlank { _ui.value.selfUid }
-        val isMine = clock.actor == self && clock.hlc <= lastPostedHlc
+        val isMine = ListenTogetherClock.isOwnClock(clock.actor, self)
         if (isMine || clock.hlc < appliedHlc) return
         val ui = playback.ui.value
         if (ListenTogetherClock.playerNeedsClock(clock, ui.currentTrack?.id ?: 0L, ui.playWhenReady)) {
@@ -719,104 +785,81 @@ class ListenTogetherController(
         applyingRemote = true
         suppressLocalUntil = now + 800L
         playback.seekTo(expect)
-        lastPosMs = expect
-        lastPosAt = now
+        val mem = localMemory
+        localMemory = mem.copy(lastPosMs = expect, lastPosAt = now)
         applyingRemote = false
     }
 
     private fun onPlayback(snap: PlaybackUiState) {
+        val now = SystemClock.elapsedRealtime()
+        val local = snap.toListenLocalSnap()
         if (leavingRoom) {
-            lastTrackId = snap.currentTrack?.id ?: 0L
-            lastPlayWhenReady = snap.playWhenReady
-            lastPosMs = snap.positionMs
-            lastPosAt = SystemClock.elapsedRealtime()
-            lastHasQueue = snap.hasQueue
+            localMemory = localMemory.copy(
+                lastTrackId = local.trackId,
+                lastPlayWhenReady = local.playWhenReady,
+                lastPosMs = local.positionMs,
+                lastPosAt = now,
+                lastHasQueue = local.hasQueue,
+            )
             return
         }
         val room = _ui.value.room
-        val now = SystemClock.elapsedRealtime()
-        val trackId = snap.currentTrack?.id ?: 0L
-        if (room == null || room.closed || applyingRemote || now < suppressLocalUntil) {
-            lastTrackId = trackId
-            lastPlayWhenReady = snap.playWhenReady
-            lastPosMs = snap.positionMs
-            lastPosAt = now
-            if (!applyingRemote && now >= suppressLocalUntil) {
-                lastHasQueue = snap.hasQueue
-            }
-            return
+        val (next, effect) = decideLocalPlayback(
+            inRoom = room != null && !room.closed,
+            applyingRemote = applyingRemote,
+            nowElapsed = now,
+            suppressUntil = suppressLocalUntil,
+            hosting = _ui.value.hosting,
+            memory = localMemory,
+            snap = local,
+        )
+        localMemory = next
+        when (effect) {
+            ListenLocalEffect.Hold -> Unit
+            ListenLocalEffect.EndHostRoom -> scope.launch { stop(hostEnd = true) }
+            is ListenLocalEffect.Post -> enqueueOp(effect.op)
         }
-        if (snap.loadPending) {
-            lastPosMs = snap.positionMs
-            lastPosAt = now
-            lastHasQueue = snap.hasQueue
-            return
-        }
-        if (_ui.value.hosting && !snap.hasQueue && lastHasQueue) {
-            lastHasQueue = false
-            scope.launch { stop(hostEnd = true) }
-            return
-        }
-        lastHasQueue = snap.hasQueue
-        val track = snap.currentTrack
-        if (track != null && track.id > 0L && track.id != lastTrackId) {
-            lastTrackId = track.id
-            lastPlayWhenReady = snap.playWhenReady
-            lastPosMs = snap.positionMs
-            lastPosAt = now
-            scope.launch {
-                postOp(
-                    JSONObject()
-                        .put("kind", "track")
-                        .put("track_id", track.id)
-                        .put("title", track.name)
-                        .put("artists", track.artists)
-                        .put("cover_url", track.coverUrl.orEmpty())
-                        .put("duration_ms", track.durationMs.coerceAtLeast(0L))
-                        .put("origin_ms", snap.positionMs.coerceAtLeast(0L))
-                        .put("playing", snap.playWhenReady),
-                )
-            }
-            return
-        }
-        if (snap.playWhenReady != lastPlayWhenReady) {
-            val kind = if (snap.playWhenReady) "play" else "pause"
-            lastPlayWhenReady = snap.playWhenReady
-            lastPosMs = snap.positionMs
-            lastPosAt = now
-            scope.launch {
-                postOp(
-                    JSONObject()
-                        .put("kind", kind)
-                        .put("origin_ms", snap.positionMs.coerceAtLeast(0L)),
-                )
-            }
-            return
-        }
-        val elapsed = if (lastPlayWhenReady) now - lastPosAt else 0L
-        if (ListenTogetherClock.isSeekJump(lastPosMs, elapsed, snap.positionMs)) {
-            lastPosMs = snap.positionMs
-            lastPosAt = now
-            scope.launch {
-                postOp(
-                    JSONObject()
-                        .put("kind", "seek")
-                        .put("origin_ms", snap.positionMs.coerceAtLeast(0L))
-                        .put("playing", snap.playWhenReady),
-                )
-            }
-            return
-        }
-        lastPosMs = snap.positionMs
-        lastPosAt = now
     }
 
-    private suspend fun postOp(body: JSONObject) {
+    private fun rememberAppliedClock(trackId: Long, playing: Boolean, pos: Long, at: Long) {
+        val mem = localMemory
+        localMemory = mem.copy(
+            lastTrackId = trackId,
+            lastPlayWhenReady = playing,
+            lastPosMs = pos,
+            lastPosAt = at,
+            carryOverMs = -1L,
+        )
+    }
+
+    private fun enqueueOp(op: ListenPostedOp) {
+        if (leavingRoom) return
+        synchronized(pendingLock) {
+            pendingOp = mergeListenOp(pendingOp, op)
+        }
+        scope.launch { drainOps() }
+    }
+
+    private suspend fun drainOps() {
+        postMutex.withLock {
+            while (!leavingRoom) {
+                val next = synchronized(pendingLock) {
+                    val o = pendingOp
+                    pendingOp = null
+                    o
+                } ?: break
+                postOpUnlocked(next)
+            }
+        }
+    }
+
+    private suspend fun postOpUnlocked(op: ListenPostedOp) {
         if (leavingRoom) return
         val id = _ui.value.room?.id ?: return
+        val body = op.toJson()
         var last: Exception? = null
         repeat(3) { attempt ->
-            if (_ui.value.room?.id != id) return
+            if (leavingRoom || _ui.value.room?.id != id) return
             try {
                 val snap = client.postOp(id, body)
                 lastPostedHlc = snap.clock.hlc
@@ -827,7 +870,7 @@ class ListenTogetherController(
                 return
             } catch (e: WorkshopApiError.Message) {
                 if (e.message == "closed" || e.message == "missing") {
-                    dropLocal("一起听已结束")
+                    dropLocal(t("一起听已结束"))
                     return
                 }
                 last = e
@@ -848,11 +891,8 @@ class ListenTogetherController(
         appliedHlc = 0L
         lastPostedHlc = 0L
         recvElapsed = 0L
-        lastPosMs = 0L
-        lastPosAt = 0L
-        lastTrackId = 0L
-        lastPlayWhenReady = false
-        lastHasQueue = false
+        localMemory = ListenLocalMemory()
+        synchronized(pendingLock) { pendingOp = null }
         applyingRemote = false
         suppressLocalUntil = 0L
         lastDriftAt = 0L
@@ -877,6 +917,7 @@ class ListenTogetherController(
         leavingRoom = true
         applyGen++
         applyingRemote = false
+        synchronized(pendingLock) { pendingOp = null }
         pollJob?.cancel()
         pollJob = null
         suppressLocalUntil = SystemClock.elapsedRealtime() + 8_000L
@@ -885,19 +926,19 @@ class ListenTogetherController(
 
     private fun fail(e: Exception) {
         val msg = when (e) {
-            is WorkshopApiError.Unauthorized -> "需要先登录社区"
-            is WorkshopApiError.RateLimited -> "操作太快，请稍后再试"
-            is WorkshopApiError.Missing -> "一起听不存在或已结束"
+            is WorkshopApiError.Unauthorized -> t("需要先登录社区")
+            is WorkshopApiError.RateLimited -> t("操作太快，请稍后再试")
+            is WorkshopApiError.Missing -> t("一起听不存在或已结束")
             is WorkshopApiError.Message -> when (e.message) {
-                "full" -> "一起听人数已满"
-                "closed" -> "一起听已结束"
-                "forbidden" -> "无法加入该一起听"
-                "bad_request" -> "邀请已失效"
-                "nobody" -> "暂时没有可匹配的用户"
-                "busy" -> "对方正忙"
-                else -> "一起听暂时不可用"
+                "full" -> t("一起听人数已满")
+                "closed" -> t("一起听已结束")
+                "forbidden" -> t("无法加入该一起听")
+                "bad_request" -> t("邀请已失效")
+                "nobody" -> t("暂时没有可匹配的用户")
+                "busy" -> t("对方正忙")
+                else -> t("一起听暂时不可用")
             }
-            else -> "一起听暂时不可用"
+            else -> t("一起听暂时不可用")
         }
         notices.show(msg)
         Log.w(TAG, msg, e)
@@ -934,5 +975,43 @@ class ListenTogetherController(
 
     companion object {
         private const val TAG = "ZMusicListen"
+        private const val INVITE_BACKOFF_MIN_MS = 8_000L
+        private const val INVITE_BACKOFF_MAX_MS = 60_000L
     }
+}
+
+private fun PlaybackUiState.toListenLocalSnap(): ListenLocalSnap {
+    val track = currentTrack
+    return ListenLocalSnap(
+        trackId = track?.id ?: 0L,
+        title = track?.name.orEmpty(),
+        artists = track?.artists.orEmpty(),
+        coverUrl = track?.coverUrl.orEmpty(),
+        durationMs = (track?.durationMs ?: durationMs).coerceAtLeast(0L),
+        positionMs = positionMs,
+        playWhenReady = playWhenReady,
+        loadPending = loadPending,
+        hasQueue = hasQueue,
+    )
+}
+
+private fun ListenPostedOp.toJson(): JSONObject {
+    val o = JSONObject().put("kind", kind)
+    if (trackId > 0L) o.put("track_id", trackId)
+    when (kind) {
+        "track" -> {
+            o.put("title", title)
+            o.put("artists", artists)
+            o.put("cover_url", coverUrl)
+            o.put("duration_ms", durationMs.coerceAtLeast(0L))
+            o.put("origin_ms", originMs.coerceAtLeast(0L))
+            o.put("playing", playing)
+        }
+        "play", "pause" -> o.put("origin_ms", originMs.coerceAtLeast(0L))
+        "seek" -> {
+            o.put("origin_ms", originMs.coerceAtLeast(0L))
+            o.put("playing", playing)
+        }
+    }
+    return o
 }

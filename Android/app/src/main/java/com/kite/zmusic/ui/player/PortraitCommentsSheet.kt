@@ -90,10 +90,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -107,7 +109,9 @@ import com.kite.zmusic.data.SongComment
 import com.kite.zmusic.data.SongCommentFloorCache
 import com.kite.zmusic.data.SongCommentsCache
 import com.kite.zmusic.data.SongCommentsSnapshot
+import com.kite.zmusic.i18n.t
 import com.kite.zmusic.ui.common.UrlImage
+import com.kite.zmusic.ui.easter.MjEasterEgg
 import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.main.pageSheetHazeStyle
 import com.kite.zmusic.ui.notice.showIslandNotice
@@ -140,9 +144,16 @@ private const val CommentPageSize = 20
  * 2=热度（服务端用 pageNo 生成 `normalHot#offset`，不要传 time cursor）；
  * 3=时间（第二页起传上一条 `time`）。
  */
-private enum class CommentSortMode(val sortType: Int, val label: String) {
-    Hot(2, "热度"),
-    Time(3, "时间"),
+private enum class CommentSortMode(val sortType: Int) {
+    Hot(2),
+    Time(3),
+    ;
+
+    val label: String
+        get() = when (this) {
+            Hot -> t("热度")
+            Time -> t("时间")
+        }
 }
 
 private data class CommentReplyTarget(
@@ -255,7 +266,7 @@ fun PortraitCommentsSheet(
     var total by remember { mutableLongStateOf(0L) }
     var useLegacy by remember { mutableStateOf(false) }
     var selfUid by remember { mutableLongStateOf(0L) }
-    var selfNickname by remember { mutableStateOf("我") }
+    var selfNickname by remember { mutableStateOf(t("我")) }
     var selfAvatar by remember { mutableStateOf<String?>(null) }
     var sortMode by remember { mutableStateOf(CommentSortMode.Hot) }
     var replyTarget by remember { mutableStateOf<CommentReplyTarget?>(null) }
@@ -505,13 +516,13 @@ fun PortraitCommentsSheet(
     ): SongComment = posted?.copy(
         nickname = posted.nickname.ifBlank { selfNickname },
         avatarUrl = posted.avatarUrl ?: selfAvatar,
-        timeLabel = posted.timeLabel.ifBlank { "刚刚" },
+        timeLabel = posted.timeLabel.ifBlank { t("刚刚") },
         repliedNickname = posted.repliedNickname ?: repliedNickname,
     ) ?: SongComment(
         commentId = -System.currentTimeMillis(),
         content = text,
         timeMs = System.currentTimeMillis(),
-        timeLabel = "刚刚",
+        timeLabel = t("刚刚"),
         likedCount = 0,
         liked = false,
         replyCount = 0,
@@ -526,17 +537,18 @@ fun PortraitCommentsSheet(
         val target = replyTarget
         val text = replyDraft.trim()
         if (text.isEmpty()) {
-            hint(if (target != null) "请输入回复内容" else "请输入评论")
+            hint(if (target != null) t("请输入回复内容") else t("请输入评论"))
             return
         }
+        MjEasterEgg.consider(text)
         if (cookieUpdated.isBlank() || selfUid <= 0L) {
-            hint(if (target != null) "请先登录后再回复" else "请先登录后再评论")
+            hint(if (target != null) t("请先登录后再回复") else t("请先登录后再评论"))
             return
         }
         if (replySending) return
         replySending = true
         try {
-            val failHint = if (target != null) "回复失败，请稍后重试" else "评论失败，请稍后重试"
+            val failHint = if (target != null) t("回复失败，请稍后重试") else t("评论失败，请稍后重试")
             val postedResult = commentsVm.post(
                 songId = songIdUpdated,
                 content = text,
@@ -555,7 +567,7 @@ fun PortraitCommentsSheet(
                     target.commentId to ((floorRefreshTick[target.commentId] ?: 0) + 1)
                     )
                 if (total > 0L) total += 1L
-                hint("回复成功")
+                hint(t("回复成功"))
                 dismissReplyComposer(restoreSheet = false)
                 val parentIndex = comments.indexOfFirst { it.commentId == target.commentId }
                 if (parentIndex >= 0) {
@@ -564,13 +576,13 @@ fun PortraitCommentsSheet(
             } else {
                 comments.add(0, optimistic)
                 if (total > 0L) total += 1L else total = comments.size.toLong()
-                hint("评论成功")
+                hint(t("评论成功"))
                 dismissReplyComposer(restoreSheet = true)
                 persistCommentsCache()
                 runCatching { listState.animateScrollToItem(0) }
             }
         } catch (e: Exception) {
-            val failHint = if (target != null) "回复失败，请稍后重试" else "评论失败，请稍后重试"
+            val failHint = if (target != null) t("回复失败，请稍后重试") else t("评论失败，请稍后重试")
             hint(NcmJson.userFacingThrowable(e, failHint))
         } finally {
             replySending = false
@@ -689,7 +701,7 @@ fun PortraitCommentsSheet(
             ) {
                 Column(Modifier.weight(1f)) {
                     Text(
-                        text = "评论",
+                        text = t("评论"),
                         style = TextStyle(
                             color = CommentLabel,
                             fontFamily = FontFamily.SansSerif,
@@ -699,7 +711,7 @@ fun PortraitCommentsSheet(
                         ),
                     )
                     Text(
-                        text = if (total > 0L) "共 $total 条" else "说说你的想法",
+                        text = if (total > 0L) t("共 %s 条", total) else t("说说你的想法"),
                         style = TextStyle(
                             color = CommentHint,
                             fontFamily = FontFamily.SansSerif,
@@ -749,13 +761,13 @@ fun PortraitCommentsSheet(
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(
-                                text = error ?: "加载失败",
+                                text = error ?: t("加载失败"),
                                 color = CommentHint,
                                 fontSize = 13.sp,
                             )
                             Spacer(Modifier.height(10.dp))
                             Text(
-                                text = "重试",
+                                text = t("重试"),
                                 color = CommentAccent,
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Medium,
@@ -777,7 +789,7 @@ fun PortraitCommentsSheet(
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(
-                            text = "还没有评论",
+                            text = t("还没有评论"),
                             color = CommentHint.copy(alpha = 0.8f),
                             fontSize = 13.sp,
                         )
@@ -860,12 +872,12 @@ fun PortraitCommentsSheet(
                                         modifier = Modifier.size(22.dp),
                                     )
                                     !hasMore -> Text(
-                                        text = "已经到底了",
+                                        text = t("已经到底了"),
                                         color = CommentHint.copy(alpha = 0.55f),
                                         fontSize = 12.sp,
                                     )
                                     error != null -> Text(
-                                        text = "加载失败，上滑重试",
+                                        text = t("加载失败，上滑重试"),
                                         color = CommentHint.copy(alpha = 0.75f),
                                         fontSize = 12.sp,
                                         modifier = Modifier.clickable(
@@ -987,7 +999,7 @@ private fun CommentComposerBar(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        text = "回复 @$targetNickname",
+                        text = t("回复 @%s", targetNickname),
                         style = TextStyle(
                             color = CommentAccent,
                             fontSize = 12.sp,
@@ -998,7 +1010,7 @@ private fun CommentComposerBar(
                         modifier = Modifier.weight(1f),
                     )
                     Text(
-                        text = "取消",
+                        text = t("取消"),
                         style = TextStyle(
                             color = CommentHint,
                             fontSize = 12.sp,
@@ -1028,15 +1040,18 @@ private fun CommentComposerBar(
                         .background(CommentComposerFill)
                         .border(1.dp, MainPalette.Hairline, RoundedCornerShape(14.dp))
                         .padding(start = 12.dp, end = 8.dp, top = 10.dp, bottom = 10.dp),
+                    contentAlignment = Alignment.CenterStart,
                 ) {
-                    if (draft.isEmpty()) {
-                        Text(
-                            text = if (replying) "写下你的回复…" else "说说你的想法…",
-                            color = CommentHint,
-                            fontSize = 14.sp,
-                            modifier = Modifier.padding(end = 44.dp),
-                        )
-                    }
+                    val composerStyle = TextStyle(
+                        color = CommentLabel,
+                        fontSize = 14.sp,
+                        lineHeight = 20.sp,
+                        platformStyle = PlatformTextStyle(includeFontPadding = false),
+                        lineHeightStyle = LineHeightStyle(
+                            alignment = LineHeightStyle.Alignment.Center,
+                            trim = LineHeightStyle.Trim.None,
+                        ),
+                    )
                     BasicTextField(
                         value = draft,
                         onValueChange = { if (it.length <= 140) onDraftChange(it) },
@@ -1045,11 +1060,7 @@ private fun CommentComposerBar(
                             .padding(end = 44.dp)
                             .focusRequester(focusRequester)
                             .onFocusChanged { onFocusChange(it.isFocused) },
-                        textStyle = TextStyle(
-                            color = CommentLabel,
-                            fontSize = 14.sp,
-                            lineHeight = 20.sp,
-                        ),
+                        textStyle = composerStyle,
                         cursorBrush = SolidColor(CommentAccent),
                         maxLines = 5,
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
@@ -1057,6 +1068,20 @@ private fun CommentComposerBar(
                             onSend = { if (canSend) onSend() },
                         ),
                         enabled = !sending,
+                        decorationBox = { inner ->
+                            Box(
+                                Modifier.fillMaxWidth(),
+                                contentAlignment = Alignment.CenterStart,
+                            ) {
+                                if (draft.isEmpty()) {
+                                    Text(
+                                        text = if (replying) t("写下你的回复…") else t("说说你的想法…"),
+                                        style = composerStyle.copy(color = CommentHint),
+                                    )
+                                }
+                                inner()
+                            }
+                        },
                     )
                     Text(
                         text = "${draft.length}/140",
@@ -1089,7 +1114,7 @@ private fun CommentComposerBar(
                         )
                     } else {
                         Text(
-                            text = "发送",
+                            text = t("发送"),
                             color = if (canSend) Color.White else CommentHint,
                             fontSize = 13.sp,
                             fontWeight = FontWeight.SemiBold,
@@ -1283,7 +1308,7 @@ private fun CommentRow(
     suspend fun toggleLike() {
         if (likeBusy) return
         if (cookie.isBlank() || selfUid <= 0L) {
-            onHint("请先登录后再点赞")
+            onHint(t("请先登录后再点赞"))
             return
         }
         likeBusy = true
@@ -1303,13 +1328,13 @@ private fun CommentRow(
                     cookie = cookie,
                 )
             ) {
-                throw IllegalStateException("点赞失败")
+                throw IllegalStateException(t("点赞失败"))
             }
         } catch (_: Exception) {
             onPatchComment(comment.commentId) {
                 it.copy(liked = !nextLiked, likedCount = prevCount)
             }
-            onHint("点赞失败，请稍后重试")
+            onHint(t("点赞失败，请稍后重试"))
         } finally {
             likeBusy = false
         }
@@ -1318,15 +1343,15 @@ private fun CommentRow(
     suspend fun doHug(playAnim: Boolean = true) {
         if (hugBusy) return
         if (cookie.isBlank() || selfUid <= 0L) {
-            onHint("请先登录后再抱抱")
+            onHint(t("请先登录后再抱抱"))
             return
         }
         if (comment.userId <= 0L) {
-            onHint("无法抱抱该评论")
+            onHint(t("无法抱抱该评论"))
             return
         }
         if (comment.userId == selfUid) {
-            onHint("不能抱抱自己")
+            onHint(t("不能抱抱自己"))
             return
         }
         hugBusy = true
@@ -1344,12 +1369,12 @@ private fun CommentRow(
                 cookie = cookie,
             )
             if (!ack.ok) {
-                throw IllegalStateException(ack.message.ifBlank { "抱抱失败" })
+                throw IllegalStateException(ack.message.ifBlank { t("抱抱失败") })
             }
             hugged = true
-            onHint("已抱抱 ${comment.nickname}")
+            onHint(t("已抱抱 %s", comment.nickname))
         } catch (_: Exception) {
-            onHint("抱抱失败，请稍后重试")
+            onHint(t("抱抱失败，请稍后重试"))
         } finally {
             animJob?.join()
             hugBusy = false
@@ -1359,7 +1384,7 @@ private fun CommentRow(
     suspend fun loadHugList() {
         if (hugListLoading) return
         if (cookie.isBlank() || selfUid <= 0L) {
-            onHint("请先登录后查看抱抱")
+            onHint(t("请先登录后查看抱抱"))
             return
         }
         if (comment.userId <= 0L) return
@@ -1373,7 +1398,7 @@ private fun CommentRow(
             )
             hugListOpen = true
         } catch (_: Exception) {
-            onHint("抱抱列表加载失败")
+            onHint(t("抱抱列表加载失败"))
         } finally {
             hugListLoading = false
         }
@@ -1446,7 +1471,7 @@ private fun CommentRow(
                     }
                     if (hugged) {
                         Text(
-                            text = "收到了抱抱",
+                            text = t("收到了抱抱"),
                             style = TextStyle(
                                 color = Color(0xFFFF5A5F),
                                 fontFamily = FontFamily.SansSerif,
@@ -1507,7 +1532,7 @@ private fun CommentRow(
                     Spacer(Modifier.height(4.dp))
                     if (!comment.repliedContent.isNullOrBlank()) {
                         Text(
-                            text = "回复 ${comment.repliedNickname.orEmpty()}：${comment.repliedContent}",
+                            text = t("回复 %s：%s", comment.repliedNickname.orEmpty(), comment.repliedContent),
                             style = TextStyle(
                                 color = CommentHint.copy(alpha = 0.8f),
                                 fontFamily = FontFamily.SansSerif,
@@ -1551,7 +1576,7 @@ private fun CommentRow(
                     )
                     if (maybeLong) {
                         Text(
-                            text = if (textExpanded) "收起" else "展开",
+                            text = if (textExpanded) t("收起") else t("展开"),
                             style = TextStyle(
                                 color = CommentAccent.copy(alpha = 0.9f),
                                 fontSize = 12.sp,
@@ -1594,7 +1619,7 @@ private fun CommentRow(
                                 text = if (comment.likedCount > 0) {
                                     formatCount(comment.likedCount)
                                 } else {
-                                    "赞"
+                                    t("赞")
                                 },
                                 style = TextStyle(
                                     color = if (comment.liked) {
@@ -1628,7 +1653,7 @@ private fun CommentRow(
                                 },
                             )
                             Text(
-                                text = if (hugged) "已抱抱" else "抱抱",
+                                text = if (hugged) t("已抱抱") else t("抱抱"),
                                 style = TextStyle(
                                     color = if (hugged || overlayProgress > 0.12f) {
                                         Color(0xFFFF6B81).copy(alpha = 0.92f)
@@ -1640,7 +1665,7 @@ private fun CommentRow(
                             )
                         }
                         Text(
-                            text = if (replyActive) "回复中" else "回复",
+                            text = if (replyActive) t("回复中") else t("回复"),
                             style = TextStyle(
                                 color = if (replyActive) {
                                     CommentAccent.copy(alpha = 0.95f)
@@ -1677,9 +1702,9 @@ private fun CommentRow(
                             ) {
                                 Text(
                                     text = if (repliesOpen) {
-                                        "收起回复"
+                                        t("收起回复")
                                     } else {
-                                        "回复 ${formatCount(comment.replyCount)}"
+                                        t("回复 %s", formatCount(comment.replyCount))
                                     },
                                     style = TextStyle(
                                         color = CommentAccent.copy(alpha = 0.88f),
@@ -1735,14 +1760,14 @@ private fun CommentRow(
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 Text(
-                                    text = "抱抱了这些人",
+                                    text = t("抱抱了这些人"),
                                     color = CommentLabel.copy(alpha = 0.9f),
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Medium,
                                     modifier = Modifier.weight(1f),
                                 )
                                 Text(
-                                    text = "收起",
+                                    text = t("收起"),
                                     color = CommentAccent,
                                     fontSize = 12.sp,
                                     modifier = Modifier.clickable(
@@ -1754,7 +1779,7 @@ private fun CommentRow(
                             }
                             if (hugUsers.isEmpty()) {
                                 Text(
-                                    text = "暂时还没有人抱抱",
+                                    text = t("暂时还没有人抱抱"),
                                     color = CommentHint.copy(alpha = 0.75f),
                                     fontSize = 12.sp,
                                 )
@@ -1817,7 +1842,7 @@ private fun CommentRow(
                                 }
                                 repliesError != null && displayReplies.isEmpty() -> {
                                     Text(
-                                        text = repliesError ?: "加载失败",
+                                        text = repliesError ?: t("加载失败"),
                                         color = CommentHint,
                                         fontSize = 12.sp,
                                         modifier = Modifier.clickable(
@@ -1833,7 +1858,7 @@ private fun CommentRow(
                                 }
                                 displayReplies.isEmpty() -> {
                                     Text(
-                                        text = "暂无回复",
+                                        text = t("暂无回复"),
                                         color = CommentHint.copy(alpha = 0.7f),
                                         fontSize = 12.sp,
                                     )
@@ -1858,7 +1883,7 @@ private fun CommentRow(
                                             )
                                         }
                                         repliesHasMore -> Text(
-                                            text = "加载更多回复",
+                                            text = t("加载更多回复"),
                                             color = CommentAccent.copy(alpha = 0.9f),
                                             fontSize = 12.sp,
                                             fontWeight = FontWeight.Medium,
@@ -1960,7 +1985,7 @@ private fun CommentReplyRow(
                 )
                 Spacer(Modifier.width(6.dp))
                 Text(
-                    text = if (justSent) "刚刚发送" else comment.timeLabel,
+                    text = if (justSent) t("刚刚发送") else comment.timeLabel,
                     color = if (justSent) {
                         CommentAccent.copy(alpha = 0.9f)
                     } else {
@@ -1990,7 +2015,7 @@ private fun CommentReplyRow(
             )
             if (maybeLong) {
                 Text(
-                    text = if (textExpanded) "收起" else "展开",
+                    text = if (textExpanded) t("收起") else t("展开"),
                     color = CommentAccent.copy(alpha = 0.85f),
                     fontSize = 11.sp,
                     modifier = Modifier
@@ -2013,7 +2038,7 @@ private fun CommentReplyRow(
                     filled = false,
                 )
                 Text(
-                    text = if (comment.likedCount > 0) formatCount(comment.likedCount) else "赞",
+                    text = if (comment.likedCount > 0) formatCount(comment.likedCount) else t("赞"),
                     color = CommentHint.copy(alpha = 0.75f),
                     fontSize = 11.sp,
                 )
@@ -2421,10 +2446,7 @@ private fun Modifier.commentHugPinch(
     }
 }
 
-private fun formatCount(n: Int): String = when {
-    n >= 10_000 -> String.format("%.1f 万", n / 10_000f)
-    else -> n.toString()
-}
+private fun formatCount(n: Int): String = com.kite.zmusic.i18n.I18n.formatCompactCount(n.toLong())
 
 /** 宿主侧：打开时 2/3、点箭头到全屏的高度动画辅助（与设置同套曲线）。 */
 suspend fun Animatable<Float, *>.animateCommentSheetFrac(

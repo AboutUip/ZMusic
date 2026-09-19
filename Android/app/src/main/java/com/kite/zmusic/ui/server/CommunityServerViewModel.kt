@@ -9,6 +9,7 @@ import androidx.lifecycle.viewModelScope
 import com.kite.zmusic.data.CommunityServerStore
 import com.kite.zmusic.data.ServerConfigRepository
 import kotlinx.coroutines.launch
+import com.kite.zmusic.i18n.t
 
 class CommunityServerViewModel(
     private val store: CommunityServerStore,
@@ -75,23 +76,23 @@ class CommunityServerViewModel(
             hostIsMask -> committedHost
             typed.isEmpty() -> committedHost
             ServerConfigRepository.looksMasked(typed) -> {
-                bannerError = "请输入完整主机或 IP"
+                bannerError = t("请输入完整主机或 IP")
                 return
             }
             else -> typed
         }
         if (h.isEmpty()) {
-            bannerError = "请输入服务器 IP 或主机名"
+            bannerError = t("请输入服务器 IP 或主机名")
             return
         }
         val port = portText.toIntOrNull()
         if (port == null || port !in 1..65535) {
-            bannerError = "端口须为 1–65535"
+            bannerError = t("端口须为 1–65535")
             return
         }
         busy = true
         bannerError = null
-        statusHint = "正在探测连接…"
+        statusHint = t("正在探测连接…")
         viewModelScope.launch {
             val result = CommunityServerStore.probe(h, port)
             busy = false
@@ -101,12 +102,12 @@ class CommunityServerViewModel(
                     committedHost = h
                     hostIsMask = true
                     host = ServerConfigRepository.maskHost(h)
-                    statusHint = "连接成功"
+                    statusHint = t("连接成功")
                     onSuccess()
                 },
                 onFailure = {
                     statusHint = null
-                    bannerError = "无法连接该地址，请检查主机与端口"
+                    bannerError = t("无法连接该地址，请检查主机与端口")
                 },
             )
         }

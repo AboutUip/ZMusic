@@ -66,6 +66,7 @@ import com.kite.zmusic.ui.main.pageSheetHazeStyle
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeEffect
 import kotlinx.coroutines.delay
+import com.kite.zmusic.i18n.t
 
 private val SharePanelShape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp)
 private val ShareSheetPopEasing = CubicBezierEasing(0.16f, 1.12f, 0.28f, 1f)
@@ -264,7 +265,7 @@ internal fun PortraitShareSheet(
                 )
             }
             Text(
-                text = "分享",
+                text = t("分享"),
                 style = TextStyle(
                     color = MainPalette.Ink,
                     fontWeight = FontWeight.Bold,
@@ -282,22 +283,22 @@ internal fun PortraitShareSheet(
             ) {
                 ShareBrandAction(
                     drawableRes = R.drawable.ic_share_wechat_moments,
-                    label = "微信朋友圈",
+                    label = t("微信朋友圈"),
                     onClick = { onPick(NcmShareTarget.WeChatMoments) },
                 )
                 ShareBrandAction(
                     drawableRes = R.drawable.ic_share_wechat,
-                    label = "微信好友",
+                    label = t("微信好友"),
                     onClick = { onPick(NcmShareTarget.WeChatFriend) },
                 )
                 ShareBrandAction(
                     drawableRes = R.drawable.ic_share_qq,
-                    label = "QQ好友",
+                    label = t("QQ好友"),
                     onClick = { onPick(NcmShareTarget.QqFriend) },
                 )
                 ShareVectorAction(
                     icon = ZIcons.Link,
-                    label = "仅复制链接",
+                    label = t("仅复制链接"),
                     onClick = { onPick(NcmShareTarget.CopyLink) },
                 )
             }

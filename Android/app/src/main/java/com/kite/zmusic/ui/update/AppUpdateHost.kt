@@ -13,6 +13,7 @@ import com.kite.zmusic.data.AppUpdateLogic
 import com.kite.zmusic.data.AppUpdateUiState
 import com.kite.zmusic.ui.common.GlassAlertDialog
 import com.kite.zmusic.ui.settings.ChangelogUpdateDialogBody
+import com.kite.zmusic.i18n.t
 
 @Composable
 fun AppUpdateHost() {
@@ -26,23 +27,23 @@ fun AppUpdateHost() {
             GlassAlertDialog(
                 title = AppUpdateLogic.dialogTitle(s.offer.version),
                 onDismiss = { coordinator.later() },
-                confirmLabel = "立即更新",
+                confirmLabel = t("立即更新"),
                 onConfirm = { coordinator.startUpdate() },
-                cancelLabel = "下次再说",
-                tertiaryLabel = "忽略该版本",
+                cancelLabel = t("下次再说"),
+                tertiaryLabel = t("忽略该版本"),
                 onTertiary = { coordinator.ignoreCurrent() },
                 extraContent = { ChangelogUpdateDialogBody(s.offer.entry) },
             )
         }
         is AppUpdateUiState.ReadyToInstall -> {
             GlassAlertDialog(
-                title = "安装 ZMusic v${s.offer.version}",
+                title = t("安装 ZMusic v%s", s.offer.version),
                 message = if (s.needsPermission) {
-                    "需要允许安装应用"
+                    t("需要允许安装应用")
                 } else {
-                    "下载完成，即将安装"
+                    t("下载完成，即将安装")
                 },
-                confirmLabel = if (s.needsPermission) "去开启" else "去安装",
+                confirmLabel = if (s.needsPermission) t("去开启") else t("去安装"),
                 onConfirm = { activity?.let { coordinator.tryInstall(it) } },
                 onDismiss = {},
                 cancelLabel = null,

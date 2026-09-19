@@ -9,6 +9,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import com.kite.zmusic.i18n.t
 
 /**
  * 插件引擎。产品路径是 [registerFromZpp] / [installWorkshopZpp] **注册**，不扫描目录发现插件。
@@ -228,7 +229,7 @@ class PluginEngine(
                     if (id == PluginDebugProbe.ID && !debug) return@forEach
                     PluginLog.w(debug, "哨兵残留，隔离 $id")
                     val rec = snap.plugins.find { it.id == id }
-                    journal.append(id, "进程在插件入口执行期间退出（哨兵残留）")
+                    journal.append(id, t("进程在插件入口执行期间退出（哨兵残留）"))
                     reportFault(
                         PluginFault(
                             id = id,
@@ -367,7 +368,7 @@ class PluginEngine(
             paths.ensure()
             if (ZppUnpacker.peekId(zpp) == PluginDebugProbe.ID) {
                 PluginLog.w(debugEnabled(), "产品安装忽略内置探针")
-                return PluginRegisterResult.Skipped("不能覆盖内置探针")
+                return PluginRegisterResult.Skipped(t("不能覆盖内置探针"))
             }
             val result = installLocked(
                 zpp = zpp,
@@ -619,12 +620,12 @@ class PluginEngine(
                 if (!manifest.compatibleWith(PluginEngineVersion.number)) {
                     staging.deleteRecursively()
                     PluginLog.w(debugEnabled(), "跳过不兼容引擎的包 ${manifest.id}")
-                    return PluginRegisterResult.Skipped("引擎版本不兼容")
+                    return PluginRegisterResult.Skipped(t("引擎版本不兼容"))
                 }
                 val existing = records.find { it.id == manifest.id }
                 if (!replaceExisting && existing != null && existing.version >= manifest.version) {
                     staging.deleteRecursively()
-                    return PluginRegisterResult.Skipped("已安装相同或更新版本")
+                    return PluginRegisterResult.Skipped(t("已安装相同或更新版本"))
                 }
                 val dest = paths.installedDir(manifest.id)
                 dest.deleteRecursively()

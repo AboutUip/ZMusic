@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kite.zmusic.R
 import com.kite.zmusic.ui.theme.MainPalette
+import com.kite.zmusic.i18n.t
 
 private val Page get() = MainPalette.Surface
 private val PageSoft get() = MainPalette.Page
@@ -162,9 +163,9 @@ internal fun LoginLandscapeHost(
                         .fillMaxHeight()
                         .weight(0.38f),
                     caption = if (registerOpen) {
-                        "注册仅用于在 ZMusic 内登录，账号受网易云服务约束。"
+                        t("注册仅用于在 ZMusic 内登录，账号受网易云服务约束。")
                     } else {
-                        "登录网易云账号，同步收藏与歌单"
+                        t("登录网易云账号，同步收藏与歌单")
                     },
                 )
                 Box(
@@ -276,7 +277,7 @@ internal fun LoginLandscapeHost(
 @Composable
 internal fun LoginBrandRail(
     modifier: Modifier = Modifier,
-    caption: String = "登录网易云账号，同步收藏与歌单",
+    caption: String = t("登录网易云账号，同步收藏与歌单"),
 ) {
     Box(
         modifier.background(PageSoft),
@@ -316,7 +317,7 @@ internal fun LoginBrandRail(
             )
             Spacer(Modifier.height(10.dp))
             Text(
-                text = "把世界调小一点  ·  把歌开大一点",
+                text = t("把世界调小一点  ·  把歌开大一点"),
                 style = TextStyle(
                     color = InkSecondary,
                     fontSize = 13.sp,
@@ -361,7 +362,7 @@ private fun LandscapeLandingPane(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(
-                text = "登录",
+                text = t("登录"),
                 style = TextStyle(
                     color = Ink,
                     fontSize = 22.sp,
@@ -371,7 +372,7 @@ private fun LandscapeLandingPane(
             )
             Spacer(Modifier.height(6.dp))
             Text(
-                text = "使用网易云账号继续",
+                text = t("使用网易云账号继续"),
                 style = TextStyle(
                     color = InkSecondary,
                     fontSize = 13.sp,
@@ -379,12 +380,12 @@ private fun LandscapeLandingPane(
                 ),
             )
             Spacer(Modifier.height(22.dp))
-            CloudPillButton(text = "手机号登录", onClick = onPhone)
+            CloudPillButton(text = t("手机号登录"), onClick = onPhone)
             Spacer(Modifier.height(12.dp))
-            CloudOutlinePillButton(text = "扫码登录", onClick = onQr)
+            CloudOutlinePillButton(text = t("扫码登录"), onClick = onQr)
             Spacer(Modifier.height(18.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                LandscapeTextAction("密码登录", onClick = onPassword)
+                LandscapeTextAction(t("密码登录"), onClick = onPassword)
                 Box(
                     Modifier
                         .padding(horizontal = 14.dp)
@@ -392,16 +393,16 @@ private fun LandscapeLandingPane(
                         .height(12.dp)
                         .background(Hairline),
                 )
-                LandscapeTextAction("邮箱登录", onClick = onEmail)
+                LandscapeTextAction(t("邮箱登录"), onClick = onEmail)
             }
             Spacer(Modifier.height(16.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = "没有账号？",
+                    text = t("没有账号？"),
                     style = TextStyle(color = InkSecondary, fontSize = 13.sp),
                 )
                 Text(
-                    text = "注册",
+                    text = t("注册"),
                     modifier = Modifier
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },

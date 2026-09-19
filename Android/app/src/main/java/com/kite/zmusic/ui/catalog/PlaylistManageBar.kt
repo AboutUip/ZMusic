@@ -28,6 +28,7 @@ import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.main.MiniPlayerStackHeight
 import com.kite.zmusic.ui.main.mainLiquidGlass
 import com.kyant.backdrop.Backdrop
+import com.kite.zmusic.i18n.t
 
 class PlaylistManageBridge {
     var active by mutableStateOf(false)
@@ -71,7 +72,7 @@ internal fun PlaylistManageBar(
     backdrop: Backdrop,
     modifier: Modifier = Modifier,
     canDownload: Boolean = true,
-    removeLabel: String = "全部移出歌单",
+    removeLabel: String = t("全部移出歌单"),
 ) {
     val shape = RoundedCornerShape(24.dp)
     val enabled = !busy
@@ -92,7 +93,7 @@ internal fun PlaylistManageBar(
         )
         if (canDownload) {
             ManageBarAction(
-                label = "全部下载",
+                label = t("全部下载"),
                 color = MainPalette.Ink,
                 enabled = enabled && selectedCount > 0,
                 onClick = onDownload,
@@ -100,7 +101,7 @@ internal fun PlaylistManageBar(
             )
         }
         ManageBarAction(
-            label = "取消",
+            label = t("取消"),
             color = MainPalette.Secondary,
             enabled = enabled,
             onClick = onCancel,

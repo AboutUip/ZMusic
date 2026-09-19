@@ -78,6 +78,7 @@ import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeStyle
 import dev.chrisbanes.haze.HazeTint
 import dev.chrisbanes.haze.hazeEffect
+import com.kite.zmusic.i18n.t
 
 private val EditorLabel = Color(0xFFFFFFFF)
 private val EditorHint = Color(0xFFE8F0F8)
@@ -349,7 +350,7 @@ fun TitleStyleEditorOverlay(
                             ),
                         )
                         Text(
-                            text = "标题样式",
+                            text = t("标题样式"),
                             style = TextStyle(
                                 color = EditorLabel,
                                 fontFamily = FontFamily.SansSerif,
@@ -358,7 +359,7 @@ fun TitleStyleEditorOverlay(
                             ),
                         )
                         Text(
-                            text = "颜色与字号 · 关闭后应用",
+                            text = t("颜色与字号 · 关闭后应用"),
                             style = TextStyle(
                                 color = EditorHint.copy(alpha = 0.72f),
                                 fontFamily = FontFamily.Monospace,
@@ -368,13 +369,13 @@ fun TitleStyleEditorOverlay(
                         )
 
                         TitleLineStyleSection(
-                            title = "歌名",
+                            title = t("歌名"),
                             line = TitleStyleLine.Name,
                             style = draftName,
                             onChange = onDraftNameChange,
                         )
                         TitleLineStyleSection(
-                            title = "歌手",
+                            title = t("歌手"),
                             line = TitleStyleLine.Source,
                             style = draftSource,
                             onChange = onDraftSourceChange,
@@ -542,7 +543,7 @@ private fun TitleLineStyleSection(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "字体大小",
+                text = t("字体大小"),
                 style = TextStyle(
                     color = EditorHint.copy(alpha = 0.85f),
                     fontFamily = FontFamily.Monospace,
@@ -575,7 +576,7 @@ private fun TitleLineStyleSection(
             modifier = Modifier.fillMaxWidth(),
         )
         Text(
-            text = "字体颜色",
+            text = t("字体颜色"),
             style = TextStyle(
                 color = EditorHint.copy(alpha = 0.85f),
                 fontFamily = FontFamily.Monospace,
@@ -680,7 +681,7 @@ private fun TitleColorSlotRow(
                 )
                 if (locked) {
                     Text(
-                        text = "默",
+                        text = t("默"),
                         style = TextStyle(
                             color = Color.Black.copy(alpha = 0.72f),
                             fontSize = 8.sp,
@@ -776,7 +777,7 @@ private fun TitleSingleColorEditor(
             }
         }
         Text(
-            text = "色相",
+            text = t("色相"),
             style = TextStyle(
                 color = EditorHint.copy(alpha = 0.75f),
                 fontSize = 10.sp,

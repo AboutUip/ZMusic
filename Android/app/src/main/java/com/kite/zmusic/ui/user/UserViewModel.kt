@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import com.kite.zmusic.i18n.t
 
 private const val PlaylistPage = 40
 private const val RelationPage = 30
@@ -98,7 +99,7 @@ class UserViewModel(
     private val _ui = MutableStateFlow(
         UserUiState(
             id = userId,
-            name = seedName.ifBlank { "用户" },
+            name = seedName.ifBlank { t("用户") },
             avatarUrl = seedAvatar,
         ),
     )
@@ -176,7 +177,7 @@ class UserViewModel(
         val session = sessionRepository.session.value
         val cookie = session?.cookie.orEmpty()
         if (cookie.isBlank() || session?.isGuest == true) {
-            islandNotices.show("请先登录")
+            islandNotices.show(t("请先登录"))
             return
         }
         val next = !state.followed
@@ -193,7 +194,7 @@ class UserViewModel(
                 val code = NcmJson.apiCode(json)
                 if (code == 301 || code == 302) {
                     revertFollow(next)
-                    islandNotices.show("请先登录")
+                    islandNotices.show(t("请先登录"))
                     return@launch
                 }
                 if (code != 200) {
@@ -209,7 +210,7 @@ class UserViewModel(
                 }
                 _ui.update { it.copy(followBusy = false, followed = next) }
                 islandNotices.show(
-                    if (next) "已关注" else "已取消关注",
+                    if (next) t("已关注") else t("已取消关注"),
                     state.avatarUrl,
                 )
             } catch (e: CancellationException) {
@@ -273,7 +274,7 @@ class UserViewModel(
                 ) {
                     val msg = detailJson?.let {
                         NcmJson.userFacingMessage(it, "暂时无法打开这位用户")
-                    } ?: "暂时无法打开这位用户"
+                    } ?: t("暂时无法打开这位用户")
                     _ui.update {
                         it.copy(loading = false, refreshing = false, error = msg)
                     }
@@ -357,9 +358,9 @@ class UserRelationsViewModel(
         UserRelationsUi(
             userId = userId,
             title = if (fans) {
-                "${seedName.ifBlank { "用户" }}的粉丝"
+                t("%s的粉丝", seedName.ifBlank { t("用户") })
             } else {
-                "${seedName.ifBlank { "用户" }}的关注"
+                t("%s的关注", seedName.ifBlank { t("用户") })
             },
             fans = fans,
         ),

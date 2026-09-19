@@ -14,6 +14,7 @@ import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.Semaphore
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
+import com.kite.zmusic.i18n.t
 
 /**
  * 一插件一 Context。所有 JS 调用必须在它线程上。
@@ -83,7 +84,7 @@ internal class PluginSession(
                 if (state != PluginJsState.Error) {
                     setState(PluginJsState.Error)
                 }
-                journal.append(record.id, "入口失败: ${t.stackTraceToString().trim()}")
+                journal.append(record.id, t("入口失败: %s", t.stackTraceToString().trim()))
                 PluginLog.e(debug(), "插件 ${record.id} 入口失败", t)
                 destroyContext()
             } finally {
@@ -157,7 +158,7 @@ internal class PluginSession(
             ctx.evaluate(source, record.entry)
             if (state == PluginJsState.Uninitialized) {
                 PluginLog.w(debug(), "插件 ${record.id} 未注册状态，跳过")
-                journal.append(record.id, "未按协议注册运行状态")
+                journal.append(record.id, t("未按协议注册运行状态"))
                 setState(PluginJsState.Error)
                 destroyContext()
             } else if (state == PluginJsState.Error) {
@@ -165,11 +166,11 @@ internal class PluginSession(
             }
         } catch (e: QuickJSException) {
             if (state != PluginJsState.Error) {
-                journal.append(record.id, "脚本异常: ${e.message ?: e.toString()}")
+                journal.append(record.id, t("脚本异常: %s", e.message ?: e.toString()))
                 PluginLog.e(debug(), "插件 ${record.id} 脚本异常", e)
                 setState(PluginJsState.Error)
             } else {
-                journal.append(record.id, "插件注册 Error，结束本次运行")
+                journal.append(record.id, t("插件注册 Error，结束本次运行"))
             }
             destroyContext()
         }
@@ -410,7 +411,7 @@ internal class PluginSession(
         }
         val ok = PluginTextThemeBridge.set(record.id, args.firstOrNull())
         if (!ok) {
-            journal.append(record.id, "Xuan.theme.set 失败: 参数非法")
+            journal.append(record.id, t("Xuan.theme.set 失败: 参数非法"))
             PluginLog.w(debug(), "插件 ${record.id} theme.set 失败: 参数非法")
         }
         return if (ok) java.lang.Boolean.TRUE else java.lang.Boolean.FALSE
@@ -430,11 +431,11 @@ internal class PluginSession(
 
     private fun rejectHost(op: String) {
         val why = when {
-            ended -> "会话已结束"
-            !hostApiAllowed() -> "尚未 Running"
-            else -> "拒绝"
+            ended -> t("会话已结束")
+            !hostApiAllowed() -> t("尚未 Running")
+            else -> t("拒绝")
         }
-        journal.append(record.id, "Xuan.$op 失败: $why")
+        journal.append(record.id, t("Xuan.%s 失败: %s", op, why))
         PluginLog.w(debug(), "插件 ${record.id} $op 失败: $why")
     }
 
@@ -465,7 +466,7 @@ internal class PluginSession(
     }
 
     private fun failLookSet(): Any {
-        journal.append(record.id, "Xuan.look.set 失败: 参数非法")
+        journal.append(record.id, t("Xuan.look.set 失败: 参数非法"))
         PluginLog.w(debug(), "插件 ${record.id} look.set 失败: 参数非法")
         return java.lang.Boolean.FALSE
     }
@@ -1033,7 +1034,7 @@ internal class PluginSession(
     }
 
     private fun failCollectionSet(): Any {
-        journal.append(record.id, "Xuan.ui.collection.set 失败: 参数非法")
+        journal.append(record.id, t("Xuan.ui.collection.set 失败: 参数非法"))
         PluginLog.w(debug(), "插件 ${record.id} ui.collection.set 失败: 参数非法")
         return java.lang.Boolean.FALSE
     }
@@ -1173,7 +1174,7 @@ internal class PluginSession(
             result
         } catch (e: QuickJSException) {
             requireCache.remove(rel)
-            journal.append(record.id, "Xuan.require 失败 $rel: ${e.message ?: e}")
+            journal.append(record.id, t("Xuan.require 失败 %s: %s", rel, e.message ?: e))
             PluginLog.w(debug(), "插件 ${record.id} require $rel 失败: ${e.message}")
             runCatching { exportsObj.release() }
             runCatching { moduleObj.release() }
@@ -1189,7 +1190,7 @@ internal class PluginSession(
             }
             fn.call(*jsArgs)
         } catch (e: QuickJSException) {
-            journal.append(record.id, "回调异常: ${e.message ?: e}")
+            journal.append(record.id, t("回调异常: %s", e.message ?: e))
             PluginLog.w(debug(), "插件 ${record.id} 回调异常: ${e.message}")
         } finally {
             created.forEach { v ->
@@ -1219,7 +1220,7 @@ internal class PluginSession(
         try {
             block(ctx)
         } catch (t: Throwable) {
-            journal.append(record.id, "$label 失败: ${t.message ?: t}")
+            journal.append(record.id, t("%s 失败: %s", label, t.message ?: t))
             PluginLog.e(debug(), "插件 ${record.id} $label 失败", t)
         } finally {
             s?.clear(record.id)

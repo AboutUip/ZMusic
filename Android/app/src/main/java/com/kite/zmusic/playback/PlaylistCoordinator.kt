@@ -32,6 +32,8 @@ import com.kite.zmusic.data.LyricRepository
 import com.kite.zmusic.data.NcmHomeParse
 import com.kite.zmusic.data.NcmListenReporter
 import com.kite.zmusic.data.NcmUserClient
+import com.kite.zmusic.data.PersonalFmModeChoice
+import com.kite.zmusic.data.PersonalFmModeStore
 import com.kite.zmusic.data.PlayUrlResolver
 import com.kite.zmusic.data.SessionRepository
 import com.kite.zmusic.data.TrackRow
@@ -58,6 +60,8 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.random.Random
+import com.kite.zmusic.i18n.I18n
+import com.kite.zmusic.i18n.t
 
 /**
  * Service 内播放协调：队列、NCM URL 按需解析、歌词、模式。
@@ -85,6 +89,7 @@ class PlaylistCoordinator(
     private val persistentPlaybackStore: PersistentPlaybackStore,
     private val userClient: NcmUserClient,
     private val audioOutputController: AudioOutputController,
+    private val fmModeStore: PersonalFmModeStore,
     private val onClearAndStopService: (() -> Unit)? = null,
 ) {
     private val scope = CoroutineScope(
@@ -174,6 +179,9 @@ class PlaylistCoordinator(
     private var errorRetryJob: Job? = null
     @Volatile
     private var playbackClockLocked: Boolean = false
+    /** 一起听客人：曲末不要本机自动切歌，等远端 track 时钟。 */
+    @Volatile
+    private var listenFollowRemoteAdvance: Boolean = false
     /** 本次装载是否开播；失败重试 / 跳过不可播时沿用，避免冷启动预热被打成自动播放。 */
     private var loadPlayWhenReady = false
 
@@ -216,6 +224,11 @@ class PlaylistCoordinator(
         override fun onPlaybackStateChanged(playbackState: Int) {
             when (playbackState) {
                 Player.STATE_READY -> {
+                    val ui = _ui.value
+                    val mediaId = exoPlayer.currentMediaItem?.mediaId
+                    if (!PlaybackLoadGate.canCommitReady(ui.loadPending, mediaId, ui.currentTrack?.id)) {
+                        return
+                    }
                     val d = exoPlayer.duration
                     val pos = exoPlayer.currentPosition.coerceAtLeast(0L)
                     _ui.update {
@@ -383,13 +396,14 @@ class PlaylistCoordinator(
         if (sleepTimer?.onLeavingTrack() == true) return
         if (tracks.isEmpty()) return
         val idx = startIndex.coerceIn(0, tracks.lastIndex)
-        val radio = fmSession || intelligenceSession
+        val fm = fmSession || I18n.sourceOf(sourcePlaylistTitle.orEmpty()) == "私人漫游"
+        val radio = fm || intelligenceSession
         if (!radio) {
             fmHydrateJob?.cancel()
             fmHydrateJob = null
             pendingFmAdvance = false
         }
-        fmActive = fmSession
+        fmActive = fm
         intelligenceActive = intelligenceSession
         fmKickExtra = radio
         if (radio && playbackMode == PlaybackMode.SHUFFLE) {
@@ -419,7 +433,7 @@ class PlaylistCoordinator(
                 sourcePlaylistId = sourcePlaylistId,
                 sourcePlaylistTitle = sourcePlaylistTitle,
                 playbackMode = playbackMode,
-                fmActive = fmSession,
+                fmActive = fm,
                 intelligenceActive = intelligenceSession,
             )
         }
@@ -501,12 +515,34 @@ class PlaylistCoordinator(
         scope.launch {
             val tracks = fetchPersonalFmBatch()
             if (tracks.isEmpty()) {
-                context.showIslandNotice("暂时没有漫游歌曲")
+                context.showIslandNotice(t("暂时没有漫游歌曲"))
                 return@launch
             }
-            playQueue(tracks, 0, null, "私人漫游", fmSession = true)
-            context.showIslandNotice("已开启私人漫游")
+            playQueue(tracks, 0, null, t("私人漫游"), fmSession = true)
+            context.showIslandNotice(t("已开启私人漫游"))
             onStarted()
+        }
+    }
+
+    fun applyPersonalFmMode(choice: PersonalFmModeChoice, onDone: () -> Unit = {}) {
+        if (choice == fmModeStore.current() && fmActive) {
+            onDone()
+            return
+        }
+        fmHydrateJob?.cancel()
+        scope.launch {
+            val prev = fmModeStore.current()
+            fmModeStore.set(choice)
+            val tracks = fetchPersonalFmBatch()
+            if (tracks.isEmpty()) {
+                fmModeStore.set(prev)
+                context.showIslandNotice(t("暂时没有漫游歌曲"))
+                onDone()
+                return@launch
+            }
+            playQueue(tracks, 0, null, t("私人漫游"), fmSession = true)
+            context.showIslandNotice(t("已切换到%s模式", choice.label()))
+            onDone()
         }
     }
 
@@ -518,14 +554,14 @@ class PlaylistCoordinator(
         onStarted: () -> Unit = {},
     ) {
         if (songId <= 0L || playlistId <= 0L) {
-            context.showIslandNotice("先在我喜欢的音乐里收藏几首歌")
+            context.showIslandNotice(t("先在我喜欢的音乐里收藏几首歌"))
             return
         }
         fmHydrateJob?.cancel()
         scope.launch {
             val tracks = fetchIntelligenceBatch(songId, playlistId, startSongId)
             if (tracks.isEmpty()) {
-                context.showIslandNotice("暂时没有心动歌曲")
+                context.showIslandNotice(t("暂时没有心动歌曲"))
                 return@launch
             }
             val start = tracks.indexOfFirst { it.id == startSongId }.takeIf { it >= 0 } ?: 0
@@ -533,10 +569,10 @@ class PlaylistCoordinator(
                 tracks,
                 start,
                 playlistId,
-                "心动模式",
+                t("心动模式"),
                 intelligenceSession = true,
             )
-            context.showIslandNotice("已开启心动模式")
+            context.showIslandNotice(t("已开启心动模式"))
             onStarted()
         }
     }
@@ -546,7 +582,7 @@ class PlaylistCoordinator(
         scope.launch {
             val liked = resolveLikedForIntelligence()
             if (liked == null || liked.playlistId <= 0L) {
-                context.showIslandNotice("先在我喜欢的音乐里收藏几首歌")
+                context.showIslandNotice(t("先在我喜欢的音乐里收藏几首歌"))
                 return@launch
             }
             val playing = _ui.value.currentTrack
@@ -557,13 +593,13 @@ class PlaylistCoordinator(
                 ?: liked.allLikedIds.firstOrNull()
                 ?: 0L
             if (seed <= 0L) {
-                context.showIslandNotice("先在我喜欢的音乐里收藏几首歌")
+                context.showIslandNotice(t("先在我喜欢的音乐里收藏几首歌"))
                 return@launch
             }
             startIntelligence(
                 songId = seed,
                 playlistId = liked.playlistId,
-                playlistTitle = liked.title.ifBlank { "心动模式" },
+                playlistTitle = liked.title.ifBlank { t("心动模式") },
                 onStarted = onStarted,
             )
         }
@@ -766,6 +802,10 @@ class PlaylistCoordinator(
         persistentFocus.setForeignYield(active)
     }
 
+    fun duckMusicVolume(level: Float?) {
+        persistentFocus.setOverlayDuck(level)
+    }
+
     fun seekTo(ms: Long) {
         val target = ms.coerceAtLeast(0L)
         val from = exoPlayer.currentPosition.coerceAtLeast(0L)
@@ -861,6 +901,10 @@ class PlaylistCoordinator(
         if (playbackClockLocked == locked) return
         playbackClockLocked = locked
         applyTunePlaybackParameters()
+    }
+
+    fun setListenFollowRemoteAdvance(follow: Boolean) {
+        listenFollowRemoteAdvance = follow
     }
 
     private fun applyTunePlaybackParameters() {
@@ -960,7 +1004,7 @@ class PlaylistCoordinator(
         }
         persistSnapshot()
         applyRepeatMode()
-        context.showIslandNotice("已定时停止", _ui.value.currentTrack?.coverUrl)
+        context.showIslandNotice(t("已定时停止"), _ui.value.currentTrack?.coverUrl)
     }
 
     fun restoreRepeatAfterSleepCancel() {
@@ -1004,6 +1048,10 @@ class PlaylistCoordinator(
     }
 
     private fun onEnded() {
+        if (listenFollowRemoteAdvance) {
+            // 停在曲末等房主/远端时钟，勿 pause、勿切下一首，避免空/满房同时 onEnded 连跳。
+            return
+        }
         if (suppressAutoAdvanceOnce) {
             suppressAutoAdvanceOnce = false
             return
@@ -1316,9 +1364,7 @@ class PlaylistCoordinator(
         preparedShuffleNext = null
         val startPos = resumeAtMs.coerceAtLeast(0L)
         val cachedLyrics = lyricRepository.peekPack(track.id)
-        // 切歌：只暂停旧曲，勿 stop/clearMediaItems —— 清空播放列表会拆掉 Media3 通知再重建，触发系统 FGS 警告
-        exoPlayer.playWhenReady = false
-        // 同步更新索引 / peek，黑胶可继续滑；音源在后台加载
+        // 先标 loadPending 再暂停旧曲。否则 playWhenReady=false 会在旧曲、非加载态下发到一起听。
         _ui.update {
             it.copy(
                 index = idx,
@@ -1336,6 +1382,8 @@ class PlaylistCoordinator(
                 playWhenReady = false,
             )
         }
+        // 切歌：只暂停旧曲，勿 stop/clearMediaItems —— 清空播放列表会拆掉 Media3 通知再重建，触发系统 FGS 警告
+        exoPlayer.playWhenReady = false
         refreshPeeksAndPrefetch()
         if (radioActive) ensureRadioLookahead()
         val loadGen = track.id
@@ -1437,7 +1485,7 @@ class PlaylistCoordinator(
         _ui.update {
             it.copy(
                 error = null,
-                notice = PlaybackNotice(token = token, message = "该歌曲不可播放"),
+                notice = PlaybackNotice(token = token, message = t("该歌曲不可播放")),
                 transportWakeToken = it.transportWakeToken + 1,
                 loadPending = true,
                 buffering = true,
@@ -1605,7 +1653,9 @@ class PlaylistCoordinator(
         val cookie = sessionRepository.session.value?.cookie.orEmpty()
         if (cookie.isBlank()) return emptyList()
         return runCatching {
-            val json = withContext(Dispatchers.IO) { userClient.personalFm(cookie) }
+            val json = withContext(Dispatchers.IO) {
+                userClient.personalFm(cookie, fmModeStore.current())
+            }
             NcmHomeParse.personalFmTracks(json)
         }.getOrDefault(emptyList())
     }
@@ -1765,7 +1815,7 @@ class PlaylistCoordinator(
         if (accelNoticeTrackId == track.id) return
         accelNoticeTrackId = track.id
         val cover = track.coverUrl ?: downloadAccelIndex.lookup(track.id)?.coverUri
-        context.showIslandNotice("此歌曲已进行缓存加速", cover)
+        context.showIslandNotice(t("此歌曲已进行缓存加速"), cover)
     }
 
     private fun hasLocalAudio(track: TrackRow): Boolean =

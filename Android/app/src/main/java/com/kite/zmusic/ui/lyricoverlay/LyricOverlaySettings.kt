@@ -55,6 +55,7 @@ import com.kite.zmusic.ui.icons.ZIcons
 import com.kite.zmusic.ui.theme.MainColors
 import com.kite.zmusic.ui.theme.MainPalette
 import kotlin.math.roundToInt
+import com.kite.zmusic.i18n.t
 
 internal val OverlayColorPresets = intArrayOf(
     0xFFFFFFFF.toInt(),
@@ -102,27 +103,27 @@ internal fun LyricOverlaySettingsPanel(
             .padding(horizontal = if (compact) 6.dp else 10.dp, vertical = 8.dp),
     ) {
         SettingsFolder(
-            title = "歌词",
+            title = t("歌词"),
             expanded = openFolder == OverlayFolder.Lyrics,
             onToggle = { openFolder = if (openFolder == OverlayFolder.Lyrics) null else OverlayFolder.Lyrics },
         ) {
             StepperRow(
-                title = "已播行",
+                title = t("已播行"),
                 value = prefs.playedLines,
                 onChange = {
                     onChange(prefs.copy(playedLines = it.coerceIn(LyricOverlayPrefs.LINES_MIN, LyricOverlayPrefs.LINES_MAX)))
                 },
             )
             StepperRow(
-                title = "未播行",
+                title = t("未播行"),
                 value = prefs.upcomingLines,
                 onChange = {
                     onChange(prefs.copy(upcomingLines = it.coerceIn(LyricOverlayPrefs.LINES_MIN, LyricOverlayPrefs.LINES_MAX)))
                 },
             )
-            Label("窗内对齐")
+            Label(t("窗内对齐"))
             AlignPicker(selected = prefs.textAlign, compact = compact) { onChange(prefs.copy(textAlign = it)) }
-            Label("字号 ${prefs.fontSizeSp.toInt()} sp")
+            Label(t("字号 %s sp", prefs.fontSizeSp.toInt()))
             Slider(
                 value = prefs.fontSizeSp,
                 onValueChange = { onChange(prefs.copy(fontSizeSp = it)) },
@@ -131,25 +132,25 @@ internal fun LyricOverlaySettingsPanel(
             )
         }
         SettingsFolder(
-            title = "翻译",
+            title = t("翻译"),
             expanded = openFolder == OverlayFolder.Translation,
             onToggle = {
                 openFolder = if (openFolder == OverlayFolder.Translation) null else OverlayFolder.Translation
             },
         ) {
-            SwitchRow("显示翻译歌词", prefs.preferTranslation, switchColors, compact) {
+            SwitchRow(t("显示翻译歌词"), prefs.preferTranslation, switchColors, compact) {
                 onChange(prefs.copy(preferTranslation = it))
             }
-            Label("有译文时生效。播放页已开翻译时也会显示。对照默认只画当前行。")
+            Label(t("有译文时生效。播放页已开翻译时也会显示。对照默认只画当前行。"))
             AnimatedVisibility(
                 visible = prefs.preferTranslation,
                 enter = fadeIn(FolderAnim) + FolderExpand,
                 exit = fadeOut(FolderAnim) + FolderShrink,
             ) {
                 Column {
-                    Label("显示方式")
+                    Label(t("显示方式"))
                     ChoicePicker(
-                        labels = listOf("覆盖原文", "与原文对照"),
+                        labels = listOf(t("覆盖原文"), t("与原文对照")),
                         selectedIndex = if (prefs.translationCoexist) 1 else 0,
                         compact = compact,
                     ) { onChange(prefs.copy(translationCoexist = it == 1)) }
@@ -159,13 +160,13 @@ internal fun LyricOverlaySettingsPanel(
                         exit = fadeOut(FolderAnim) + FolderShrink,
                     ) {
                         Column {
-                            Label("两行顺序")
+                            Label(t("两行顺序"))
                             ChoicePicker(
-                                labels = listOf("原文在上", "译文在上"),
+                                labels = listOf(t("原文在上"), t("译文在上")),
                                 selectedIndex = if (prefs.originalOnTop) 0 else 1,
                                 compact = compact,
                             ) { onChange(prefs.copy(originalOnTop = it == 0)) }
-                            SwitchRow("其余歌词显示译文", prefs.othersShowTranslation, switchColors, compact) {
+                            SwitchRow(t("其余歌词显示译文"), prefs.othersShowTranslation, switchColors, compact) {
                                 onChange(prefs.copy(othersShowTranslation = it))
                             }
                         }
@@ -174,30 +175,30 @@ internal fun LyricOverlaySettingsPanel(
             }
         }
         SettingsFolder(
-            title = "颜色",
+            title = t("颜色"),
             expanded = openFolder == OverlayFolder.Color,
             onToggle = { openFolder = if (openFolder == OverlayFolder.Color) null else OverlayFolder.Color },
         ) {
-            ColorRow("已播", prefs.playedColorArgb) { onChange(prefs.copy(playedColorArgb = it)) }
-            ColorRow("当前", prefs.currentColorArgb) { onChange(prefs.copy(currentColorArgb = it)) }
-            ColorRow("未播", prefs.upcomingColorArgb) { onChange(prefs.copy(upcomingColorArgb = it)) }
+            ColorRow(t("已播"), prefs.playedColorArgb) { onChange(prefs.copy(playedColorArgb = it)) }
+            ColorRow(t("当前"), prefs.currentColorArgb) { onChange(prefs.copy(currentColorArgb = it)) }
+            ColorRow(t("未播"), prefs.upcomingColorArgb) { onChange(prefs.copy(upcomingColorArgb = it)) }
             AnimatedVisibility(
                 visible = prefs.preferTranslation && prefs.translationCoexist,
                 enter = fadeIn(FolderAnim) + FolderExpand,
                 exit = fadeOut(FolderAnim) + FolderShrink,
             ) {
-                ColorRow("译文", prefs.translationColorArgb) {
+                ColorRow(t("译文"), prefs.translationColorArgb) {
                     onChange(prefs.copy(translationColorArgb = it))
                 }
             }
         }
         SettingsFolder(
-            title = "窗口",
+            title = t("窗口"),
             expanded = openFolder == OverlayFolder.Window,
             onToggle = { openFolder = if (openFolder == OverlayFolder.Window) null else OverlayFolder.Window },
         ) {
-            ActionRow("窗口居中", ZIcons.AlignHorizontalCenter, onCenterHorizontally)
-            SwitchRow("悬浮窗背景", prefs.windowBackground, switchColors, compact) {
+            ActionRow(t("窗口居中"), ZIcons.AlignHorizontalCenter, onCenterHorizontally)
+            SwitchRow(t("悬浮窗背景"), prefs.windowBackground, switchColors, compact) {
                 onChange(prefs.copy(windowBackground = it))
             }
             AnimatedVisibility(
@@ -207,7 +208,7 @@ internal fun LyricOverlaySettingsPanel(
             ) {
                 Column {
                     val blurPct = (prefs.blurRadiusPx * 100f / LyricOverlayPrefs.BLUR_MAX).toInt()
-                    Label("磨砂 $blurPct%")
+                    Label(t("磨砂 %s%%", blurPct))
                     Slider(
                         value = prefs.blurRadiusPx.toFloat(),
                         onValueChange = { onChange(prefs.copy(blurRadiusPx = it.toInt())) },
@@ -216,10 +217,10 @@ internal fun LyricOverlaySettingsPanel(
                     )
                 }
             }
-            SwitchRow("歌词背景", prefs.lyricBackground, switchColors, compact) {
+            SwitchRow(t("歌词背景"), prefs.lyricBackground, switchColors, compact) {
                 onChange(prefs.copy(lyricBackground = it))
             }
-            SwitchRow("动态宽度", prefs.dynamicWidth, switchColors, compact) {
+            SwitchRow(t("动态宽度"), prefs.dynamicWidth, switchColors, compact) {
                 onChange(prefs.copy(dynamicWidth = it))
             }
             AnimatedVisibility(
@@ -228,7 +229,7 @@ internal fun LyricOverlaySettingsPanel(
                 exit = fadeOut(FolderAnim) + FolderShrink,
             ) {
                 Column {
-                    Label("宽度 ${prefs.widthPercent}%")
+                    Label(t("宽度 %s%%", prefs.widthPercent))
                     Slider(
                         value = prefs.widthPercent.toFloat(),
                         onValueChange = { onChange(prefs.copy(widthPercent = it.roundToInt())) },
@@ -238,7 +239,7 @@ internal fun LyricOverlaySettingsPanel(
                     )
                 }
             }
-            SwitchRow("侵入状态栏 / 摄像头", prefs.ignoreCutout, switchColors, compact) {
+            SwitchRow(t("侵入状态栏 / 摄像头"), prefs.ignoreCutout, switchColors, compact) {
                 onChange(prefs.copy(ignoreCutout = it))
             }
         }
@@ -283,7 +284,7 @@ private fun SettingsFolder(
             )
             Icon(
                 imageVector = ZIcons.ExpandMore,
-                contentDescription = if (expanded) "收起" else "展开",
+                contentDescription = if (expanded) t("收起") else t("展开"),
                 tint = Color(0xCCFFFFFF),
                 modifier = Modifier
                     .size(20.dp)
@@ -386,7 +387,7 @@ private fun StepperRow(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
-        StepperButton(ZIcons.Remove, "减少") { onChange(value - 1) }
+        StepperButton(ZIcons.Remove, t("减少")) { onChange(value - 1) }
         Text(
             text = "$value",
             modifier = Modifier.width(32.dp),
@@ -397,7 +398,7 @@ private fun StepperRow(
                 fontWeight = FontWeight.SemiBold,
             ),
         )
-        StepperButton(ZIcons.Add, "增加") { onChange(value + 1) }
+        StepperButton(ZIcons.Add, t("增加")) { onChange(value + 1) }
     }
 }
 
@@ -472,13 +473,13 @@ private fun AlignPicker(
         Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 8.dp),
     ) {
-        AlignChip(ZIcons.FormatAlignLeft, "左对齐", selected == LyricOverlayPrefs.ALIGN_LEFT) {
+        AlignChip(ZIcons.FormatAlignLeft, t("左对齐"), selected == LyricOverlayPrefs.ALIGN_LEFT) {
             onSelect(LyricOverlayPrefs.ALIGN_LEFT)
         }
-        AlignChip(ZIcons.FormatAlignCenter, "居中", selected == LyricOverlayPrefs.ALIGN_CENTER) {
+        AlignChip(ZIcons.FormatAlignCenter, t("居中"), selected == LyricOverlayPrefs.ALIGN_CENTER) {
             onSelect(LyricOverlayPrefs.ALIGN_CENTER)
         }
-        AlignChip(ZIcons.FormatAlignRight, "右对齐", selected == LyricOverlayPrefs.ALIGN_RIGHT) {
+        AlignChip(ZIcons.FormatAlignRight, t("右对齐"), selected == LyricOverlayPrefs.ALIGN_RIGHT) {
             onSelect(LyricOverlayPrefs.ALIGN_RIGHT)
         }
     }

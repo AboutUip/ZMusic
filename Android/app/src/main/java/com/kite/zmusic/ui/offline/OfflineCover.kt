@@ -40,14 +40,15 @@ import androidx.compose.ui.unit.sp
 import com.kite.zmusic.ui.icons.ZIcons
 import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.main.mainChromePlate
+import com.kite.zmusic.i18n.t
 
 @Composable
 fun OfflineModeLayer(
     visible: Boolean,
     modifier: Modifier = Modifier,
-    title: String = "离线模式",
-    caption: String = "网络恢复后会自动继续",
-    actionLabel: String? = "查看缓存的歌曲",
+    title: String = t("离线模式"),
+    caption: String = t("网络恢复后会自动继续"),
+    actionLabel: String? = t("查看缓存的歌曲"),
     onAction: (() -> Unit)? = null,
     onBack: (() -> Unit)? = null,
     contentBottomInset: Dp = 0.dp,
@@ -67,9 +68,9 @@ fun OfflineModeLayer(
 @Composable
 fun OfflineEmptyPage(
     modifier: Modifier = Modifier,
-    title: String = "离线模式",
-    caption: String = "网络恢复后会自动继续",
-    actionLabel: String? = "查看缓存的歌曲",
+    title: String = t("离线模式"),
+    caption: String = t("网络恢复后会自动继续"),
+    actionLabel: String? = t("查看缓存的歌曲"),
     onAction: (() -> Unit)? = null,
     onBack: (() -> Unit)? = null,
     contentBottomInset: Dp = 0.dp,
@@ -110,7 +111,7 @@ fun OfflineEmptyPage(
             ) {
                 Icon(
                     imageVector = ZIcons.Back,
-                    contentDescription = "返回",
+                    contentDescription = t("返回"),
                     tint = MainPalette.Ink,
                     modifier = Modifier.size(22.dp),
                 )

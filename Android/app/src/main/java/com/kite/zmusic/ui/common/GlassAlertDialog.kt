@@ -52,6 +52,7 @@ import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.main.dialogLiquidGlass
 import com.kyant.backdrop.Backdrop
 import kotlinx.coroutines.delay
+import com.kite.zmusic.i18n.t
 
 private val AlertShape = RoundedCornerShape(32.dp)
 private val AlertPopEasing = CubicBezierEasing(0.16f, 1.12f, 0.28f, 1f)
@@ -113,7 +114,7 @@ fun GlassAlertDialog(
     confirmLabel: String,
     onConfirm: () -> Unit,
     message: String? = null,
-    cancelLabel: String? = "取消",
+    cancelLabel: String? = t("取消"),
     confirmDestructive: Boolean = false,
     confirmEnabled: Boolean = true,
     extraContent: (@Composable ColumnScope.() -> Unit)? = null,

@@ -87,6 +87,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.abs
+import com.kite.zmusic.i18n.t
 
 private val PosterPanelCurve = CubicBezierEasing(0.33f, 0f, 0.2f, 1f)
 private val PosterAccent = Color(0xFFD4C4A8)
@@ -257,7 +258,7 @@ fun PosterMakeOverlay(
                             if (index in next) {
                                 next.remove(index)
                             } else if (next.size >= PosterMaxLyricLines) {
-                                flash("最多选择 ${PosterMaxLyricLines} 行")
+                                flash(t("最多选择 %s 行", PosterMaxLyricLines))
                                 return@PosterLyricPickStep
                             } else {
                                 next.add(index)
@@ -317,14 +318,14 @@ fun PosterMakeOverlay(
                 },
                 onNextLyrics = {
                     if (selectedIndices.isEmpty()) {
-                        flash("请先选择歌词")
+                        flash(t("请先选择歌词"))
                         return@PosterWizardBottomBar
                     }
                     step = PosterWizardStep.PresetPick
                 },
                 onContinuePreset = {
                     if (presetId == null) {
-                        flash("请先选择预设")
+                        flash(t("请先选择预设"))
                         return@PosterWizardBottomBar
                     }
                     step = PosterWizardStep.Edit
@@ -351,10 +352,10 @@ fun PosterMakeOverlay(
                             renderedBitmap = bmp
                             prev?.recycle()
                             busy = false
-                            flash("已渲染，可点查看")
+                            flash(t("已渲染，可点查看"))
                         } else {
                             busy = false
-                            flash("渲染失败，请重试")
+                            flash(t("渲染失败，请重试"))
                         }
                     }
                 },
@@ -377,7 +378,7 @@ fun PosterMakeOverlay(
                         }.getOrNull()
                         if (bmp == null) {
                             busy = false
-                            flash("保存失败，请重试")
+                            flash(t("保存失败，请重试"))
                             return@launch
                         }
                         val result = withContext(Dispatchers.IO) {
@@ -392,10 +393,10 @@ fun PosterMakeOverlay(
                         }
                         busy = false
                         result.onSuccess {
-                            flash("已保存到相册")
+                            flash(t("已保存到相册"))
                             closeAll()
                         }.onFailure {
-                            flash("保存失败，请重试")
+                            flash(t("保存失败，请重试"))
                         }
                     }
                 },
@@ -419,16 +420,16 @@ private fun PosterWizardHeader(
     modifier: Modifier = Modifier,
 ) {
     val title = when (step) {
-        PosterWizardStep.LyricPick -> "选择歌词"
-        PosterWizardStep.PresetPick -> "选择预设"
-        PosterWizardStep.Edit -> "编辑海报"
+        PosterWizardStep.LyricPick -> t("选择歌词")
+        PosterWizardStep.PresetPick -> t("选择预设")
+        PosterWizardStep.Edit -> t("编辑海报")
     }
     val sub = when (step) {
         PosterWizardStep.LyricPick ->
-            if (selectedCount == 0) "可跨行选择，最多 $PosterMaxLyricLines 行"
-            else "已选 $selectedCount / $PosterMaxLyricLines"
-        PosterWizardStep.PresetPick -> "挑选海报版式"
-        PosterWizardStep.Edit -> "实时预览 · 保存导出"
+            if (selectedCount == 0) t("可跨行选择，最多 %s 行", PosterMaxLyricLines)
+            else t("已选 %s / %s", selectedCount, PosterMaxLyricLines)
+        PosterWizardStep.PresetPick -> t("挑选海报版式")
+        PosterWizardStep.Edit -> t("实时预览 · 保存导出")
     }
     Column(modifier) {
         Text(
@@ -485,7 +486,7 @@ private fun PosterLyricPickStep(
     if (lines.isEmpty()) {
         Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text(
-                text = "暂无逐行歌词",
+                text = t("暂无逐行歌词"),
                 style = TextStyle(color = PosterDim, fontSize = 14.sp),
             )
         }
@@ -555,7 +556,7 @@ private fun PosterPresetPickStep(
         verticalItemSpacing = 12.dp,
     ) {
         items(
-            items = PosterPresetCatalog,
+            items = posterPresetCatalog(),
             key = { it.id },
         ) { preset ->
             val selected = selectedId == preset.id
@@ -621,7 +622,7 @@ private fun PosterPresetPickStep(
                 if (selected) {
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        text = "已选择",
+                        text = t("已选择"),
                         style = TextStyle(
                             color = PosterAccent,
                             fontSize = 12.sp,
@@ -690,7 +691,7 @@ private fun PosterEditStep(
             ) {
                 Column(Modifier.weight(1f)) {
                     Text(
-                        text = "色调",
+                        text = t("色调"),
                         style = TextStyle(
                             color = PosterLabel,
                             fontSize = 14.sp,
@@ -698,7 +699,7 @@ private fun PosterEditStep(
                         ),
                     )
                     Text(
-                        text = "深色沉浸 / 浅色纸感",
+                        text = t("深色沉浸 / 浅色纸感"),
                         style = TextStyle(
                             color = PosterHint.copy(alpha = 0.65f),
                             fontSize = 11.sp,
@@ -717,7 +718,7 @@ private fun PosterEditStep(
             ) {
                 Column(Modifier.weight(1f)) {
                     Text(
-                        text = "显示时间",
+                        text = t("显示时间"),
                         style = TextStyle(
                             color = PosterLabel,
                             fontSize = 14.sp,
@@ -725,7 +726,7 @@ private fun PosterEditStep(
                         ),
                     )
                     Text(
-                        text = "人类可读：如 $timeText",
+                        text = t("人类可读：如 %s", timeText),
                         style = TextStyle(
                             color = PosterHint.copy(alpha = 0.65f),
                             fontSize = 11.sp,
@@ -747,7 +748,7 @@ private fun PosterEditStep(
             }
             Spacer(Modifier.height(12.dp))
             Text(
-                text = "个性签名（可选）",
+                text = t("个性签名（可选）"),
                 style = TextStyle(
                     color = PosterLabel,
                     fontSize = 14.sp,
@@ -775,7 +776,7 @@ private fun PosterEditStep(
                     ) {
                         if (signature.isEmpty()) {
                             Text(
-                                text = "写下想留下的一句话",
+                                text = t("写下想留下的一句话"),
                                 style = TextStyle(
                                     color = PosterDim.copy(alpha = 0.7f),
                                     fontSize = 14.sp,
@@ -789,7 +790,7 @@ private fun PosterEditStep(
             if (renderedReady) {
                 Spacer(Modifier.height(10.dp))
                 Text(
-                    text = "查看渲染图",
+                    text = t("查看渲染图"),
                     style = TextStyle(
                         color = PosterAccent,
                         fontSize = 13.sp,
@@ -824,8 +825,8 @@ private fun PosterToneSegment(
         horizontalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         listOf(
-            PosterCoverTone.Dark to "深色",
-            PosterCoverTone.Light to "浅色",
+            PosterCoverTone.Dark to t("深色"),
+            PosterCoverTone.Light to t("浅色"),
         ).forEach { (value, label) ->
             val selected = tone == value
             Box(
@@ -879,48 +880,48 @@ private fun PosterWizardBottomBar(
         when (step) {
             PosterWizardStep.LyricPick -> {
                 PosterActionButton(
-                    text = "取消",
+                    text = t("取消"),
                     enabled = true,
                     primary = false,
                     modifier = Modifier.weight(1f),
                     onClick = onCancel,
                 )
                 PosterActionButton(
-                    text = "下一步",
+                    text = t("下一步"),
                     enabled = canNextFromLyrics && !busy,
                     primary = true,
                     modifier = Modifier.weight(1f),
                     onClick = onNextLyrics,
-                    onDisabledClick = { onDisabledHint("请先选择歌词") },
+                    onDisabledClick = { onDisabledHint(t("请先选择歌词")) },
                 )
             }
             PosterWizardStep.PresetPick -> {
                 PosterActionButton(
-                    text = "取消",
+                    text = t("取消"),
                     enabled = true,
                     primary = false,
                     modifier = Modifier.weight(1f),
                     onClick = onCancel,
                 )
                 PosterActionButton(
-                    text = "上一步",
+                    text = t("上一步"),
                     enabled = true,
                     primary = false,
                     modifier = Modifier.weight(1f),
                     onClick = onBack,
                 )
                 PosterActionButton(
-                    text = "继续",
+                    text = t("继续"),
                     enabled = canContinuePreset && !busy,
                     primary = true,
                     modifier = Modifier.weight(1f),
                     onClick = onContinuePreset,
-                    onDisabledClick = { onDisabledHint("请先选择预设") },
+                    onDisabledClick = { onDisabledHint(t("请先选择预设")) },
                 )
             }
             PosterWizardStep.Edit -> {
                 PosterActionButton(
-                    text = "取消",
+                    text = t("取消"),
                     enabled = !busy,
                     primary = false,
                     compact = true,
@@ -928,7 +929,7 @@ private fun PosterWizardBottomBar(
                     onClick = onCancel,
                 )
                 PosterActionButton(
-                    text = "上一步",
+                    text = t("上一步"),
                     enabled = !busy,
                     primary = false,
                     compact = true,
@@ -936,7 +937,7 @@ private fun PosterWizardBottomBar(
                     onClick = onBack,
                 )
                 PosterActionButton(
-                    text = if (busy) "…" else "渲染",
+                    text = if (busy) "…" else t("渲染"),
                     enabled = !busy,
                     primary = false,
                     compact = true,
@@ -944,7 +945,7 @@ private fun PosterWizardBottomBar(
                     onClick = onRender,
                 )
                 PosterActionButton(
-                    text = if (busy) "…" else "保存到相册",
+                    text = if (busy) "…" else t("保存到相册"),
                     enabled = !busy,
                     primary = true,
                     compact = true,
@@ -1062,7 +1063,7 @@ private fun PosterRenderedFullscreen(
         ) {
             Image(
                 bitmap = imageBitmap,
-                contentDescription = "海报预览",
+                contentDescription = t("海报预览"),
                 modifier = Modifier
                     .fillMaxWidth(0.92f)
                     .clip(RoundedCornerShape(12.dp))
@@ -1085,11 +1086,11 @@ private fun PosterRenderedFullscreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "双指缩放 · 拖移 · 双击复位",
+                text = t("双指缩放 · 拖移 · 双击复位"),
                 style = TextStyle(color = PosterHint.copy(alpha = 0.72f), fontSize = 12.sp),
             )
             Text(
-                text = "关闭",
+                text = t("关闭"),
                 style = TextStyle(
                     color = PosterAccent,
                     fontSize = 14.sp,

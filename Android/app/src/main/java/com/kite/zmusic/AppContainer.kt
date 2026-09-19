@@ -13,6 +13,7 @@ import com.kite.zmusic.data.PredictiveBackStore
 import com.kite.zmusic.data.MiniQuickSkipStore
 import com.kite.zmusic.data.SplashAccelStore
 import com.kite.zmusic.data.ChromeGlassStore
+import com.kite.zmusic.data.LanguageStore
 import com.kite.zmusic.data.ThemeStore
 import com.kite.zmusic.data.ChromeWallpaperStore
 import com.kite.zmusic.data.DownloadAccelIndex
@@ -26,6 +27,7 @@ import com.kite.zmusic.data.NcmAuthClient
 import com.kite.zmusic.data.ncm.NcmDeviceProfileStore
 import com.kite.zmusic.data.NetworkModeController
 import com.kite.zmusic.data.NcmUserClient
+import com.kite.zmusic.data.PersonalFmModeStore
 import com.kite.zmusic.data.PlaylistCollectionRepository
 import com.kite.zmusic.data.PlaylistEditor
 import com.kite.zmusic.data.PlaylistTracksCache
@@ -99,10 +101,12 @@ class AppContainer(app: Application) {
     val splashAccelStore = SplashAccelStore(app)
     val miniQuickSkipStore = MiniQuickSkipStore(app)
     val recentCollectionStore = com.kite.zmusic.data.RecentCollectionStore(app)
+    val personalFmModeStore = PersonalFmModeStore(app)
     val lyricRenderStore = LyricRenderStore(app)
     val lyricOverlayStore = LyricOverlayStore(app)
     val chromeGlassStore = ChromeGlassStore(app)
     val themeStore = ThemeStore(app)
+    val languageStore = LanguageStore(app)
     val chromeWallpaperStore = ChromeWallpaperStore(app)
     val downloadAccelStore = DownloadAccelStore(app)
     val realtimeCacheStore = RealtimeCacheStore(app)
@@ -113,7 +117,7 @@ class AppContainer(app: Application) {
         ncmAuthClient,
         ncmUserClient,
     )
-    val homeFeedRepository = HomeFeedRepository(sessionRepository, ncmUserClient)
+    val homeFeedRepository = HomeFeedRepository(sessionRepository, ncmUserClient, personalFmModeStore)
     val playlistTracksCache = PlaylistTracksCache(app, ncmUserClient)
     val albumTracksCache = AlbumTracksCache(app)
     val searchHistoryRepository = SearchHistoryRepository(app)
@@ -178,7 +182,7 @@ class AppContainer(app: Application) {
     )
     val mvPlayback = MvPlayback(app, sessionRepository, playbackBridge, ncmUserClient)
     val songRepository = SongRepository(ncmUserClient)
-    val catalogRepository = CatalogRepository(ncmUserClient)
+    val catalogRepository = CatalogRepository(ncmUserClient, personalFmModeStore)
     val commentsRepository = CommentsRepository(ncmUserClient, ncmAuthClient)
     val searchRepository = SearchRepository(ncmUserClient)
     val cloudDiskRepository = CloudDiskRepository(
