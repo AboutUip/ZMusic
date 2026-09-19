@@ -171,7 +171,7 @@ internal fun CatalogCollectionPage(
         is MainOverlay.PlaylistSearch, is MainOverlay.Mv,
         is MainOverlay.Artist, is MainOverlay.ArtistAlbums, is MainOverlay.ArtistMvs,
         MainOverlay.LikedArtists, is MainOverlay.LikedArtistsSearch, is MainOverlay.LibraryCollectionAll,
-        MainOverlay.CachedSongs,
+        MainOverlay.CachedSongs, MainOverlay.AnnualReport,
         is MainOverlay.User, is MainOverlay.UserRelations,
         is MainOverlay.PluginPage,
         -> Unit

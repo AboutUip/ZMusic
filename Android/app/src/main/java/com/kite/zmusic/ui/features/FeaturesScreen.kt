@@ -81,6 +81,14 @@ fun FeaturesScreen(
         FeatureItem("每日推荐", "今天的三十首", MainPalette.Accent, ZIcons.Daily) {
             onOpenOverlay(MainOverlay.Daily)
         },
+        FeatureItem("年度报告", "把听歌这一年压成一张片子", Color(0xFFC45C7A), ZIcons.AnnualReport) {
+            val session = app.sessionRepository.session.value
+            if (session == null || session.isGuest) {
+                context.showIslandNotice("登录后查看年度报告")
+            } else {
+                onOpenOverlay(MainOverlay.AnnualReport)
+            }
+        },
         FeatureItem("排行榜", "官方与热歌榜", Color(0xFFFF9500), ZIcons.Charts) {
             onOpenOverlay(MainOverlay.Charts)
         },

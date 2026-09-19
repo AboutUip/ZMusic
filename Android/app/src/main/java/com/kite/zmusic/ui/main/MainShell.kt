@@ -109,6 +109,7 @@ import com.kite.zmusic.ui.player.PlayerExpandFlightLayer
 import com.kite.zmusic.ui.player.PlayerExpandFlightProgress
 import com.kite.zmusic.ui.player.PlayerExpandHost
 import com.kite.zmusic.ui.player.PlayerExpandState
+import com.kite.zmusic.ui.player.formulaMiniBarRect
 import com.kite.zmusic.ui.plugin.PluginPageChrome
 import com.kite.zmusic.ui.plugin.PluginPageScreen
 import com.kite.zmusic.ui.notice.showIslandNotice
@@ -346,18 +347,23 @@ fun MainShell(
     }
 
     fun formulaMiniBarInShell(): Rect {
-        val shell = expand.shellRect
-        if (shell.width <= 8f || shell.height <= 8f) return Rect.Zero
         val side = with(density) {
             (if (landscape) 20.dp else FloatingChromeSide).toPx()
+        }
+        val rail = with(density) {
+            if (landscape) LandscapeRailWidth.toPx() else 0f
         }
         val barH = with(density) { MiniPlayerStackHeight.toPx() }
         val measured = playerHomePx.intValue.toFloat()
         val formula = formulaPlayerHomePx().toFloat()
         val home = maxOf(measured, formula, barH)
-        val top = (shell.height - home).coerceAtLeast(0f)
-        val width = (shell.width - side * 2f).coerceAtLeast(1f)
-        return Rect(side, top, side + width, top + barH)
+        return formulaMiniBarRect(
+            shell = expand.shellRect,
+            sidePx = side,
+            railPx = rail,
+            barH = barH,
+            homeFromBottom = home,
+        )
     }
 
     fun captureDockForPlayer() {

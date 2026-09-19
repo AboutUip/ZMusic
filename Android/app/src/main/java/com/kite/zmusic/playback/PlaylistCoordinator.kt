@@ -887,11 +887,34 @@ class PlaylistCoordinator(
             while (true) {
                 delay(200)
                 val ui = _ui.value
+                val st = exoPlayer.playbackState
+                if (!ui.loadPending && ui.currentTrack != null) {
+                    val dur = when {
+                        exoPlayer.duration > 0L && exoPlayer.duration != C.TIME_UNSET ->
+                            exoPlayer.duration
+                        else -> ui.durationMs
+                    }
+                    val pos = when {
+                        st == Player.STATE_IDLE || st == Player.STATE_ENDED -> ui.positionMs
+                        else -> exoPlayer.currentPosition.coerceAtLeast(0L)
+                    }
+                    val playing = ui.playWhenReady &&
+                        (st == Player.STATE_READY || st == Player.STATE_BUFFERING)
+                    listenReporter.tick(
+                        playing = playing,
+                        track = ui.currentTrack,
+                        durationMs = dur,
+                        positionMs = pos,
+                        quality = audioQualityStore.current(),
+                        sourcePlaylistId = ui.sourcePlaylistId,
+                        sourcePlaylistTitle = ui.sourcePlaylistTitle,
+                        playMode = ncmPlayMode(playbackMode, radioActive),
+                    )
+                }
                 // 切歌加载中 / 播放器仍是旧曲时，勿回写进度（否则会 0→旧进度→0 闪烁）
                 if (ui.loadPending) continue
                 val expectedId = ui.currentTrack?.id?.toString() ?: continue
                 if (exoPlayer.currentMediaItem?.mediaId != expectedId) continue
-                val st = exoPlayer.playbackState
                 if (st == Player.STATE_IDLE || st == Player.STATE_ENDED) continue
                 // seek 时 BUFFERING，currentPosition 可能短暂为 0，勿把进度条打回开头
                 val pos = exoPlayer.currentPosition.coerceAtLeast(0L)
@@ -910,16 +933,6 @@ class PlaylistCoordinator(
                     durationMs = dur,
                     quality = audioQualityStore.current(),
                     positionMs = pos,
-                )
-                listenReporter.tick(
-                    playing = exoPlayer.isPlaying && !ui.loadPending,
-                    track = ui.currentTrack,
-                    durationMs = dur,
-                    positionMs = pos,
-                    quality = audioQualityStore.current(),
-                    sourcePlaylistId = ui.sourcePlaylistId,
-                    sourcePlaylistTitle = ui.sourcePlaylistTitle,
-                    playMode = ncmPlayMode(playbackMode, radioActive),
                 )
             }
         }

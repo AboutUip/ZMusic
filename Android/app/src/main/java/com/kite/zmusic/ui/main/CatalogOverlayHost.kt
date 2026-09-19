@@ -480,6 +480,21 @@ private fun CatalogOverlayPage(
                 onBack = onBack,
             )
         }
+        MainOverlay.AnnualReport -> {
+            com.kite.zmusic.ui.report.AnnualReportScreen(
+                sessionRepository = sessionRepository,
+                contentBottomInset = contentBottomInset,
+                onBack = onBack,
+                onPlayTracks = onPlayTracks,
+                onOpenArtist = { id, name, cover ->
+                    if (id > 0L) {
+                        onPushOverlay(MainOverlay.Artist(id, name, cover))
+                    } else {
+                        onHint("暂时无法打开这位歌手")
+                    }
+                },
+            )
+        }
         else -> CatalogCollectionPage(
             overlay = overlay,
             sessionRepository = sessionRepository,

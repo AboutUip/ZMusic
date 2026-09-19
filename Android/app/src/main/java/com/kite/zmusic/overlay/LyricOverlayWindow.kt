@@ -29,6 +29,8 @@ import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.kite.zmusic.R
 import com.kite.zmusic.data.LyricOverlayPrefs
 import com.kite.zmusic.data.LyricOverlayStore
+import com.kite.zmusic.data.overlayClaimsWindowTouches
+import com.kite.zmusic.data.overlayWakesFromIdle
 import com.kite.zmusic.playback.PlaybackBridge
 import com.kite.zmusic.ui.lyricoverlay.LyricOverlayContent
 import kotlin.math.roundToInt
@@ -78,7 +80,6 @@ internal class LyricOverlayWindow(
             setViewTreeSavedStateRegistryOwner(host)
             setOnTouchListener { _, event ->
                 onOverlayTouch(event)
-                false
             }
             setContent {
                 val prefs by store.prefsFlow.collectAsState()
@@ -111,6 +112,7 @@ internal class LyricOverlayWindow(
             this.host = null
             return
         }
+        applyAppearance(store.current())
         if (!configRegistered) {
             app.registerComponentCallbacks(configCallback)
             configRegistered = true
@@ -187,6 +189,10 @@ internal class LyricOverlayWindow(
     internal fun applyAppearance(prefs: LyricOverlayPrefs) {
         val lp = layoutParams ?: return
         val view = composeView ?: return
+        view.isClickable = !prefs.locked
+        view.isLongClickable = false
+        view.isFocusable = false
+        view.isFocusableInTouchMode = false
         val nextFlags = overlayFlags(prefs)
         val nextCutout = cutoutMode(prefs)
         val nextWidth = windowWidthSpec(prefs)
@@ -213,9 +219,14 @@ internal class LyricOverlayWindow(
 
     private fun overlayFlags(prefs: LyricOverlayPrefs): Int {
         var flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-            WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH or
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+        if (prefs.locked) {
+            // 锁定：整窗不接触摸，交互渗透到下层。
+            flags = flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+        } else {
+            flags = flags or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
+        }
         if (prefs.ignoreCutout) {
             flags = flags or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
         }
@@ -243,14 +254,18 @@ internal class LyricOverlayWindow(
         lp.setBlurBehindRadius(0)
     }
 
-    private fun onOverlayTouch(event: MotionEvent) {
+    private fun onOverlayTouch(event: MotionEvent): Boolean {
+        val prefs = store.current()
+        if (prefs.locked) return false
+        val idleUnlocked = chromeIdle.value
         when (event.actionMasked) {
             MotionEvent.ACTION_OUTSIDE -> {
                 windowDragging = false
                 pointerOnOverlay = false
-                if (!store.current().locked && allowWindowDrag) {
+                if (allowWindowDrag) {
                     chromeIdle.value = true
                 }
+                return false
             }
             MotionEvent.ACTION_DOWN -> {
                 windowDragging = false
@@ -270,22 +285,37 @@ internal class LyricOverlayWindow(
                 val dy = event.rawY - lastRawY
                 lastRawX = event.rawX
                 lastRawY = event.rawY
-                if (store.current().locked || !allowWindowDrag) return
+                if (!allowWindowDrag) {
+                    return overlayClaimsWindowTouches(prefs.locked, idleUnlocked, windowDragging)
+                }
                 if (!windowDragging) {
                     val spanX = event.rawX - downRawX
                     val spanY = event.rawY - downRawY
-                    if (spanX * spanX + spanY * spanY < touchSlopPx * touchSlopPx) return
+                    if (spanX * spanX + spanY * spanY < touchSlopPx * touchSlopPx) {
+                        return overlayClaimsWindowTouches(prefs.locked, idleUnlocked, false)
+                    }
                     windowDragging = true
                 }
                 moveTo(dragX + dx, dragY + dy)
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                if (windowDragging) persistPosition()
+                val dragged = windowDragging
+                if (dragged) persistPosition()
                 windowDragging = false
-                if (pointerOnOverlay) chromeIdle.value = false
+                if (overlayWakesFromIdle(
+                        idleChrome = idleUnlocked,
+                        locked = prefs.locked,
+                        dragged = dragged,
+                        pointerOnOverlay = pointerOnOverlay,
+                    )
+                ) {
+                    chromeIdle.value = false
+                }
                 pointerOnOverlay = false
+                return overlayClaimsWindowTouches(prefs.locked, idleUnlocked, dragged)
             }
         }
+        return overlayClaimsWindowTouches(prefs.locked, idleUnlocked, windowDragging)
     }
 
     private fun moveTo(x: Float, y: Float) {

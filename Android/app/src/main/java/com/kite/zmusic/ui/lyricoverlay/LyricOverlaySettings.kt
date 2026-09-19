@@ -131,6 +131,49 @@ internal fun LyricOverlaySettingsPanel(
             )
         }
         SettingsFolder(
+            title = "翻译",
+            expanded = openFolder == OverlayFolder.Translation,
+            onToggle = {
+                openFolder = if (openFolder == OverlayFolder.Translation) null else OverlayFolder.Translation
+            },
+        ) {
+            SwitchRow("显示翻译歌词", prefs.preferTranslation, switchColors, compact) {
+                onChange(prefs.copy(preferTranslation = it))
+            }
+            Label("有译文时生效。播放页已开翻译时也会显示。对照默认只画当前行。")
+            AnimatedVisibility(
+                visible = prefs.preferTranslation,
+                enter = fadeIn(FolderAnim) + FolderExpand,
+                exit = fadeOut(FolderAnim) + FolderShrink,
+            ) {
+                Column {
+                    Label("显示方式")
+                    ChoicePicker(
+                        labels = listOf("覆盖原文", "与原文对照"),
+                        selectedIndex = if (prefs.translationCoexist) 1 else 0,
+                        compact = compact,
+                    ) { onChange(prefs.copy(translationCoexist = it == 1)) }
+                    AnimatedVisibility(
+                        visible = prefs.translationCoexist,
+                        enter = fadeIn(FolderAnim) + FolderExpand,
+                        exit = fadeOut(FolderAnim) + FolderShrink,
+                    ) {
+                        Column {
+                            Label("两行顺序")
+                            ChoicePicker(
+                                labels = listOf("原文在上", "译文在上"),
+                                selectedIndex = if (prefs.originalOnTop) 0 else 1,
+                                compact = compact,
+                            ) { onChange(prefs.copy(originalOnTop = it == 0)) }
+                            SwitchRow("其余歌词显示译文", prefs.othersShowTranslation, switchColors, compact) {
+                                onChange(prefs.copy(othersShowTranslation = it))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        SettingsFolder(
             title = "颜色",
             expanded = openFolder == OverlayFolder.Color,
             onToggle = { openFolder = if (openFolder == OverlayFolder.Color) null else OverlayFolder.Color },
@@ -138,6 +181,15 @@ internal fun LyricOverlaySettingsPanel(
             ColorRow("已播", prefs.playedColorArgb) { onChange(prefs.copy(playedColorArgb = it)) }
             ColorRow("当前", prefs.currentColorArgb) { onChange(prefs.copy(currentColorArgb = it)) }
             ColorRow("未播", prefs.upcomingColorArgb) { onChange(prefs.copy(upcomingColorArgb = it)) }
+            AnimatedVisibility(
+                visible = prefs.preferTranslation && prefs.translationCoexist,
+                enter = fadeIn(FolderAnim) + FolderExpand,
+                exit = fadeOut(FolderAnim) + FolderShrink,
+            ) {
+                ColorRow("译文", prefs.translationColorArgb) {
+                    onChange(prefs.copy(translationColorArgb = it))
+                }
+            }
         }
         SettingsFolder(
             title = "窗口",
@@ -193,7 +245,7 @@ internal fun LyricOverlaySettingsPanel(
     }
 }
 
-private enum class OverlayFolder { Lyrics, Color, Window }
+private enum class OverlayFolder { Lyrics, Translation, Color, Window }
 
 @Composable
 private fun SettingsFolder(
@@ -364,6 +416,49 @@ private fun StepperButton(icon: ImageVector, label: String, onClick: () -> Unit)
         contentAlignment = Alignment.Center,
     ) {
         Icon(icon, contentDescription = label, tint = Color.White, modifier = Modifier.size(16.dp))
+    }
+}
+
+@Composable
+private fun ChoicePicker(
+    labels: List<String>,
+    selectedIndex: Int,
+    compact: Boolean,
+    onSelect: (Int) -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 8.dp),
+    ) {
+        labels.forEachIndexed { index, label ->
+            val on = index == selectedIndex
+            Box(
+                Modifier
+                    .weight(1f)
+                    .height(36.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(if (on) Color(0x33FFFFFF) else Color(0x14FFFFFF))
+                    .then(if (on) Modifier.border(1.dp, Color.White, RoundedCornerShape(10.dp)) else Modifier)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = { onSelect(index) },
+                    )
+                    .padding(horizontal = 4.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = label,
+                    style = TextStyle(
+                        color = Color.White,
+                        fontSize = if (compact) 11.sp else 12.sp,
+                        fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal,
+                    ),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
     }
 }
 

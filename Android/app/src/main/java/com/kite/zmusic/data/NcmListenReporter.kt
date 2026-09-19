@@ -29,6 +29,7 @@ class NcmListenReporter(
     private var lastPos = -1L
     private var accumAt = 0L
     private var lastStateAt = 0L
+    private var submitted = false
 
     fun tick(
         playing: Boolean,
@@ -40,22 +41,18 @@ class NcmListenReporter(
         sourcePlaylistTitle: String?,
         playMode: String,
     ) {
-        val session = sessionRepository.session.value
-        if (session == null || session.isGuest || session.cookie.isBlank()) {
-            reset()
-            return
-        }
         val id = track?.id ?: 0L
         if (id <= 0L) {
             flush()
             return
         }
-        val wrapped = trackId == id &&
-            lastPos > 0L &&
-            durationMs > 0L &&
-            lastPos > durationMs * 3 / 4 &&
-            positionMs < durationMs / 10 &&
-            listenedMs >= 1_000L
+        val wrapped = NcmListenLogic.wrapped(
+            sameTrack = trackId == id,
+            lastPos = lastPos,
+            durationMs = durationMs,
+            positionMs = positionMs,
+            listenedMs = listenedMs,
+        )
         if (wrapped || trackId != id) {
             if (wrapped || trackId > 0L) flush()
             begin(
@@ -76,14 +73,17 @@ class NcmListenReporter(
         if (!sourcePlaylistTitle.isNullOrBlank()) sourceTitle = sourcePlaylistTitle.trim()
         lastPos = positionMs
         val now = SystemClock.elapsedRealtime()
+        val session = sessionRepository.session.value
+        val canReport = session != null && !session.isGuest && session.cookie.isNotBlank()
         if (playing) {
-            if (accumAt > 0L) {
-                listenedMs += (now - accumAt).coerceIn(0L, 500L)
-            }
+            listenedMs = NcmListenLogic.accumulate(listenedMs, accumAt, now)
             accumAt = now
-            maybeSubmitState(session.cookie, positionMs, force = false)
+            if (canReport) {
+                maybeSubmitState(session.cookie, positionMs, force = false)
+                trySubmit(session)
+            }
         } else {
-            if (accumAt > 0L) {
+            if (accumAt > 0L && canReport) {
                 maybeSubmitState(session.cookie, positionMs, force = true)
             }
             accumAt = 0L
@@ -100,9 +100,22 @@ class NcmListenReporter(
     }
 
     fun flush() {
+        val session = sessionRepository.session.value
+        if (session != null && !session.isGuest && session.cookie.isNotBlank()) {
+            trySubmit(session)
+        }
+        reset()
+    }
+
+    private fun trySubmit(session: SessionRepository.StoredSession) {
+        if (!NcmListenLogic.shouldSubmit(submitted, listenedMs, durationMs)) return
         val id = trackId
-        val listened = listenedMs
-        val duration = durationMs
+        if (id <= 0L) return
+        submitted = true
+        val timeSec = (listenedMs / 1000L).toInt().coerceAtLeast(1)
+        val totalSec = (durationMs / 1000L).toInt().coerceAtLeast(timeSec)
+        val progressSec = (lastPos.coerceAtLeast(0L) / 1000L).toInt()
+        val cookie = session.cookie
         val name = trackName
         val artist = trackArtist
         val source = sourceId.takeIf { it > 0L } ?: id
@@ -110,16 +123,6 @@ class NcmListenReporter(
         val mode = playMode
         val q = quality
         val sid = sessionId
-        val pos = lastPos
-        reset()
-        if (id <= 0L) return
-        val session = sessionRepository.session.value
-        if (session == null || session.isGuest || session.cookie.isBlank()) return
-        if (!qualifies(listened, duration)) return
-        val timeSec = (listened / 1000L).toInt().coerceAtLeast(1)
-        val totalSec = (duration / 1000L).toInt().coerceAtLeast(timeSec)
-        val progressSec = (pos.coerceAtLeast(0L) / 1000L).toInt()
-        val cookie = session.cookie
         scope.launch(Dispatchers.IO) {
             runCatching {
                 userClient.relayPlayStateSubmit(cookie, id, sid, progressSec, mode)
@@ -167,6 +170,7 @@ class NcmListenReporter(
         lastPos = positionMs
         accumAt = 0L
         lastStateAt = 0L
+        submitted = false
     }
 
     private fun maybeSubmitState(cookie: String, positionMs: Long, force: Boolean) {
@@ -199,16 +203,7 @@ class NcmListenReporter(
         lastPos = -1L
         accumAt = 0L
         lastStateAt = 0L
-    }
-
-    private fun qualifies(listenedMs: Long, durationMs: Long): Boolean {
-        if (listenedMs < 3_000L) return false
-        val need = if (durationMs in 1L until 40_000L) {
-            (durationMs / 2L).coerceAtLeast(3_000L)
-        } else {
-            20_000L
-        }
-        return listenedMs >= need
+        submitted = false
     }
 
     private fun newSessionId(): String {

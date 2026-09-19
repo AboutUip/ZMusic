@@ -1,10 +1,11 @@
 # 网易云音乐 Node API Enhanced — 接口文档索引
 
-本目录由 [`API.md`](./API.md) 按 `###` 章节拆分生成，便于离线查阅；与 [NeteaseCloudMusicApiEnhanced](https://github.com/neteasecloudmusicapienhanced/api-enhanced) 接口约定一致。实际请求发往的基地址由应用配置决定，文档不写死服务端点。
+本目录由 [`API.md`](./API.md) 按 `###` 章节拆分生成，便于离线查阅；与 [NeteaseCloudMusicApiEnhanced](https://github.com/neteasecloudmusicapienhanced/api-enhanced) 接口约定一致。上游正文现位于仓库 `public/docs/home.md`（[在线文档](https://neteasecloudmusicapienhanced.js.org/)）。实际请求发往的基地址由应用配置决定，文档不写死服务端点。
 
 ## 统计
 
-- 接口文档块（`###` 章节）数量：**394**
+- 接口文档块（`###` 章节）数量：**398**
+- 对齐上游：[a8c781f](https://github.com/neteasecloudmusicapienhanced/api-enhanced/commit/a8c781f)（2026-09-12）
 - 上游项目参考：[neteasecloudmusicapienhanced/api-enhanced](https://github.com/neteasecloudmusicapienhanced/api-enhanced)
 - 离线全文：[API.md](./API.md)
 
@@ -146,263 +147,267 @@
 | 132 | 签到 | `/daily_signin` | [打开](./endpoints/132-签到.md) |
 | 133 | 乐签信息 | `/sign/happy/info` | [打开](./endpoints/133-乐签信息.md) |
 | 134 | 喜欢音乐 | `/like` | [打开](./endpoints/134-喜欢音乐.md) |
-| 135 | 喜欢音乐列表 | `/likelist` | [打开](./endpoints/135-喜欢音乐列表.md) |
-| 136 | 垃圾桶 | `/fm_trash` | [打开](./endpoints/136-垃圾桶.md) |
-| 137 | 新碟上架 | `/top/album` | [打开](./endpoints/137-新碟上架.md) |
-| 138 | 全部新碟 | `/album/new` | [打开](./endpoints/138-全部新碟.md) |
-| 139 | 最新专辑 | `/album/newest` | [打开](./endpoints/139-最新专辑.md) |
-| 140 | 听歌打卡 | `/scrobble` `/scrobble/v1` | [打开](./endpoints/140-听歌打卡.md) |
-| 141 | 提交歌曲播放状态 | `/relay/play/state/submit` | [打开](./endpoints/141-提交歌曲播放状态.md) |
-| 142 | 热门歌手 | `/top/artists` | [打开](./endpoints/142-热门歌手.md) |
-| 143 | 全部 mv | `/mv/all` | [打开](./endpoints/143-全部-mv.md) |
-| 144 | 最新 mv | `/mv/first` | [打开](./endpoints/144-最新-mv.md) |
-| 145 | 网易出品 mv | `/mv/exclusive/rcmd` | [打开](./endpoints/145-网易出品-mv.md) |
-| 146 | 推荐 mv | `/personalized/mv` | [打开](./endpoints/146-推荐-mv.md) |
-| 147 | 推荐歌单 | `/personalized` | [打开](./endpoints/147-推荐歌单.md) |
-| 148 | 推荐新音乐 | `/personalized/newsong` | [打开](./endpoints/148-推荐新音乐.md) |
-| 149 | 推荐电台 | `/personalized/djprogram` | [打开](./endpoints/149-推荐电台.md) |
-| 150 | 推荐节目 | `/program/recommend` | [打开](./endpoints/150-推荐节目.md) |
-| 151 | 独家放送(入口列表) | `/personalized/privatecontent` | [打开](./endpoints/151-独家放送(入口列表).md) |
-| 152 | 独家放送列表 | `/personalized/privatecontent/list` | [打开](./endpoints/152-独家放送列表.md) |
-| 153 | mv 排行 | `/top/mv` | [打开](./endpoints/153-mv-排行.md) |
-| 154 | 获取 mv 数据 | `/mv/detail` | [打开](./endpoints/154-获取-mv-数据.md) |
-| 155 | 获取 mv 点赞转发评论数数据 | `/mv/detail/info` | [打开](./endpoints/155-获取-mv-点赞转发评论数数据.md) |
-| 156 | mv 地址 | `/mv/url` | [打开](./endpoints/156-mv-地址.md) |
-| 157 | 获取视频标签列表 | `/video/group/list` | [打开](./endpoints/157-获取视频标签列表.md) |
-| 158 | 获取视频分类列表 | `/video/category/list` | [打开](./endpoints/158-获取视频分类列表.md) |
-| 159 | 获取视频标签/分类下的视频 | `/video/group` | [打开](./endpoints/159-获取视频标签分类下的视频.md) |
-| 160 | 获取全部视频列表 | `/video/timeline/all` | [打开](./endpoints/160-获取全部视频列表.md) |
-| 161 | 获取推荐视频 | `/video/timeline/recommend` | [打开](./endpoints/161-获取推荐视频.md) |
-| 162 | 相关视频 | `/related/allvideo` | [打开](./endpoints/162-相关视频.md) |
-| 163 | 视频详情 | `/video/detail` | [打开](./endpoints/163-视频详情.md) |
-| 164 | 获取视频点赞转发评论数数据 | `/video/detail/info` | [打开](./endpoints/164-获取视频点赞转发评论数数据.md) |
-| 165 | 获取视频播放地址 | `/video/url` | [打开](./endpoints/165-获取视频播放地址.md) |
-| 166 | 所有榜单 | `/toplist` | [打开](./endpoints/166-所有榜单.md) |
-| 167 | 排行榜详情 | `/top/list` | [打开](./endpoints/167-排行榜详情.md) |
-| 168 | 所有榜单内容摘要 | `/toplist/detail` | [打开](./endpoints/168-所有榜单内容摘要.md) |
-| 169 | 歌手榜 | `/toplist/artist` | [打开](./endpoints/169-歌手榜.md) |
-| 170 | 云盘 | `/user/cloud` | [打开](./endpoints/170-云盘.md) |
-| 171 | 云盘数据详情 | `/user/cloud/detail` | [打开](./endpoints/171-云盘数据详情.md) |
-| 172 | 云盘歌曲删除 | `/user/cloud/del` | [打开](./endpoints/172-云盘歌曲删除.md) |
-| 173 | 云盘上传 | `/cloud` `/cloud/upload/token` `/cloud/upload/complete` | [打开](./endpoints/173-云盘上传.md) |
-| 174 | 云盘歌曲信息匹配纠正 | `/cloud/match` | [打开](./endpoints/174-云盘歌曲信息匹配纠正.md) |
-| 175 | 获取云盘歌词 | `/cloud/lyric/get` | [打开](./endpoints/175-获取云盘歌词.md) |
-| 176 | 电台 banner | `/dj/banner` | [打开](./endpoints/176-电台-banner.md) |
-| 177 | 电台个性推荐 | `/dj/personalize/recommend` | [打开](./endpoints/177-电台个性推荐.md) |
-| 178 | 电台订阅者列表 | `/dj/subscriber` | [打开](./endpoints/178-电台订阅者列表.md) |
-| 179 | 用户电台 | `/user/audio` | [打开](./endpoints/179-用户电台.md) |
-| 180 | 热门电台 | `/dj/hot` | [打开](./endpoints/180-热门电台.md) |
-| 181 | 电台 - 节目榜 | `/dj/program/toplist` | [打开](./endpoints/181-电台---节目榜.md) |
-| 182 | 电台 - 付费精品 | `/dj/toplist/pay` | [打开](./endpoints/182-电台---付费精品.md) |
-| 183 | 电台 - 24 小时节目榜 | `/dj/program/toplist/hours` | [打开](./endpoints/183-电台---24-小时节目榜.md) |
-| 184 | 电台 - 24 小时主播榜 | `/dj/toplist/hours` | [打开](./endpoints/184-电台---24-小时主播榜.md) |
-| 185 | 电台 - 主播新人榜 | `/dj/toplist/newcomer` | [打开](./endpoints/185-电台---主播新人榜.md) |
-| 186 | 电台 - 最热主播榜 | `/dj/toplist/popular` | [打开](./endpoints/186-电台---最热主播榜.md) |
-| 187 | 电台 - 新晋电台榜/热门电台榜 | `/dj/toplist` | [打开](./endpoints/187-电台---新晋电台榜热门电台榜.md) |
-| 188 | 电台 - 类别热门电台 | `/dj/radio/hot` | [打开](./endpoints/188-电台---类别热门电台.md) |
-| 189 | 电台 - 推荐 | `/dj/recommend` | [打开](./endpoints/189-电台---推荐.md) |
-| 190 | 电台 - 分类 | `/dj/catelist` | [打开](./endpoints/190-电台---分类.md) |
-| 191 | 电台 - 分类推荐 | `/dj/recommend/type` | [打开](./endpoints/191-电台---分类推荐.md) |
-| 192 | 电台 - 订阅 | `/dj/sub` | [打开](./endpoints/192-电台---订阅.md) |
-| 193 | 电台的订阅列表 | `/dj/sublist` | [打开](./endpoints/193-电台的订阅列表.md) |
-| 194 | 电台 - 付费精选 | `/dj/paygift` | [打开](./endpoints/194-电台---付费精选.md) |
-| 195 | 电台 - 非热门类型 | `/dj/category/excludehot` | [打开](./endpoints/195-电台---非热门类型.md) |
-| 196 | 电台 - 推荐类型 | `/dj/category/recommend` | [打开](./endpoints/196-电台---推荐类型.md) |
-| 197 | 电台 - 今日优选 | `/dj/today/perfered` | [打开](./endpoints/197-电台---今日优选.md) |
-| 198 | 电台 - 详情 | `/dj/detail` | [打开](./endpoints/198-电台---详情.md) |
-| 199 | 电台 - 节目 | `/dj/program` | [打开](./endpoints/199-电台---节目.md) |
-| 200 | 电台 - 节目详情 | `/dj/program/detail` | [打开](./endpoints/200-电台---节目详情.md) |
-| 201 | 通知 - 私信 | `/msg/private` | [打开](./endpoints/201-通知---私信.md) |
-| 202 | 发送私信 | `/send/text` | [打开](./endpoints/202-发送私信.md) |
-| 203 | 发送私信(带歌曲) | `/send/song` | [打开](./endpoints/203-发送私信(带歌曲).md) |
-| 204 | 发送私信(带专辑) | `/send/album` | [打开](./endpoints/204-发送私信(带专辑).md) |
-| 205 | 发送私信(带歌单) | `/send/playlist` | [打开](./endpoints/205-发送私信(带歌单).md) |
-| 206 | 最近联系人 | `/msg/recentcontact` | [打开](./endpoints/206-最近联系人.md) |
-| 207 | 私信内容 | `/msg/private/history` | [打开](./endpoints/207-私信内容.md) |
-| 208 | 通知 - 评论 | `/msg/comments` | [打开](./endpoints/208-通知---评论.md) |
-| 209 | 通知 - @我 | `/msg/forwards` | [打开](./endpoints/209-通知---@我.md) |
-| 210 | 通知 - 通知 | `/msg/notices` | [打开](./endpoints/210-通知---通知.md) |
-| 211 | 设置 | `/setting` | [打开](./endpoints/211-设置.md) |
-| 212 | 数字专辑-新碟上架 | `/album/list` | [打开](./endpoints/212-数字专辑-新碟上架.md) |
-| 213 | 数字专辑&数字单曲-榜单 | `/album_songsaleboard` | [打开](./endpoints/213-数字专辑&数字单曲-榜单.md) |
-| 214 | 数字专辑-语种风格馆 | `/album/list/style` | [打开](./endpoints/214-数字专辑-语种风格馆.md) |
-| 215 | 数字专辑详情 | `/album/detail` | [打开](./endpoints/215-数字专辑详情.md) |
-| 216 | 我的数字专辑 | `/digitalAlbum/purchased` | [打开](./endpoints/216-我的数字专辑.md) |
-| 217 | 购买数字专辑 | `/digitalAlbum/ordering` | [打开](./endpoints/217-购买数字专辑.md) |
-| 218 | 音乐日历 | `/calendar` | [打开](./endpoints/218-音乐日历.md) |
-| 219 | 云贝 | `/yunbei` | [打开](./endpoints/219-云贝.md) |
-| 220 | 云贝今日签到信息 | `/yunbei/today` | [打开](./endpoints/220-云贝今日签到信息.md) |
-| 221 | 云贝签到 | `/yunbei/sign` | [打开](./endpoints/221-云贝签到.md) |
-| 222 | 云贝账户信息 | `/yunbei/info` | [打开](./endpoints/222-云贝账户信息.md) |
-| 223 | 云贝所有任务 | `/yunbei/tasks` | [打开](./endpoints/223-云贝所有任务.md) |
-| 224 | 云贝 todo 任务 | `/yunbei/tasks/todo` | [打开](./endpoints/224-云贝-todo-任务.md) |
-| 225 | 云贝完成任务 | `/yunbei/task/finish` | [打开](./endpoints/225-云贝完成任务.md) |
-| 226 | 云贝广告任务 - 今日任务状态 | `/yunbei/task/list/v1` | [打开](./endpoints/226-云贝广告任务---今日任务状态.md) |
-| 227 | 云贝广告任务 - 获取推荐歌曲 | `/yunbei/task/recommend/song` | [打开](./endpoints/227-云贝广告任务---获取推荐歌曲.md) |
-| 228 | 云贝广告任务 - 完成任务领取云贝 | `/yunbei/task/finish/v1` | [打开](./endpoints/228-云贝广告任务---完成任务领取云贝.md) |
-| 229 | 云贝收入 | `/yunbei/tasks/receipt` | [打开](./endpoints/229-云贝收入.md) |
-| 230 | 云贝支出 | `/yunbei/tasks/expense` | [打开](./endpoints/230-云贝支出.md) |
-| 231 | 关注歌手新歌 | `/artist/new/song` | [打开](./endpoints/231-关注歌手新歌.md) |
-| 232 | 关注歌手最近新歌 - 播放全部 | `/artist/new/song/playall` | [打开](./endpoints/232-关注歌手最近新歌---播放全部.md) |
-| 233 | 关注歌手新作品（歌曲/MV） | `/artist/new/song/mv/list/v2` | [打开](./endpoints/233-关注歌手新作品（歌曲MV）.md) |
-| 234 | 关注歌手新 MV | `/artist/new/mv` | [打开](./endpoints/234-关注歌手新-MV.md) |
-| 235 | 一起听相关 | — | [打开](./endpoints/235-一起听相关.md) |
-| 236 | batch 批量请求接口 | `/batch` | [打开](./endpoints/236-batch-批量请求接口.md) |
-| 237 | 云贝推歌 | `/yunbei/rcmd/song` | [打开](./endpoints/237-云贝推歌.md) |
-| 238 | 云贝推歌历史记录 | `/yunbei/rcmd/song/history` | [打开](./endpoints/238-云贝推歌历史记录.md) |
-| 239 | 已购单曲 | `/song/purchased` | [打开](./endpoints/239-已购单曲.md) |
-| 240 | 获取 mlog 播放地址 | `/mlog/url` | [打开](./endpoints/240-获取-mlog-播放地址.md) |
-| 241 | 将 mlog id 转为视频 id | `/mlog/to/video` | [打开](./endpoints/241-将-mlog-id-转为视频-id.md) |
-| 242 | vip 成长值 | `/vip/growthpoint` | [打开](./endpoints/242-vip-成长值.md) |
-| 243 | vip 成长值获取记录 | `/vip/growthpoint/details` | [打开](./endpoints/243-vip-成长值获取记录.md) |
-| 244 | vip 任务 | `/vip/tasks` | [打开](./endpoints/244-vip-任务.md) |
-| 245 | 领取 vip 成长值 | `/vip/growthpoint/get` | [打开](./endpoints/245-领取-vip-成长值.md) |
-| 246 | 一键领取所有 vip 成长值 | `/vip/growthpoint/getall` | [打开](./endpoints/246-一键领取所有-vip-成长值.md) |
-| 247 | 歌手粉丝 | `/artist/fans` | [打开](./endpoints/247-歌手粉丝.md) |
-| 248 | 歌手粉丝数量 | `/artist/follow/count` | [打开](./endpoints/248-歌手粉丝数量.md) |
-| 249 | 数字专辑详情 | `/digitalAlbum/detail` | [打开](./endpoints/249-数字专辑详情.md) |
-| 250 | 数字专辑销量 | `/digitalAlbum/sales` | [打开](./endpoints/250-数字专辑销量.md) |
-| 251 | 音乐人数据概况 | `/musician/data/overview` | [打开](./endpoints/251-音乐人数据概况.md) |
-| 252 | 音乐人播放趋势 | `/musician/play/trend` | [打开](./endpoints/252-音乐人播放趋势.md) |
-| 253 | 音乐人任务 | `/musician/tasks` | [打开](./endpoints/253-音乐人任务.md) |
-| 254 | 音乐人任务(新) | `/musician/tasks/new` | [打开](./endpoints/254-音乐人任务(新).md) |
-| 255 | 音乐人黑胶会员任务 | `/musician/vip/tasks` | [打开](./endpoints/255-音乐人黑胶会员任务.md) |
-| 256 | 账号云豆数 | `/musician/cloudbean` | [打开](./endpoints/256-账号云豆数.md) |
-| 257 | 领取云豆 | `/musician/cloudbean/obtain` | [打开](./endpoints/257-领取云豆.md) |
-| 258 | 获取 VIP 信息 | `/vip/info` | [打开](./endpoints/258-获取-VIP-信息.md) |
-| 259 | 获取 VIP 信息(app 端) | `/vip/info/v2` | [打开](./endpoints/259-获取-VIP-信息(app-端).md) |
-| 260 | 音乐人签到 | `/musician/sign` | [打开](./endpoints/260-音乐人签到.md) |
-| 261 | 歌曲相关视频 | `/mlog/music/rcmd` | [打开](./endpoints/261-歌曲相关视频.md) |
-| 262 | 公开隐私歌单 | `/playlist/privacy` | [打开](./endpoints/262-公开隐私歌单.md) |
-| 263 | 获取客户端歌曲下载 url | `/song/download/url` | [打开](./endpoints/263-获取客户端歌曲下载-url.md) |
-| 264 | 获取歌手视频 | `/artist/video` | [打开](./endpoints/264-获取歌手视频.md) |
-| 265 | 最近播放-歌曲 | `/record/recent/song` | [打开](./endpoints/265-最近播放-歌曲.md) |
-| 266 | 最近播放-视频 | `/record/recent/video` | [打开](./endpoints/266-最近播放-视频.md) |
-| 267 | 最近播放-声音 | `/record/recent/voice` | [打开](./endpoints/267-最近播放-声音.md) |
-| 268 | 最近播放-歌单 | `/record/recent/playlist` | [打开](./endpoints/268-最近播放-歌单.md) |
-| 269 | 最近播放-专辑 | `/record/recent/album` | [打开](./endpoints/269-最近播放-专辑.md) |
-| 270 | 最近播放-播客 | `/record/recent/dj` | [打开](./endpoints/270-最近播放-播客.md) |
-| 271 | 签到进度 | `/signin/progress` | [打开](./endpoints/271-签到进度.md) |
-| 272 | 内部版本接口 | `/inner/version` | [打开](./endpoints/272-内部版本接口.md) |
-| 273 | 黑胶时光机 | `/vip/timemachine` | [打开](./endpoints/273-黑胶时光机.md) |
-| 274 | 音乐百科 - 简要信息 | `/song/wiki/summary` | [打开](./endpoints/274-音乐百科---简要信息.md) |
-| 275 | 乐谱列表 | `/sheet/list` | [打开](./endpoints/275-乐谱列表.md) |
-| 276 | 乐谱内容 | `/sheet/preview` | [打开](./endpoints/276-乐谱内容.md) |
-| 277 | 曲风列表 | `/style/list` | [打开](./endpoints/277-曲风列表.md) |
-| 278 | 曲风偏好 | `/style/preference` | [打开](./endpoints/278-曲风偏好.md) |
-| 279 | 曲风详情 | `/style/detail` | [打开](./endpoints/279-曲风详情.md) |
-| 280 | 曲风-歌曲 | `/style/song` | [打开](./endpoints/280-曲风-歌曲.md) |
-| 281 | 曲风-专辑 | `/style/album` | [打开](./endpoints/281-曲风-专辑.md) |
-| 282 | 曲风-歌单 | `/style/playlist` | [打开](./endpoints/282-曲风-歌单.md) |
-| 283 | 曲风-歌手 | `/style/artist` | [打开](./endpoints/283-曲风-歌手.md) |
-| 284 | 云村星评馆 - 简要评论 | `/starpick/comments/summary` | [打开](./endpoints/284-云村星评馆---简要评论.md) |
-| 285 | 私人 DJ | `/aidj/content/rcmd` | [打开](./endpoints/285-私人-DJ.md) |
-| 286 | 回忆坐标 | `/music/first/listen/info` | [打开](./endpoints/286-回忆坐标.md) |
-| 287 | 播客列表 | `/voicelist/search` | [打开](./endpoints/287-播客列表.md) |
-| 288 | 播客声音列表 | `/voicelist/list` | [打开](./endpoints/288-播客声音列表.md) |
-| 289 | 播客声音搜索 | `/voicelist/list/search` | [打开](./endpoints/289-播客声音搜索.md) |
-| 290 | 播客声音详情 | `/voice/detail` | [打开](./endpoints/290-播客声音详情.md) |
-| 291 | 播客声音排序 | `/voicelist/trans` | [打开](./endpoints/291-播客声音排序.md) |
-| 292 | 播客列表详情 | `/voicelist/detail` | [打开](./endpoints/292-播客列表详情.md) |
-| 293 | 播客删除 | `/voice/delete` | [打开](./endpoints/293-播客删除.md) |
-| 294 | 播客上传声音 | `/voice/upload` | [打开](./endpoints/294-播客上传声音.md) |
-| 295 | 电台排行榜获取 | `/djRadio/top` | [打开](./endpoints/295-电台排行榜获取.md) |
-| 296 | 获取声音歌词 | `/voice/lyric` | [打开](./endpoints/296-获取声音歌词.md) |
-| 297 | 验证接口-二维码生成 | `/verify/getQr` | [打开](./endpoints/297-验证接口-二维码生成.md) |
-| 298 | 验证接口-二维码检测 | `/verify/qrcodestatus` | [打开](./endpoints/298-验证接口-二维码检测.md) |
-| 299 | 听歌识曲 | `/audio/match` | [打开](./endpoints/299-听歌识曲.md) |
-| 300 | 根据 nickname 获取 userid | `/get/userids` | [打开](./endpoints/300-根据-nickname-获取-userid.md) |
-| 301 | 专辑简要百科信息 | `/ugc/album/get` | [打开](./endpoints/301-专辑简要百科信息.md) |
-| 302 | 歌曲简要百科信息 | `/ugc/song/get` | [打开](./endpoints/302-歌曲简要百科信息.md) |
-| 303 | 歌手简要百科信息 | `/ugc/artist/get` | [打开](./endpoints/303-歌手简要百科信息.md) |
-| 304 | mv 简要百科信息 | `/ugc/mv/get` | [打开](./endpoints/304-mv-简要百科信息.md) |
-| 305 | 搜索歌手 | `/ugc/artist/search` | [打开](./endpoints/305-搜索歌手.md) |
-| 306 | 用户贡献内容 | `/ugc/detail` | [打开](./endpoints/306-用户贡献内容.md) |
-| 307 | 用户贡献条目、积分、云贝数量 | `/ugc/user/devote` | [打开](./endpoints/307-用户贡献条目、积分、云贝数量.md) |
-| 308 | 年度听歌报告 | `/summary/annual` | [打开](./endpoints/308-年度听歌报告.md) |
-| 309 | 本地歌曲文件匹配网易云歌曲信息 | `/search/match` | [打开](./endpoints/309-本地歌曲文件匹配网易云歌曲信息.md) |
-| 310 | 歌曲音质详情 | `/song/music/detail` | [打开](./endpoints/310-歌曲音质详情.md) |
-| 311 | 歌曲红心数量 | `/song/red/count` | [打开](./endpoints/311-歌曲红心数量.md) |
-| 312 | 私人 FM 模式选择 | `/personal/fm/mode` | [打开](./endpoints/312-私人-FM-模式选择.md) |
-| 313 | 获取专辑歌曲的音质 | `/album/privilege` | [打开](./endpoints/313-获取专辑歌曲的音质.md) |
-| 314 | 歌手详情动态 | `/artist/detail/dynamic` | [打开](./endpoints/314-歌手详情动态.md) |
-| 315 | 最近听歌列表 | `/recent/listen/list` | [打开](./endpoints/315-最近听歌列表.md) |
-| 316 | 云盘导入歌曲 | `/cloud/import` | [打开](./endpoints/316-云盘导入歌曲.md) |
-| 317 | 获取客户端歌曲下载链接 - 新版 | `/song/download/url/v1` | [打开](./endpoints/317-获取客户端歌曲下载链接---新版.md) |
-| 318 | 当前账号关注的用户/歌手 | `/user/follow/mixed` | [打开](./endpoints/318-当前账号关注的用户歌手.md) |
-| 319 | 会员下载歌曲记录 | `/song/downlist` | [打开](./endpoints/319-会员下载歌曲记录.md) |
-| 320 | 会员本月下载歌曲记录 | `/song/monthdownlist` | [打开](./endpoints/320-会员本月下载歌曲记录.md) |
-| 321 | 已购买单曲 | `/song/singledownlist` | [打开](./endpoints/321-已购买单曲.md) |
-| 322 | 歌曲是否喜爱 | `/song/like/check` | [打开](./endpoints/322-歌曲是否喜爱.md) |
-| 323 | 用户是否互相关注 | `/user/mutualfollow/get` | [打开](./endpoints/323-用户是否互相关注.md) |
-| 324 | 歌曲动态封面 | `/song/dynamic/cover` | [打开](./endpoints/324-歌曲动态封面.md) |
-| 325 | 用户徽章 | `/user/medal` | [打开](./endpoints/325-用户徽章.md) |
-| 326 | 用户状态 | `/user/social/status` | [打开](./endpoints/326-用户状态.md) |
-| 327 | 用户状态 - 支持设置的状态 | `/user/social/status/support` | [打开](./endpoints/327-用户状态---支持设置的状态.md) |
-| 328 | 用户状态 - 相同状态的用户 | `/user/social/status/rcmd` | [打开](./endpoints/328-用户状态---相同状态的用户.md) |
-| 329 | 用户状态 - 编辑 | `/user/social/status/edit` | [打开](./endpoints/329-用户状态---编辑.md) |
-| 330 | 听歌足迹 - 年度听歌足迹 | `/listen/data/year/report` | [打开](./endpoints/330-听歌足迹---年度听歌足迹.md) |
-| 331 | 听歌足迹 - 今日收听 | `/listen/data/today/song` | [打开](./endpoints/331-听歌足迹---今日收听.md) |
-| 332 | 听歌足迹 - 歌曲播放排行 | `/listen/data/song/play/rank` | [打开](./endpoints/332-听歌足迹---歌曲播放排行.md) |
-| 333 | 听歌足迹 - 总收听时长 | `/listen/data/total` | [打开](./endpoints/333-听歌足迹---总收听时长.md) |
-| 334 | 听歌足迹 - 本周/本月收听时长 | `/listen/data/realtime/report` | [打开](./endpoints/334-听歌足迹---本周本月收听时长.md) |
-| 335 | 听歌足迹 - 周/月/年收听报告 | `/listen/data/report` | [打开](./endpoints/335-听歌足迹---周月年收听报告.md) |
-| 336 | 歌单导入 - 元数据/文字/链接导入 | `/playlist/import/name/task/create` | [打开](./endpoints/336-歌单导入---元数据文字链接导入.md) |
-| 337 | 歌单导入 - 任务状态 | `/playlist/import/task/status` | [打开](./endpoints/337-歌单导入---任务状态.md) |
-| 338 | 副歌时间 | `/song/chorus` | [打开](./endpoints/338-副歌时间.md) |
-| 339 | 相关歌单推荐 | `/playlist/detail/rcmd/get` | [打开](./endpoints/339-相关歌单推荐.md) |
-| 340 | 歌词摘录 - 歌词摘录信息 | `/song/lyrics/mark` | [打开](./endpoints/340-歌词摘录---歌词摘录信息.md) |
-| 341 | 歌词摘录 - 我的歌词本 | `/song/lyrics/mark/user/page` | [打开](./endpoints/341-歌词摘录---我的歌词本.md) |
-| 342 | 歌词摘录 - 添加/修改摘录歌词 | `/song/lyrics/mark/add` | [打开](./endpoints/342-歌词摘录---添加修改摘录歌词.md) |
-| 343 | 歌词摘录 - 删除摘录歌词 | `/song/lyrics/mark/del` | [打开](./endpoints/343-歌词摘录---删除摘录歌词.md) |
-| 344 | 广播电台 - 分类/地区信息 | `/broadcast/category/region/get` | [打开](./endpoints/344-广播电台---分类地区信息.md) |
-| 345 | 广播电台 - 我的收藏 | `/broadcast/channel/collect/list` | [打开](./endpoints/345-广播电台---我的收藏.md) |
-| 346 | 广播电台 - 电台信息 | `/broadcast/channel/currentinfo` | [打开](./endpoints/346-广播电台---电台信息.md) |
-| 347 | 广播电台 - 全部电台 | `/broadcast/channel/list` | [打开](./endpoints/347-广播电台---全部电台.md) |
-| 348 | 黑胶乐签打卡 | `/vip/sign` | [打开](./endpoints/348-黑胶乐签打卡.md) |
-| 349 | 黑胶乐签未来打卡信息 | `/vip/sign/info` | [打开](./endpoints/349-黑胶乐签未来打卡信息.md) |
-| 350 | 广播电台 - 收藏/取消收藏电台 | `/broadcast/sub` | [打开](./endpoints/350-广播电台---收藏取消收藏电台.md) |
-| 351 | 用户的创建歌单列表 | `/user/playlist/create` | [打开](./endpoints/351-用户的创建歌单列表.md) |
-| 352 | 用户的收藏歌单列表 | `/user/playlist/collect` | [打开](./endpoints/352-用户的收藏歌单列表.md) |
-| 353 | 搜索建议 - PC端 | `/search/suggest/pc` | [打开](./endpoints/353-搜索建议---PC端.md) |
-| 354 | 喜欢歌曲 - 新版 | `/song/like` | [打开](./endpoints/354-喜欢歌曲---新版.md) |
-| 355 | 我创建的播客声音 | `/voicelist/my/created` | [打开](./endpoints/355-我创建的播客声音.md) |
-| 356 | DIFM电台 - 分类 | `/dj/difm/all/style/channel` | [打开](./endpoints/356-DIFM电台---分类.md) |
-| 357 | DIFM电台 - 收藏列表 | `/dj/difm/subscribe/channels/get` | [打开](./endpoints/357-DIFM电台---收藏列表.md) |
-| 358 | DIFM电台 - 收藏频道 | `/dj/difm/channel/subscribe` | [打开](./endpoints/358-DIFM电台---收藏频道.md) |
-| 359 | DIFM电台 - 取消收藏频道 | `/dj/difm/channel/unsubscribe` | [打开](./endpoints/359-DIFM电台---取消收藏频道.md) |
-| 360 | DIFM电台 - 播放列表 | `/dj/difm/playing/tracks/list` | [打开](./endpoints/360-DIFM电台---播放列表.md) |
-| 361 | 助眠解压 - 特定时间场景下的推荐资源 | `/sati/timescene/resources/get` | [打开](./endpoints/361-助眠解压---特定时间场景下的推荐资源.md) |
-| 362 | 助眠解压 - 标签列表 | `/sati/tag/list` | [打开](./endpoints/362-助眠解压---标签列表.md) |
-| 363 | 助眠解压 - 获取标签下资源列表 | `/sati/resource/list` | [打开](./endpoints/363-助眠解压---获取标签下资源列表.md) |
-| 364 | 助眠解压 - 查看同类推荐 | `/sati/resource/list/more` | [打开](./endpoints/364-助眠解压---查看同类推荐.md) |
-| 365 | 助眠解压 - 收藏列表 | `/sati/resource/sub/list` | [打开](./endpoints/365-助眠解压---收藏列表.md) |
-| 366 | 助眠解压 - 收藏 | `/sati/resource/sub` | [打开](./endpoints/366-助眠解压---收藏.md) |
-| 367 | 跑步漫游 | `/radio/sport/get` | [打开](./endpoints/367-跑步漫游.md) |
-| 368 | 歌曲创作者信息 | `/song/creators` | [打开](./endpoints/368-歌曲创作者信息.md) |
-| 369 | 灰色歌曲的其他版本推荐 | `/song/copyright/rcmd` | [打开](./endpoints/369-灰色歌曲的其他版本推荐.md) |
-| 370 | 举报评论 | `/comment/report` | [打开](./endpoints/370-举报评论.md) |
-| 371 | 多级行政区划数据 | `/lbs/city/code` | [打开](./endpoints/371-多级行政区划数据.md) |
-| 372 | 指定维度音乐排行榜详情 | `/chart/detail` | [打开](./endpoints/372-指定维度音乐排行榜详情.md) |
-| 373 | 指定维度音乐排行榜列表 | `/chart/song/detail` | [打开](./endpoints/373-指定维度音乐排行榜列表.md) |
-| 374 | 会员任务 - 新版 | `/vip/task/v1` | [打开](./endpoints/374-会员任务---新版.md) |
-| 375 | 黑胶乐签详情 | `/vip/sign/detail` | [打开](./endpoints/375-黑胶乐签详情.md) |
-| 376 | 黑胶乐签历史 | `/vip/sign/history` | [打开](./endpoints/376-黑胶乐签历史.md) |
-| 377 | 直接获取云盘歌曲下载链接 | `/song/cloud/download` | [打开](./endpoints/377-直接获取云盘歌曲下载链接.md) |
-| 378 | 获取广告 | `/ad/get` | [打开](./endpoints/378-获取广告.md) |
-| 379 | 看广告领取权益（免费听歌时长 / 云贝等） | `/ad/listening/rights/gain` | [打开](./endpoints/379-看广告领取权益（免费听歌时长--云贝等）.md) |
-| 380 | 获取免费听时长状态 | `/ad/listening/rights` | [打开](./endpoints/380-获取免费听时长状态.md) |
-| 381 | 云小编 - 获取用户详情 | `/rep/ugc/user/get` | [打开](./endpoints/381-云小编---获取用户详情.md) |
-| 382 | 云小编 - 每日签到 | `/rep/ugc/user/sign` | [打开](./endpoints/382-云小编---每日签到.md) |
-| 383 | 云小编 - 查询会员任务状态 | `/rep/ugc/user/vip` | [打开](./endpoints/383-云小编---查询会员任务状态.md) |
-| 384 | 云小编 - 活动信息 | `/rep/ugc/activity/get` | [打开](./endpoints/384-云小编---活动信息.md) |
-| 385 | 云小编 - 获取任务 | `/thinktank/audit/resource/detail` | [打开](./endpoints/385-云小编---获取任务.md) |
-| 386 | 云小编 - 提交任务 | `/thinktank/audit/resource/update` | [打开](./endpoints/386-云小编---提交任务.md) |
-| 387 | 云小编 - 领取任务积分 | `/rep/ugc/activity/collect` | [打开](./endpoints/387-云小编---领取任务积分.md) |
-| 388 | 云小编 - 领取一日会员 | `/rep/ugc/user/collect-vip` | [打开](./endpoints/388-云小编---领取一日会员.md) |
-| 389 | 云小编 - 剩余抽奖次数 | `/middle/play/lottery/remain/chance` | [打开](./endpoints/389-云小编---剩余抽奖次数.md) |
-| 390 | 云小编 - 每日抽奖 | `/middle/play/do/lottery` | [打开](./endpoints/390-云小编---每日抽奖.md) |
-| 391 | 发送/删除评论 | `/comment/add` `/comment` | [打开](./endpoints/391-发送删除评论.md) |
-| 392 | 获取在线设备列表 | `/device/list` | [打开](./endpoints/392-获取在线设备列表.md) |
-| 393 | 发送安全验证码 | `/captcha/safe/sent` | [打开](./endpoints/393-发送安全验证码.md) |
-| 394 | 强制下线设备 | `/device/kickoff` | [打开](./endpoints/394-强制下线设备.md) |
+| 135 | 喜欢音乐 - 新版 | `/like/v1` | [打开](./endpoints/135-喜欢音乐---新版.md) |
+| 136 | 喜欢音乐列表 | `/likelist` | [打开](./endpoints/136-喜欢音乐列表.md) |
+| 137 | 垃圾桶 | `/fm_trash` | [打开](./endpoints/137-垃圾桶.md) |
+| 138 | 新碟上架 | `/top/album` | [打开](./endpoints/138-新碟上架.md) |
+| 139 | 全部新碟 | `/album/new` | [打开](./endpoints/139-全部新碟.md) |
+| 140 | 最新专辑 | `/album/newest` | [打开](./endpoints/140-最新专辑.md) |
+| 141 | 听歌打卡 | `/scrobble` `/scrobble/v1` | [打开](./endpoints/141-听歌打卡.md) |
+| 142 | 提交歌曲播放状态 | `/relay/play/state/submit` | [打开](./endpoints/142-提交歌曲播放状态.md) |
+| 143 | 热门歌手 | `/top/artists` | [打开](./endpoints/143-热门歌手.md) |
+| 144 | 全部 mv | `/mv/all` | [打开](./endpoints/144-全部-mv.md) |
+| 145 | 最新 mv | `/mv/first` | [打开](./endpoints/145-最新-mv.md) |
+| 146 | 网易出品 mv | `/mv/exclusive/rcmd` | [打开](./endpoints/146-网易出品-mv.md) |
+| 147 | 推荐 mv | `/personalized/mv` | [打开](./endpoints/147-推荐-mv.md) |
+| 148 | 推荐歌单 | `/personalized` | [打开](./endpoints/148-推荐歌单.md) |
+| 149 | 推荐新音乐 | `/personalized/newsong` | [打开](./endpoints/149-推荐新音乐.md) |
+| 150 | 推荐电台 | `/personalized/djprogram` | [打开](./endpoints/150-推荐电台.md) |
+| 151 | 推荐节目 | `/program/recommend` | [打开](./endpoints/151-推荐节目.md) |
+| 152 | 独家放送(入口列表) | `/personalized/privatecontent` | [打开](./endpoints/152-独家放送(入口列表).md) |
+| 153 | 独家放送列表 | `/personalized/privatecontent/list` | [打开](./endpoints/153-独家放送列表.md) |
+| 154 | mv 排行 | `/top/mv` | [打开](./endpoints/154-mv-排行.md) |
+| 155 | 获取 mv 数据 | `/mv/detail` | [打开](./endpoints/155-获取-mv-数据.md) |
+| 156 | 获取 mv 点赞转发评论数数据 | `/mv/detail/info` | [打开](./endpoints/156-获取-mv-点赞转发评论数数据.md) |
+| 157 | mv 地址 | `/mv/url` | [打开](./endpoints/157-mv-地址.md) |
+| 158 | 获取视频标签列表 | `/video/group/list` | [打开](./endpoints/158-获取视频标签列表.md) |
+| 159 | 获取视频分类列表 | `/video/category/list` | [打开](./endpoints/159-获取视频分类列表.md) |
+| 160 | 获取视频标签/分类下的视频 | `/video/group` | [打开](./endpoints/160-获取视频标签分类下的视频.md) |
+| 161 | 获取全部视频列表 | `/video/timeline/all` | [打开](./endpoints/161-获取全部视频列表.md) |
+| 162 | 获取推荐视频 | `/video/timeline/recommend` | [打开](./endpoints/162-获取推荐视频.md) |
+| 163 | 相关视频 | `/related/allvideo` | [打开](./endpoints/163-相关视频.md) |
+| 164 | 视频详情 | `/video/detail` | [打开](./endpoints/164-视频详情.md) |
+| 165 | 获取视频点赞转发评论数数据 | `/video/detail/info` | [打开](./endpoints/165-获取视频点赞转发评论数数据.md) |
+| 166 | 获取视频播放地址 | `/video/url` | [打开](./endpoints/166-获取视频播放地址.md) |
+| 167 | 所有榜单 | `/toplist` | [打开](./endpoints/167-所有榜单.md) |
+| 168 | 排行榜详情 | `/top/list` | [打开](./endpoints/168-排行榜详情.md) |
+| 169 | 所有榜单内容摘要 | `/toplist/detail` | [打开](./endpoints/169-所有榜单内容摘要.md) |
+| 170 | 歌手榜 | `/toplist/artist` | [打开](./endpoints/170-歌手榜.md) |
+| 171 | 云盘 | `/user/cloud` | [打开](./endpoints/171-云盘.md) |
+| 172 | 云盘数据详情 | `/user/cloud/detail` | [打开](./endpoints/172-云盘数据详情.md) |
+| 173 | 云盘歌曲删除 | `/user/cloud/del` | [打开](./endpoints/173-云盘歌曲删除.md) |
+| 174 | 云盘上传 | `/cloud` `/cloud/upload/token` `/cloud/upload/complete` | [打开](./endpoints/174-云盘上传.md) |
+| 175 | 云盘歌曲信息匹配纠正 | `/cloud/match` | [打开](./endpoints/175-云盘歌曲信息匹配纠正.md) |
+| 176 | 获取云盘歌词 | `/cloud/lyric/get` | [打开](./endpoints/176-获取云盘歌词.md) |
+| 177 | 电台 banner | `/dj/banner` | [打开](./endpoints/177-电台-banner.md) |
+| 178 | 电台个性推荐 | `/dj/personalize/recommend` | [打开](./endpoints/178-电台个性推荐.md) |
+| 179 | 电台订阅者列表 | `/dj/subscriber` | [打开](./endpoints/179-电台订阅者列表.md) |
+| 180 | 用户电台 | `/user/audio` | [打开](./endpoints/180-用户电台.md) |
+| 181 | 热门电台 | `/dj/hot` | [打开](./endpoints/181-热门电台.md) |
+| 182 | 电台 - 节目榜 | `/dj/program/toplist` | [打开](./endpoints/182-电台---节目榜.md) |
+| 183 | 电台 - 付费精品 | `/dj/toplist/pay` | [打开](./endpoints/183-电台---付费精品.md) |
+| 184 | 电台 - 24 小时节目榜 | `/dj/program/toplist/hours` | [打开](./endpoints/184-电台---24-小时节目榜.md) |
+| 185 | 电台 - 24 小时主播榜 | `/dj/toplist/hours` | [打开](./endpoints/185-电台---24-小时主播榜.md) |
+| 186 | 电台 - 主播新人榜 | `/dj/toplist/newcomer` | [打开](./endpoints/186-电台---主播新人榜.md) |
+| 187 | 电台 - 最热主播榜 | `/dj/toplist/popular` | [打开](./endpoints/187-电台---最热主播榜.md) |
+| 188 | 电台 - 新晋电台榜/热门电台榜 | `/dj/toplist` | [打开](./endpoints/188-电台---新晋电台榜热门电台榜.md) |
+| 189 | 电台 - 类别热门电台 | `/dj/radio/hot` | [打开](./endpoints/189-电台---类别热门电台.md) |
+| 190 | 电台 - 推荐 | `/dj/recommend` | [打开](./endpoints/190-电台---推荐.md) |
+| 191 | 电台 - 分类 | `/dj/catelist` | [打开](./endpoints/191-电台---分类.md) |
+| 192 | 电台 - 分类推荐 | `/dj/recommend/type` | [打开](./endpoints/192-电台---分类推荐.md) |
+| 193 | 电台 - 订阅 | `/dj/sub` | [打开](./endpoints/193-电台---订阅.md) |
+| 194 | 电台的订阅列表 | `/dj/sublist` | [打开](./endpoints/194-电台的订阅列表.md) |
+| 195 | 电台 - 付费精选 | `/dj/paygift` | [打开](./endpoints/195-电台---付费精选.md) |
+| 196 | 电台 - 非热门类型 | `/dj/category/excludehot` | [打开](./endpoints/196-电台---非热门类型.md) |
+| 197 | 电台 - 推荐类型 | `/dj/category/recommend` | [打开](./endpoints/197-电台---推荐类型.md) |
+| 198 | 电台 - 今日优选 | `/dj/today/perfered` | [打开](./endpoints/198-电台---今日优选.md) |
+| 199 | 电台 - 详情 | `/dj/detail` | [打开](./endpoints/199-电台---详情.md) |
+| 200 | 电台 - 节目 | `/dj/program` | [打开](./endpoints/200-电台---节目.md) |
+| 201 | 电台 - 节目详情 | `/dj/program/detail` | [打开](./endpoints/201-电台---节目详情.md) |
+| 202 | 通知 - 私信 | `/msg/private` | [打开](./endpoints/202-通知---私信.md) |
+| 203 | 发送私信 | `/send/text` | [打开](./endpoints/203-发送私信.md) |
+| 204 | 发送私信(带歌曲) | `/send/song` | [打开](./endpoints/204-发送私信(带歌曲).md) |
+| 205 | 发送私信(带专辑) | `/send/album` | [打开](./endpoints/205-发送私信(带专辑).md) |
+| 206 | 发送私信(带歌单) | `/send/playlist` | [打开](./endpoints/206-发送私信(带歌单).md) |
+| 207 | 最近联系人 | `/msg/recentcontact` | [打开](./endpoints/207-最近联系人.md) |
+| 208 | 私信内容 | `/msg/private/history` | [打开](./endpoints/208-私信内容.md) |
+| 209 | 通知 - 评论 | `/msg/comments` | [打开](./endpoints/209-通知---评论.md) |
+| 210 | 通知 - @我 | `/msg/forwards` | [打开](./endpoints/210-通知---@我.md) |
+| 211 | 通知 - 通知 | `/msg/notices` | [打开](./endpoints/211-通知---通知.md) |
+| 212 | 设置 | `/setting` | [打开](./endpoints/212-设置.md) |
+| 213 | 数字专辑-新碟上架 | `/album/list` | [打开](./endpoints/213-数字专辑-新碟上架.md) |
+| 214 | 数字专辑&数字单曲-榜单 | `/album_songsaleboard` | [打开](./endpoints/214-数字专辑&数字单曲-榜单.md) |
+| 215 | 数字专辑-语种风格馆 | `/album/list/style` | [打开](./endpoints/215-数字专辑-语种风格馆.md) |
+| 216 | 数字专辑详情 | `/album/detail` | [打开](./endpoints/216-数字专辑详情.md) |
+| 217 | 我的数字专辑 | `/digitalAlbum/purchased` | [打开](./endpoints/217-我的数字专辑.md) |
+| 218 | 购买数字专辑 | `/digitalAlbum/ordering` | [打开](./endpoints/218-购买数字专辑.md) |
+| 219 | 音乐日历 | `/calendar` | [打开](./endpoints/219-音乐日历.md) |
+| 220 | 云贝 | `/yunbei` | [打开](./endpoints/220-云贝.md) |
+| 221 | 云贝今日签到信息 | `/yunbei/today` | [打开](./endpoints/221-云贝今日签到信息.md) |
+| 222 | 云贝签到 | `/yunbei/sign` | [打开](./endpoints/222-云贝签到.md) |
+| 223 | 云贝账户信息 | `/yunbei/info` | [打开](./endpoints/223-云贝账户信息.md) |
+| 224 | 云贝所有任务 | `/yunbei/tasks` | [打开](./endpoints/224-云贝所有任务.md) |
+| 225 | 云贝 todo 任务 | `/yunbei/tasks/todo` | [打开](./endpoints/225-云贝-todo-任务.md) |
+| 226 | 云贝完成任务 | `/yunbei/task/finish` | [打开](./endpoints/226-云贝完成任务.md) |
+| 227 | 云贝广告任务 - 今日任务状态 | `/yunbei/task/list/v1` | [打开](./endpoints/227-云贝广告任务---今日任务状态.md) |
+| 228 | 云贝广告任务 - 获取推荐歌曲 | `/yunbei/task/recommend/song` | [打开](./endpoints/228-云贝广告任务---获取推荐歌曲.md) |
+| 229 | 云贝广告任务 - 完成任务领取云贝 | `/yunbei/task/finish/v1` | [打开](./endpoints/229-云贝广告任务---完成任务领取云贝.md) |
+| 230 | 云贝收入 | `/yunbei/tasks/receipt` | [打开](./endpoints/230-云贝收入.md) |
+| 231 | 云贝支出 | `/yunbei/tasks/expense` | [打开](./endpoints/231-云贝支出.md) |
+| 232 | 关注歌手新歌 | `/artist/new/song` | [打开](./endpoints/232-关注歌手新歌.md) |
+| 233 | 关注歌手最近新歌 - 播放全部 | `/artist/new/song/playall` | [打开](./endpoints/233-关注歌手最近新歌---播放全部.md) |
+| 234 | 关注歌手新作品（歌曲/MV） | `/artist/new/song/mv/list/v2` | [打开](./endpoints/234-关注歌手新作品（歌曲MV）.md) |
+| 235 | 关注歌手新 MV | `/artist/new/mv` | [打开](./endpoints/235-关注歌手新-MV.md) |
+| 236 | 一起听相关 | — | [打开](./endpoints/236-一起听相关.md) |
+| 237 | batch 批量请求接口 | `/batch` | [打开](./endpoints/237-batch-批量请求接口.md) |
+| 238 | 云贝推歌 | `/yunbei/rcmd/song` | [打开](./endpoints/238-云贝推歌.md) |
+| 239 | 云贝推歌历史记录 | `/yunbei/rcmd/song/history` | [打开](./endpoints/239-云贝推歌历史记录.md) |
+| 240 | 已购单曲 | `/song/purchased` | [打开](./endpoints/240-已购单曲.md) |
+| 241 | 获取 mlog 播放地址 | `/mlog/url` | [打开](./endpoints/241-获取-mlog-播放地址.md) |
+| 242 | 将 mlog id 转为视频 id | `/mlog/to/video` | [打开](./endpoints/242-将-mlog-id-转为视频-id.md) |
+| 243 | vip 成长值 | `/vip/growthpoint` | [打开](./endpoints/243-vip-成长值.md) |
+| 244 | vip 成长值获取记录 | `/vip/growthpoint/details` | [打开](./endpoints/244-vip-成长值获取记录.md) |
+| 245 | vip 任务 | `/vip/tasks` | [打开](./endpoints/245-vip-任务.md) |
+| 246 | 领取 vip 成长值 | `/vip/growthpoint/get` | [打开](./endpoints/246-领取-vip-成长值.md) |
+| 247 | 一键领取所有 vip 成长值 | `/vip/growthpoint/getall` | [打开](./endpoints/247-一键领取所有-vip-成长值.md) |
+| 248 | 歌手粉丝 | `/artist/fans` | [打开](./endpoints/248-歌手粉丝.md) |
+| 249 | 歌手粉丝数量 | `/artist/follow/count` | [打开](./endpoints/249-歌手粉丝数量.md) |
+| 250 | 数字专辑详情 | `/digitalAlbum/detail` | [打开](./endpoints/250-数字专辑详情.md) |
+| 251 | 数字专辑销量 | `/digitalAlbum/sales` | [打开](./endpoints/251-数字专辑销量.md) |
+| 252 | 音乐人数据概况 | `/musician/data/overview` | [打开](./endpoints/252-音乐人数据概况.md) |
+| 253 | 音乐人播放趋势 | `/musician/play/trend` | [打开](./endpoints/253-音乐人播放趋势.md) |
+| 254 | 音乐人任务 | `/musician/tasks` | [打开](./endpoints/254-音乐人任务.md) |
+| 255 | 音乐人任务(新) | `/musician/tasks/new` | [打开](./endpoints/255-音乐人任务(新).md) |
+| 256 | 音乐人黑胶会员任务 | `/musician/vip/tasks` | [打开](./endpoints/256-音乐人黑胶会员任务.md) |
+| 257 | 账号云豆数 | `/musician/cloudbean` | [打开](./endpoints/257-账号云豆数.md) |
+| 258 | 领取云豆 | `/musician/cloudbean/obtain` | [打开](./endpoints/258-领取云豆.md) |
+| 259 | 获取 VIP 信息 | `/vip/info` | [打开](./endpoints/259-获取-VIP-信息.md) |
+| 260 | 获取 VIP 信息(app 端) | `/vip/info/v2` | [打开](./endpoints/260-获取-VIP-信息(app-端).md) |
+| 261 | 音乐人签到 | `/musician/sign` | [打开](./endpoints/261-音乐人签到.md) |
+| 262 | 歌曲相关视频 | `/mlog/music/rcmd` | [打开](./endpoints/262-歌曲相关视频.md) |
+| 263 | 公开隐私歌单 | `/playlist/privacy` | [打开](./endpoints/263-公开隐私歌单.md) |
+| 264 | 获取客户端歌曲下载 url | `/song/download/url` | [打开](./endpoints/264-获取客户端歌曲下载-url.md) |
+| 265 | 获取歌手视频 | `/artist/video` | [打开](./endpoints/265-获取歌手视频.md) |
+| 266 | 最近播放-歌曲 | `/record/recent/song` | [打开](./endpoints/266-最近播放-歌曲.md) |
+| 267 | 最近播放-视频 | `/record/recent/video` | [打开](./endpoints/267-最近播放-视频.md) |
+| 268 | 最近播放-声音 | `/record/recent/voice` | [打开](./endpoints/268-最近播放-声音.md) |
+| 269 | 最近播放-歌单 | `/record/recent/playlist` | [打开](./endpoints/269-最近播放-歌单.md) |
+| 270 | 最近播放-专辑 | `/record/recent/album` | [打开](./endpoints/270-最近播放-专辑.md) |
+| 271 | 最近播放-播客 | `/record/recent/dj` | [打开](./endpoints/271-最近播放-播客.md) |
+| 272 | 签到进度 | `/signin/progress` | [打开](./endpoints/272-签到进度.md) |
+| 273 | 内部版本接口 | `/inner/version` | [打开](./endpoints/273-内部版本接口.md) |
+| 274 | 黑胶时光机 | `/vip/timemachine` | [打开](./endpoints/274-黑胶时光机.md) |
+| 275 | 音乐百科 - 简要信息 | `/song/wiki/summary` | [打开](./endpoints/275-音乐百科---简要信息.md) |
+| 276 | 音乐百科 | `/song/wiki/info` | [打开](./endpoints/276-音乐百科.md) |
+| 277 | 乐谱列表 | `/sheet/list` | [打开](./endpoints/277-乐谱列表.md) |
+| 278 | 乐谱内容 | `/sheet/preview` | [打开](./endpoints/278-乐谱内容.md) |
+| 279 | 曲风列表 | `/style/list` | [打开](./endpoints/279-曲风列表.md) |
+| 280 | 曲风偏好 | `/style/preference` | [打开](./endpoints/280-曲风偏好.md) |
+| 281 | 曲风详情 | `/style/detail` | [打开](./endpoints/281-曲风详情.md) |
+| 282 | 曲风-歌曲 | `/style/song` | [打开](./endpoints/282-曲风-歌曲.md) |
+| 283 | 曲风-专辑 | `/style/album` | [打开](./endpoints/283-曲风-专辑.md) |
+| 284 | 曲风-歌单 | `/style/playlist` | [打开](./endpoints/284-曲风-歌单.md) |
+| 285 | 曲风-歌手 | `/style/artist` | [打开](./endpoints/285-曲风-歌手.md) |
+| 286 | 云村星评馆 - 简要评论 | `/starpick/comments/summary` | [打开](./endpoints/286-云村星评馆---简要评论.md) |
+| 287 | 私人 DJ | `/aidj/content/rcmd` | [打开](./endpoints/287-私人-DJ.md) |
+| 288 | 回忆坐标 | `/music/first/listen/info` | [打开](./endpoints/288-回忆坐标.md) |
+| 289 | 播客列表 | `/voicelist/search` | [打开](./endpoints/289-播客列表.md) |
+| 290 | 播客声音列表 | `/voicelist/list` | [打开](./endpoints/290-播客声音列表.md) |
+| 291 | 播客声音搜索 | `/voicelist/list/search` | [打开](./endpoints/291-播客声音搜索.md) |
+| 292 | 播客声音详情 | `/voice/detail` | [打开](./endpoints/292-播客声音详情.md) |
+| 293 | 播客声音排序 | `/voicelist/trans` | [打开](./endpoints/293-播客声音排序.md) |
+| 294 | 播客列表详情 | `/voicelist/detail` | [打开](./endpoints/294-播客列表详情.md) |
+| 295 | 播客删除 | `/voice/delete` | [打开](./endpoints/295-播客删除.md) |
+| 296 | 播客上传声音 | `/voice/upload` | [打开](./endpoints/296-播客上传声音.md) |
+| 297 | 电台排行榜获取 | `/djRadio/top` | [打开](./endpoints/297-电台排行榜获取.md) |
+| 298 | 获取声音歌词 | `/voice/lyric` | [打开](./endpoints/298-获取声音歌词.md) |
+| 299 | 验证接口-二维码生成 | `/verify/getQr` | [打开](./endpoints/299-验证接口-二维码生成.md) |
+| 300 | 验证接口-二维码检测 | `/verify/qrcodestatus` | [打开](./endpoints/300-验证接口-二维码检测.md) |
+| 301 | 听歌识曲 | `/audio/match` | [打开](./endpoints/301-听歌识曲.md) |
+| 302 | 根据 nickname 获取 userid | `/get/userids` | [打开](./endpoints/302-根据-nickname-获取-userid.md) |
+| 303 | 专辑简要百科信息 | `/ugc/album/get` | [打开](./endpoints/303-专辑简要百科信息.md) |
+| 304 | 歌曲简要百科信息 | `/ugc/song/get` | [打开](./endpoints/304-歌曲简要百科信息.md) |
+| 305 | 歌手简要百科信息 | `/ugc/artist/get` | [打开](./endpoints/305-歌手简要百科信息.md) |
+| 306 | mv 简要百科信息 | `/ugc/mv/get` | [打开](./endpoints/306-mv-简要百科信息.md) |
+| 307 | 搜索歌手 | `/ugc/artist/search` | [打开](./endpoints/307-搜索歌手.md) |
+| 308 | 用户贡献内容 | `/ugc/detail` | [打开](./endpoints/308-用户贡献内容.md) |
+| 309 | 用户贡献条目、积分、云贝数量 | `/ugc/user/devote` | [打开](./endpoints/309-用户贡献条目、积分、云贝数量.md) |
+| 310 | 年度听歌报告 | `/summary/annual` | [打开](./endpoints/310-年度听歌报告.md) |
+| 311 | 本地歌曲文件匹配网易云歌曲信息 | `/search/match` | [打开](./endpoints/311-本地歌曲文件匹配网易云歌曲信息.md) |
+| 312 | 歌曲音质详情 | `/song/music/detail` | [打开](./endpoints/312-歌曲音质详情.md) |
+| 313 | 歌曲红心数量 | `/song/red/count` | [打开](./endpoints/313-歌曲红心数量.md) |
+| 314 | 私人 FM 模式选择 | `/personal/fm/mode` | [打开](./endpoints/314-私人-FM-模式选择.md) |
+| 315 | 获取专辑歌曲的音质 | `/album/privilege` | [打开](./endpoints/315-获取专辑歌曲的音质.md) |
+| 316 | 歌手详情动态 | `/artist/detail/dynamic` | [打开](./endpoints/316-歌手详情动态.md) |
+| 317 | 最近听歌列表 | `/recent/listen/list` | [打开](./endpoints/317-最近听歌列表.md) |
+| 318 | 云盘导入歌曲 | `/cloud/import` | [打开](./endpoints/318-云盘导入歌曲.md) |
+| 319 | 获取客户端歌曲下载链接 - 新版 | `/song/download/url/v1` | [打开](./endpoints/319-获取客户端歌曲下载链接---新版.md) |
+| 320 | 当前账号关注的用户/歌手 | `/user/follow/mixed` | [打开](./endpoints/320-当前账号关注的用户歌手.md) |
+| 321 | 会员下载歌曲记录 | `/song/downlist` | [打开](./endpoints/321-会员下载歌曲记录.md) |
+| 322 | 会员本月下载歌曲记录 | `/song/monthdownlist` | [打开](./endpoints/322-会员本月下载歌曲记录.md) |
+| 323 | 已购买单曲 | `/song/singledownlist` | [打开](./endpoints/323-已购买单曲.md) |
+| 324 | 歌曲是否喜爱 | `/song/like/check` | [打开](./endpoints/324-歌曲是否喜爱.md) |
+| 325 | 用户是否互相关注 | `/user/mutualfollow/get` | [打开](./endpoints/325-用户是否互相关注.md) |
+| 326 | 歌曲动态封面 | `/song/dynamic/cover` | [打开](./endpoints/326-歌曲动态封面.md) |
+| 327 | 用户徽章 | `/user/medal` | [打开](./endpoints/327-用户徽章.md) |
+| 328 | 用户状态 | `/user/social/status` | [打开](./endpoints/328-用户状态.md) |
+| 329 | 用户状态 - 支持设置的状态 | `/user/social/status/support` | [打开](./endpoints/329-用户状态---支持设置的状态.md) |
+| 330 | 用户状态 - 相同状态的用户 | `/user/social/status/rcmd` | [打开](./endpoints/330-用户状态---相同状态的用户.md) |
+| 331 | 用户状态 - 编辑 | `/user/social/status/edit` | [打开](./endpoints/331-用户状态---编辑.md) |
+| 332 | 听歌足迹 - 年度听歌足迹 | `/listen/data/year/report` | [打开](./endpoints/332-听歌足迹---年度听歌足迹.md) |
+| 333 | 听歌足迹 - 今日收听 | `/listen/data/today/song` | [打开](./endpoints/333-听歌足迹---今日收听.md) |
+| 334 | 听歌足迹 - 歌曲播放排行 | `/listen/data/song/play/rank` | [打开](./endpoints/334-听歌足迹---歌曲播放排行.md) |
+| 335 | 听歌足迹 - 总收听时长 | `/listen/data/total` | [打开](./endpoints/335-听歌足迹---总收听时长.md) |
+| 336 | 听歌足迹 - 本周/本月收听时长 | `/listen/data/realtime/report` | [打开](./endpoints/336-听歌足迹---本周本月收听时长.md) |
+| 337 | 听歌足迹 - 周/月/年收听报告 | `/listen/data/report` | [打开](./endpoints/337-听歌足迹---周月年收听报告.md) |
+| 338 | 歌单导入 - 元数据/文字/链接导入 | `/playlist/import/name/task/create` | [打开](./endpoints/338-歌单导入---元数据文字链接导入.md) |
+| 339 | 歌单导入 - 任务状态 | `/playlist/import/task/status` | [打开](./endpoints/339-歌单导入---任务状态.md) |
+| 340 | 副歌时间 | `/song/chorus` | [打开](./endpoints/340-副歌时间.md) |
+| 341 | 相关歌单推荐 | `/playlist/detail/rcmd/get` | [打开](./endpoints/341-相关歌单推荐.md) |
+| 342 | 歌词摘录 - 歌词摘录信息 | `/song/lyrics/mark` | [打开](./endpoints/342-歌词摘录---歌词摘录信息.md) |
+| 343 | 歌词摘录 - 我的歌词本 | `/song/lyrics/mark/user/page` | [打开](./endpoints/343-歌词摘录---我的歌词本.md) |
+| 344 | 歌词摘录 - 添加/修改摘录歌词 | `/song/lyrics/mark/add` | [打开](./endpoints/344-歌词摘录---添加修改摘录歌词.md) |
+| 345 | 歌词摘录 - 删除摘录歌词 | `/song/lyrics/mark/del` | [打开](./endpoints/345-歌词摘录---删除摘录歌词.md) |
+| 346 | 广播电台 - 分类/地区信息 | `/broadcast/category/region/get` | [打开](./endpoints/346-广播电台---分类地区信息.md) |
+| 347 | 广播电台 - 我的收藏 | `/broadcast/channel/collect/list` | [打开](./endpoints/347-广播电台---我的收藏.md) |
+| 348 | 广播电台 - 电台信息 | `/broadcast/channel/currentinfo` | [打开](./endpoints/348-广播电台---电台信息.md) |
+| 349 | 广播电台 - 全部电台 | `/broadcast/channel/list` | [打开](./endpoints/349-广播电台---全部电台.md) |
+| 350 | 黑胶乐签打卡 | `/vip/sign` | [打开](./endpoints/350-黑胶乐签打卡.md) |
+| 351 | 黑胶乐签未来打卡信息 | `/vip/sign/info` | [打开](./endpoints/351-黑胶乐签未来打卡信息.md) |
+| 352 | 广播电台 - 收藏/取消收藏电台 | `/broadcast/sub` | [打开](./endpoints/352-广播电台---收藏取消收藏电台.md) |
+| 353 | 用户的创建歌单列表 | `/user/playlist/create` | [打开](./endpoints/353-用户的创建歌单列表.md) |
+| 354 | 用户的收藏歌单列表 | `/user/playlist/collect` | [打开](./endpoints/354-用户的收藏歌单列表.md) |
+| 355 | 搜索建议 - PC端 | `/search/suggest/pc` | [打开](./endpoints/355-搜索建议---PC端.md) |
+| 356 | 喜欢歌曲 - 新版 | `/song/like` | [打开](./endpoints/356-喜欢歌曲---新版.md) |
+| 357 | 我创建的播客声音 | `/voicelist/my/created` | [打开](./endpoints/357-我创建的播客声音.md) |
+| 358 | DIFM电台 - 分类 | `/dj/difm/all/style/channel` | [打开](./endpoints/358-DIFM电台---分类.md) |
+| 359 | DIFM电台 - 收藏列表 | `/dj/difm/subscribe/channels/get` | [打开](./endpoints/359-DIFM电台---收藏列表.md) |
+| 360 | DIFM电台 - 收藏频道 | `/dj/difm/channel/subscribe` | [打开](./endpoints/360-DIFM电台---收藏频道.md) |
+| 361 | DIFM电台 - 取消收藏频道 | `/dj/difm/channel/unsubscribe` | [打开](./endpoints/361-DIFM电台---取消收藏频道.md) |
+| 362 | DIFM电台 - 播放列表 | `/dj/difm/playing/tracks/list` | [打开](./endpoints/362-DIFM电台---播放列表.md) |
+| 363 | 助眠解压 - 特定时间场景下的推荐资源 | `/sati/timescene/resources/get` | [打开](./endpoints/363-助眠解压---特定时间场景下的推荐资源.md) |
+| 364 | 助眠解压 - 标签列表 | `/sati/tag/list` | [打开](./endpoints/364-助眠解压---标签列表.md) |
+| 365 | 助眠解压 - 获取标签下资源列表 | `/sati/resource/list` | [打开](./endpoints/365-助眠解压---获取标签下资源列表.md) |
+| 366 | 助眠解压 - 查看同类推荐 | `/sati/resource/list/more` | [打开](./endpoints/366-助眠解压---查看同类推荐.md) |
+| 367 | 助眠解压 - 收藏列表 | `/sati/resource/sub/list` | [打开](./endpoints/367-助眠解压---收藏列表.md) |
+| 368 | 助眠解压 - 收藏 | `/sati/resource/sub` | [打开](./endpoints/368-助眠解压---收藏.md) |
+| 369 | 跑步漫游 | `/radio/sport/get` | [打开](./endpoints/369-跑步漫游.md) |
+| 370 | 歌曲创作者信息 | `/song/creators` | [打开](./endpoints/370-歌曲创作者信息.md) |
+| 371 | 灰色歌曲的其他版本推荐 | `/song/copyright/rcmd` | [打开](./endpoints/371-灰色歌曲的其他版本推荐.md) |
+| 372 | 举报评论 | `/comment/report` | [打开](./endpoints/372-举报评论.md) |
+| 373 | 多级行政区划数据 | `/lbs/city/code` | [打开](./endpoints/373-多级行政区划数据.md) |
+| 374 | 指定维度音乐排行榜详情 | `/chart/detail` | [打开](./endpoints/374-指定维度音乐排行榜详情.md) |
+| 375 | 指定维度音乐排行榜列表 | `/chart/song/detail` | [打开](./endpoints/375-指定维度音乐排行榜列表.md) |
+| 376 | 会员任务 - 新版 | `/vip/task/v1` | [打开](./endpoints/376-会员任务---新版.md) |
+| 377 | 黑胶乐签详情 | `/vip/sign/detail` | [打开](./endpoints/377-黑胶乐签详情.md) |
+| 378 | 黑胶乐签历史 | `/vip/sign/history` | [打开](./endpoints/378-黑胶乐签历史.md) |
+| 379 | 直接获取云盘歌曲下载链接 | `/song/cloud/download` | [打开](./endpoints/379-直接获取云盘歌曲下载链接.md) |
+| 380 | 获取广告 | `/ad/get` | [打开](./endpoints/380-获取广告.md) |
+| 381 | 看广告领取权益（免费听歌时长 / 云贝等） | `/ad/listening/rights/gain` | [打开](./endpoints/381-看广告领取权益（免费听歌时长--云贝等）.md) |
+| 382 | 获取免费听时长状态 | `/ad/listening/rights` | [打开](./endpoints/382-获取免费听时长状态.md) |
+| 383 | 云小编 - 获取用户详情 | `/rep/ugc/user/get` | [打开](./endpoints/383-云小编---获取用户详情.md) |
+| 384 | 云小编 - 每日签到 | `/rep/ugc/user/sign` | [打开](./endpoints/384-云小编---每日签到.md) |
+| 385 | 云小编 - 查询会员任务状态 | `/rep/ugc/user/vip` | [打开](./endpoints/385-云小编---查询会员任务状态.md) |
+| 386 | 云小编 - 活动信息 | `/rep/ugc/activity/get` | [打开](./endpoints/386-云小编---活动信息.md) |
+| 387 | 云小编 - 获取任务 | `/thinktank/audit/resource/detail` | [打开](./endpoints/387-云小编---获取任务.md) |
+| 388 | 云小编 - 提交任务 | `/thinktank/audit/resource/update` | [打开](./endpoints/388-云小编---提交任务.md) |
+| 389 | 云小编 - 领取任务积分 | `/rep/ugc/activity/collect` | [打开](./endpoints/389-云小编---领取任务积分.md) |
+| 390 | 云小编 - 领取一日会员 | `/rep/ugc/user/collect-vip` | [打开](./endpoints/390-云小编---领取一日会员.md) |
+| 391 | 云小编 - 剩余抽奖次数 | `/middle/play/lottery/remain/chance` | [打开](./endpoints/391-云小编---剩余抽奖次数.md) |
+| 392 | 云小编 - 每日抽奖 | `/middle/play/do/lottery` | [打开](./endpoints/392-云小编---每日抽奖.md) |
+| 393 | 发送/删除评论 | `/comment/add` `/comment` | [打开](./endpoints/393-发送删除评论.md) |
+| 394 | 获取在线设备列表 | `/device/list` | [打开](./endpoints/394-获取在线设备列表.md) |
+| 395 | 发送安全验证码 | `/captcha/safe/sent` | [打开](./endpoints/395-发送安全验证码.md) |
+| 396 | 强制下线设备 | `/device/kickoff` | [打开](./endpoints/396-强制下线设备.md) |
+| 397 | 上报设备中心设备名称 | `/deviceinfo/center/upload` | [打开](./endpoints/397-上报设备中心设备名称.md) |
+| 398 | 插播相似歌曲 | `/song/simi/get` | [打开](./endpoints/398-插播相似歌曲.md) |

@@ -1304,14 +1304,14 @@ tags: 歌单标签
 
 **必选参数 :** `id` : 音乐 id
 `level`: 播放音质等级, 分为 `standard` => `标准`,`higher` => `较高`, `exhigh`=>`极高`,
-`lossless`=>`无损`, `hires`=>`Hi-Res`, `jyeffect` => `高清环绕声`, `sky` => `沉浸环绕声`, `dolby` => `杜比全景声`, `jymaster` => `超清母带`
+`lossless`=>`无损`, `hires`=>`Hi-Res`, `jyeffect` => `高清臻音`, `dolby` => `杜比全景声`, `vivid` => `臻音全景声`, `jymaster` => `超清母带`, `sky` => `沉浸环绕声`
 `unblock`: 是否使用使用歌曲解锁, 分为`true`和`false`
 
-**可选参数 :** `immerseType`: 沉浸声环绕声类型, 分为 `c51` => `c51类型`, `ste` => `环绕立体声类型`, `aac` => `aac类型`, 仅在 `level=sky` 时生效, 默认为 `c51`
+**可选参数 :** `immerseType`: 沉浸声环绕声类型, 分为`c512` => `新版c51类型`, `ste2` => `新版环绕立体声类型`, `aac2` => `新版aac类型`,  `c51` => `c51类型`, `ste` => `环绕立体声类型`, `aac` => `aac类型`, 仅在 `level=sky` 时生效, 默认为 `c51`
 
 **接口地址 :** `/song/url/v1`
 
-**调用例子 :** `/song/url/v1?id=1969519579&level=exhigh` `/song/url/v1?id=1969519579,33894312&level=lossless` `/song/url/v1?id=1969519579&level=sky&immerseType=ste`
+**调用例子 :** `/song/url/v1?id=1969519579&level=exhigh` `/song/url/v1?id=1969519579,33894312&level=lossless` `/song/url/v1?id=1969519579&level=sky&immerseType=ste` `/song/url/v1?id=1969519579&level=vivid`
 
 说明：`杜比全景声`音质需要设备支持，不同的设备可能会返回不同码率的 url。cookie 需要传入`os=pc`保证返回正常码率的 url。
 
@@ -1321,7 +1321,7 @@ tags: 歌单标签
 
 **必选参数 :** `id` : 音乐 id
 `level`: 播放音质等级, 分为 `standard` => `标准`,`higher` => `较高`, `exhigh`=>`极高`,
-`lossless`=>`无损`, `hires`=>`Hi-Res`, `jyeffect` => `高清环绕声`, `sky` => `沉浸环绕声`, `dolby` => `杜比全景声`, `jymaster` => `超清母带`
+`lossless`=>`无损`, `hires`=>`Hi-Res`, `jyeffect` => `高清臻音`, `dolby` => `杜比全景声`, `vivid` => `臻音全景声`, `jymaster` => `超清母带`, `sky` => `沉浸环绕声`
 `unblock`: 是否使用使用歌曲解锁, 分为`true`和`false`
 
 **接口地址 :** `/song/url/v1/302`
@@ -2472,6 +2472,18 @@ privilege:权限相关信息
 **调用例子 :** `/like?id=347230`
 
 喜欢成功则返回数据的 code 为 200, 其余为失败
+
+### 喜欢音乐 - 新版
+
+说明: 调用此接口 , 传入音乐 id, 可喜欢该音乐
+
+**必选参数 :** `id`: 歌曲 id
+
+**可选参数 :** `like`: 布尔值 , 默认为 true 即喜欢 , 若传 false, 则取消喜欢
+
+**接口地址 :** `/like/v1`
+
+**调用例子 :** `/like/v1?id=347230`
 
 ### 喜欢音乐列表
 
@@ -4138,6 +4150,16 @@ type='1009' 获取其 id, 如`/search?keywords= 代码时间 &type=1009`
 
 **调用例子:** `/song/wiki/summary?id=1958384591`
 
+### 音乐百科
+
+说明: 调用此接口可以获取歌曲的音乐百科信息
+
+**接口地址:** `/song/wiki/info`
+
+**必选参数:** `id`: 歌曲 ID
+
+**调用例子:** `/song/wiki/info?id=1958384591`
+
 ### 乐谱列表
 
 说明: 调用此接口可以获取歌曲的乐谱列表
@@ -4653,7 +4675,7 @@ qrCodeStatus:20,detailReason:0 验证成功 qrCodeStatus:21,detailReason:0 二�
 
 ### 歌曲音质详情
 
-说明: 调用此接口获取歌曲各个音质的文件信息，与 `获取歌曲详情` 接口相比，多出 `高清环绕声`、`沉浸环绕声`、`超清母带`等音质的信息
+说明: 调用此接口获取歌曲各个音质的文件信息，与 `获取歌曲详情` 接口相比，多出`高清臻音`、`杜比全景声`、`臻音全景声`、`超清母带`、`沉浸环绕声`等音质的信息
 
 **必选参数：**
 
@@ -4690,11 +4712,11 @@ qrCodeStatus:20,detailReason:0 验证成功 qrCodeStatus:21,detailReason:0 二�
 
 **必选参数：**
 
-`mode`: 模式 (aidj, DEFAULT, FAMILIAR, EXPLORE, SCENE_RCMD)
+`mode`: 模式 (`DEFAULT`: 默认模式,`FAMILIAR`: 熟悉模式,`EXPLORE`: 探索模式,`SCENE_RCMD`: 场景模式, 需要传入`submode`参数,`PUZZLE_MODE_RCMD`: 拼图模式)
 
 **可选参数：**
 
-`submode`: 当 mode 为 SCENE_RCMD 是可为 ( EXERCISE, FOCUS, NIGHT_EMO )
+`submode`: 当 mode 为 SCENE_RCMD 时传入 ( `EXERCISE`: 运动, `FOCUS`: 专注, `NIGHT_EMO`: 伤感, `SLEEP_HELP`: 助眠, `RELAX`: 放松, `CHEERFUL`: 欢快, `LYRICAL`: 抒情, `CURE`: 治愈, `SWEET`: 情歌, `RHYTHM_BLUES`: R&B, `RAINY`: 雨天, `GAMES`: 游戏, `RAP`: 说唱, `K_POP`: K-Pop, `ORIGINAL_MUSICIAL`: 宝藏原创, `ELECTRONIC`: 电音, `COMMUTE`: 出行, `TAKE_SHOWER`: 洗澡, `COFFEE_SHOP`: 咖啡馆, `ROCK`: 摇滚, `INSPIRATIONAL`: 励志, `CHINESE`: 华语, `ENGLISH`: 欧美, `YUEYU`: 粤语, `MANYAO`: 慢摇DJ, `JINGDIAN`: 经典, `LIGHT`: 轻音乐, `GUOFENG`: 国风, `FOLK`: 民谣, `ACG`: 二次元, `GUDIAN`: 古典, `JAZZ`: 爵士, `JAPANESE`: 日语, `GLOBAL`: 全球, `FRANCH`: 法语, `BLUE`: 蓝调, `DANCE`: 舞蹈, `LATIN`: 拉丁, `PUNK`: 放克, `COUNTRY`: 乡村乐, `MUSICAL`: 音乐剧, `YINGSHI`: 影视)
 
 **接口地址:** `/personal/fm/mode`
 
@@ -4774,7 +4796,7 @@ bitrate = Math.floor(br / 1000)
 
 **必选参数 :** `id` : 音乐 id
 `level`: 播放音质等级, 分为 `standard` => `标准`,`higher` => `较高`, `exhigh`=>`极高`,
-`lossless`=>`无损`, `hires`=>`Hi-Res`, `jyeffect` => `高清环绕声`, `sky` => `沉浸环绕声`, `dolby` => `杜比全景声`, `jymaster` => `超清母带`
+`lossless`=>`无损`, `hires`=>`Hi-Res`, `jyeffect` => `高清臻音`, `dolby` => `杜比全景声`, `vivid` => `臻音全景声`, `jymaster` => `超清母带`, `sky` => `沉浸环绕声`
 
 **接口地址 :** `/song/download/url/v1`
 
@@ -5833,6 +5855,28 @@ let data = encodeURIComponent(
 **接口地址 :** `/device/kickoff`
 
 **调用例子 :** `/device/kickoff?key=00ALDFGEXXXXXXXXXXXXXXXXX&captcha=1234`
+
+### 上报设备中心设备名称
+
+说明: 登录后调用此接口, 传入 `deviceName`, 可修改当前设备在网易云登录设备管理列表里显示的名称
+
+**必选参数 :** `deviceName`: 期望展示的设备名称
+
+`name`: `deviceName` 的兼容别名, 二选一即可
+
+**接口地址 :** `/deviceinfo/center/upload`
+
+**调用例子 :** `/deviceinfo/center/upload?deviceName=XXXXX`
+
+### 插播相似歌曲
+
+说明: 调用此接口, 传入歌曲 id, 可获取插播相似歌曲
+
+**必选参数 :** `id`: 歌曲 id
+
+**接口地址 :** `/song/simi/get`
+
+**调用例子 :** `/song/simi/get?id=39227633`
 
 ## 离线访问此文档
 

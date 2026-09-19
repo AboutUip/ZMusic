@@ -7,7 +7,6 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Row
@@ -75,13 +74,12 @@ internal val MainContentPadTop = 8.dp
 
 internal fun mainContentPadH(landscape: Boolean) = if (landscape) 28.dp else 20.dp
 
-/** 横屏主栏 / 设置：新页覆盖淡入，旧页只淡出，避免双页叠在液体玻璃采样里重影。 */
+/**
+ * 横屏主栏 / 设置：新页覆盖淡入，旧页只淡出，避免双页叠在液体玻璃采样里重影。
+ * 不要加从中心起的 scaleIn：个人页昵称/资料靠左，缩放到 1 时会整块水平挪一下。
+ */
 internal val LandscapeCoverEnter: EnterTransition =
-    fadeIn(tween(260, easing = FastOutSlowInEasing)) +
-        scaleIn(
-            initialScale = 0.985f,
-            animationSpec = tween(260, easing = FastOutSlowInEasing),
-        )
+    fadeIn(tween(260, easing = FastOutSlowInEasing))
 
 internal val LandscapeCoverExit: ExitTransition =
     fadeOut(tween(200, easing = FastOutSlowInEasing))

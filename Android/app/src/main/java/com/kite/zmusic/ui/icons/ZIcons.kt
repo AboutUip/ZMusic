@@ -6,6 +6,7 @@ import androidx.compose.material.icons.automirrored.rounded.FormatAlignLeft
 import androidx.compose.material.icons.automirrored.rounded.FormatAlignRight
 import androidx.compose.material.icons.automirrored.rounded.Logout
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.AlignHorizontalCenter
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.BatteryChargingFull
@@ -173,6 +174,7 @@ object ZIcons {
     val FullscreenExit: ImageVector get() = Icons.Rounded.FullscreenExit
     val Extension: ImageVector get() = Icons.Rounded.Extension
     val Workshop: ImageVector get() = Icons.Rounded.Storefront
+    val AnnualReport: ImageVector get() = Icons.Rounded.AutoAwesome
 
     fun dock(destination: MainDestination): ImageVector = when (destination) {
         MainDestination.Home -> Home

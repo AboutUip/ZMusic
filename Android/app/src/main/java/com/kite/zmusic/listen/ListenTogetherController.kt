@@ -77,6 +77,7 @@ class ListenTogetherController(
     @Volatile private var applyGen = 0
     @Volatile private var applyingHlc = 0L
     @Volatile private var pollAfter = 0L
+    @Volatile private var leavingRoom = false
     private var matchJob: Job? = null
 
     fun start() {
@@ -467,6 +468,7 @@ class ListenTogetherController(
 
     suspend fun stop(hostEnd: Boolean = _ui.value.hosting) {
         val room = _ui.value.room ?: return
+        freezeLocalPlayback()
         opMutex.withLock {
             _ui.update { it.copy(busy = true) }
             try {
@@ -506,6 +508,7 @@ class ListenTogetherController(
     }
 
     private fun applySnapshot(snap: ListenRoomSnapshot, applyPlayer: Boolean) {
+        if (leavingRoom) return
         recvElapsed = SystemClock.elapsedRealtime()
         val prevId = _ui.value.room?.id
         var ping = false
@@ -569,6 +572,7 @@ class ListenTogetherController(
     }
 
     private fun applyClockToPlayer(snap: ListenRoomSnapshot) {
+        if (leavingRoom) return
         val clock = snap.clock
         if (clock.trackId <= 0L) return
         if (applyingRemote && applyingHlc == clock.hlc) return
@@ -598,7 +602,7 @@ class ListenTogetherController(
         scope.launch {
             try {
                 val track = resolveTrack(clock)
-                if (gen != applyGen) return@launch
+                if (gen != applyGen || leavingRoom) return@launch
                 playback.playListenTrack(track, pos, clock.playing)
                 awaitPlayerAligned(clock.trackId, clock.playing, gen)
             } catch (t: Throwable) {
@@ -691,6 +695,7 @@ class ListenTogetherController(
     }
 
     private fun maybeCorrectDrift(snap: ListenRoomSnapshot) {
+        if (leavingRoom) return
         val clock = snap.clock
         if (clock.trackId <= 0L || applyingRemote) return
         val self = auth.current()?.uid.orEmpty().ifBlank { _ui.value.selfUid }
@@ -720,6 +725,14 @@ class ListenTogetherController(
     }
 
     private fun onPlayback(snap: PlaybackUiState) {
+        if (leavingRoom) {
+            lastTrackId = snap.currentTrack?.id ?: 0L
+            lastPlayWhenReady = snap.playWhenReady
+            lastPosMs = snap.positionMs
+            lastPosAt = SystemClock.elapsedRealtime()
+            lastHasQueue = snap.hasQueue
+            return
+        }
         val room = _ui.value.room
         val now = SystemClock.elapsedRealtime()
         val trackId = snap.currentTrack?.id ?: 0L
@@ -799,6 +812,7 @@ class ListenTogetherController(
     }
 
     private suspend fun postOp(body: JSONObject) {
+        if (leavingRoom) return
         val id = _ui.value.room?.id ?: return
         var last: Exception? = null
         repeat(3) { attempt ->
@@ -828,6 +842,7 @@ class ListenTogetherController(
     }
 
     private fun dropLocal(message: String?) {
+        freezeLocalPlayback()
         pollJob?.cancel()
         pollJob = null
         appliedHlc = 0L
@@ -848,9 +863,24 @@ class ListenTogetherController(
         val had = _ui.value.inRoom
         clearMatchState(clearIncoming = false)
         _ui.update { it.copy(room = null, lastReadChatId = 0L, chatToast = null) }
+        leavingRoom = false
         if (had && !message.isNullOrBlank()) {
             notices.show(message)
         }
+    }
+
+    /**
+     * 结束一起听：立刻停掉远端对齐，本机只暂停，不 seek、不换歌。
+     * 须在关房网络请求之前调用，避免最后一次 poll/pause 再把进度或播放状态推出去。
+     */
+    private fun freezeLocalPlayback() {
+        leavingRoom = true
+        applyGen++
+        applyingRemote = false
+        pollJob?.cancel()
+        pollJob = null
+        suppressLocalUntil = SystemClock.elapsedRealtime() + 8_000L
+        playback.setPlayWhenReady(false)
     }
 
     private fun fail(e: Exception) {

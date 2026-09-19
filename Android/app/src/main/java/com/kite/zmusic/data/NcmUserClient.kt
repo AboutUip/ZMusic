@@ -3,6 +3,7 @@ package com.kite.zmusic.data
 import com.kite.zmusic.config.NcmApiConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.FormBody
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
@@ -111,6 +112,61 @@ class NcmUserClient(
             )
         }
 
+    /** 经典年度听歌报告，[year] 为 2017 起。 */
+    suspend fun summaryAnnual(cookie: String, year: Int): JSONObject =
+        withContext(Dispatchers.IO) {
+            get(
+                "/summary/annual",
+                mapOf(
+                    "year" to year.toString(),
+                    "cookie" to cookie,
+                    "timestamp" to ts(),
+                ),
+            )
+        }
+
+    /** 听歌足迹年度汇总；服务端按当前账号最近完整年返回。 */
+    suspend fun listenDataYearReport(cookie: String): JSONObject = withContext(Dispatchers.IO) {
+        get("/listen/data/year/report", mapOf("cookie" to cookie, "timestamp" to ts()))
+    }
+
+    /**
+     * 周 / 月 / 年收听报告。
+     * [endTime] 为该周期结束日 0 点时间戳；年报用当年 12 月 31 日。
+     */
+    suspend fun listenDataReport(
+        cookie: String,
+        type: String,
+        endTime: Long? = null,
+    ): JSONObject = withContext(Dispatchers.IO) {
+        val query = mutableMapOf(
+            "type" to type,
+            "cookie" to cookie,
+            "timestamp" to ts(),
+        )
+        if (endTime != null && endTime > 0L) {
+            query["endTime"] = endTime.toString()
+        }
+        get("/listen/data/report", query)
+    }
+
+    /** 歌曲播放排行 Top20。`type` 为 week / month。 */
+    suspend fun listenDataSongPlayRank(
+        cookie: String,
+        type: String,
+        endTime: Long? = null,
+    ): JSONObject = withContext(Dispatchers.IO) {
+        val query = mutableMapOf(
+            "type" to type,
+            "cookie" to cookie,
+            "timestamp" to ts(),
+        )
+        if (endTime != null && endTime > 0L) {
+            query["endTime"] = endTime.toString()
+        }
+        get("/listen/data/song/play/rank", query)
+    }
+
     /**
      * 听歌打卡：更新听歌排行。
      * [timeSec] 为实际收听秒数；[sourceId] 为歌单或专辑 id，没有则用歌曲 id。
@@ -121,15 +177,18 @@ class NcmUserClient(
         sourceId: Long,
         timeSec: Int,
     ): JSONObject = withContext(Dispatchers.IO) {
-        get(
-            "/scrobble",
-            mapOf(
-                "id" to songId.toString(),
-                "sourceid" to sourceId.toString(),
-                "time" to timeSec.coerceAtLeast(0).toString(),
-                "cookie" to cookie,
-                "timestamp" to ts(),
+        requireOk(
+            postForm(
+                "/scrobble",
+                mapOf(
+                    "id" to songId.toString(),
+                    "sourceid" to sourceId.toString(),
+                    "time" to timeSec.coerceAtLeast(0).toString(),
+                    "cookie" to cookie,
+                    "timestamp" to ts(),
+                ),
             ),
+            "/scrobble",
         )
     }
 
@@ -161,7 +220,7 @@ class NcmUserClient(
         )
         if (name.isNotBlank()) q["name"] = name
         if (artist.isNotBlank()) q["artist"] = artist
-        get("/scrobble/v1", q)
+        requireOk(postForm("/scrobble/v1", q), "/scrobble/v1")
     }
 
     /** 提交播放状态（会话 + 进度秒 + 播放模式）。 */
@@ -172,17 +231,20 @@ class NcmUserClient(
         progressSec: Int,
         playMode: String,
     ): JSONObject = withContext(Dispatchers.IO) {
-        get(
-            "/relay/play/state/submit",
-            mapOf(
-                "id" to songId.toString(),
-                "sessionId" to sessionId,
-                "progress" to progressSec.coerceAtLeast(0).toString(),
-                "playMode" to playMode,
-                "type" to "song",
-                "cookie" to cookie,
-                "timestamp" to ts(),
+        requireOk(
+            postForm(
+                "/relay/play/state/submit",
+                mapOf(
+                    "id" to songId.toString(),
+                    "sessionId" to sessionId,
+                    "progress" to progressSec.coerceAtLeast(0).toString(),
+                    "playMode" to playMode,
+                    "type" to "song",
+                    "cookie" to cookie,
+                    "timestamp" to ts(),
+                ),
             ),
+            "/relay/play/state/submit",
         )
     }
 
@@ -1277,6 +1339,29 @@ class NcmUserClient(
             val text = resp.body?.string().orEmpty()
             return JSONObject(text)
         }
+    }
+
+    private fun postForm(path: String, fields: Map<String, String>): JSONObject {
+        val body = FormBody.Builder().apply {
+            fields.forEach { (k, v) -> add(k, v) }
+        }.build()
+        val url = buildUrl(path, mapOf("timestamp" to ts()))
+        val req = Request.Builder().url(url).post(body).build()
+        client.newCall(req).execute().use { resp ->
+            val text = resp.body?.string().orEmpty()
+            if (!resp.isSuccessful) {
+                error("HTTP ${resp.code} $path")
+            }
+            return JSONObject(text.ifBlank { "{}" })
+        }
+    }
+
+    private fun requireOk(json: JSONObject, path: String): JSONObject {
+        val code = NcmJson.apiCode(json)
+        if (code != 200 && code != 201) {
+            error("$path code=$code ${json.optString("msg")}")
+        }
+        return json
     }
 
     private fun buildUrl(path: String, query: Map<String, String>): String {

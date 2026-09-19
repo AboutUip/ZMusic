@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -29,6 +30,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -38,6 +40,7 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.SubcomposeLayout
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -51,6 +54,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kite.zmusic.data.LrcLine
 import com.kite.zmusic.data.LyricOverlayPrefs
+import com.kite.zmusic.data.OverlayLyricRow
+import com.kite.zmusic.data.overlayLyricRows
+import com.kite.zmusic.data.overlayShowsWindowBackground
+import com.kite.zmusic.data.pickDisplayLyricBundle
+import com.kite.zmusic.data.PlayerDisplayPrefsStore
+import com.kite.zmusic.data.sanitizedForDisplay
 import com.kite.zmusic.playback.PlaybackUiState
 import com.kite.zmusic.ui.icons.ZIcons
 import com.kite.zmusic.ui.player.lyricActiveIndex
@@ -120,7 +129,11 @@ fun LyricOverlayContent(
     val shape = RoundedCornerShape(14.dp)
     val lyricsOnly = prefs.locked || idleChrome
     val showClose = !lyricsOnly
-    val showWindowBg = !idleChrome && (prefs.windowBackground || settingsOpen)
+    val showWindowBg = overlayShowsWindowBackground(
+        locked = prefs.locked,
+        idleChrome = idleChrome,
+        windowBackgroundEnabled = prefs.windowBackground,
+    )
     val showLyricBg = prefs.lyricBackground && !idleChrome
     val blurT = if (prefs.windowBackground) {
         prefs.blurRadiusPx / LyricOverlayPrefs.BLUR_MAX.toFloat()
@@ -161,6 +174,7 @@ fun LyricOverlayContent(
                 prefs = prefs,
                 lyricBackground = showLyricBg,
                 closeGutter = if (showClose) closeBtn else 0.dp,
+                marqueeEnabled = !lyricsOnly,
             )
             if (!lyricsOnly) {
                 Spacer(Modifier.height(6.dp))
@@ -310,6 +324,7 @@ private fun OverlayIconBtn(
 
 private data class OverlayLyricSnap(
     val lines: List<LrcLine>,
+    val companions: List<LrcLine?>,
     val active: Int,
     val title: String,
 )
@@ -320,34 +335,32 @@ private fun OverlayLyricLines(
     prefs: LyricOverlayPrefs,
     lyricBackground: Boolean,
     closeGutter: Dp = 0.dp,
+    marqueeEnabled: Boolean = true,
 ) {
-    val snap by remember(playbackUi) {
+    val playerTranslationOn = rememberPortraitTranslationOn()
+    val preferTranslation = prefs.preferTranslation || playerTranslationOn
+    val transKey = Triple(preferTranslation, prefs.translationCoexist, prefs.originalOnTop)
+    val snap by remember(playbackUi, transKey) {
         playbackUi
-            .map { ui ->
-                OverlayLyricSnap(
-                    lines = ui.lyricLines,
-                    active = lyricActiveIndex(ui.lyricLines, ui.positionMs),
-                    title = ui.currentTrack?.name.orEmpty(),
-                )
-            }
+            .map { ui -> overlayLyricSnap(ui, prefs, preferTranslation) }
             .distinctUntilChanged()
     }.collectAsState(
-        initial = playbackUi.value.let { ui ->
-            OverlayLyricSnap(
-                lines = ui.lyricLines,
-                active = lyricActiveIndex(ui.lyricLines, ui.positionMs),
-                title = ui.currentTrack?.name.orEmpty(),
-            )
-        },
+        initial = overlayLyricSnap(playbackUi.value, prefs, preferTranslation),
     )
     val font = prefs.fontSizeSp.sp
+    val transFont = (prefs.fontSizeSp * LyricOverlayPrefs.TRANSLATION_FONT_SCALE).sp
     val lineHeight = (prefs.fontSizeSp * 1.35f).sp
-    val slot = Modifier.height(with(LocalDensity.current) { lineHeight.toDp() })
+    val transLineHeight = (prefs.fontSizeSp * LyricOverlayPrefs.TRANSLATION_FONT_SCALE * 1.35f).sp
+    val density = LocalDensity.current
+    val lineMin = with(density) { lineHeight.toDp() }
+    val transMin = with(density) { transLineHeight.toDp() }
     val boxAlign = prefs.lineBoxAlign()
     val textAlign = prefs.lineTextAlign()
     val lines = snap.lines
+    val companions = snap.companions
     val active = snap.active
     val center = prefs.textAlign == LyricOverlayPrefs.ALIGN_CENTER
+    val transColor = Color(prefs.translationColorArgb)
     Column(
         Modifier
             .fillMaxWidth()
@@ -358,43 +371,152 @@ private fun OverlayLyricLines(
     ) {
         repeat(prefs.playedLines) { i ->
             val idx = active - prefs.playedLines + i
-            OverlayLine(
-                text = lines.getOrNull(idx)?.text.orEmpty(),
-                color = Color(prefs.playedColorArgb),
+            OverlayLyricSlot(
+                rows = overlayLyricRows(
+                    lineText = lines.getOrNull(idx)?.text.orEmpty(),
+                    companionText = companions.getOrNull(idx)?.text,
+                    originalOnTop = prefs.originalOnTop,
+                    showCompanion = preferTranslation && prefs.translationCoexist && prefs.othersShowTranslation,
+                ),
+                roleColor = Color(prefs.playedColorArgb),
+                translationColor = transColor,
                 fontSize = font,
+                translationFontSize = transFont,
+                lineMinHeight = lineMin,
+                translationMinHeight = transMin,
                 lyricBackground = lyricBackground,
                 current = false,
+                marquee = false,
                 boxAlign = boxAlign,
                 textAlign = textAlign,
-                modifier = slot.fillMaxWidth(),
             )
         }
-        OverlayLine(
-            text = when {
-                active >= 0 -> lines[active].text
-                lines.isNotEmpty() -> lines.first().text
-                snap.title.isNotBlank() -> snap.title
-                else -> "♪"
-            },
-            color = Color(prefs.currentColorArgb),
+        OverlayLyricSlot(
+            rows = overlayLyricRows(
+                lineText = when {
+                    active >= 0 -> lines[active].text
+                    lines.isNotEmpty() -> lines.first().text
+                    else -> ""
+                },
+                companionText = when {
+                    active >= 0 -> companions.getOrNull(active)?.text
+                    companions.isNotEmpty() -> companions.first()?.text
+                    else -> null
+                },
+                originalOnTop = prefs.originalOnTop,
+                showCompanion = preferTranslation && prefs.translationCoexist,
+                fallback = snap.title.ifBlank { "♪" },
+            ),
+            roleColor = Color(prefs.currentColorArgb),
+            translationColor = transColor,
             fontSize = font,
+            translationFontSize = transFont,
+            lineMinHeight = lineMin,
+            translationMinHeight = transMin,
             lyricBackground = lyricBackground,
             current = true,
+            marquee = marqueeEnabled,
             boxAlign = boxAlign,
             textAlign = textAlign,
-            modifier = slot.fillMaxWidth(),
         )
         repeat(prefs.upcomingLines) { i ->
             val idx = active + 1 + i
-            OverlayLine(
-                text = lines.getOrNull(idx)?.text.orEmpty(),
-                color = Color(prefs.upcomingColorArgb),
+            OverlayLyricSlot(
+                rows = overlayLyricRows(
+                    lineText = lines.getOrNull(idx)?.text.orEmpty(),
+                    companionText = companions.getOrNull(idx)?.text,
+                    originalOnTop = prefs.originalOnTop,
+                    showCompanion = preferTranslation && prefs.translationCoexist && prefs.othersShowTranslation,
+                ),
+                roleColor = Color(prefs.upcomingColorArgb),
+                translationColor = transColor,
                 fontSize = font,
+                translationFontSize = transFont,
+                lineMinHeight = lineMin,
+                translationMinHeight = transMin,
                 lyricBackground = lyricBackground,
                 current = false,
+                marquee = false,
                 boxAlign = boxAlign,
                 textAlign = textAlign,
-                modifier = slot.fillMaxWidth(),
+            )
+        }
+    }
+}
+
+private fun overlayLyricSnap(
+    ui: PlaybackUiState,
+    prefs: LyricOverlayPrefs,
+    preferTranslation: Boolean,
+): OverlayLyricSnap {
+    val bundle = pickDisplayLyricBundle(
+        original = ui.lyricLines.mapNotNull { it.sanitizedForDisplay() },
+        translated = ui.translatedLyricLines.mapNotNull { it.sanitizedForDisplay() },
+        wordOriginal = emptyList(),
+        wordTranslated = emptyList(),
+        preferTranslation = preferTranslation,
+        coexist = preferTranslation && prefs.translationCoexist,
+        wordByWord = false,
+    )
+    return OverlayLyricSnap(
+        lines = bundle.lines,
+        companions = bundle.companions,
+        active = lyricActiveIndex(bundle.lines, ui.positionMs),
+        title = ui.currentTrack?.name.orEmpty(),
+    )
+}
+
+@Composable
+private fun rememberPortraitTranslationOn(): Boolean {
+    val context = LocalContext.current.applicationContext
+    val held = produceState(initialValue = false, context) {
+        val store = PlayerDisplayPrefsStore(context, PlayerDisplayPrefsStore.PREFS_PORTRAIT)
+        fun read() {
+            value = store.load().portraitLyricPreferTranslation
+        }
+        read()
+        val sp = context.getSharedPreferences(
+            PlayerDisplayPrefsStore.PREFS_PORTRAIT,
+            android.content.Context.MODE_PRIVATE,
+        )
+        val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == null || key == "portrait_lyric_prefer_translation") read()
+        }
+        sp.registerOnSharedPreferenceChangeListener(listener)
+        awaitDispose { sp.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
+    return held.value
+}
+
+@Composable
+private fun OverlayLyricSlot(
+    rows: List<OverlayLyricRow>,
+    roleColor: Color,
+    translationColor: Color,
+    fontSize: TextUnit,
+    translationFontSize: TextUnit,
+    lineMinHeight: Dp,
+    translationMinHeight: Dp,
+    lyricBackground: Boolean,
+    current: Boolean,
+    marquee: Boolean,
+    boxAlign: Alignment,
+    textAlign: TextAlign,
+) {
+    Column(Modifier.fillMaxWidth()) {
+        rows.forEach { row ->
+            OverlayLine(
+                text = row.text,
+                color = if (row.translation) translationColor else roleColor,
+                fontSize = if (row.translation) translationFontSize else fontSize,
+                lyricBackground = lyricBackground,
+                current = current,
+                marquee = marquee,
+                boxAlign = boxAlign,
+                textAlign = textAlign,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = if (row.translation) translationMinHeight else lineMinHeight),
             )
         }
     }
@@ -420,6 +542,7 @@ private fun OverlayLine(
     fontSize: TextUnit,
     lyricBackground: Boolean,
     current: Boolean,
+    marquee: Boolean,
     boxAlign: Alignment,
     textAlign: TextAlign,
     modifier: Modifier = Modifier,
@@ -448,7 +571,7 @@ private fun OverlayLine(
                 .background(bg)
                 .padding(horizontal = 4.dp)
                 .then(
-                    if (current && text.isNotBlank()) {
+                    if (marquee && text.isNotBlank()) {
                         Modifier.basicMarquee(iterations = Int.MAX_VALUE)
                     } else {
                         Modifier

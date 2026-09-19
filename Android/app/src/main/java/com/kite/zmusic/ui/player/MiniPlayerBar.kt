@@ -129,6 +129,7 @@ fun MiniPlayerBar(
     }
     Box(
         modifier
+            .fillMaxSize()
             .playerExpandAnchor(PlayerExpandSlot.MiniBar)
             .then(
                 if (horizontalSkip) {

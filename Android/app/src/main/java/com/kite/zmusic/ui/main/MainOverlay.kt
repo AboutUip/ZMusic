@@ -12,6 +12,7 @@ sealed class MainOverlay {
         val title: String,
         val artists: String = "",
     ) : MainOverlay()
+    data object AnnualReport : MainOverlay()
     data object CreativeWorkshop : MainOverlay()
     data object Search : MainOverlay()
     data object Settings : MainOverlay()
@@ -81,6 +82,7 @@ sealed class MainOverlay {
         Daily -> "daily"
         Fm -> "fm"
         Charts -> "charts"
+        AnnualReport -> "annual-report"
         CachedSongs -> "cached-songs"
         CloudDisk -> "cloud-disk"
         CloudDiskSearch -> "cloud-disk-search"

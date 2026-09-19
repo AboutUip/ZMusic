@@ -311,19 +311,8 @@ internal class PlayerExpandState(
         return Rect(rect.left - o.x, rect.top - o.y, rect.right - o.x, rect.bottom - o.y)
     }
 
-    fun miniBarInShell(): Rect {
-        val live = toShell(miniBar)
-        val fallback = fallbackMiniBar
-        if (fallback.isAnchorValid()) {
-            if (!targetOpen && live.isAnchorValid() && live.top < fallback.top - 4f) {
-                // 离场当帧 window 坐标偶发偏上，裁切会先落在偏高处再跳回底栏。
-                return fallback
-            }
-            if (!live.isAnchorValid()) return fallback
-        }
-        if (live.isAnchorValid()) return live
-        return live
-    }
+    fun miniBarInShell(): Rect =
+        resolveMiniBarInShell(targetOpen, toShell(miniBar), fallbackMiniBar)
 
     fun open() {
         targetOpen = true
@@ -419,6 +408,37 @@ internal class PlayerExpandState(
 
 internal fun Rect.isAnchorValid(): Boolean =
     width > 8f && height > 8f && left.isFinite() && top.isFinite()
+
+/**
+ * 离场裁切必须钉在公式底栏上。横屏退出时 window 坐标会闪一帧高度/位置/宽度，
+ * 随后才回到 64.dp 和侧栏右侧的真实宽度。
+ */
+internal fun resolveMiniBarInShell(targetOpen: Boolean, live: Rect, fallback: Rect): Rect {
+    if (fallback.isAnchorValid()) {
+        if (!targetOpen) return fallback
+        if (!live.isAnchorValid()) return fallback
+        if (abs(live.height - fallback.height) > 4f) return fallback
+        if (abs(live.width - fallback.width) > 4f) return fallback
+        if (abs(live.left - fallback.left) > 4f) return fallback
+    }
+    return live
+}
+
+/** 底栏在 shell 坐标系里的公式矩形。横屏要让出左侧导航轨。 */
+internal fun formulaMiniBarRect(
+    shell: Rect,
+    sidePx: Float,
+    railPx: Float,
+    barH: Float,
+    homeFromBottom: Float,
+): Rect {
+    if (shell.width <= 8f || shell.height <= 8f || barH <= 0f) return Rect.Zero
+    val home = maxOf(homeFromBottom, barH)
+    val top = (shell.height - home).coerceAtLeast(0f)
+    val left = (railPx + sidePx).coerceAtLeast(0f)
+    val right = (shell.width - sidePx).coerceAtLeast(left + 1f)
+    return Rect(left, top, right, top + barH)
+}
 
 internal fun Rect.isProgressAnchorValid(): Boolean =
     width > 8f && height > 1.5f && left.isFinite() && top.isFinite()

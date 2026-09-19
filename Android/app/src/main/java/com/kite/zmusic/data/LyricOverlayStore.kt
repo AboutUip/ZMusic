@@ -17,7 +17,8 @@ data class LyricOverlayPrefs(
     val playedLines: Int = 1,
     /** 当前行之后未播行数，0 表示不显示未播。 */
     val upcomingLines: Int = 1,
-    val windowBackground: Boolean = true,
+    /** 悬浮窗背景。默认关闭；唤醒态仍强制着色，锁定/失焦才跟此开关。 */
+    val windowBackground: Boolean = false,
     /** 悬浮窗背景开启时的窗内磨砂强度（px 档）。不使用系统 FLAG_BLUR_BEHIND。 */
     val blurRadiusPx: Int = BLUR_DEFAULT,
     val lyricBackground: Boolean = false,
@@ -25,6 +26,15 @@ data class LyricOverlayPrefs(
     val currentColorArgb: Int = 0xFFFFFFFF.toInt(),
     val upcomingColorArgb: Int = 0x66FFFFFF.toInt(),
     val fontSizeSp: Float = 16f,
+    /** 有译文时显示翻译。默认开启，避免播放页开了翻译悬浮窗仍只显示原文。 */
+    val preferTranslation: Boolean = true,
+    /** 与原文并存对照；关闭则覆盖为只显示译文。 */
+    val translationCoexist: Boolean = true,
+    /** 对照时原文在上（false 则译文在上）。 */
+    val originalOnTop: Boolean = true,
+    /** 对照时已播/未播行也显示译文；关闭则只有当前行对照。 */
+    val othersShowTranslation: Boolean = false,
+    val translationColorArgb: Int = TRANSLATION_COLOR_DEFAULT,
     val dynamicWidth: Boolean = true,
     /** 关闭动态宽度时，相对可用屏宽的百分比（45–100）。 */
     val widthPercent: Int = WIDTH_PERCENT_DEFAULT,
@@ -54,6 +64,8 @@ data class LyricOverlayPrefs(
         const val ALIGN_LEFT = 0
         const val ALIGN_CENTER = 1
         const val ALIGN_RIGHT = 2
+        const val TRANSLATION_COLOR_DEFAULT = 0xB3FFFFFF.toInt()
+        const val TRANSLATION_FONT_SCALE = 0.88f
     }
 }
 
@@ -84,13 +96,18 @@ class LyricOverlayStore(context: Context) {
             locked = prefs.getBoolean(KEY_LOCKED, false),
             playedLines = prefs.getInt(KEY_PLAYED, 1),
             upcomingLines = prefs.getInt(KEY_UPCOMING, 1),
-            windowBackground = prefs.getBoolean(KEY_WINDOW_BG, true),
+            windowBackground = prefs.getBoolean(KEY_WINDOW_BG, false),
             blurRadiusPx = prefs.getInt(KEY_BLUR, LyricOverlayPrefs.BLUR_DEFAULT),
             lyricBackground = prefs.getBoolean(KEY_LYRIC_BG, false),
             playedColorArgb = prefs.getInt(KEY_COLOR_PLAYED, 0x99FFFFFF.toInt()),
             currentColorArgb = prefs.getInt(KEY_COLOR_CURRENT, 0xFFFFFFFF.toInt()),
             upcomingColorArgb = prefs.getInt(KEY_COLOR_UPCOMING, 0x66FFFFFF.toInt()),
             fontSizeSp = prefs.getFloat(KEY_FONT, 16f),
+            preferTranslation = prefs.getBoolean(KEY_TRANS, true),
+            translationCoexist = prefs.getBoolean(KEY_TRANS_COEXIST, true),
+            originalOnTop = prefs.getBoolean(KEY_TRANS_ORIGINAL_TOP, true),
+            othersShowTranslation = prefs.getBoolean(KEY_TRANS_OTHERS, false),
+            translationColorArgb = prefs.getInt(KEY_COLOR_TRANS, LyricOverlayPrefs.TRANSLATION_COLOR_DEFAULT),
             dynamicWidth = prefs.getBoolean(KEY_DYNAMIC_W, true),
             widthPercent = loadWidthPercent(),
             ignoreCutout = prefs.getBoolean(KEY_CUTOUT, false),
@@ -115,6 +132,11 @@ class LyricOverlayStore(context: Context) {
             .putInt(KEY_COLOR_CURRENT, p.currentColorArgb)
             .putInt(KEY_COLOR_UPCOMING, p.upcomingColorArgb)
             .putFloat(KEY_FONT, p.fontSizeSp)
+            .putBoolean(KEY_TRANS, p.preferTranslation)
+            .putBoolean(KEY_TRANS_COEXIST, p.translationCoexist)
+            .putBoolean(KEY_TRANS_ORIGINAL_TOP, p.originalOnTop)
+            .putBoolean(KEY_TRANS_OTHERS, p.othersShowTranslation)
+            .putInt(KEY_COLOR_TRANS, p.translationColorArgb)
             .putBoolean(KEY_DYNAMIC_W, p.dynamicWidth)
             .putInt(KEY_WIDTH_PCT, p.widthPercent)
             .putBoolean(KEY_CUTOUT, p.ignoreCutout)
@@ -162,6 +184,11 @@ class LyricOverlayStore(context: Context) {
         private const val KEY_COLOR_CURRENT = "color_current"
         private const val KEY_COLOR_UPCOMING = "color_upcoming"
         private const val KEY_FONT = "font_sp"
+        private const val KEY_TRANS = "prefer_translation"
+        private const val KEY_TRANS_COEXIST = "translation_coexist"
+        private const val KEY_TRANS_ORIGINAL_TOP = "translation_original_top"
+        private const val KEY_TRANS_OTHERS = "translation_others"
+        private const val KEY_COLOR_TRANS = "color_translation"
         private const val KEY_DYNAMIC_W = "dynamic_w"
         private const val KEY_WIDTH = "width_dp"
         private const val KEY_WIDTH_PCT = "width_pct"
@@ -172,6 +199,58 @@ class LyricOverlayStore(context: Context) {
         private const val KEY_REF_W = "pos_ref_w"
         private const val KEY_REF_H = "pos_ref_h"
     }
+}
+
+/**
+ * 歌词悬浮窗窗背景：
+ * - 唤醒（未锁定且未失焦）必须有背景，不论开关
+ * - 锁定 / 非锁定仅失焦的纯歌词，跟「悬浮窗背景」开关走
+ */
+internal fun overlayShowsWindowBackground(
+    locked: Boolean,
+    idleChrome: Boolean,
+    windowBackgroundEnabled: Boolean,
+): Boolean = (!locked && !idleChrome) || windowBackgroundEnabled
+
+/** 未锁定失焦时窗口必须自己吃掉手势，否则 Compose clickable/marquee 会把拖动取消成一次点击唤醒。 */
+internal fun overlayClaimsWindowTouches(
+    locked: Boolean,
+    idleChrome: Boolean,
+    windowDragging: Boolean,
+): Boolean = !locked && (idleChrome || windowDragging)
+
+/** 失焦未锁定：轻点唤醒；拖动只改位置，保持失焦。 */
+internal fun overlayWakesFromIdle(
+    idleChrome: Boolean,
+    locked: Boolean,
+    dragged: Boolean,
+    pointerOnOverlay: Boolean,
+): Boolean = idleChrome && !locked && pointerOnOverlay && !dragged
+
+internal data class OverlayLyricRow(
+    val text: String,
+    val translation: Boolean,
+)
+
+/**
+ * 悬浮窗一行的原文/译文排版。
+ * [showCompanion] 为当前行或「其余行也显示译文」。
+ */
+internal fun overlayLyricRows(
+    lineText: String,
+    companionText: String?,
+    originalOnTop: Boolean,
+    showCompanion: Boolean,
+    fallback: String = "",
+): List<OverlayLyricRow> {
+    val main = lineText.trim()
+    val trans = companionText?.trim().orEmpty()
+    val original = OverlayLyricRow(main.ifBlank { fallback }, translation = false)
+    if (!showCompanion || trans.isEmpty()) {
+        return listOf(original)
+    }
+    val translated = OverlayLyricRow(trans, translation = true)
+    return if (originalOnTop) listOf(original, translated) else listOf(translated, original)
 }
 
 /** 旧版 width_dp（约 160–420）迁到屏幕宽度百分比。 */
