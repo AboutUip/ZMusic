@@ -18,7 +18,6 @@ class UApiProClient(
 ) {
     data class TranslateResult(
         val translatedText: String,
-        val processingTimeMs: Long? = null,
     )
 
     suspend fun translate(
@@ -67,10 +66,7 @@ class UApiProClient(
                     ?: error(root.optString("message").ifBlank { "empty data" })
                 val translated = data.optString("translated_text").trim()
                 require(translated.isNotEmpty()) { "empty translation" }
-                val perfMs = root.optJSONObject("performance")
-                    ?.optLong("processing_time_ms")
-                    ?.takeIf { it > 0L }
-                TranslateResult(translated, perfMs)
+                TranslateResult(translated)
             }
         }
     }

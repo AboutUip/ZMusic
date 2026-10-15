@@ -155,6 +155,7 @@ import com.kite.zmusic.data.LrcParser
 import com.kite.zmusic.data.LyricRoleStyle
 import com.kite.zmusic.data.NcmJson
 import com.kite.zmusic.data.NcmLibraryParse
+import com.kite.zmusic.data.PlaybackChromeMode
 import com.kite.zmusic.data.PlayerDisplayPrefs
 import com.kite.zmusic.data.PlayerDisplayPrefsStore
 import com.kite.zmusic.data.PlaylistTrackLoader
@@ -399,6 +400,8 @@ internal fun PortraitPlayerBody(
     val context = LocalContext.current
     val app = context.applicationContext as ZMusicApplication
     val pluginEngine = app.pluginEngine
+    val playbackChrome by app.playbackChromeStore.mode.collectAsStateWithLifecycle()
+    val islandGestures = playbackChrome == PlaybackChromeMode.Island
     val listenUi by app.listenTogether.ui.collectAsStateWithLifecycle()
     val playbackFmActive by remember {
         app.playbackBridge.ui.map { it.fmActive }.distinctUntilChanged()
@@ -448,11 +451,14 @@ internal fun PortraitPlayerBody(
                     scoreOpen -> onCloseScore
                     qualityOpen -> onCloseQuality
                     shareOpen -> onCloseShare
+                    // 灵动岛：下滑改开百科，上滑才退出。
+                    islandGestures -> onOpenWiki
                     else -> onDismiss
                 },
                 // 仅黑胶模式；有面板时不抢上滑。不跟手，阈值与下滑退出对称。
                 onSwipeUp = when {
                     lyricSelectOpen || selectT > 0.001f || lyricsExpanded || panelHold -> null
+                    islandGestures -> onDismiss
                     else -> onOpenWiki
                 },
             ),

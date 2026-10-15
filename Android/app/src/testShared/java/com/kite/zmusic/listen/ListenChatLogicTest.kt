@@ -1,7 +1,11 @@
 package com.kite.zmusic.listen
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.time.ZoneOffset
 
 class ListenChatLogicTest {
     private fun msg(id: Long, uid: String, text: String) = ListenChatMsg(
@@ -454,5 +458,75 @@ class ListenChatLogicTest {
             "short reply",
         )
         assertEquals("short reply", listenChatBubbleText(wire))
+    }
+
+    @Test
+    fun clockLabelUsesHourForTodayAndDateOtherwise() {
+        val zone = ZoneOffset.UTC
+        val now = 1_760_400_000_000L
+        assertEquals("00:00", listenChatClockLabel(now, now, zone))
+        assertEquals("10/13 00:00", listenChatClockLabel(now - 86_400_000L, now, zone))
+        assertEquals("", listenChatClockLabel(0L, now, zone))
+    }
+
+    @Test
+    fun packRoundTripAndVisibleLabel() {
+        val dice = encodeListenChatPack(ListenChatPackKind.Dice, "4")
+        val parsed = parseListenChatPack(dice)
+        assertEquals(ListenChatPackKind.Dice, parsed!!.kind)
+        assertEquals("4", parsed.value)
+        assertEquals("🎲 4", listenChatVisibleBody(dice))
+        assertEquals("🎲 4", listenChatBubbleText(dice))
+        val quoted = encodeListenChatText(
+            ListenChatReplyQuote(3, "7", "曲", "在吗"),
+            encodeListenChatPack(ListenChatPackKind.Rps, "scissors"),
+        )
+        val body = parseListenChatText(quoted)
+        assertEquals(3L, body.reply!!.msgId)
+        assertEquals(ListenChatPackKind.Rps, parseListenChatPack(body.body)!!.kind)
+        assertEquals("✌️ 剪刀", listenChatVisibleBody(quoted))
+        assertNull(parseListenChatPack("hello"))
+    }
+
+    @Test
+    fun packMotionLandsOnTheRolledFace() {
+        assertEquals("4", listenChatPackMotionValue(ListenChatPackKind.Dice, 1f, "4"))
+        assertEquals("paper", listenChatPackMotionValue(ListenChatPackKind.Rps, 0.9f, "paper"))
+        val tumbling = listenChatPackMotionValue(ListenChatPackKind.Dice, 0.2f, "4")
+        assertTrue(tumbling.toInt() in 1..6)
+        val pose = listenChatPackPose(0.3f)
+        assertTrue(pose.scaleX in 0.07f..1f)
+        assertEquals(1f, listenChatPackPose(1f).scaleX, 0.01f)
+        assertFalse(listenChatPackPose(1f).edgeOn)
+    }
+
+    @Test
+    fun readCheckNeedsEveryOtherMember() {
+        val members = listOf(
+            ListenMember("42", "曲", "", true),
+            ListenMember("7", "客", "", false),
+        )
+        assertFalse(listenChatReadByPeers(1, "42", members, emptyMap()))
+        assertFalse(listenChatReadByPeers(1, "42", members, mapOf("7" to 0L)))
+        assertTrue(listenChatReadByPeers(1, "42", members, mapOf("7" to 1L)))
+        assertTrue(listenChatReadByPeers(1, "42", members, mapOf("007" to 2L)))
+        assertFalse(listenChatReadByPeers(-1, "42", members, mapOf("7" to 9L)))
+        assertFalse(
+            listenChatReadByPeers(1, "42", listOf(members.first()), mapOf("42" to 1L)),
+        )
+        val three = members + ListenMember("9", "乙", "", false)
+        assertFalse(listenChatReadByPeers(2, "42", three, mapOf("7" to 2L)))
+        assertTrue(listenChatReadByPeers(2, "42", three, mapOf("7" to 2L, "9" to 2L)))
+    }
+
+    @Test
+    fun mergeReadsKeepsHigherCursorAndDropsMissingPeers() {
+        val previous = mapOf("7" to 4L, "9" to 2L)
+        val incoming = mapOf("7" to 3L, "8" to 1L)
+        val merged = mergeListenChatReads(previous, incoming, incomingIncluded = true)
+        assertEquals(4L, merged["7"])
+        assertEquals(1L, merged["8"])
+        assertFalse(merged.containsKey("9"))
+        assertEquals(previous, mergeListenChatReads(previous, emptyMap(), incomingIncluded = false))
     }
 }

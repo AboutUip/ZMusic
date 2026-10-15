@@ -158,7 +158,6 @@ class PlaybackBridge(
         publishFromCoordinator(coord.ui.value, isExplicitClear = false)
         flushPending()
         ensureLyricsForCurrentTrack()
-        Log.i(TAG, "coordinator attached")
     }
 
     @Synchronized
@@ -184,7 +183,6 @@ class PlaybackBridge(
             }
             stateStore.save(_ui.value)
         }
-        Log.i(TAG, "coordinator detached, queue kept=${kept.queue.size}")
     }
 
     fun hydrateForUi() {
@@ -487,7 +485,6 @@ class PlaybackBridge(
                     mediaController = controller
                     // 监听仅作保活；业务状态以 Coordinator→Bridge 为准
                     controller.addListener(object : Player.Listener {})
-                    Log.i(TAG, "MediaController connected")
                 } catch (e: Exception) {
                     Log.e(TAG, "MediaController connect failed", e)
                     controllerFuture = null

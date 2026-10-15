@@ -77,6 +77,7 @@ import androidx.compose.material.icons.rounded.RepeatOne
 import androidx.compose.material.icons.rounded.Replay5
 import androidx.compose.material.icons.rounded.ScreenRotation
 import androidx.compose.material.icons.rounded.Shuffle
+import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Security
@@ -131,6 +132,7 @@ object ZIcons {
     val Lock: ImageVector get() = Icons.Rounded.Lock
     val LockOpen: ImageVector get() = Icons.Rounded.LockOpen
     val Lyrics: ImageVector get() = Icons.Rounded.Lyrics
+    val SwapHoriz: ImageVector get() = Icons.Rounded.SwapHoriz
     val Menu: ImageVector get() = Icons.Rounded.Menu
     val Favorite: ImageVector get() = Icons.Rounded.Favorite
     val FavoriteBorder: ImageVector get() = Icons.Rounded.FavoriteBorder

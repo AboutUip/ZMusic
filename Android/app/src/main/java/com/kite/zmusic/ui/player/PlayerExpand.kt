@@ -140,6 +140,8 @@ internal const val PlayerExpandHandoff = 0.995f
 private const val PlayerExpandExtraCloseGone = 0.88f
 /** 进场过半后再显现，跟裁切长大对齐。 */
 private const val PlayerExpandExtraOpenAppear = 0.48f
+/** 冷播放首帧布局常偏一拍。最多等这么多帧，避免锚点永远不来时卡住。 */
+private const val PlayerExpandColdLayoutFrames = 18
 private const val PlayerExpandExtraOpenFull = 0.88f
 /** 横屏播放键从迷你条右侧飞到左侧，上一首/下一首要等它过完再亮。 */
 private const val PlayerExpandLandscapeExtraOpenAppear = 0.80f
@@ -282,6 +284,7 @@ internal class PlayerExpandState(
 
     fun report(slot: PlayerExpandSlot, rect: Rect) {
         if (shouldIgnoreMiniReport(slot)) return
+        if (shouldHoldFullAnchor(slot)) return
         if (!rect.isAnchorValid() &&
             slot != PlayerExpandSlot.MiniBar &&
             slot != PlayerExpandSlot.MiniProgress &&
@@ -361,6 +364,78 @@ internal class PlayerExpandState(
         return mounted && (visualProgress > PlayerExpandMiniHide || !targetOpen)
     }
 
+    /**
+     * 冷播放第一次布局会先报一帧偏的终点，接着才落到真位置。
+     * 飞层已经在动时再改终点，封面 / 标题 / 播放键会和裁切错位。
+     * 还没量到时仍接受，避免超时后永远停在迷你条。
+     */
+    private fun shouldHoldFullAnchor(slot: PlayerExpandSlot): Boolean {
+        if (slot.isMiniAnchor()) return false
+        return playerExpandHoldFullAnchor(
+            mounted = mounted,
+            targetOpen = targetOpen,
+            visualProgress = visualProgress,
+            anchorValid = storedAnchorValid(slot),
+        )
+    }
+
+    private fun storedAnchorValid(slot: PlayerExpandSlot): Boolean {
+        val rect = when (slot) {
+            PlayerExpandSlot.MiniBar -> miniBar
+            PlayerExpandSlot.MiniCover -> miniCover
+            PlayerExpandSlot.MiniTitle -> miniTitle
+            PlayerExpandSlot.MiniArtist -> miniArtist
+            PlayerExpandSlot.MiniPlay -> miniPlay
+            PlayerExpandSlot.MiniProgress -> miniProgress
+            PlayerExpandSlot.FullCover -> fullCover
+            PlayerExpandSlot.FullVinyl -> fullVinyl
+            PlayerExpandSlot.FullTitle -> fullTitle
+            PlayerExpandSlot.FullArtist -> fullArtist
+            PlayerExpandSlot.FullPlay -> fullPlay
+            PlayerExpandSlot.FullProgress -> fullProgress
+            PlayerExpandSlot.FullElapsedTime -> fullElapsedTime
+            PlayerExpandSlot.FullDurationTime -> fullDurationTime
+        }
+        return when (slot) {
+            PlayerExpandSlot.MiniProgress,
+            PlayerExpandSlot.FullProgress,
+            -> rect.isProgressAnchorValid()
+            PlayerExpandSlot.FullElapsedTime,
+            PlayerExpandSlot.FullDurationTime,
+            -> rect.isTimeAnchorValid()
+            else -> rect.isAnchorValid()
+        }
+    }
+
+    private fun flightAnchorsReady(): Boolean = playerExpandFlightAnchorsReady(
+        shell = shellRect,
+        lookReady = look != null,
+        squareCover = look?.squareCover == true,
+        fullVinyl = fullVinyl,
+        fullCover = fullCover,
+        fullPlay = fullPlay,
+        fullTitle = fullTitle,
+        fullProgress = fullProgress,
+        miniCover = miniCover,
+        miniTitle = miniTitle,
+        miniPlay = miniPlay,
+        miniBar = miniBar,
+    )
+
+    private fun anchorStamp(): PlayerExpandAnchorStamp = PlayerExpandAnchorStamp(
+        shell = shellRect,
+        fullVinyl = fullVinyl,
+        fullCover = fullCover,
+        fullPlay = fullPlay,
+        fullTitle = fullTitle,
+        fullProgress = fullProgress,
+        miniCover = miniCover,
+        miniTitle = miniTitle,
+        miniPlay = miniPlay,
+        miniBar = miniBar,
+        squareCover = look?.squareCover == true,
+    )
+
     fun open() {
         targetOpen = true
         mounted = true
@@ -371,18 +446,21 @@ internal class PlayerExpandState(
         job = scope.launch {
             chromeRevealAnim.stop()
             if (visualProgress < 0.02f) {
-                withFrameNanos { }
-                withFrameNanos { }
-                withFrameNanos { }
-                withFrameNanos { }
-                // 横屏进场要等底栏量出播放键；竖屏一旦标好方向就不再多等。
-                var extra = 0
-                while (extra < 8) {
-                    if (look?.landscape == false) break
-                    val vinylReady = fullVinyl.isAnchorValid() || fullCover.isAnchorValid()
-                    if (vinylReady && fullPlay.isAnchorValid()) break
+                // 冷播放要等播放页第一次布局稳住。竖屏不能在方向一到就飞，
+                // 否则终点还是 0，飞到一半才被改掉。
+                var stable = 0
+                var previous = anchorStamp()
+                var frames = 0
+                while (frames < PlayerExpandColdLayoutFrames && stable < 2) {
                     withFrameNanos { }
-                    extra++
+                    frames++
+                    val now = anchorStamp()
+                    stable = playerExpandOpenStableCount(
+                        ready = flightAnchorsReady(),
+                        sameAsPrevious = now == previous,
+                        previousStable = stable,
+                    )
+                    previous = now
                 }
             }
             if (my != gen) return@launch
@@ -476,6 +554,73 @@ internal fun resolveMiniBarInShell(targetOpen: Boolean, live: Rect, fallback: Re
     return live
 }
 
+internal data class PlayerExpandAnchorStamp(
+    val shell: Rect,
+    val fullVinyl: Rect,
+    val fullCover: Rect,
+    val fullPlay: Rect,
+    val fullTitle: Rect,
+    val fullProgress: Rect,
+    val miniCover: Rect,
+    val miniTitle: Rect,
+    val miniPlay: Rect,
+    val miniBar: Rect,
+    val squareCover: Boolean,
+)
+
+/** 飞层要用的起终点都已量到。方封面认封面，圆盘认黑胶（没有黑胶时退回封面）。 */
+internal fun playerExpandFlightAnchorsReady(
+    shell: Rect,
+    lookReady: Boolean,
+    squareCover: Boolean,
+    fullVinyl: Rect,
+    fullCover: Rect,
+    fullPlay: Rect,
+    fullTitle: Rect,
+    fullProgress: Rect,
+    miniCover: Rect,
+    miniTitle: Rect,
+    miniPlay: Rect,
+    miniBar: Rect,
+): Boolean {
+    if (!lookReady || shell.width <= 8f || shell.height <= 8f) return false
+    val stageReady = if (squareCover) {
+        fullCover.isAnchorValid()
+    } else {
+        fullVinyl.isAnchorValid() || fullCover.isAnchorValid()
+    }
+    return stageReady &&
+        fullPlay.isAnchorValid() &&
+        fullTitle.isAnchorValid() &&
+        fullProgress.isAnchorValid() &&
+        miniCover.isAnchorValid() &&
+        miniTitle.isAnchorValid() &&
+        miniPlay.isAnchorValid() &&
+        miniBar.isAnchorValid()
+}
+
+/** 连续两帧锚点相同才开飞，吃掉冷布局的第一帧错位。 */
+internal fun playerExpandOpenStableCount(
+    ready: Boolean,
+    sameAsPrevious: Boolean,
+    previousStable: Int,
+): Int = if (ready && sameAsPrevious) previousStable + 1 else 0
+
+/**
+ * 飞行中和收起过程锁住已经量到的播放页终点。
+ * 全开着时仍接受新布局，下次退出才从当时的位置收回。
+ */
+internal fun playerExpandHoldFullAnchor(
+    mounted: Boolean,
+    targetOpen: Boolean,
+    visualProgress: Float,
+    anchorValid: Boolean,
+): Boolean {
+    if (!mounted || !anchorValid) return false
+    val flying = visualProgress > PlayerExpandFlightStart && visualProgress < PlayerExpandHandoff
+    return flying || !targetOpen
+}
+
 /**
  * 关闭瞬间不要用“少了导航条”的重算结果覆盖进场时钉住的底栏。
  * 宽/左变了才是旋转或侧栏变化，只挪 top 几乎都是 insets 闪断。
@@ -526,6 +671,35 @@ private fun PlayerExpandSlot.isMiniAnchor(): Boolean = when (this) {
 
 internal fun Rect.isProgressAnchorValid(): Boolean =
     width > 8f && height > 1.5f && left.isFinite() && top.isFinite()
+
+/**
+ * 进度条起点必须贴在当前迷你条上。
+ * 灵动岛在顶部、底栏在底部；沿用另一侧留下的进度锚点，飞层会往反方向走。
+ * 岛上没有进度条时，在当前条的下沿补一条细种子，再插到播放页进度条。
+ */
+internal fun flightProgressSource(miniBar: Rect, miniProgress: Rect): Rect {
+    if (miniProgress.isProgressAnchorValid() && progressSitsOnBar(miniProgress, miniBar)) {
+        return miniProgress
+    }
+    if (!miniBar.isAnchorValid()) return miniProgress
+    return progressSeedOnBar(miniBar)
+}
+
+private fun progressSitsOnBar(progress: Rect, bar: Rect): Boolean {
+    if (!bar.isAnchorValid()) return true
+    val verticallyNear = progress.top >= bar.top - 12f && progress.bottom <= bar.bottom + 28f
+    val horizontallyNear = abs(progress.center.x - bar.center.x) <= bar.width * 0.6f + 24f
+    return verticallyNear && horizontallyNear
+}
+
+private fun progressSeedOnBar(bar: Rect): Rect {
+    val inset = (bar.width * 0.18f).coerceIn(4f, 28f)
+    val height = 2.5f
+    val top = (bar.bottom - 3f - height).coerceAtLeast(bar.top)
+    val left = bar.left + inset
+    val right = (bar.right - inset).coerceAtLeast(left + 8f)
+    return Rect(left, top, right, top + height)
+}
 
 internal fun Rect.isTimeAnchorValid(): Boolean =
     width > 8f && height > 4f && left.isFinite() && top.isFinite()

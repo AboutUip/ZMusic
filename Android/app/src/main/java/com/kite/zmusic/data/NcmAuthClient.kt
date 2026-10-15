@@ -189,7 +189,7 @@ class NcmAuthClient(
     }
 
     private fun executeJson(req: Request): JSONObject {
-        NcmLog.i("proxy ${req.method} ${req.url.encodedPath}")
+        
         client.newCall(req).execute().use { resp ->
             val text = resp.body?.string().orEmpty()
             val json = try {
@@ -199,7 +199,7 @@ class NcmAuthClient(
                 null
             }
             if (json != null) {
-                NcmLog.i("proxy http=${resp.code} ${NcmLog.summarize(json)} body=${NcmLog.json(json)}")
+                
                 return json
             }
             if (resp.code == 404 || resp.code == 502) {

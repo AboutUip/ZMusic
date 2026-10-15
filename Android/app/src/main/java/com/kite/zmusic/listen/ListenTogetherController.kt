@@ -91,6 +91,10 @@ class ListenTogetherController(
     @Volatile private var applyingHlc = 0L
     @Volatile private var pollAfter = 0L
     @Volatile private var leavingRoom = false
+    @Volatile private var postedChatReadRoom = ""
+    @Volatile private var postedChatReadId = 0L
+    @Volatile private var inflightChatReadId = 0L
+    private var chatReadJob: Job? = null
     private var matchJob: Job? = null
     private val matchSkipUntil = java.util.concurrent.ConcurrentHashMap<String, Long>()
     @Volatile private var incomingQuietUntil = 0L
@@ -500,6 +504,53 @@ class ListenTogetherController(
                 chatToasts = listenChatKeepToastsWhileReading(cur.chatToasts, cur.selfUid),
             )
         }
+        val roomId = _ui.value.room?.id.orEmpty()
+        val upTo = _ui.value.room?.chat.orEmpty().maxOfOrNull { it.id.coerceAtLeast(0L) } ?: 0L
+        publishChatRead(roomId, upTo, force = true)
+    }
+
+    private fun publishChatRead(roomId: String, upTo: Long, force: Boolean = false) {
+        val id = roomId.trim()
+        if (id.isEmpty() || upTo <= 0L || leavingRoom) return
+        if (postedChatReadRoom != id) {
+            postedChatReadRoom = id
+            postedChatReadId = 0L
+            inflightChatReadId = 0L
+        }
+        if (upTo <= postedChatReadId) return
+        if (chatReadJob?.isActive == true && upTo <= inflightChatReadId) return
+        if (!force && upTo <= inflightChatReadId) return
+        val self = auth.current()?.uid.orEmpty().ifBlank { _ui.value.selfUid }
+        val already = _ui.value.room?.chatReads.orEmpty().entries
+            .firstOrNull { listenChatUidEquals(it.key, self) }
+            ?.value ?: 0L
+        if (upTo <= already) {
+            postedChatReadId = maxOf(postedChatReadId, already)
+            return
+        }
+        inflightChatReadId = upTo
+        chatReadJob?.cancel()
+        chatReadJob = scope.launch {
+            try {
+                val snap = client.markChatRead(id, upTo)
+                if (leavingRoom || postedChatReadRoom != id) return@launch
+                val stored = if (snap.chatReadsIncluded) {
+                    val uid = auth.current()?.uid.orEmpty().ifBlank { _ui.value.selfUid }
+                    snap.chatReads.entries
+                        .firstOrNull { listenChatUidEquals(it.key, uid) }
+                        ?.value ?: 0L
+                } else {
+                    0L
+                }
+                postedChatReadId = maxOf(postedChatReadId, upTo, stored)
+                if (inflightChatReadId == upTo) inflightChatReadId = postedChatReadId
+                applySnapshot(snap, applyPlayer = false)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "chat read", e)
+            }
+        }
     }
 
     private fun rememberOverlayed(msgs: Iterable<ListenChatMsg>) {
@@ -800,12 +851,24 @@ class ListenTogetherController(
                     ping = !playerForeground && newer.any { !listenChatIsSelf(it, self) }
                 }
             }
+            val reads = when {
+                prevId != snap.id -> if (snap.chatReadsIncluded) snap.chatReads else emptyMap()
+                else -> mergeListenChatReads(
+                    cur.room?.chatReads.orEmpty(),
+                    snap.chatReads,
+                    snap.chatReadsIncluded,
+                )
+            }
             cur.copy(
-                room = snap.copy(chat = merged),
+                room = snap.copy(chat = merged, chatReads = reads),
                 selfUid = self,
                 lastReadChatId = lastRead,
                 chatToasts = toasts,
             )
+        }
+        if (chatForeground && !snap.closed && prevId == snap.id) {
+            val upTo = _ui.value.room?.chat.orEmpty().maxOfOrNull { it.id.coerceAtLeast(0L) } ?: 0L
+            publishChatRead(snap.id, upTo)
         }
         if (prevId != snap.id) {
             clearChatTranslations()
@@ -1107,6 +1170,11 @@ class ListenTogetherController(
         lastDriftAt = 0L
         lastNotifiedChatId = 0L
         overlayedChat = emptySet()
+        postedChatReadRoom = ""
+        postedChatReadId = 0L
+        inflightChatReadId = 0L
+        chatReadJob?.cancel()
+        chatReadJob = null
         applyGen++
         applyingHlc = 0L
         pollAfter = 0L

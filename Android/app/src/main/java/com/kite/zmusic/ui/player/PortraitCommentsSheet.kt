@@ -105,6 +105,7 @@ import androidx.compose.ui.util.fastForEach
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kite.zmusic.ZMusicApplication
 import com.kite.zmusic.data.CommentHugUser
+import com.kite.zmusic.data.NcmCommentParse
 import com.kite.zmusic.data.NcmJson
 import com.kite.zmusic.data.SongComment
 import com.kite.zmusic.data.SongCommentFloorCache
@@ -123,6 +124,7 @@ import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeEffect
 import kotlin.math.hypot
 import kotlin.math.min
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -369,12 +371,19 @@ fun PortraitCommentsSheet(
         if (!reset && (loading || !hasMore)) return
         val seq = fetchSeq + 1
         fetchSeq = seq
+        val mode = requested
         loading = true
         if (reset) error = null
         try {
             val nextPage = if (reset) 1 else pageNo + 1
-            val mode = requested
-            val page = if (!useLegacy) {
+            // 时间序第二页起必须带上一条 time。没带时服务端按 cursor=0，返回的还是第一页。
+            val timeCursor = if (mode == CommentSortMode.Time && !reset) {
+                NcmCommentParse.usableCursor(cursor)
+                    ?: comments.lastOrNull()?.timeMs?.takeIf { it > 0L }?.toString()
+            } else {
+                null
+            }
+            var page = if (!useLegacy) {
                 try {
                     commentsVm.pageNew(
                         songId = songIdUpdated,
@@ -382,13 +391,10 @@ fun PortraitCommentsSheet(
                         pageNo = nextPage,
                         pageSize = CommentPageSize,
                         sortType = mode.sortType,
-                        cursor = when {
-                            // 接口按 sortType=3 要 cursor，与 UI 文案无关
-                            mode.sortType == 3 && !reset -> cursor
-                            else -> null
-                        },
+                        cursor = timeCursor,
                     )
                 } catch (e: Exception) {
+                    if (e is CancellationException) throw e
                     // 翻页失败不切旧接口，避免热度/时间列表被混进另一套排序
                     if (!reset) throw e
                     if (mode != CommentSortMode.Time) throw e
@@ -403,20 +409,37 @@ fun PortraitCommentsSheet(
                     )
                 }
             } else {
+                val before = if (!reset) {
+                    comments.lastOrNull()?.timeMs?.takeIf { it > 0L }
+                } else {
+                    null
+                }
                 commentsVm.pageLegacy(
                     songId = songIdUpdated,
                     cookie = cookieUpdated,
                     limit = CommentPageSize,
-                    offset = if (reset) 0 else comments.size,
-                    before = if (!reset) {
-                        comments.lastOrNull()?.timeMs?.takeIf { it > 0L }
-                    } else {
-                        null
-                    },
-                    includeHotFirst = reset,
+                    offset = 0,
+                    before = before,
+                    includeHotFirst = reset && mode == CommentSortMode.Hot,
                 )
             }
-            if (seq != fetchSeq) return
+            if (seq != fetchSeq || mode != sortMode) return
+            if (mode == CommentSortMode.Time && !reset && !useLegacy) {
+                val known = comments.mapTo(HashSet()) { it.commentId }
+                val fresh = page.comments.any { it.commentId !in known }
+                if (!fresh) {
+                    useLegacy = true
+                    page = commentsVm.pageLegacy(
+                        songId = songIdUpdated,
+                        cookie = cookieUpdated,
+                        limit = CommentPageSize,
+                        offset = 0,
+                        before = comments.lastOrNull()?.timeMs?.takeIf { it > 0L },
+                        includeHotFirst = false,
+                    )
+                    if (seq != fetchSeq || mode != sortMode) return
+                }
+            }
             if (reset) comments.clear()
             val existing = comments.mapTo(HashSet()) { it.commentId }
             var added = 0
@@ -427,27 +450,28 @@ fun PortraitCommentsSheet(
                 }
             }
             pageNo = nextPage
-            cursor = when {
-                mode.sortType == 3 ->
-                    page.comments.lastOrNull()?.timeMs?.takeIf { it > 0L }?.toString()
-                        ?: page.cursor
-                else -> null
+            cursor = if (mode == CommentSortMode.Time) {
+                NcmCommentParse.usableCursor(page.cursor)
+                    ?: page.comments.lastOrNull()?.timeMs?.takeIf { it > 0L }?.toString()
+                    ?: timeCursor
+            } else {
+                null
             }
             hasMore = when {
-                !page.hasMore -> false
                 page.comments.isEmpty() -> false
-                added == 0 && nextPage >= 3 -> false
-                else -> true
+                added == 0 -> false
+                page.hasMore -> true
+                page.total > comments.size.toLong() -> true
+                else -> false
             }
             if (page.total > 0L) total = page.total
             bootstrapped = true
             error = null
-            persistCommentsCache()
-            if (reset) {
-                runCatching { listState.scrollToItem(0) }
-            }
+            persistCommentsCache(forSort = mode.sortType)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            if (seq != fetchSeq) return
+            if (seq != fetchSeq || mode != sortMode) return
             error = NcmJson.userFacingThrowable(e, "加载失败")
             bootstrapped = true
             if (!reset) {
@@ -461,6 +485,9 @@ fun PortraitCommentsSheet(
     suspend fun switchSort(mode: CommentSortMode) {
         if (mode == sortMode && !bootstrapped) return
         persistCommentsCache()
+        // 丢掉进行中的翻页，避免结果写进另一套排序，或把 loading 留在 true
+        fetchSeq += 1
+        loading = false
         if (mode != sortMode) {
             sortMode = mode
             dismissReplyComposer()
@@ -571,6 +598,8 @@ fun PortraitCommentsSheet(
         dismissReplyComposer()
         floorRefreshTick = emptyMap()
         pendingFloorTop = emptyMap()
+        fetchSeq += 1
+        loading = false
         listGeneration += 1
         val cached = SongCommentsCache.get(songId, sortMode.sortType)
         if (cached != null) {
@@ -597,22 +626,18 @@ fun PortraitCommentsSheet(
         }
     }
 
-    LaunchedEffect(listGeneration, bootstrapped) {
-        if (!bootstrapped || comments.isEmpty()) return@LaunchedEffect
-        runCatching { listState.scrollToItem(0) }
-    }
-
     LaunchedEffect(listState, listGeneration, songId) {
         snapshotFlow {
             val info = listState.layoutInfo
             val last = info.visibleItemsInfo.lastOrNull()?.index ?: -1
             val totalItems = info.totalItemsCount
-            val can = bootstrapped && hasMore && !loading && comments.size >= CommentPageSize
-            Triple(last, totalItems, can)
+            val footerVisible = info.visibleItemsInfo.any { it.key == "footer" }
+            val can = bootstrapped && hasMore && !loading && comments.isNotEmpty()
+            Triple(last, totalItems, can && (footerVisible || last >= (totalItems - 3).coerceAtLeast(0)))
         }
             .distinctUntilChanged()
-            .collect { (last, totalItems, can) ->
-                if (can && totalItems > 0 && last >= (totalItems - 3).coerceAtLeast(0)) {
+            .collect { (_, totalItems, nearEnd) ->
+                if (nearEnd && totalItems > 0) {
                     loadMore(reset = false)
                 }
             }
@@ -752,7 +777,12 @@ fun PortraitCommentsSheet(
                                 modifier = Modifier.clickable(
                                     interactionSource = remember { MutableInteractionSource() },
                                     indication = null,
-                                    onClick = { scope.launch { loadMore(reset = true) } },
+                                    onClick = {
+                                        scope.launch {
+                                            loadMore(reset = true)
+                                            listState.requestScrollToItem(0)
+                                        }
+                                    },
                                 ),
                             )
                         }

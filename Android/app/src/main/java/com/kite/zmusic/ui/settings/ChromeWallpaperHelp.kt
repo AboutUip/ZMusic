@@ -95,7 +95,7 @@ internal fun wallpaperHelp(topic: WallpaperHelpTopic): WallpaperHelpDoc = when (
             ),
             WallpaperHelpSection(
                 t("翻页闪一下"),
-                t("主页 / 功能 / 个人 是左右滑的三页。若三页构图或是否铺图不一致，滑动时各页应各画各的。若仍闪，把 logcat 过滤 ZMusicWallpaper 发给开发者。"),
+                t("主页 / 功能 / 个人 是左右滑的三页。若三页构图或是否铺图不一致，滑动时各页应各画各的。"),
             ),
         ),
     )

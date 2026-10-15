@@ -318,8 +318,36 @@ fun lerpPlayerDisplayPrefs(
         danmakuRegion = pick(from.danmakuRegion, to.danmakuRegion),
         danmakuSpeed = lf(from.danmakuSpeed, to.danmakuSpeed),
         danmakuScale = lf(from.danmakuScale, to.danmakuScale),
+        customBackgroundEnabled = pick(from.customBackgroundEnabled, to.customBackgroundEnabled),
+        backgroundPresets = pick(from.backgroundPresets, to.backgroundPresets),
+        backgroundPresetIndex = pick(from.backgroundPresetIndex, to.backgroundPresetIndex),
+        dynamicCustomBackgroundEnabled = pick(
+            from.dynamicCustomBackgroundEnabled,
+            to.dynamicCustomBackgroundEnabled,
+        ),
+        dynamicBackgroundPresetIndex = pick(
+            from.dynamicBackgroundPresetIndex,
+            to.dynamicBackgroundPresetIndex,
+        ),
         landscapePageType = pick(from.landscapePageType, to.landscapePageType),
         dynamicCoverOffsetXDp = lf(from.dynamicCoverOffsetXDp, to.dynamicCoverOffsetXDp),
+        dynamicLyricOffsetXDp = lf(from.dynamicLyricOffsetXDp, to.dynamicLyricOffsetXDp),
+        dynamicCoverGlass = lf(from.dynamicCoverGlass, to.dynamicCoverGlass),
+        dynamicLyricPlayingStyle = lerpLyricRole(
+            from.dynamicLyricPlayingStyle,
+            to.dynamicLyricPlayingStyle,
+            u,
+        ),
+        dynamicLyricPlayedStyle = lerpLyricRole(
+            from.dynamicLyricPlayedStyle,
+            to.dynamicLyricPlayedStyle,
+            u,
+        ),
+        dynamicLyricUnplayedStyle = lerpLyricRole(
+            from.dynamicLyricUnplayedStyle,
+            to.dynamicLyricUnplayedStyle,
+            u,
+        ),
     )
 }
 

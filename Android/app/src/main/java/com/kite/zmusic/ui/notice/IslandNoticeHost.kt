@@ -233,12 +233,57 @@ private fun IslandNoticeHost(
     val alpha = remember { Animatable(0f) }
     val squashY = remember { Animatable(1f) }
     val capturing = mounted || alpha.value > 0.02f
-    SideEffect { onLiveChange(capturing) }
+    val claimed by center.playbackClaim.collectAsStateWithLifecycle()
+    SideEffect {
+        onLiveChange(capturing)
+        center.setPresenting(capturing)
+    }
 
     LaunchedEffect(center) {
         fun px(dp: Dp): Float = with(densityState.value) { dp.toPx() }
 
+        suspend fun expandCapsule() {
+            coroutineScope {
+                launch {
+                    expansion.animateTo(1f, tween(540, easing = IslandExpandEasing))
+                }
+                launch {
+                    squashY.snapTo(0.88f)
+                    squashY.animateTo(
+                        1.055f,
+                        tween(260, easing = CubicBezierEasing(0.18f, 0.9f, 0.32f, 1f)),
+                    )
+                    squashY.animateTo(
+                        1f,
+                        spring(
+                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                            stiffness = 380f,
+                        ),
+                    )
+                }
+            }
+        }
+
         suspend fun appear(next: IslandNotice) {
+            if (center.playbackClaim.value) {
+                notice = next
+                mounted = true
+                coverBlend.snapTo(0f)
+                expansion.snapTo(0f)
+                squashY.snapTo(1f)
+                alpha.snapTo(1f)
+                scale.snapTo(1f)
+                offsetY.snapTo(0f)
+                coroutineScope {
+                    if (next.coverUrl != null) {
+                        launch {
+                            coverBlend.animateTo(1f, tween(220, easing = CoverMorphEasing))
+                        }
+                    }
+                    launch { expandCapsule() }
+                }
+                return
+            }
             notice = next
             mounted = true
             coverBlend.snapTo(0f)
@@ -294,25 +339,7 @@ private fun IslandNoticeHost(
                 }
             }
             delay(36L)
-            coroutineScope {
-                launch {
-                    expansion.animateTo(1f, tween(540, easing = IslandExpandEasing))
-                }
-                launch {
-                    squashY.snapTo(0.88f)
-                    squashY.animateTo(
-                        1.055f,
-                        tween(260, easing = CubicBezierEasing(0.18f, 0.9f, 0.32f, 1f)),
-                    )
-                    squashY.animateTo(
-                        1f,
-                        spring(
-                            dampingRatio = Spring.DampingRatioMediumBouncy,
-                            stiffness = 380f,
-                        ),
-                    )
-                }
-            }
+            expandCapsule()
         }
 
         suspend fun replace(next: IslandNotice) {
@@ -338,6 +365,25 @@ private fun IslandNoticeHost(
         }
 
         suspend fun dismiss() {
+            if (center.playbackClaim.value) {
+                coroutineScope {
+                    launch {
+                        expansion.animateTo(0f, tween(260, easing = IslandDismissEasing))
+                    }
+                    launch {
+                        squashY.animateTo(1f, tween(180, easing = IslandDismissEasing))
+                    }
+                }
+                mounted = false
+                notice = null
+                scale.snapTo(0.42f)
+                offsetY.snapTo(0f)
+                squashY.snapTo(1f)
+                coverBlend.snapTo(0f)
+                alpha.snapTo(0f)
+                expansion.snapTo(0f)
+                return
+            }
             coroutineScope {
                 launch {
                     expansion.animateTo(0f, tween(260, easing = IslandDismissEasing))
@@ -413,11 +459,9 @@ private fun IslandNoticeHost(
         }
     }
 
-    val current = notice ?: run {
-        Box(modifier.size(0.dp))
-        return
-    }
-    if (!mounted && alpha.value <= 0.02f) {
+    val current = notice
+    if (current == null || (!mounted && alpha.value <= 0.02f)) {
+        SideEffect { center.setFrame(IslandNoticeFrame()) }
         Box(modifier.size(0.dp))
         return
     }
@@ -454,6 +498,28 @@ private fun IslandNoticeHost(
     val textLin = ((expansion.value - 0.28f) / 0.42f).coerceIn(0f, 1f)
     val textAlpha = textLin * textLin * (3f - 2f * textLin)
     val overflowing = textWant > maxText + 1.dp && expansion.value > 0.92f
+    val fullGap = 8.dp
+    val fullMaxText = (maxCapsule - 6.dp - coverSize - fullGap - 14.dp).coerceAtLeast(24.dp)
+    val restWidth = (6.dp + coverSize + fullGap + minOf(textWant, fullMaxText) + 14.dp)
+        .coerceIn(islandH, maxCapsule)
+    SideEffect {
+        center.setFrame(
+            IslandNoticeFrame(
+                message = current.message,
+                coverUrl = current.coverUrl,
+                expansion = expansion.value,
+                squashY = squashY.value,
+                coverBlend = coverBlend.value,
+                restWidthDp = restWidth.value,
+                overflowing = textWant > fullMaxText + 1.dp,
+                mounted = true,
+            ),
+        )
+    }
+    if (claimed) {
+        Box(modifier.size(0.dp))
+        return
+    }
 
     Box(
         modifier
@@ -505,7 +571,7 @@ private fun IslandNoticeHost(
 }
 
 @Composable
-private fun IslandGlyph(
+internal fun IslandGlyph(
     coverUrl: String?,
     coverBlend: Float,
     size: Dp,
@@ -543,7 +609,7 @@ private fun IslandGlyph(
 }
 
 @Composable
-private fun IslandMarqueeText(
+internal fun IslandMarqueeText(
     text: String,
     style: TextStyle,
     overflowing: Boolean,
@@ -591,7 +657,7 @@ private fun IslandMarqueeText(
     }
 }
 
-private fun islandTextStyle(landscape: Boolean) = TextStyle(
+internal fun islandTextStyle(landscape: Boolean) = TextStyle(
     color = TextTheme.Island,
     fontSize = if (landscape) 12.5.sp else 13.5.sp,
     fontWeight = FontWeight.SemiBold,

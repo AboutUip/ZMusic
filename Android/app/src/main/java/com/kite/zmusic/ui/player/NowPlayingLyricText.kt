@@ -191,6 +191,7 @@ internal fun StableCenterLyricText(
     text: String,
     animMs: Int,
     lineSpanMs: Long,
+    lineStartMs: Long = 0L,
     style: TextStyle,
     modifier: Modifier = Modifier,
     maxLines: Int = 6,
@@ -280,7 +281,7 @@ internal fun StableCenterLyricText(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
-            LyricPlainOrKaraoke(
+            LongLyricText(
                 text = shownText,
                 words = words,
                 positionMs = positionMs,
@@ -289,8 +290,11 @@ internal fun StableCenterLyricText(
                 tracking = tracking && !freezeTransitions,
                 maxLines = maxLines,
                 overflow = overflow,
+                lineActive = true,
+                lineStartMs = lineStartMs,
+                lineSpanMs = lineSpanMs,
             )
-            LyricPlainOrKaraoke(
+            LongLyricText(
                 text = shownSecondary,
                 words = secondaryWords,
                 positionMs = positionMs,
@@ -299,63 +303,36 @@ internal fun StableCenterLyricText(
                 tracking = tracking && !freezeTransitions,
                 maxLines = secondaryMaxLines,
                 overflow = overflow,
+                lineActive = true,
+                lineStartMs = lineStartMs,
+                lineSpanMs = lineSpanMs,
             )
         }
     } else if (words.isNotEmpty() && unplayedColor != null) {
-        KaraokeLyricText(
+        LongLyricText(
+            text = shownText,
             words = words,
             positionMs = positionMs,
-            playingColor = style.color,
             unplayedColor = unplayedColor,
             tracking = tracking && !freezeTransitions,
             style = style,
             modifier = layerModifier,
             maxLines = maxLines,
             overflow = overflow,
+            lineActive = true,
+            lineStartMs = lineStartMs,
+            lineSpanMs = lineSpanMs,
         )
     } else {
-        Text(
+        LongLyricText(
             text = shownText,
-            maxLines = maxLines,
-            softWrap = true,
-            overflow = overflow,
             style = style,
             modifier = layerModifier,
-        )
-    }
-}
-
-@Composable
-private fun LyricPlainOrKaraoke(
-    text: String,
-    words: List<LyricWord>,
-    positionMs: Long,
-    style: TextStyle,
-    unplayedColor: Color?,
-    tracking: Boolean,
-    maxLines: Int,
-    overflow: TextOverflow,
-) {
-    if (words.isNotEmpty() && unplayedColor != null) {
-        KaraokeLyricText(
-            words = words,
-            positionMs = positionMs,
-            playingColor = style.color,
-            unplayedColor = unplayedColor,
-            tracking = tracking,
-            style = style,
-            modifier = Modifier.fillMaxWidth(),
             maxLines = maxLines,
             overflow = overflow,
-        )
-    } else {
-        Text(
-            text = text,
-            maxLines = maxLines,
-            softWrap = true,
-            overflow = overflow,
-            style = style,
-            modifier = Modifier.fillMaxWidth(),
+            lineActive = true,
+            lineStartMs = lineStartMs,
+            lineSpanMs = lineSpanMs,
         )
     }
 }

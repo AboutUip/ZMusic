@@ -24,8 +24,6 @@ internal class PredictiveBackClaimStack {
     fun contains(id: Any): Boolean = id in ids
 
     val size: Int get() = ids.size
-
-    fun debug(): String = ids.joinToString(",") { it.toString() }
 }
 
 internal const val BACK_EDGE_LEFT = 0

@@ -42,12 +42,6 @@ class CustomPlaySourceClient(
 
     suspend fun musicUrl(platform: MusicPlatform, track: TrackRow, quality: AudioQuality): String? {
         val scriptUrl = store.url()
-        Log.i(
-            TAG,
-            "start platform=${platform.id} quality=${quality.level} id=${track.id} " +
-                "sourceId=${track.sourceId.orEmpty()} hash=${track.sourceHash.orEmpty()} " +
-                "name=${track.name} script=${describeUrl(scriptUrl)}",
-        )
         if (!scriptUrl.startsWith("http://") && !scriptUrl.startsWith("https://")) {
             Log.w(TAG, "stop empty-or-bad-script platform=${platform.id}")
             return null
@@ -61,9 +55,6 @@ class CustomPlaySourceClient(
             runCatching { resolveOnWorker(scriptUrl, source, track, quality) }
                 .onFailure { Log.e(TAG, "resolve threw id=${track.id}", it) }
                 .getOrNull()
-                .also { url ->
-                    Log.i(TAG, "finish id=${track.id} play=${describeUrl(url)}")
-                }
         }
     }
 
@@ -76,11 +67,6 @@ class CustomPlaySourceClient(
         val text = scriptText(scriptUrl)
         val labels = listOf(qualityLabel(quality), "128k").distinct()
         val api = directApi(text)
-        Log.i(
-            TAG,
-            "script len=${text.length} head=${text.take(40).replace('\n', ' ')} " +
-                "direct=${api != null} labels=$labels",
-        )
         if (api != null) {
             for (label in labels) {
                 val url = directUrl(text, source, track, label)
@@ -89,7 +75,6 @@ class CustomPlaySourceClient(
             Log.w(TAG, "direct api returned no url source=$source id=${track.id}")
             return null
         }
-        Log.i(TAG, "no API_URL in script, run script source=$source")
         ensureScript(scriptUrl, text)
         for (label in labels) {
             val url = ask(source, track, label)
@@ -101,17 +86,14 @@ class CustomPlaySourceClient(
     private fun scriptText(url: String): String {
         synchronized(scriptLock) {
             if (loadedUrl == url && !loadedText.isNullOrBlank()) {
-                Log.i(TAG, "script cache hit bytes=${loadedText!!.length}")
                 return loadedText!!
             }
             var text: String? = null
             for (candidate in scriptCandidates(url)) {
-                Log.i(TAG, "download script ${describeUrl(candidate)}")
                 text = download(candidate)
                 if (text != null) break
             }
             val body = text ?: error("脚本下载失败")
-            Log.i(TAG, "script downloaded bytes=${body.length} html=${body.startsWith("<")}")
             if (body.startsWith("<") || body.length > 4_000_000) error("脚本内容无效")
             loadedUrl = url
             loadedText = body
@@ -149,7 +131,6 @@ class CustomPlaySourceClient(
             else -> track.sourceId?.takeIf { it.isNotBlank() }
         } ?: track.id.toString()
         val endpoint = "$api/url/$source/$songId/$quality"
-        Log.i(TAG, "direct GET ${describeUrl(endpoint)} songId=$songId keySet=${key.isNotBlank()}")
         val request = Request.Builder()
             .url(endpoint)
             .header("User-Agent", "lx-music-mobile/2.0.0")
@@ -158,7 +139,6 @@ class CustomPlaySourceClient(
             .build()
         fetch.newCall(request).execute().use { response ->
             val body = response.body?.string().orEmpty()
-            Log.i(TAG, "direct http=${response.code} body=${clipBody(body)}")
             if (!response.isSuccessful) return null
             val json = runCatching { JSONObject(body) }.getOrNull()
             if (json == null) {
@@ -170,7 +150,6 @@ class CustomPlaySourceClient(
                 return null
             }
             val play = json.optString("url").trim()
-            Log.i(TAG, "direct play=${describeUrl(play)}")
             return play.takeIf { it.startsWith("http://") || it.startsWith("https://") }
         }
     }
@@ -198,8 +177,6 @@ class CustomPlaySourceClient(
         if (value == null) {
             val error = ctx.evaluate("String(globalThis.__lxResult.error || '')", "custom-source-error.js") as? String
             Log.w(TAG, "script no url source=$source quality=$quality error=${error.orEmpty()} done=$done")
-        } else {
-            Log.i(TAG, "script play=${describeUrl(value)}")
         }
         return value
     }
@@ -236,12 +213,10 @@ class CustomPlaySourceClient(
     private fun drainHttp(ctx: QuickJSContext) {
         while (true) {
             val pending = httpQueue.poll() ?: return
-            Log.i(TAG, "script http ${pending.options.take(80)} ${describeUrl(pending.url)}")
             val outcome = runCatching { perform(pending) }.getOrElse {
                 Log.e(TAG, "script http failed ${describeUrl(pending.url)}", it)
                 HttpOutcome(0, it.message ?: "request failed")
             }
-            Log.i(TAG, "script http status=${outcome.status} body=${clipBody(outcome.body)}")
             val global = ctx.getGlobalObject()
             global.setProperty("__lxRawBody", outcome.body)
             global.setProperty("__lxStatus", outcome.status)
@@ -289,7 +264,6 @@ class CustomPlaySourceClient(
             val request = Request.Builder().url(url).header("User-Agent", WEB_UA).get().build()
             fetch.newCall(request).execute().use { response ->
                 val body = response.body?.string().orEmpty()
-                Log.i(TAG, "download http=${response.code} bytes=${body.length} ${describeUrl(url)}")
                 if (!response.isSuccessful) null else body
             }
         }.onFailure { Log.e(TAG, "download failed ${describeUrl(url)}", it) }
@@ -302,12 +276,6 @@ class CustomPlaySourceClient(
             val uri = java.net.URI(raw)
             "${uri.scheme}://${uri.host}${uri.path} len=${raw.length}"
         }.getOrElse { "len=${raw.length}" }
-    }
-
-    private fun clipBody(raw: String): String {
-        val redacted = raw.replace(Regex(""""url"\s*:\s*"[^"]*""""), """"url":"<redacted>"""")
-        val flat = redacted.replace('\n', ' ')
-        return if (flat.length <= 500) flat else flat.take(500) + "…(${flat.length})"
     }
 
     private data class PendingHttp(val id: Int, val url: String, val options: String)

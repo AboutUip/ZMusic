@@ -1230,11 +1230,10 @@ fun NowPlayingScreen(
             )
         }
     }
-    val landscapeCustomBg = if (
-        isLandscape &&
-        displayPrefs.landscapePageType != LandscapePlayerPageType.Dynamic
-    ) {
-        PluginLookPresent.playerBackground() ?: displayPrefs.resolvedCustomBackground()
+    val landscapeCustomBg = if (isLandscape) {
+        PluginLookPresent.playerBackground() ?: displayPrefs.resolvedCustomBackground(
+            dynamic = displayPrefs.landscapePageType == LandscapePlayerPageType.Dynamic,
+        )
     } else {
         null
     }

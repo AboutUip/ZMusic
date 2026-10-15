@@ -1,5 +1,9 @@
 package com.kite.zmusic.listen
 
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+
 data class ListenPlaybackClock(
     val hlc: Long = 0L,
     val actor: String = "",
@@ -41,6 +45,8 @@ data class ListenRoomSnapshot(
     val qrText: String,
     val chat: List<ListenChatMsg> = emptyList(),
     val chatIncluded: Boolean = true,
+    val chatReads: Map<String, Long> = emptyMap(),
+    val chatReadsIncluded: Boolean = false,
 )
 
 data class ListenPeer(
@@ -243,6 +249,61 @@ fun listenChatUidEquals(left: String, right: String): Boolean {
 fun listenChatIsSelf(msg: ListenChatMsg, selfUid: String): Boolean {
     if (msg.id < 0L) return true
     return listenChatUidEquals(msg.uid, selfUid)
+}
+
+private val listenChatClockFmt = DateTimeFormatter.ofPattern("HH:mm")
+private val listenChatDayFmt = DateTimeFormatter.ofPattern("M/d")
+
+/** 今天只显示 HH:mm，更早的消息带上月/日。 */
+fun listenChatClockLabel(
+    atMs: Long,
+    nowMs: Long = System.currentTimeMillis(),
+    zone: ZoneId = ZoneId.systemDefault(),
+): String {
+    if (atMs <= 0L) return ""
+    val msg = Instant.ofEpochMilli(atMs).atZone(zone)
+    val now = Instant.ofEpochMilli(nowMs).atZone(zone)
+    val clock = msg.format(listenChatClockFmt)
+    return if (msg.toLocalDate() == now.toLocalDate()) {
+        clock
+    } else {
+        msg.format(listenChatDayFmt) + " " + clock
+    }
+}
+
+/**
+ * 除发送者以外的在场成员都把已读游标推过这条消息。
+ * 房间里只有发送者自己时没有可核对的读者，不显示已读。
+ */
+fun listenChatReadByPeers(
+    msgId: Long,
+    senderUid: String,
+    members: List<ListenMember>,
+    reads: Map<String, Long>,
+): Boolean {
+    if (msgId <= 0L) return false
+    val others = members.filter { it.uid.isNotBlank() && !listenChatUidEquals(it.uid, senderUid) }
+    if (others.isEmpty()) return false
+    return others.all { peer ->
+        val cursor = reads.entries.firstOrNull { listenChatUidEquals(it.key, peer.uid) }?.value ?: 0L
+        cursor >= msgId
+    }
+}
+
+fun mergeListenChatReads(
+    previous: Map<String, Long>,
+    incoming: Map<String, Long>,
+    incomingIncluded: Boolean,
+): Map<String, Long> {
+    if (!incomingIncluded) return previous
+    if (previous.isEmpty()) return incoming
+    val out = LinkedHashMap<String, Long>(incoming.size)
+    for ((key, value) in incoming) {
+        val prev = previous.entries.firstOrNull { listenChatUidEquals(it.key, key) }?.value ?: 0L
+        val merged = maxOf(prev, value)
+        if (merged > 0L) out[key] = merged
+    }
+    return out
 }
 
 fun retargetListenChatToast(current: ListenChatMsg?, merged: List<ListenChatMsg>): ListenChatMsg? {

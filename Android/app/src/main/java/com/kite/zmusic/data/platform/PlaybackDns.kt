@@ -31,13 +31,10 @@ internal class PlaybackDns : Dns {
             emptyList()
         }
         if (resolved.isNotEmpty()) {
-            Log.i(TAG, "dns $hostname -> ${resolved.joinToString { it.hostAddress ?: "?" }}")
             cache[hostname] = Cached(resolved, System.currentTimeMillis() + 60_000)
             return resolved
         }
-        val system = Dns.SYSTEM.lookup(hostname)
-        Log.i(TAG, "dns system $hostname -> ${system.joinToString { it.hostAddress ?: "?" }}")
-        return system
+        return Dns.SYSTEM.lookup(hostname)
     }
 
     private fun query(hostname: String): List<InetAddress> {

@@ -146,6 +146,8 @@ private enum class SettingsPreviewKey {
     VinylSize,
     VinylOffsetY,
     DynamicCoverOffsetX,
+    DynamicLyricOffsetX,
+    DynamicCoverGlass,
     TransportOffsetY,
     LyricBackgroundTransparency,
     PreviewLyric,
@@ -1756,6 +1758,74 @@ fun NowPlayingSettingsSheet(
                     }
                 }
                 } else {
+                    SettingsCategory(title = t("氛围"), titleAlpha = dim) {
+                        SettingsAlpha(dim) {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                SettingsSwitchRow(
+                                    title = t("自定义背景"),
+                                    subtitle = t("开启后可配置并启用全屏沉浸背景"),
+                                    checked = prefs.dynamicCustomBackgroundEnabled,
+                                    colors = switchColors,
+                                    onCheckedChange = {
+                                        onPrefsChange(
+                                            prefs.copy(dynamicCustomBackgroundEnabled = it),
+                                        )
+                                    },
+                                )
+                                SettingsActionRow(
+                                    title = t("背景调控"),
+                                    subtitle = if (prefs.dynamicCustomBackgroundEnabled) {
+                                        t("5 预设 · 图片 / GIF / 静音视频")
+                                    } else {
+                                        t("先开启自定义背景")
+                                    },
+                                    actionLabel = t("编辑"),
+                                    enabled = prefs.dynamicCustomBackgroundEnabled,
+                                    onClick = onOpenCustomBackgroundEditor,
+                                )
+                            }
+                        }
+                        SettingsAlpha(rowAlpha(SettingsPreviewKey.DynamicCoverGlass)) {
+                            SettingsSliderRow(
+                                title = t("封面外层磨砂"),
+                                valueLabel = String.format("%.0f%%", prefs.dynamicCoverGlass * 100f),
+                                value = prefs.dynamicCoverGlass,
+                                valueRange = PlayerDisplayPrefs.DYNAMIC_COVER_GLASS_MIN..
+                                    PlayerDisplayPrefs.DYNAMIC_COVER_GLASS_MAX,
+                                onValueChange = {
+                                    onPrefsChange(prefs.copy(dynamicCoverGlass = it))
+                                },
+                                onPreviewDragActiveChange = {
+                                    onPreviewDrag(SettingsPreviewKey.DynamicCoverGlass, it)
+                                },
+                            )
+                        }
+                    }
+                    SettingsCategory(title = t("文字"), titleAlpha = dim) {
+                        SettingsAlpha(dim) {
+                            SettingsActionRow(
+                                title = t("歌词样式"),
+                                subtitle = t("播放中 / 已播放 / 未播放"),
+                                actionLabel = t("编辑"),
+                                onClick = onOpenLyricStyleEditor,
+                            )
+                        }
+                        SettingsAlpha(rowAlpha(SettingsPreviewKey.DynamicLyricOffsetX)) {
+                            SettingsSliderRow(
+                                title = t("歌词水平位置"),
+                                valueLabel = String.format("%+.0f", prefs.dynamicLyricOffsetXDp),
+                                value = prefs.dynamicLyricOffsetXDp,
+                                valueRange = PlayerDisplayPrefs.DYNAMIC_LYRIC_OFFSET_X_MIN..
+                                    PlayerDisplayPrefs.DYNAMIC_LYRIC_OFFSET_X_MAX,
+                                onValueChange = {
+                                    onPrefsChange(prefs.copy(dynamicLyricOffsetXDp = it))
+                                },
+                                onPreviewDragActiveChange = {
+                                    onPreviewDrag(SettingsPreviewKey.DynamicLyricOffsetX, it)
+                                },
+                            )
+                        }
+                    }
                     SettingsCategory(title = t("布局"), titleAlpha = dim) {
                         SettingsAlpha(rowAlpha(SettingsPreviewKey.DynamicCoverOffsetX)) {
                             SettingsSliderRow(

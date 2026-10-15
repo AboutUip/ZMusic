@@ -68,6 +68,8 @@ class ZMusicApplication : Application() {
     val privacyStore get() = container.privacyStore
     val predictiveBackStore get() = container.predictiveBackStore
     val landscapeModeStore get() = container.landscapeModeStore
+    val ignoreStatusBarStore get() = container.ignoreStatusBarStore
+    val playbackChromeStore get() = container.playbackChromeStore
     val splashAccelStore get() = container.splashAccelStore
     val miniQuickSkipStore get() = container.miniQuickSkipStore
     val recentCollectionStore get() = container.recentCollectionStore

@@ -2,7 +2,6 @@ package com.kite.zmusic
 
 import android.content.Context
 import android.os.Bundle
-import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -43,9 +42,6 @@ class MainActivity : ComponentActivity() {
         SessionRotationLockStore.applyTo(this)
         // 尽早应用已持久化的服务器地址，供后续 OkHttp 请求读取
         ServerConfigRepository(applicationContext)
-        if (BuildConfig.DEBUG) {
-            Log.d("ZMusic", "NCM API base URL: ${NcmApiConfig.baseUrl}")
-        }
         enableEdgeToEdge()
         (application as ZMusicApplication).container.bncmBridge.attach(this, bncmFilePick)
         // edge-to-edge 可能改系统栏，按用户外观再刷一次

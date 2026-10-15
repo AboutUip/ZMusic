@@ -245,6 +245,8 @@ fun CustomBackgroundEditorOverlay(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
     landscape: Boolean = false,
+    /** 横屏动态页：改的是同一份预设，选中档写入动态自己的下标。 */
+    dynamicSelection: Boolean = false,
 ) {
     val progress = remember { Animatable(0f) }
     LaunchedEffect(open) {
@@ -258,7 +260,12 @@ fun CustomBackgroundEditorOverlay(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val t = progress.value
-    var editIndex by remember { mutableIntStateOf(prefs.backgroundPresetIndex) }
+    val boundIndex = if (dynamicSelection) {
+        prefs.dynamicBackgroundPresetIndex
+    } else {
+        prefs.backgroundPresetIndex
+    }
+    var editIndex by remember { mutableIntStateOf(boundIndex) }
     var draft by remember {
         mutableStateOf(
             prefs.backgroundPresets.getOrElse(editIndex) { PlayerBackgroundPreset() },
@@ -277,8 +284,8 @@ fun CustomBackgroundEditorOverlay(
         draftScale = p.scale
     }
 
-    LaunchedEffect(open, prefs.backgroundPresetIndex) {
-        if (open) loadDraft(prefs.backgroundPresetIndex)
+    LaunchedEffect(open, boundIndex) {
+        if (open) loadDraft(boundIndex)
     }
 
     val pickLauncher = rememberLauncherForActivityResult(
@@ -290,7 +297,7 @@ fun CustomBackgroundEditorOverlay(
             val updated = draft.copy(imagePath = path, locked = false)
             draft = updated
             // 未锁定也写入 prefs：预览/缩略图立即刷新，且路径变更触发重新解码
-            onPrefsChange(prefs.withBackgroundPresetAt(editIndex, updated))
+            onPrefsChange(prefs.withBackgroundPresetAt(editIndex, updated, dynamicSelection))
         }
     }
 
@@ -426,7 +433,7 @@ fun CustomBackgroundEditorOverlay(
                             )
                             .background(BgEditorRowBg)
                             .clickable {
-                                onPrefsChange(prefs.withBackgroundPresetIndex(i))
+                                onPrefsChange(prefs.withBackgroundPresetIndex(i, dynamicSelection))
                                 loadDraft(i)
                             },
                         contentAlignment = Alignment.Center,
@@ -497,7 +504,7 @@ fun CustomBackgroundEditorOverlay(
                             locked = true,
                         )
                         draft = locked
-                        onPrefsChange(prefs.withBackgroundPresetAt(editIndex, locked))
+                        onPrefsChange(prefs.withBackgroundPresetAt(editIndex, locked, dynamicSelection))
                     },
                 )
                 BgEditorActionButton(
@@ -514,7 +521,7 @@ fun CustomBackgroundEditorOverlay(
                             draftOx = 0.5f
                             draftOy = 0.5f
                             draftScale = 1f
-                            onPrefsChange(prefs.resetBackgroundPresetAt(editIndex))
+                            onPrefsChange(prefs.resetBackgroundPresetAt(editIndex, dynamicSelection))
                         }
                     },
                 )

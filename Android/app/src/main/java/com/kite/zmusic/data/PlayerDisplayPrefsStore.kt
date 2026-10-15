@@ -242,6 +242,32 @@ data class LyricRoleStyle(
         val DEFAULT_PLAYING_ARGB: Int = 0xFFF8FAFC.toInt()
         val DEFAULT_PLAYED_ARGB: Int = 0xFFB8C0CC.toInt()
         val DEFAULT_UNPLAYED_ARGB: Int = 0xFFDCE6F0.toInt()
+
+        /** 动态页内置色：深色字，和专注页的浅色默认分开。 */
+        val DynamicPlayingDefault = LyricRoleStyle(
+            italic = false,
+            bold = true,
+            colorSlot = LyricColorSlot.PRESET_0,
+            preset0Argb = 0xFF1B2428.toInt(),
+            preset1Argb = 0xFF3D4C58.toInt(),
+            preset2Argb = 0xFF1C1C1E.toInt(),
+        )
+        val DynamicPlayedDefault = LyricRoleStyle(
+            italic = false,
+            bold = false,
+            colorSlot = LyricColorSlot.PRESET_0,
+            preset0Argb = 0xFF1C1C1E.toInt(),
+            preset1Argb = 0xFF5A6570.toInt(),
+            preset2Argb = 0xFF8A8A8A.toInt(),
+        )
+        val DynamicUnplayedDefault = LyricRoleStyle(
+            italic = false,
+            bold = false,
+            colorSlot = LyricColorSlot.PRESET_0,
+            preset0Argb = 0xFF1C1C1E.toInt(),
+            preset1Argb = 0xFF6E6E6E.toInt(),
+            preset2Argb = 0xFF5A6570.toInt(),
+        )
     }
 }
 
@@ -505,12 +531,19 @@ data class PlayerDisplayPrefs(
     val lyricPlayedStyle: LyricRoleStyle = LyricRoleStyle.PlayedDefault,
     /** 横屏「未播放」歌词样式 */
     val lyricUnplayedStyle: LyricRoleStyle = LyricRoleStyle.UnplayedDefault,
-    /** 自定义背景总开关（横/竖屏各一份偏好） */
+    /** 自定义背景总开关（横/竖屏各一份；横屏这一份给专注模式） */
     val customBackgroundEnabled: Boolean = false,
-    /** 5 档背景预设（横/竖屏文件与偏好隔离） */
+    /** 5 档背景预设（横/竖屏文件隔离；横屏专注与动态共用这一份） */
     val backgroundPresets: List<PlayerBackgroundPreset> = defaultBackgroundPresets(),
-    /** 当前选用的背景预设位 0..4（仅 usable 时真正铺底） */
+    /** 专注 / 竖屏当前选用的背景预设位 0..4（仅 usable 时真正铺底） */
     val backgroundPresetIndex: Int = 0,
+    /**
+     * 横屏动态页的自定义背景开关。
+     * 预设内容与专注共用，避免同一张背景设两遍；开不开、用哪一档分开记。
+     */
+    val dynamicCustomBackgroundEnabled: Boolean = false,
+    /** 横屏动态页当前选用的背景预设位 0..4 */
+    val dynamicBackgroundPresetIndex: Int = 0,
     /**
      * 竖屏歌词页背景透明度：0 .. 1。
      * 越高则阅读磨砂越淡、自定义背景越可见；0 为当前默认满强度磨砂。
@@ -593,6 +626,18 @@ data class PlayerDisplayPrefs(
      * 专注页黑胶位移不共用这一项。
      */
     val dynamicCoverOffsetXDp: Float = 0f,
+    /** 动态页右侧歌词水平偏移（dp），负左正右。不与专注页歌词位移共用。 */
+    val dynamicLyricOffsetXDp: Float = 0f,
+    /**
+     * 动态页左侧封面外层磨砂。1 为现在的白框，0 为外层透出虚化封面。
+     */
+    val dynamicCoverGlass: Float = 1f,
+    /** 动态页播放中歌词。默认深色，不改专注页样式。 */
+    val dynamicLyricPlayingStyle: LyricRoleStyle = LyricRoleStyle.DynamicPlayingDefault,
+    /** 动态页已播放歌词。 */
+    val dynamicLyricPlayedStyle: LyricRoleStyle = LyricRoleStyle.DynamicPlayedDefault,
+    /** 动态页未播放歌词。 */
+    val dynamicLyricUnplayedStyle: LyricRoleStyle = LyricRoleStyle.DynamicUnplayedDefault,
 ) {
     fun activeCustomPreset(): VinylCustomPreset =
         vinylCustomPresets.getOrElse(vinylCustomPresetIndex.coerceIn(0, VINYL_CUSTOM_PRESET_COUNT - 1)) {
@@ -641,36 +686,54 @@ data class PlayerDisplayPrefs(
         )
     }
 
-    fun activeBackgroundPreset(): PlayerBackgroundPreset =
-        backgroundPresets.getOrElse(
-            backgroundPresetIndex.coerceIn(0, BACKGROUND_PRESET_COUNT - 1),
+    /**
+     * 自定义背景已开启且当前预设可用时返回该预设，否则 null。
+     * [dynamic] 为真时读动态页自己的开关和档位，预设列表仍是同一份。
+     */
+    fun resolvedCustomBackground(dynamic: Boolean = false): PlayerBackgroundPreset? {
+        val enabled = if (dynamic) dynamicCustomBackgroundEnabled else customBackgroundEnabled
+        if (!enabled) return null
+        val index = if (dynamic) dynamicBackgroundPresetIndex else backgroundPresetIndex
+        val p = backgroundPresets.getOrElse(
+            index.coerceIn(0, BACKGROUND_PRESET_COUNT - 1),
         ) { PlayerBackgroundPreset() }
-
-    /** 自定义背景已开启且当前预设可用时返回该预设，否则 null（走默认光球）。 */
-    fun resolvedCustomBackground(): PlayerBackgroundPreset? {
-        if (!customBackgroundEnabled) return null
-        val p = activeBackgroundPreset()
         return p.takeIf { it.isUsable }
     }
 
-    fun withBackgroundPresetIndex(index: Int): PlayerDisplayPrefs {
+    fun withBackgroundPresetIndex(index: Int, dynamic: Boolean = false): PlayerDisplayPrefs {
         val i = index.coerceIn(0, BACKGROUND_PRESET_COUNT - 1)
         val presets = sanitizeBackgroundPresets(backgroundPresets)
-        return copy(backgroundPresets = presets, backgroundPresetIndex = i)
+        return if (dynamic) {
+            copy(backgroundPresets = presets, dynamicBackgroundPresetIndex = i)
+        } else {
+            copy(backgroundPresets = presets, backgroundPresetIndex = i)
+        }
     }
 
-    fun withBackgroundPresetAt(index: Int, preset: PlayerBackgroundPreset): PlayerDisplayPrefs {
+    fun withBackgroundPresetAt(
+        index: Int,
+        preset: PlayerBackgroundPreset,
+        dynamic: Boolean = false,
+    ): PlayerDisplayPrefs {
         val i = index.coerceIn(0, BACKGROUND_PRESET_COUNT - 1)
         val presets = sanitizeBackgroundPresets(backgroundPresets).toMutableList()
         presets[i] = preset.sanitized()
-        return copy(backgroundPresets = presets, backgroundPresetIndex = i)
+        return if (dynamic) {
+            copy(backgroundPresets = presets, dynamicBackgroundPresetIndex = i)
+        } else {
+            copy(backgroundPresets = presets, backgroundPresetIndex = i)
+        }
     }
 
-    fun resetBackgroundPresetAt(index: Int): PlayerDisplayPrefs {
+    fun resetBackgroundPresetAt(index: Int, dynamic: Boolean = false): PlayerDisplayPrefs {
         val i = index.coerceIn(0, BACKGROUND_PRESET_COUNT - 1)
         val presets = sanitizeBackgroundPresets(backgroundPresets).toMutableList()
         presets[i] = PlayerBackgroundPreset()
-        return copy(backgroundPresets = presets, backgroundPresetIndex = i)
+        return if (dynamic) {
+            copy(backgroundPresets = presets, dynamicBackgroundPresetIndex = i)
+        } else {
+            copy(backgroundPresets = presets, backgroundPresetIndex = i)
+        }
     }
 
     fun sanitized(): PlayerDisplayPrefs {
@@ -683,6 +746,7 @@ data class PlayerDisplayPrefs(
         val active = presets[index]
         val bgPresets = sanitizeBackgroundPresets(backgroundPresets)
         val bgIndex = backgroundPresetIndex.coerceIn(0, BACKGROUND_PRESET_COUNT - 1)
+        val dynamicBgIndex = dynamicBackgroundPresetIndex.coerceIn(0, BACKGROUND_PRESET_COUNT - 1)
         val clearNoneSelected = portraitLyricAutoClear &&
             !portraitLyricAutoClearTop &&
             !portraitLyricAutoClearTransport &&
@@ -717,6 +781,19 @@ data class PlayerDisplayPrefs(
                 DYNAMIC_COVER_OFFSET_X_MAX,
                 0f,
             ),
+            dynamicLyricOffsetXDp = dynamicLyricOffsetXDp.finiteCoerceIn(
+                DYNAMIC_LYRIC_OFFSET_X_MIN,
+                DYNAMIC_LYRIC_OFFSET_X_MAX,
+                0f,
+            ),
+            dynamicCoverGlass = dynamicCoverGlass.finiteCoerceIn(
+                DYNAMIC_COVER_GLASS_MIN,
+                DYNAMIC_COVER_GLASS_MAX,
+                1f,
+            ),
+            dynamicLyricPlayingStyle = dynamicLyricPlayingStyle.sanitized(),
+            dynamicLyricPlayedStyle = dynamicLyricPlayedStyle.sanitized(),
+            dynamicLyricUnplayedStyle = dynamicLyricUnplayedStyle.sanitized(),
             transportBottomInsetDp = transportBottomInsetDp.finiteCoerceIn(
                 TRANSPORT_BOTTOM_INSET_MIN,
                 TRANSPORT_BOTTOM_INSET_MAX,
@@ -764,6 +841,7 @@ data class PlayerDisplayPrefs(
             titleSourceStyle = titleSourceStyle.sanitized(),
             backgroundPresets = bgPresets,
             backgroundPresetIndex = bgIndex,
+            dynamicBackgroundPresetIndex = dynamicBgIndex,
             lyricBackgroundTransparency = lyricBackgroundTransparency.finiteCoerceIn(
                 LYRIC_BG_TRANSPARENCY_MIN,
                 LYRIC_BG_TRANSPARENCY_MAX,
@@ -865,6 +943,10 @@ data class PlayerDisplayPrefs(
         /** 动态页封面信息列水平偏移 */
         const val DYNAMIC_COVER_OFFSET_X_MIN = -120f
         const val DYNAMIC_COVER_OFFSET_X_MAX = 200f
+        const val DYNAMIC_LYRIC_OFFSET_X_MIN = -160f
+        const val DYNAMIC_LYRIC_OFFSET_X_MAX = 160f
+        const val DYNAMIC_COVER_GLASS_MIN = 0f
+        const val DYNAMIC_COVER_GLASS_MAX = 1f
         /** 标题信息垂直偏移 */
         const val TITLE_OFFSET_Y_MIN = -40f
         const val TITLE_OFFSET_Y_MAX = 72f
@@ -1122,6 +1204,12 @@ class PlayerDisplayPrefsStore(
             ),
             backgroundPresetIndex = prefs.safeInt(KEY_BG_PRESET_INDEX, 0)
                 .coerceIn(0, PlayerDisplayPrefs.BACKGROUND_PRESET_COUNT - 1),
+            dynamicCustomBackgroundEnabled = prefs.safeBoolean(
+                KEY_DYNAMIC_CUSTOM_BG_ENABLED,
+                false,
+            ),
+            dynamicBackgroundPresetIndex = prefs.safeInt(KEY_DYNAMIC_BG_PRESET_INDEX, 0)
+                .coerceIn(0, PlayerDisplayPrefs.BACKGROUND_PRESET_COUNT - 1),
             lyricBackgroundTransparency = prefs.safeFloat(KEY_LYRIC_BG_TRANSPARENCY, 0f),
             portraitTransportContainerInclude = prefs.safeBoolean(
                 KEY_PORTRAIT_TRANSPORT_CONTAINER_INCLUDE,
@@ -1220,6 +1308,20 @@ class PlayerDisplayPrefsStore(
                 ),
             ),
             dynamicCoverOffsetXDp = prefs.safeFloat(KEY_DYNAMIC_COVER_OFFSET_X, 0f),
+            dynamicLyricOffsetXDp = prefs.safeFloat(KEY_DYNAMIC_LYRIC_OFFSET_X, 0f),
+            dynamicCoverGlass = prefs.safeFloat(KEY_DYNAMIC_COVER_GLASS, 1f),
+            dynamicLyricPlayingStyle = decodeLyricRoleStyle(
+                prefs.safeString(KEY_DYNAMIC_LYRIC_PLAYING_STYLE, null),
+                LyricRoleStyle.DynamicPlayingDefault,
+            ),
+            dynamicLyricPlayedStyle = decodeLyricRoleStyle(
+                prefs.safeString(KEY_DYNAMIC_LYRIC_PLAYED_STYLE, null),
+                LyricRoleStyle.DynamicPlayedDefault,
+            ),
+            dynamicLyricUnplayedStyle = decodeLyricRoleStyle(
+                prefs.safeString(KEY_DYNAMIC_LYRIC_UNPLAYED_STYLE, null),
+                LyricRoleStyle.DynamicUnplayedDefault,
+            ),
         )
     }
 
@@ -1270,6 +1372,8 @@ class PlayerDisplayPrefsStore(
                 .putBoolean(KEY_CUSTOM_BG_ENABLED, v.customBackgroundEnabled)
                 .putString(KEY_BG_PRESETS, encodeBackgroundPresets(v.backgroundPresets))
                 .putInt(KEY_BG_PRESET_INDEX, v.backgroundPresetIndex)
+                .putBoolean(KEY_DYNAMIC_CUSTOM_BG_ENABLED, v.dynamicCustomBackgroundEnabled)
+                .putInt(KEY_DYNAMIC_BG_PRESET_INDEX, v.dynamicBackgroundPresetIndex)
                 .putFloat(KEY_LYRIC_BG_TRANSPARENCY, v.lyricBackgroundTransparency)
                 .putBoolean(
                     KEY_PORTRAIT_TRANSPORT_CONTAINER_INCLUDE,
@@ -1328,6 +1432,20 @@ class PlayerDisplayPrefsStore(
                 .putFloat(KEY_DANMAKU_SCALE, v.danmakuScale)
                 .putInt(KEY_LANDSCAPE_PAGE_TYPE, v.landscapePageType.ordinal)
                 .putFloat(KEY_DYNAMIC_COVER_OFFSET_X, v.dynamicCoverOffsetXDp)
+                .putFloat(KEY_DYNAMIC_LYRIC_OFFSET_X, v.dynamicLyricOffsetXDp)
+                .putFloat(KEY_DYNAMIC_COVER_GLASS, v.dynamicCoverGlass)
+                .putString(
+                    KEY_DYNAMIC_LYRIC_PLAYING_STYLE,
+                    encodeLyricRoleStyle(v.dynamicLyricPlayingStyle),
+                )
+                .putString(
+                    KEY_DYNAMIC_LYRIC_PLAYED_STYLE,
+                    encodeLyricRoleStyle(v.dynamicLyricPlayedStyle),
+                )
+                .putString(
+                    KEY_DYNAMIC_LYRIC_UNPLAYED_STYLE,
+                    encodeLyricRoleStyle(v.dynamicLyricUnplayedStyle),
+                )
                 .apply()
         }
     }
@@ -1400,6 +1518,8 @@ class PlayerDisplayPrefsStore(
         private const val KEY_CUSTOM_BG_ENABLED = "custom_background_enabled"
         private const val KEY_BG_PRESETS = "background_presets"
         private const val KEY_BG_PRESET_INDEX = "background_preset_index"
+        private const val KEY_DYNAMIC_CUSTOM_BG_ENABLED = "dynamic_custom_background_enabled"
+        private const val KEY_DYNAMIC_BG_PRESET_INDEX = "dynamic_background_preset_index"
         private const val KEY_LYRIC_BG_TRANSPARENCY = "lyric_background_transparency"
         private const val KEY_PORTRAIT_TRANSPORT_CONTAINER_INCLUDE =
             "portrait_transport_container_include"
@@ -1442,6 +1562,11 @@ class PlayerDisplayPrefsStore(
         private const val KEY_DANMAKU_SCALE = "danmaku_scale"
         private const val KEY_LANDSCAPE_PAGE_TYPE = "landscape_page_type"
         private const val KEY_DYNAMIC_COVER_OFFSET_X = "dynamic_cover_offset_x_dp"
+        private const val KEY_DYNAMIC_LYRIC_OFFSET_X = "dynamic_lyric_offset_x_dp"
+        private const val KEY_DYNAMIC_COVER_GLASS = "dynamic_cover_glass"
+        private const val KEY_DYNAMIC_LYRIC_PLAYING_STYLE = "dynamic_lyric_playing_style"
+        private const val KEY_DYNAMIC_LYRIC_PLAYED_STYLE = "dynamic_lyric_played_style"
+        private const val KEY_DYNAMIC_LYRIC_UNPLAYED_STYLE = "dynamic_lyric_unplayed_style"
     }
 }
 

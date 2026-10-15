@@ -135,7 +135,7 @@ internal class NcmDirectClient(
     }
 
     fun ingestWebCookies(header: String) {
-        ingestCookieHeader(header, harvested = true)
+        ingestCookieHeader(header)
     }
 
     private fun attachRiskProof(data: JSONObject, secureCaptcha: String) {
@@ -145,24 +145,13 @@ internal class NcmDirectClient(
         data.put("checkToken", proof)
     }
 
-    private fun ingestCookieHeader(header: String, harvested: Boolean) {
+    private fun ingestCookieHeader(header: String) {
         if (header.isBlank()) {
-            if (harvested) NcmLog.i("harvest cookies empty")
             return
         }
         val musicA = NcmCookie.value(header, "MUSIC_A")
         val nmtid = NcmCookie.value(header, "NMTID")
         val csrf = NcmCookie.value(header, "__csrf")
-        val checkToken = NcmCookie.value(header, "checkToken")
-        val secureCaptcha = NcmCookie.value(header, "secureCaptcha")
-        if (harvested) {
-            NcmLog.i(
-                "harvest cookies names=${NcmLog.cookieNames(header)} " +
-                    "musicA=${!musicA.isNullOrBlank()} nmtid=${!nmtid.isNullOrBlank()} " +
-                    "csrf=${!csrf.isNullOrBlank()} checkToken=${!checkToken.isNullOrBlank()} " +
-                    "secureCaptcha=${!secureCaptcha.isNullOrBlank()}",
-            )
-        }
         for (name in HARVEST_COOKIE_KEYS) {
             val v = NcmCookie.value(header, name)?.takeIf { it.isNotBlank() && !it.startsWith("00.") }
             if (!v.isNullOrBlank()) extraCookies[name] = v
@@ -203,11 +192,8 @@ internal class NcmDirectClient(
                 cookie["checkToken"]?.takeIf { it.isNotEmpty() }?.let { header("checkToken", it) }
             }
             .build()
-        NcmLog.i(
-            "weapi $uri yidun=${yidunToken.isNotEmpty()} cookies=${cookie.keys.joinToString(",")} " +
-                "payload=${NcmLog.json(payload)}",
-        )
-        finish("weapi", uri, executeJson(req), attachCookie)
+        
+        finish(executeJson(req), attachCookie)
     }
 
     private suspend fun eapi(
@@ -249,10 +235,10 @@ internal class NcmDirectClient(
             .header("Cookie", NcmCookie.headerCookie(header))
             .header("User-Agent", ua)
             .build()
-        NcmLog.i("eapi $uri yidun=${yidunToken.isNotEmpty()} cookies=${cookie.keys.joinToString(",")}")
+        
         val result = executeJson(req)
         collectNmtid(cookie["NMTID"].isNullOrEmpty(), result.setCookie)
-        finish("eapi", uri, result, attachCookie)
+        finish(result, attachCookie)
     }
 
     private suspend fun xeapi(uri: String, data: JSONObject): DirectResult {
@@ -287,7 +273,7 @@ internal class NcmDirectClient(
             put("buildver", buildver)
             put("sDeviceId", deviceId)
         }
-        NcmLog.i("xeapi $uri yidun=${yidunToken.isNotEmpty()} cookies=${xeapiCookie.keys.joinToString(",")}")
+        
         val req = Request.Builder()
             .url("$XEAPI_DOMAIN/xeapi/${uri.removePrefix("/api/")}")
             .post(form)
@@ -320,7 +306,7 @@ internal class NcmDirectClient(
     private fun refreshYidunLocked() {
         val age = System.currentTimeMillis() - yidunAtMs
         if (yidunToken.isNotEmpty() && age in 0 until YIDUN_TTL_MS) {
-            NcmLog.i("yidun cache hit ageMs=$age")
+            
             return
         }
         yidunToken = fetchYidunToken()
@@ -347,7 +333,7 @@ internal class NcmDirectClient(
                     NcmLog.w("yidun code=${m.groupValues[1]} http=${resp.code}")
                     return ""
                 }
-                NcmLog.i("yidun token len=${m.groupValues[2].length}")
+                
                 m.groupValues[2]
             }
         } catch (e: Exception) {
@@ -362,7 +348,7 @@ internal class NcmDirectClient(
             runCatching { JSONObject(it) }.getOrNull()
         }
         if (cached != null && cached.optString("sk").isNotEmpty() && cached.optString("publicKey").isNotEmpty()) {
-            NcmLog.i("gorilla key cache hit version=${cached.optString("version")}")
+            
             return
         }
         val fetched = fetchXeapiPublicKey(snap.deviceId, cached?.optString("version").orEmpty()) ?: run {
@@ -426,9 +412,7 @@ internal class NcmDirectClient(
                     NcmLog.w("gorilla signature mismatch")
                     return null
                 }
-                NcmXeapi.decryptPublicKey(encrypted).also {
-                    NcmLog.i("gorilla key ok version=${it.optString("version")} hasSk=${it.optString("sk").isNotEmpty()}")
-                }
+                NcmXeapi.decryptPublicKey(encrypted)
             }
         } catch (e: Exception) {
             NcmLog.w("gorilla key failed", e)
@@ -438,7 +422,7 @@ internal class NcmDirectClient(
 
     private suspend fun ensureMusicALocked() {
         if (profileStore.snapshot().musicA.isNotBlank()) {
-            NcmLog.i("anonymous MUSIC_A cache hit")
+            
             return
         }
         val username = NcmXeapi.anonymousUsername(profileStore.snapshot().deviceId)
@@ -458,7 +442,7 @@ internal class NcmDirectClient(
             ?: result.json.optString("token").takeIf { it.isNotBlank() }
             ?: result.json.optJSONObject("data")?.optString("token")?.takeIf { it.isNotBlank() }
         if (!musicA.isNullOrBlank()) {
-            NcmLog.i("anonymous MUSIC_A len=${musicA.length}")
+            
             profileStore.update { copy(musicA = musicA) }
         } else {
             NcmLog.w("anonymous 200 but no MUSIC_A setCookie=${NcmLog.cookieNames(cookie)}")
@@ -503,23 +487,19 @@ internal class NcmDirectClient(
         profileStore.update { copy(nmtid = nmtid) }
     }
 
-    private fun finish(kind: String, uri: String, result: DirectResult, attachCookie: Boolean): JSONObject {
+    private fun finish(result: DirectResult, attachCookie: Boolean): JSONObject {
         val json = JSONObject(result.json.toString().replace("avatarImgId_str", "avatarImgIdStr"))
         if (attachCookie && result.setCookie.isNotEmpty()) {
             json.put("cookie", result.setCookie)
         }
-        NcmLog.i(
-            "$kind $uri http=${result.httpCode} attachCookie=$attachCookie " +
-                "setCookie=${NcmLog.cookieNames(result.setCookie)} ${NcmLog.summarize(json)} body=${NcmLog.json(json)}",
-        )
         return json
     }
 
     private fun executeJson(req: Request): DirectResult {
-        NcmLog.i("http POST ${req.url}")
+        
         http.newCall(req).execute().use { resp ->
             val setCookie = NcmCookie.firstPairs(resp.headers("Set-Cookie"))
-            ingestCookieHeader(setCookie, harvested = false)
+            ingestCookieHeader(setCookie)
             val text = resp.body?.string().orEmpty()
             val json = try {
                 if (text.isBlank()) null else JSONObject(text)
@@ -533,21 +513,18 @@ internal class NcmDirectClient(
                 NcmLog.w("http ${resp.code} empty-or-invalid body len=${text.length} preview=${text.take(400)}")
                 throw IOException(t("请求失败，请稍后重试"))
             }
-            NcmLog.i(
-                "http ${resp.code} setCookie=${NcmLog.cookieNames(setCookie)} " +
-                    "len=${text.length} ${NcmLog.summarize(json.coerceCode())}",
-            )
+            
             return DirectResult(json.coerceCode(), setCookie, resp.code)
         }
     }
 
     private fun executeXeapi(req: Request): DirectResult {
-        NcmLog.i("xeapi POST ${req.url}")
+        
         http.newCall(req).execute().use { resp ->
             resp.header("x-encr-ssid")?.let { xeapiSessionId = it }
             resp.header("x-encr-sskey")?.let { xeapiSessionKey = it }
             val setCookie = NcmCookie.firstPairs(resp.headers("Set-Cookie"))
-            ingestCookieHeader(setCookie, harvested = false)
+            ingestCookieHeader(setCookie)
             val bytes = resp.body?.bytes() ?: ByteArray(0)
             val json = try {
                 NcmXeapi.decryptResponse(bytes)
@@ -555,9 +532,7 @@ internal class NcmDirectClient(
                 NcmLog.w("xeapi decrypt failed http=${resp.code} bytes=${bytes.size}", e)
                 throw IOException(t("请求失败，请稍后重试"))
             }
-            NcmLog.i(
-                "xeapi http=${resp.code} setCookie=${NcmLog.cookieNames(setCookie)} ${NcmLog.summarize(json)}",
-            )
+            
             return DirectResult(json.coerceCode(), setCookie, resp.code)
         }
     }

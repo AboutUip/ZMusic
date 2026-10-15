@@ -21,12 +21,15 @@ object NcmCommentParse {
             "totalCount",
             data.optLong("total", list.size.toLong()),
         )
-        val hasMore = when {
+        val flaggedMore = when {
             data.has("hasMore") -> data.optBoolean("hasMore")
             list.size >= 20 -> true
-            else -> list.isNotEmpty() && list.size.toLong() < total
+            else -> false
         }
-        val cursor = data.optString("cursor").takeIf { it.isNotBlank() && it != "null" }
+        // 时间序有时 hasMore 为 false，但 total 仍大于本页
+        val hasMore = flaggedMore || (list.isNotEmpty() && total > list.size.toLong())
+        val cursor = usableCursor(data.optString("cursor"))
+            ?: usableCursor(json.optString("cursor"))
         return SongCommentPage(list, total, hasMore, cursor)
     }
 
@@ -121,7 +124,7 @@ object NcmCommentParse {
             ?: user?.optString("avatarUrlStr")?.takeIf { it.isNotBlank() }
         val userId = user?.optLong("userId", user.optLong("id", 0L)) ?: 0L
         val content = o.optString("content").orEmpty()
-        val timeMs = o.optLong("time", 0L)
+        val timeMs = jsonLong(o, "time", "timeMs", "showTime")
         val timeLabel = o.optString("timeStr").takeIf { it.isNotBlank() && it != "null" }
             ?: formatTime(timeMs)
         val likedCount = o.optInt("likedCount", o.optInt("likeCount", 0))
@@ -189,6 +192,28 @@ object NcmCommentParse {
             else -> users.size >= 20
         }
         return CommentHugPage(users, cursor, idCursor, hasMore)
+    }
+
+    /** 时间序翻页游标。`0` / `normalHot#` 不能当作下一页时间。 */
+    internal fun usableCursor(raw: String?): String? {
+        val text = raw?.trim().orEmpty()
+        if (text.isEmpty() || text == "null" || text == "0" || text == "-1") return null
+        if (text.startsWith("normalHot")) return null
+        return text
+    }
+
+    private fun jsonLong(o: JSONObject, vararg keys: String): Long {
+        for (key in keys) {
+            if (!o.has(key) || o.isNull(key)) continue
+            when (val raw = o.opt(key)) {
+                is Number -> {
+                    val value = raw.toLong()
+                    if (value > 0L) return value
+                }
+                is String -> raw.toLongOrNull()?.takeIf { it > 0L }?.let { return it }
+            }
+        }
+        return 0L
     }
 
     private fun formatTime(timeMs: Long): String {

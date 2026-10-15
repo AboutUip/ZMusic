@@ -10,6 +10,8 @@ import com.kite.zmusic.data.LyricOverlayStore
 import com.kite.zmusic.data.LyricRenderStore
 import com.kite.zmusic.data.PersistentPlaybackStore
 import com.kite.zmusic.data.PrivacyStore
+import com.kite.zmusic.data.IgnoreStatusBarStore
+import com.kite.zmusic.data.PlaybackChromeStore
 import com.kite.zmusic.data.LandscapeModeStore
 import com.kite.zmusic.data.PredictiveBackStore
 import com.kite.zmusic.data.MiniQuickSkipStore
@@ -118,6 +120,8 @@ class AppContainer(app: Application) {
     val privacyStore = PrivacyStore(app)
     val predictiveBackStore = PredictiveBackStore(app)
     val landscapeModeStore = LandscapeModeStore(app)
+    val ignoreStatusBarStore = IgnoreStatusBarStore(app)
+    val playbackChromeStore = PlaybackChromeStore(app)
     val splashAccelStore = SplashAccelStore(app)
     val miniQuickSkipStore = MiniQuickSkipStore(app)
     val recentCollectionStore = com.kite.zmusic.data.RecentCollectionStore(app)

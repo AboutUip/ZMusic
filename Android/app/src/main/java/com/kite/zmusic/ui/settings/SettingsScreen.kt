@@ -76,6 +76,7 @@ import com.kite.zmusic.R
 import com.kite.zmusic.ZMusicApplication
 import com.kite.zmusic.data.AppAppearance
 import com.kite.zmusic.data.ChromeGlassStyle
+import com.kite.zmusic.data.LongLyricRender
 import com.kite.zmusic.data.MiniQuickSkipAxis
 import com.kite.zmusic.data.ServerConfigRepository
 import com.kite.zmusic.data.UApiProStore
@@ -101,6 +102,7 @@ import com.kite.zmusic.ui.main.LocalWallpaperItemChrome
 import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.main.wallpaperItemChrome
 import com.kite.zmusic.ui.notice.showIslandNotice
+import com.kite.zmusic.ui.player.LongLyricSettingsPage
 import com.kite.zmusic.ui.player.WordLyricSettingsPage
 import com.kite.zmusic.ui.server.CommunityServerViewModel
 import com.kite.zmusic.ui.server.CommunityServerViewModelFactory
@@ -187,10 +189,13 @@ fun SettingsScreen(
     val cacheVisible = remember { MutableTransitionState(false) }
     val realtimeCacheVisible = remember { MutableTransitionState(false) }
     val wordLyricVisible = remember { MutableTransitionState(false) }
+    val longLyricVisible = remember { MutableTransitionState(false) }
     val predictiveBackVisible = remember { MutableTransitionState(false) }
     val splashAccelVisible = remember { MutableTransitionState(false) }
     val quickSkipVisible = remember { MutableTransitionState(false) }
     val landscapeModeVisible = remember { MutableTransitionState(false) }
+    val ignoreStatusBarVisible = remember { MutableTransitionState(false) }
+    val playbackChromeVisible = remember { MutableTransitionState(false) }
     val testPlanVisible = remember { MutableTransitionState(false) }
     val pluginEngineDebugVisible = remember { MutableTransitionState(false) }
     val glassVisible = remember { MutableTransitionState(false) }
@@ -228,6 +233,10 @@ fun SettingsScreen(
         (context.applicationContext as ZMusicApplication).landscapeModeStore
     }
     val landscapeMode by landscapeModeStore.enabled.collectAsStateWithLifecycle()
+    val ignoreStatusBarStore = remember { app.ignoreStatusBarStore }
+    val ignoreStatusBar by ignoreStatusBarStore.enabled.collectAsStateWithLifecycle()
+    val playbackChromeStore = remember { app.playbackChromeStore }
+    val playbackChrome by playbackChromeStore.mode.collectAsStateWithLifecycle()
     val splashAccelStore = remember { app.splashAccelStore }
     val splashAccel by splashAccelStore.enabled.collectAsStateWithLifecycle()
     val miniQuickSkipStore = remember { app.miniQuickSkipStore }
@@ -244,6 +253,7 @@ fun SettingsScreen(
         (context.applicationContext as ZMusicApplication).lyricRenderStore
     }
     val lyricWordByWord by lyricRenderStore.wordByWord.collectAsStateWithLifecycle()
+    val longLyric by lyricRenderStore.longLine.collectAsStateWithLifecycle()
     val glassStore = remember {
         (context.applicationContext as ZMusicApplication).chromeGlassStore
     }
@@ -462,6 +472,24 @@ fun SettingsScreen(
                             .background(MainPalette.Hairline),
                     )
                     SettingsRow(
+                        title = t("长歌词渲染"),
+                        subtitle = if (longLyric == LongLyricRender.Horizontal) {
+                            t("水平自然滚动")
+                        } else {
+                            t("换行渲染")
+                        },
+                        icon = ZIcons.SwapHoriz,
+                        tint = Color(0xFF3AAFA9),
+                        onClick = { longLyricVisible.targetState = true },
+                    )
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(start = 62.dp)
+                            .height(0.5.dp)
+                            .background(MainPalette.Hairline),
+                    )
+                    SettingsRow(
                         title = t("快速切歌"),
                         subtitle = quickSkipSubtitle(miniQuickSkip),
                         icon = ZIcons.SkipNext,
@@ -640,6 +668,34 @@ fun SettingsScreen(
                         icon = ZIcons.ScreenRotation,
                         tint = Color(0xFF4A8FA8),
                         onClick = { landscapeModeVisible.targetState = true },
+                    )
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(start = 62.dp)
+                            .height(0.5.dp)
+                            .background(MainPalette.Hairline),
+                    )
+                    SettingsRow(
+                        title = t("忽略状态栏"),
+                        subtitle = ignoreStatusBarSubtitle(ignoreStatusBar),
+                        icon = ZIcons.Fullscreen,
+                        tint = Color(0xFF5C6BC0),
+                        onClick = { ignoreStatusBarVisible.targetState = true },
+                    )
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(start = 62.dp)
+                            .height(0.5.dp)
+                            .background(MainPalette.Hairline),
+                    )
+                    SettingsRow(
+                        title = t("播放组件模式"),
+                        subtitle = playbackChromeSubtitle(playbackChrome),
+                        icon = ZIcons.MusicNote,
+                        tint = Color(0xFFE07A5F),
+                        onClick = { playbackChromeVisible.targetState = true },
                     )
                 }
                 if (pluginSettingRows.isNotEmpty()) {
@@ -906,6 +962,29 @@ fun SettingsScreen(
                     if (next == lyricWordByWord) return@WordLyricSettingsPage
                     lyricRenderStore.setWordByWord(next)
                     context.showIslandNotice(if (next) t("已切换到按字渲染") else t("已切换到按行渲染"))
+                },
+                contentBottomInset = contentBottomInset,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        SettingsDrillHost(
+            visibleState = longLyricVisible,
+            landscape = landscape,
+            title = t("长歌词渲染"),
+            onBack = { longLyricVisible.targetState = false },
+        ) {
+            LongLyricSettingsPage(
+                mode = longLyric,
+                onModeChange = { next ->
+                    if (next == longLyric) return@LongLyricSettingsPage
+                    lyricRenderStore.setLongLine(next)
+                    context.showIslandNotice(
+                        if (next == LongLyricRender.Horizontal) {
+                            t("已切换到水平自然滚动")
+                        } else {
+                            t("已切换到换行渲染")
+                        },
+                    )
                 },
                 contentBottomInset = contentBottomInset,
                 modifier = Modifier.fillMaxSize(),
@@ -1262,6 +1341,48 @@ fun SettingsScreen(
                     landscapeModeStore.setEnabled(next)
                     context.showIslandNotice(
                         if (next) t("已开启横屏模式") else t("已关闭横屏模式"),
+                    )
+                },
+                contentBottomInset = contentBottomInset,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        SettingsDrillHost(
+            visibleState = ignoreStatusBarVisible,
+            landscape = landscape,
+            title = t("忽略状态栏"),
+            onBack = { ignoreStatusBarVisible.targetState = false },
+        ) {
+            IgnoreStatusBarSettingsPage(
+                enabled = ignoreStatusBar,
+                onEnabledChange = { next ->
+                    if (next == ignoreStatusBar) return@IgnoreStatusBarSettingsPage
+                    ignoreStatusBarStore.setEnabled(next)
+                    context.showIslandNotice(
+                        if (next) t("已开启忽略状态栏") else t("已关闭忽略状态栏"),
+                    )
+                },
+                contentBottomInset = contentBottomInset,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        SettingsDrillHost(
+            visibleState = playbackChromeVisible,
+            landscape = landscape,
+            title = t("播放组件模式"),
+            onBack = { playbackChromeVisible.targetState = false },
+        ) {
+            PlaybackChromeSettingsPage(
+                mode = playbackChrome,
+                onSelect = { next ->
+                    if (next == playbackChrome) return@PlaybackChromeSettingsPage
+                    playbackChromeStore.setMode(next)
+                    context.showIslandNotice(
+                        if (next == com.kite.zmusic.data.PlaybackChromeMode.Island) {
+                            t("已切换到灵动岛")
+                        } else {
+                            t("已切换到默认组件")
+                        },
                     )
                 },
                 contentBottomInset = contentBottomInset,

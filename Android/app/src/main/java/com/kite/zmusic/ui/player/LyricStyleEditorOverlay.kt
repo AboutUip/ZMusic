@@ -203,11 +203,16 @@ fun LyricRoleStyle.resolvedFontWeight(role: LyricStyleRole): FontWeight = when {
 fun LyricRoleStyle.resolvedFontStyle(): FontStyle =
     if (italic) FontStyle.Italic else FontStyle.Normal
 
-fun LyricRoleStyle.resolvedColorFor(role: LyricStyleRole): Color {
+fun LyricRoleStyle.resolvedColorFor(
+    role: LyricStyleRole,
+    playingDefaultArgb: Int = LyricRoleStyle.DEFAULT_PLAYING_ARGB,
+    playedDefaultArgb: Int = LyricRoleStyle.DEFAULT_PLAYED_ARGB,
+    unplayedDefaultArgb: Int = LyricRoleStyle.DEFAULT_UNPLAYED_ARGB,
+): Color {
     val def = when (role) {
-        LyricStyleRole.Playing -> LyricRoleStyle.DEFAULT_PLAYING_ARGB
-        LyricStyleRole.Played -> LyricRoleStyle.DEFAULT_PLAYED_ARGB
-        LyricStyleRole.Unplayed -> LyricRoleStyle.DEFAULT_UNPLAYED_ARGB
+        LyricStyleRole.Playing -> playingDefaultArgb
+        LyricStyleRole.Played -> playedDefaultArgb
+        LyricStyleRole.Unplayed -> unplayedDefaultArgb
     }
     return resolvedColor(def)
 }
@@ -232,6 +237,11 @@ fun LyricStyleEditorOverlay(
     onBackToSettings: () -> Unit,
     modifier: Modifier = Modifier,
     hazeNonce: Int = 0,
+    builtinPlayingArgb: Int = LyricRoleStyle.DEFAULT_PLAYING_ARGB,
+    builtinPlayedArgb: Int = LyricRoleStyle.DEFAULT_PLAYED_ARGB,
+    builtinUnplayedArgb: Int = LyricRoleStyle.DEFAULT_UNPLAYED_ARGB,
+    /** 动态页没有可飞入的歌词带，预览直接画在右侧槽里。 */
+    inlinePreview: LyricStyleSnapshot? = null,
 ) {
     val t = progress.coerceIn(0f, 1f)
     if (t <= 0.001f) return
@@ -394,6 +404,7 @@ fun LyricStyleEditorOverlay(
                             role = LyricStyleRole.Playing,
                             style = draftPlaying,
                             switchColors = switchColors,
+                            builtinArgb = builtinPlayingArgb,
                             onChange = onDraftPlayingChange,
                         )
                         LyricRoleStyleSection(
@@ -401,6 +412,7 @@ fun LyricStyleEditorOverlay(
                             role = LyricStyleRole.Played,
                             style = draftPlayed,
                             switchColors = switchColors,
+                            builtinArgb = builtinPlayedArgb,
                             onChange = onDraftPlayedChange,
                         )
                         LyricRoleStyleSection(
@@ -408,6 +420,7 @@ fun LyricStyleEditorOverlay(
                             role = LyricStyleRole.Unplayed,
                             style = draftUnplayed,
                             switchColors = switchColors,
+                            builtinArgb = builtinUnplayedArgb,
                             onChange = onDraftUnplayedChange,
                         )
                     }
@@ -418,13 +431,43 @@ fun LyricStyleEditorOverlay(
                             .width(previewW)
                             .fillMaxHeight()
                             .clip(PreviewSlotShape)
-                            .background(Color(0x66070B12))
+                            .background(
+                                if (inlinePreview != null) Color(0xF7F4F1EA) else Color(0x66070B12),
+                            )
                             .border(
                                 width = 1.dp,
-                                color = Color.White.copy(alpha = 0.10f),
+                                color = if (inlinePreview != null) {
+                                    Color.Black.copy(alpha = 0.08f)
+                                } else {
+                                    Color.White.copy(alpha = 0.10f)
+                                },
                                 shape = PreviewSlotShape,
                             ),
-                    )
+                    ) {
+                        val preview = inlinePreview
+                        if (preview != null) {
+                            val scale = 1f
+                            LyricStyleCloneContent(
+                                snapshot = preview,
+                                playing = draftPlaying,
+                                played = draftPlayed,
+                                unplayed = draftUnplayed,
+                                playFontScale = draftPlaying.sanitizedFontScale() * scale,
+                                playedFontScale = draftPlayed.sanitizedFontScale() * scale,
+                                unplayedFontScale = draftUnplayed.sanitizedFontScale() * scale,
+                                contentLineSpacing = preview.lineSpacingDp.coerceIn(
+                                    PlayerDisplayPrefs.LINE_SPACING_MIN,
+                                    PlayerDisplayPrefs.LINE_SPACING_MAX,
+                                ).dp,
+                                contentPad = 8.dp,
+                                playingDefaultArgb = builtinPlayingArgb,
+                                playedDefaultArgb = builtinPlayedArgb,
+                                unplayedDefaultArgb = builtinUnplayedArgb,
+                                lightSurface = true,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -527,6 +570,11 @@ internal fun LyricRoleStyleSection(
     style: LyricRoleStyle,
     switchColors: androidx.compose.material3.SwitchColors,
     onChange: (LyricRoleStyle) -> Unit,
+    builtinArgb: Int = when (role) {
+        LyricStyleRole.Playing -> LyricRoleStyle.DEFAULT_PLAYING_ARGB
+        LyricStyleRole.Played -> LyricRoleStyle.DEFAULT_PLAYED_ARGB
+        LyricStyleRole.Unplayed -> LyricRoleStyle.DEFAULT_UNPLAYED_ARGB
+    },
 ) {
     val fontScale = style.sanitizedFontScale()
     val sliderColors = SliderDefaults.colors(
@@ -633,6 +681,7 @@ internal fun LyricRoleStyleSection(
         LyricColorSlotRow(
             role = role,
             style = style,
+            builtinArgb = builtinArgb,
             onChange = onChange,
         )
 
@@ -677,12 +726,13 @@ private fun LyricColorSlotRow(
     role: LyricStyleRole,
     style: LyricRoleStyle,
     onChange: (LyricRoleStyle) -> Unit,
+    builtinArgb: Int = when (role) {
+        LyricStyleRole.Playing -> LyricRoleStyle.DEFAULT_PLAYING_ARGB
+        LyricStyleRole.Played -> LyricRoleStyle.DEFAULT_PLAYED_ARGB
+        LyricStyleRole.Unplayed -> LyricRoleStyle.DEFAULT_UNPLAYED_ARGB
+    },
 ) {
-    val defaultColor = when (role) {
-        LyricStyleRole.Playing -> Color(LyricRoleStyle.DEFAULT_PLAYING_ARGB)
-        LyricStyleRole.Played -> Color(LyricRoleStyle.DEFAULT_PLAYED_ARGB)
-        LyricStyleRole.Unplayed -> Color(LyricRoleStyle.DEFAULT_UNPLAYED_ARGB)
-    }
+    val defaultColor = Color(builtinArgb)
     val slots = listOf(
         LyricColorSlot.DEFAULT to defaultColor,
         LyricColorSlot.PRESET_0 to Color(style.preset0Argb),
@@ -878,6 +928,10 @@ private fun LyricStyleCloneContent(
     /** 与真歌词相同的视觉行距（已含 uiScale） */
     contentLineSpacing: Dp,
     contentPad: Dp,
+    playingDefaultArgb: Int = LyricRoleStyle.DEFAULT_PLAYING_ARGB,
+    playedDefaultArgb: Int = LyricRoleStyle.DEFAULT_PLAYED_ARGB,
+    unplayedDefaultArgb: Int = LyricRoleStyle.DEFAULT_UNPLAYED_ARGB,
+    lightSurface: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val lines = snapshot.lines
@@ -907,17 +961,32 @@ private fun LyricStyleCloneContent(
     val slotHeight = maxOf(38f * playFs, 26f * playedFs, 26f * unplayedFs).dp + linePad * 2
 
     val playingColor by animateColorAsState(
-        playing.resolvedColorFor(LyricStyleRole.Playing),
+        playing.resolvedColorFor(
+            LyricStyleRole.Playing,
+            playingDefaultArgb = playingDefaultArgb,
+            playedDefaultArgb = playedDefaultArgb,
+            unplayedDefaultArgb = unplayedDefaultArgb,
+        ),
         tween(280, easing = FastOutSlowInEasing),
         label = "clonePlaying",
     )
     val playedColor by animateColorAsState(
-        played.resolvedColorFor(LyricStyleRole.Played),
+        played.resolvedColorFor(
+            LyricStyleRole.Played,
+            playingDefaultArgb = playingDefaultArgb,
+            playedDefaultArgb = playedDefaultArgb,
+            unplayedDefaultArgb = unplayedDefaultArgb,
+        ),
         tween(280, easing = FastOutSlowInEasing),
         label = "clonePlayed",
     )
     val unplayedColor by animateColorAsState(
-        unplayed.resolvedColorFor(LyricStyleRole.Unplayed),
+        unplayed.resolvedColorFor(
+            LyricStyleRole.Unplayed,
+            playingDefaultArgb = playingDefaultArgb,
+            playedDefaultArgb = playedDefaultArgb,
+            unplayedDefaultArgb = unplayedDefaultArgb,
+        ),
         tween(280, easing = FastOutSlowInEasing),
         label = "cloneUnplayed",
     )
@@ -931,7 +1000,11 @@ private fun LyricStyleCloneContent(
             Text(
                 text = t("暂无歌词"),
                 style = TextStyle(
-                    color = EditorHint.copy(alpha = 0.5f),
+                    color = if (lightSurface) {
+                        Color(0xFF5A6570)
+                    } else {
+                        EditorHint.copy(alpha = 0.5f)
+                    },
                     fontFamily = FontFamily.Monospace,
                     fontSize = 13.sp,
                 ),

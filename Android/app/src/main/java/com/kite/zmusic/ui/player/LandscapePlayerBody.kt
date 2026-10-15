@@ -160,6 +160,7 @@ import com.kite.zmusic.data.LrcParser
 import com.kite.zmusic.data.LyricRoleStyle
 import com.kite.zmusic.data.NcmJson
 import com.kite.zmusic.data.NcmLibraryParse
+import com.kite.zmusic.data.PlayerBackgroundPreset
 import com.kite.zmusic.data.PlayerDisplayPrefs
 import com.kite.zmusic.data.PlayerDisplayPrefsStore
 import com.kite.zmusic.data.PlaylistTrackLoader
@@ -347,6 +348,8 @@ internal fun LandscapePlayerBody(
     displayPrefs: PlayerDisplayPrefs,
     onDisplayPrefsChange: (PlayerDisplayPrefs) -> Unit,
     onDisplayPrefsFlush: () -> Unit,
+    landscapeCustomBg: PlayerBackgroundPreset? = null,
+    landscapeCustomBgProgress: Float = 0f,
     settingsHazeState: HazeState,
     playerLiquidBackdrop: LayerBackdrop? = null,
     peekNextTrack: TrackRow?,
@@ -422,6 +425,8 @@ internal fun LandscapePlayerBody(
     var lyricStyleEditorOpen by remember { mutableStateOf(false) }
     var reopenSettingsAfterLyricStyle by remember { mutableStateOf(false) }
     var lyricStyleSnapshot by remember { mutableStateOf<LyricStyleSnapshot?>(null) }
+    /** 动态页歌词样式预览：画在槽内，不走专注页的飞入克隆。 */
+    var dynamicLyricPreview by remember { mutableStateOf<LyricStyleSnapshot?>(null) }
     var draftLyricPlaying by remember { mutableStateOf(LyricRoleStyle.PlayingDefault) }
     var draftLyricPlayed by remember { mutableStateOf(LyricRoleStyle.PlayedDefault) }
     var draftLyricUnplayed by remember { mutableStateOf(LyricRoleStyle.UnplayedDefault) }
@@ -741,6 +746,7 @@ internal fun LandscapePlayerBody(
             }
             if (!lyricStyleEditorOpen) {
                 lyricStyleSnapshot = null
+                dynamicLyricPreview = null
             }
         }
     }
@@ -953,11 +959,19 @@ internal fun LandscapePlayerBody(
     }
 
     fun commitLyricStyleDraft() {
-        val next = displayPrefs.copy(
-            lyricPlayingStyle = draftLyricPlaying,
-            lyricPlayedStyle = draftLyricPlayed,
-            lyricUnplayedStyle = draftLyricUnplayed,
-        )
+        val next = if (dynamicPage) {
+            displayPrefs.copy(
+                dynamicLyricPlayingStyle = draftLyricPlaying,
+                dynamicLyricPlayedStyle = draftLyricPlayed,
+                dynamicLyricUnplayedStyle = draftLyricUnplayed,
+            )
+        } else {
+            displayPrefs.copy(
+                lyricPlayingStyle = draftLyricPlaying,
+                lyricPlayedStyle = draftLyricPlayed,
+                lyricUnplayedStyle = draftLyricUnplayed,
+            )
+        }
         if (next != displayPrefs) {
             onDisplayPrefsChange(next)
         }
@@ -1003,6 +1017,29 @@ internal fun LandscapePlayerBody(
             scoreOpen || scoreVinylCentered || scoreFlight != null || titleStyleEditorOpen ||
             vinylSongPickOpen || pickerVinylCentered || backgroundEditorOpen
         ) {
+            return
+        }
+        if (dynamicPage) {
+            draftLyricPlaying = displayPrefs.dynamicLyricPlayingStyle
+            draftLyricPlayed = displayPrefs.dynamicLyricPlayedStyle
+            draftLyricUnplayed = displayPrefs.dynamicLyricUnplayedStyle
+            lyricStyleFrozenPositionMs = positionMs
+            reopenSettingsAfterLyricStyle = false
+            lyricStyleSnapshot = null
+            val animActive = lyricAnimActiveIndex(lines, positionMs, durationMs)
+            val focus = lyricFocusIndex(lines, animActive)
+            dynamicLyricPreview = LyricStyleSnapshot(
+                lines = lines,
+                focusIndex = focus,
+                playedCount = displayPrefs.lyricPlayedCount,
+                upcomingCount = displayPrefs.lyricUpcomingCount,
+                lineSpacingDp = displayPrefs.lyricLineSpacingDp,
+                sourceLeftDp = 0.dp,
+                sourceTopDp = 0.dp,
+                sourceWidthDp = 280.dp,
+                sourceHeightDp = 48.dp,
+            )
+            lyricStyleEditorOpen = true
             return
         }
         val root = playerRootCoords
@@ -1633,6 +1670,25 @@ internal fun LandscapePlayerBody(
                 transportRevealT = chromeVisualT,
                 transportReserve = dynamicTransportH,
                 coverOffsetXDp = displayPrefs.dynamicCoverOffsetXDp,
+                coverGlass = displayPrefs.dynamicCoverGlass,
+                lyricOffsetXDp = displayPrefs.dynamicLyricOffsetXDp,
+                lyricPlayingStyle = if (lyricStyleEditorOpen || lyricStyleT > 0.001f) {
+                    draftLyricPlaying
+                } else {
+                    displayPrefs.dynamicLyricPlayingStyle
+                },
+                lyricPlayedStyle = if (lyricStyleEditorOpen || lyricStyleT > 0.001f) {
+                    draftLyricPlayed
+                } else {
+                    displayPrefs.dynamicLyricPlayedStyle
+                },
+                lyricUnplayedStyle = if (lyricStyleEditorOpen || lyricStyleT > 0.001f) {
+                    draftLyricUnplayed
+                } else {
+                    displayPrefs.dynamicLyricUnplayedStyle
+                },
+                customBg = landscapeCustomBg,
+                customBgProgress = landscapeCustomBgProgress,
                 modifier = Modifier.fillMaxSize(),
             )
         } else {
@@ -2140,14 +2196,13 @@ internal fun LandscapePlayerBody(
 
         // 歌词样式：面板与克隆分离；克隆 morph 终点用静止槽几何（不含入场 layer）
         val styleSnap = lyricStyleSnapshot
-        if (styleSnap != null &&
-            (lyricStyleEditorOpen || lyricStyleT > 0.001f || styleCloneAlpha > 0.001f)
-        ) {
+        if (lyricStyleEditorOpen || lyricStyleT > 0.001f || styleCloneAlpha > 0.001f) {
+            val previewWidthDp = styleSnap?.sourceWidthDp ?: 280.dp
             val restSlot = lyricStyleRestPreviewSlot(
                 screenWidth = rootMaxW,
                 screenHeight = rootMaxH,
                 chromeSidePad = chromeSidePad,
-                previewWidthDp = styleSnap.sourceWidthDp,
+                previewWidthDp = previewWidthDp,
             )
             LyricStyleEditorOverlay(
                 draftPlaying = draftLyricPlaying,
@@ -2159,13 +2214,29 @@ internal fun LandscapePlayerBody(
                 hazeState = settingsHazeState,
                 progress = lyricStyleT,
                 chromeSidePad = chromeSidePad,
-                previewWidthDp = styleSnap.sourceWidthDp,
+                previewWidthDp = previewWidthDp,
+                builtinPlayingArgb = if (dynamicPage) {
+                    LyricRoleStyle.DynamicPlayingDefault.preset0Argb
+                } else {
+                    LyricRoleStyle.DEFAULT_PLAYING_ARGB
+                },
+                builtinPlayedArgb = if (dynamicPage) {
+                    LyricRoleStyle.DynamicPlayedDefault.preset0Argb
+                } else {
+                    LyricRoleStyle.DEFAULT_PLAYED_ARGB
+                },
+                builtinUnplayedArgb = if (dynamicPage) {
+                    LyricRoleStyle.DynamicUnplayedDefault.preset0Argb
+                } else {
+                    LyricRoleStyle.DEFAULT_UNPLAYED_ARGB
+                },
+                inlinePreview = if (dynamicPage) dynamicLyricPreview else null,
                 onDismiss = { closeLyricStyleEditor() },
                 onBackToSettings = { closeLyricStyleEditorToSettings() },
                 hazeNonce = hazeNonce,
                 modifier = Modifier.fillMaxSize(),
             )
-            LyricStyleCloneLayer(
+            if (styleSnap != null) LyricStyleCloneLayer(
                 snapshot = styleSnap,
                 draftPlaying = draftLyricPlaying,
                 draftPlayed = draftLyricPlayed,
@@ -2319,6 +2390,7 @@ internal fun LandscapePlayerBody(
             onPrefsChange = onDisplayPrefsChange,
             onDismiss = { closeCustomBackgroundEditor() },
             landscape = true,
+            dynamicSelection = dynamicPage,
             modifier = Modifier
                 .fillMaxSize()
                 .zIndex(50f),

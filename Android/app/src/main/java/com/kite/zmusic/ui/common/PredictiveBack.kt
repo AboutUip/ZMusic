@@ -1,6 +1,5 @@
 package com.kite.zmusic.ui.common
 
-import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.runtime.Composable
@@ -20,8 +19,6 @@ import androidx.compose.ui.composed
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import kotlinx.coroutines.CancellationException
-
-internal const val ZMUSIC_BACK_LOG = "ZMusicBack"
 
 internal val LocalPredictiveBackEnabled = compositionLocalOf { false }
 
@@ -92,10 +89,6 @@ internal fun rememberPredictiveBackUi(
     PredictiveBackHandler(enabled = predictiveOn) { events ->
         var maxP = 0f
         var lockedEdge: Int? = null
-        Log.i(
-            ZMUSIC_BACK_LOG,
-            "start id=${id.hashCode()} stack=${claims.stack.debug()} edge-lock",
-        )
         var started = false
         try {
             events.collect { event ->
@@ -112,15 +105,10 @@ internal fun rememberPredictiveBackUi(
                 onGestureProgressUpdated.value(p)
             }
             val peeked = maxP >= 0.08f
-            Log.i(
-                ZMUSIC_BACK_LOG,
-                "commit peeked=$peeked maxP=$maxP edge=${lockedEdge ?: ui.swipeEdge}",
-            )
             onPeekUpdated.value(peeked)
             onBackUpdated.value()
             ui.progress = 0f
         } catch (e: CancellationException) {
-            Log.i(ZMUSIC_BACK_LOG, "cancel progress=${ui.progress}")
             onGestureCancelUpdated.value()
             ui.progress = 0f
             ui.swipeEdge = BACK_EDGE_LEFT
@@ -128,7 +116,6 @@ internal fun rememberPredictiveBackUi(
         }
     }
     BackHandler(enabled = instantOn) {
-        Log.i(ZMUSIC_BACK_LOG, "instant-back id=${id.hashCode()}")
         onBackUpdated.value()
     }
     return ui

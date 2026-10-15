@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.key
@@ -132,6 +131,9 @@ internal fun PortraitPreviewLyrics(
             playFs = playFs,
             upcomingFs = upcomingFs,
             gap = gap,
+            positionMs = positionMs,
+            durationMs = durationMs,
+            clockRunning = clockRunning,
             modifier = rootMod,
         )
         return
@@ -304,6 +306,8 @@ internal fun PortraitPreviewLyrics(
                     playingColor = playingColor,
                     karaokeUnplayed = karaokeUnplayed,
                     clockRunning = live && clockRunning,
+                    lineStartMs = playLine.timeMs,
+                    lineSpanMs = lyricLineSpanMs(lines, focus, durationMs),
                 )
             }
         }
@@ -320,6 +324,8 @@ private fun PreviewPlayingKaraokeHost(
     playingColor: Color,
     karaokeUnplayed: Color,
     clockRunning: Boolean,
+    lineStartMs: Long,
+    lineSpanMs: Long,
 ) {
     val smoothPos = rememberSmoothedLyricPositionMs(positionMs, clockRunning)
     val words = remember(upper.timeMs, upper.text, upper.words) {
@@ -340,6 +346,8 @@ private fun PreviewPlayingKaraokeHost(
         playingColor = playingColor,
         karaokeUnplayed = karaokeUnplayed,
         clockRunning = false,
+        lineStartMs = lineStartMs,
+        lineSpanMs = lineSpanMs,
     )
 }
 
@@ -358,6 +366,9 @@ private fun PreviewLyricStaticColumn(
     playFs: Float,
     upcomingFs: Float,
     gap: Float,
+    positionMs: Long,
+    durationMs: Long,
+    clockRunning: Boolean,
     modifier: Modifier,
 ) {
     val visibleLines = buildList {
@@ -405,10 +416,12 @@ private fun PreviewLyricStaticColumn(
                 isPlaying = isPlaying,
                 words = emptyList(),
                 secondaryWords = emptyList(),
-                positionMs = 0L,
+                positionMs = if (isPlaying) positionMs else 0L,
                 playingColor = playingColor,
                 karaokeUnplayed = upcomingColor,
-                clockRunning = false,
+                clockRunning = isPlaying && clockRunning,
+                lineStartMs = if (isPlaying) lines[index].timeMs else 0L,
+                lineSpanMs = if (isPlaying) lyricLineSpanMs(lines, index, durationMs) else 0L,
             )
         }
     }
@@ -427,6 +440,8 @@ private fun PreviewLyricPairColumn(
     playingColor: Color,
     karaokeUnplayed: Color,
     clockRunning: Boolean,
+    lineStartMs: Long = 0L,
+    lineSpanMs: Long = 0L,
 ) {
     Column(
         Modifier.fillMaxWidth(),
@@ -441,6 +456,8 @@ private fun PreviewLyricPairColumn(
             playingColor = playingColor,
             karaokeUnplayed = karaokeUnplayed,
             clockRunning = clockRunning,
+            lineStartMs = lineStartMs,
+            lineSpanMs = lineSpanMs,
         )
         if (lower != null && lower.text.trim().isNotEmpty()) {
             PreviewLyricOneLine(
@@ -452,6 +469,8 @@ private fun PreviewLyricPairColumn(
                 playingColor = playingColor,
                 karaokeUnplayed = karaokeUnplayed,
                 clockRunning = clockRunning,
+                lineStartMs = lineStartMs,
+                lineSpanMs = lineSpanMs,
             )
         }
     }
@@ -467,29 +486,24 @@ private fun PreviewLyricOneLine(
     playingColor: Color,
     karaokeUnplayed: Color,
     clockRunning: Boolean,
+    lineStartMs: Long,
+    lineSpanMs: Long,
 ) {
     val text = line.text.trim()
-    if (words.isNotEmpty()) {
-        KaraokeLyricText(
-            words = words,
-            positionMs = positionMs,
-            playingColor = playingColor,
-            unplayedColor = karaokeUnplayed,
-            tracking = clockRunning,
-            style = style,
-            modifier = Modifier.fillMaxWidth(),
-            maxLines = if (isPlaying) 2 else 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    } else {
-        Text(
-            text = text,
-            style = style,
-            modifier = Modifier.fillMaxWidth(),
-            maxLines = if (isPlaying) 2 else 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
+    LongLyricText(
+        text = text,
+        style = style.copy(color = if (words.isNotEmpty()) playingColor else style.color),
+        modifier = Modifier.fillMaxWidth(),
+        maxLines = if (isPlaying) 2 else 1,
+        overflow = TextOverflow.Ellipsis,
+        words = words,
+        positionMs = positionMs,
+        unplayedColor = if (words.isNotEmpty()) karaokeUnplayed else null,
+        tracking = clockRunning,
+        lineActive = isPlaying,
+        lineStartMs = lineStartMs,
+        lineSpanMs = lineSpanMs,
+    )
 }
 
 private fun previewOrderedPair(

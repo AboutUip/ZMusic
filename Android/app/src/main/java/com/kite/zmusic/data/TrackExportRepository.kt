@@ -23,8 +23,6 @@ class TrackExportException(message: String) : Exception(message)
 internal object TrackExportLog {
     const val TAG = "ZMusicExport"
 
-    fun i(msg: String) = Log.i(TAG, msg)
-
     fun w(msg: String, error: Throwable? = null) {
         if (error != null) Log.w(TAG, msg, error) else Log.w(TAG, msg)
     }
@@ -101,17 +99,10 @@ class TrackExportRepository(
         if (track.id <= 0L) throw TrackExportException(t("无法下载这首歌"))
         val folder = folderName(track)
         val relative = "$ROOT/$folder/"
-        TrackExportLog.i(
-            "start id=${track.id} q=${options.quality.level} " +
-                "cover=${options.includeCover} lyrics=${options.includeLyrics} " +
-                "meta=${options.includeMetadata} folder=$folder",
-        )
         val audioUrl = resolveAudioUrl(track.id, cookie, options.quality)
             ?: throw TrackExportException(t("暂时没有可下载的音源"))
-        TrackExportLog.i("audio url ${urlBrief(audioUrl)}")
         val audioBytes = downloadBytes("audio", audioUrl, onAudioProgress)
             ?: throw TrackExportException(t("音频下载失败"))
-        TrackExportLog.i("audio bytes=${audioBytes.size}")
         clearFolder(relative)
         val (audioName, audioMime) = audioFileOf(audioBytes)
         writeFile(relative, audioName, audioMime, audioBytes)
@@ -143,7 +134,6 @@ class TrackExportRepository(
                     writeFile(relative, "lyrics.trans.lrc", MIME_LRC, lrc.toByteArray(Charsets.UTF_8))
                     transName = "lyrics.trans.lrc"
                 }
-                TrackExportLog.i("lyrics orig=${lyricName != null} trans=${transName != null}")
             }.onFailure {
                 if (it is CancellationException) throw it
                 TrackExportLog.w("lyrics failed id=${track.id}", it)
@@ -179,7 +169,6 @@ class TrackExportRepository(
             )
         }
         notifyLibraryChanged()
-        TrackExportLog.i("ok id=${track.id} folder=$folder")
         return folder
     }
 
@@ -330,11 +319,7 @@ class TrackExportRepository(
                         }
                     }
                 }
-                val bytes = out.toByteArray()
-                TrackExportLog.i(
-                    "$kind http ${resp.code} ${urlBrief(url)} bytes=${bytes.size}",
-                )
-                bytes
+                out.toByteArray()
             }
         }.onFailure {
             if (it is CancellationException) throw it
@@ -352,10 +337,6 @@ class TrackExportRepository(
         try {
             val existing = findExisting(relativeDir, displayName)
             val uri = existing ?: insertPending(relativeDir, displayName, mime)
-            TrackExportLog.i(
-                "write $displayName mime=$mime bytes=${bytes.size} " +
-                    "reuse=${existing != null} uri=$uri",
-            )
             resolver.openOutputStream(uri, "w")?.use { out ->
                 out.write(bytes)
                 out.flush()
@@ -364,8 +345,7 @@ class TrackExportRepository(
                 val done = ContentValues().apply {
                     put(MediaStore.Downloads.IS_PENDING, 0)
                 }
-                val updated = resolver.update(uri, done, null, null)
-                TrackExportLog.i("pending clear $displayName updated=$updated")
+                resolver.update(uri, done, null, null)
             }
         } catch (e: TrackExportException) {
             TrackExportLog.e("write throw $displayName", e)
@@ -395,8 +375,7 @@ class TrackExportRepository(
         val variants = relativePathVariants(relativeDir)
         val sel = variants.joinToString(" OR ") { "${MediaStore.Downloads.RELATIVE_PATH}=?" }
         runCatching {
-            val n = resolver.delete(MediaStore.Downloads.EXTERNAL_CONTENT_URI, sel, variants)
-            TrackExportLog.i("clear $relativeDir deleted=$n")
+            resolver.delete(MediaStore.Downloads.EXTERNAL_CONTENT_URI, sel, variants)
         }.onFailure {
             TrackExportLog.w("clear failed $relativeDir", it)
         }

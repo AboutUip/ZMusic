@@ -1,6 +1,5 @@
 package com.kite.zmusic.ui.main
 
-import android.util.Log
 import android.Manifest
 import android.content.pm.PackageManager
 import android.content.res.Configuration
@@ -31,6 +30,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -98,6 +101,11 @@ import com.kite.zmusic.ui.chrome.pagerPageKeepsOwnWallpaperLayer
 import com.kite.zmusic.ui.chrome.pagerPageShowsOwnWallpaper
 import com.kite.zmusic.ui.chrome.preloadWallpaperBitmap
 import com.kite.zmusic.ui.chrome.wallpaperSurface
+import com.kite.zmusic.ui.home.HomeRefreshBridge
+import com.kite.zmusic.ui.home.LocalHomeRefreshBridge
+import com.kite.zmusic.ui.home.LocalMainFloorLocked
+import com.kite.zmusic.ui.home.MainFloorLock
+import com.kite.zmusic.ui.home.MainLoftHost
 import com.kite.zmusic.ui.common.PredictiveBackAxis
 import com.kite.zmusic.ui.common.dismissSoftwareImeIfAwake
 import com.kite.zmusic.ui.common.hideSoftwareIme
@@ -111,7 +119,9 @@ import com.kite.zmusic.ui.catalog.PlaylistManageBridge
 import com.kite.zmusic.ui.library.SpaceDarkBarsProgress
 import com.kite.zmusic.ui.library.spaceChromeLeave
 import com.kite.zmusic.ui.mv.MvPlayerScreen
+import com.kite.zmusic.data.PlaybackChromeMode
 import com.kite.zmusic.ui.player.MiniPlayerBar
+import com.kite.zmusic.ui.player.PlaybackIsland
 import com.kite.zmusic.ui.player.NowPlayingScreen
 import com.kite.zmusic.ui.player.LocalPlayerExpand
 import com.kite.zmusic.ui.player.PlayerExpandFlightLayer
@@ -303,6 +313,7 @@ fun MainShell(
     val mvActive by remember(app.mvPlayback) {
         app.mvPlayback.ui.map { it.active }.distinctUntilChanged()
     }.collectAsStateWithLifecycle(app.mvPlayback.ui.value.active)
+    val playbackChrome by app.playbackChromeStore.mode.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val expand = remember {
         PlayerExpandState(scope, initiallyOpen = showFullPlayer)
@@ -424,6 +435,9 @@ fun MainShell(
         }
     }
 
+    fun islandExpandSource(): Boolean =
+        playbackChrome == PlaybackChromeMode.Island && !mvActive && playingTrackId > 0L
+
     fun openFullPlayer() {
         // 打开当下立刻收一次，避免展开动画期间键盘挡画面。
         dismissSoftwareImeIfAwake(
@@ -432,19 +446,22 @@ fun MainShell(
             hideComposeKeyboard = { keyboard?.hide() },
             clearComposeFocus = { focusManager.clearFocus(force = true) },
         )
-        captureDockForPlayer()
+        // 灵动岛的落点由岛自己钉住；这里再写成底栏公式会把展开起点拽回去。
+        if (!islandExpandSource()) captureDockForPlayer()
         showFullPlayer = true
         expand.open()
     }
 
     fun closeFullPlayer() {
-        if (dockRestBottomLandscape.value != landscape) {
-            rememberDockRestBottom(stableNavBarDp(navBarLive.value))
+        if (!islandExpandSource()) {
+            if (dockRestBottomLandscape.value != landscape) {
+                rememberDockRestBottom(stableNavBarDp(navBarLive.value))
+            }
+            expand.fallbackMiniBar = preferCloseMiniBar(
+                expand.fallbackMiniBar,
+                formulaMiniBarInShell(),
+            )
         }
-        expand.fallbackMiniBar = preferCloseMiniBar(
-            expand.fallbackMiniBar,
-            formulaMiniBarInShell(),
-        )
         showFullPlayer = false
         expand.close()
     }
@@ -632,7 +649,11 @@ fun MainShell(
         }
     }
 
+    val floorLock = remember { MainFloorLock() }
+    val homeRefresh = remember { HomeRefreshBridge() }
+
     fun goTo(dest: MainDestination) {
+        if (floorLock.locked) return
         val target = MainPagerDestinations.indexOf(dest)
         if (target < 0) return
         if (landscape) {
@@ -726,7 +747,7 @@ fun MainShell(
     }
 
     fun dragDockByTabs(deltaTabs: Float) {
-        if (deltaTabs == 0f) return
+        if (floorLock.locked || deltaTabs == 0f) return
         val info = pagerState.layoutInfo
         val stride = (info.pageSize + info.pageSpacing).toFloat()
         if (stride <= 0f) return
@@ -734,6 +755,7 @@ fun MainShell(
     }
 
     fun settleDockPager(velocityTabsPerSec: Float, startPage: Int) {
+        if (floorLock.locked) return
         val last = (pagerCount - 1).coerceAtLeast(0)
         val origin = startPage.coerceIn(0, last)
         val pos = (pagerState.currentPage + pagerState.currentPageOffsetFraction)
@@ -786,7 +808,10 @@ fun MainShell(
             overlay is MainOverlay.CachedSongs ||
             overlay is MainOverlay.CloudDisk) &&
         !playerHeld
-    val showMini = (mvActive || playingTrackId > 0L) && !showManage
+    val islandMusic = playbackChrome == PlaybackChromeMode.Island &&
+        !mvActive &&
+        playingTrackId > 0L
+    val showMini = (mvActive || playingTrackId > 0L) && !islandMusic && !showManage
     LaunchedEffect(overlay) {
         if (overlay !is MainOverlay.Playlist &&
             overlay !is MainOverlay.CachedSongs &&
@@ -823,20 +848,6 @@ fun MainShell(
         ),
         landscape,
     )
-    LaunchedEffect(
-        currentDest,
-        overlay,
-        wallpaperFrame?.imagePath,
-        wallpaperFrame?.offsetX,
-        wallpaperFrame?.scale,
-    ) {
-        Log.i(
-            "ZMusicWallpaper",
-            "shell dest=$currentDest overlay=${overlay?.javaClass?.simpleName} " +
-                "painted=${wallpaperFrame != null} path=${wallpaperFrame?.imagePath.orEmpty()} " +
-                "ox=${wallpaperFrame?.offsetX} scale=${wallpaperFrame?.scale}",
-        )
-    }
     LaunchedEffect(wallpaper, landscape) {
         MainPagerDestinations.forEach { dest ->
             val path = wallpaper.frame(dest.wallpaperSurface(), landscape)?.imagePath
@@ -876,9 +887,11 @@ fun MainShell(
         }
         if (!freezeChromePad) {
             dockInsetHold.value = liveChromeInset
-            val resting = formulaMiniBarInShell()
-            if (resting.isAnchorValid()) {
-                expand.fallbackMiniBar = resting
+            if (!islandMusic) {
+                val resting = formulaMiniBarInShell()
+                if (resting.isAnchorValid()) {
+                    expand.fallbackMiniBar = resting
+                }
             }
         }
     }
@@ -976,6 +989,24 @@ fun MainShell(
                     ChromeWallpaperLayer(frame = wallpaperFrame)
                 }
             }
+        val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+        val loftIndicatorTop = if (landscape) {
+            statusTop
+        } else {
+            statusTop + MainContentPadTop + MainPageHeaderHeight
+        }
+        CompositionLocalProvider(LocalHomeRefreshBridge provides homeRefresh) {
+        MainLoftHost(
+            refreshing = homeRefresh.refreshing,
+            onRefresh = { homeRefresh.refresh() },
+            armed = currentDest == MainDestination.Home &&
+                overlay == null &&
+                !playerHeld &&
+                !mvActive,
+            indicatorInset = loftIndicatorTop,
+            floorLock = floorLock,
+            modifier = Modifier.fillMaxSize(),
+        ) {
         Row(Modifier.fillMaxSize()) {
             if (landscape) {
                 val spaceT = spaceChromeLeave(userSpaceProgress)
@@ -1080,7 +1111,8 @@ fun MainShell(
                         .fillMaxSize()
                         .chromePage(),
                     beyondViewportPageCount = 1,
-                    userScrollEnabled = !playerHeld && !overlayOpen && !spaceOpen,
+                    userScrollEnabled = !playerHeld && !overlayOpen && !spaceOpen &&
+                        !LocalMainFloorLocked.current,
                 ) { page ->
                     if (showProbeTab && page == probePageIndex) {
                         PagerDestinationPane(
@@ -1142,6 +1174,37 @@ fun MainShell(
         CompositionLocalProvider(
             LocalChromeHaze provides dockHaze,
         ) {
+        if (islandMusic) {
+            val music by remember(playback) {
+                playback.ui.map { it.currentTrack to it.playWhenReady }.distinctUntilChanged()
+            }.collectAsStateWithLifecycle(
+                playback.ui.value.currentTrack to playback.ui.value.playWhenReady,
+            )
+            val track = music.first
+            if (track != null) {
+                val leave = spaceChromeLeave(userSpaceProgress)
+                PlaybackIsland(
+                    track = track,
+                    isPlaying = music.second,
+                    landscape = landscape,
+                    handoffNotices = leave < 0.2f,
+                    onOpen = { openFullPlayer() },
+                    onTogglePlay = { playback.togglePlayPause() },
+                    backdrop = backdrop,
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .zIndex(45f)
+                        .windowInsetsPadding(
+                            WindowInsets.statusBars.union(WindowInsets.displayCutout),
+                        )
+                        .padding(top = if (landscape) 8.dp else 6.dp)
+                        .graphicsLayer {
+                            alpha = (1f - leave).coerceIn(0f, 1f)
+                            translationY = leave * -28f
+                        },
+                )
+            }
+        }
         Column(
             Modifier
                 .align(Alignment.BottomCenter)
@@ -1277,6 +1340,8 @@ fun MainShell(
         }
         } // weight 内容格
         } // 横竖 Row
+        } // 二楼
+        } // 首页刷新桥
         } // 整屏 backdrop / 壁纸采样
         } // 壁纸 CompositionLocal
 
@@ -1546,15 +1611,6 @@ private fun PagerDestinationPane(
         pageIndex = MainPagerDestinations.indexOf(destination),
         currentPage = MainPagerDestinations.indexOf(currentDestination),
     )
-    LaunchedEffect(destination, currentDestination, showOwn, pageFrame?.imagePath) {
-        if (pageFrame != null && pagerPageKeepsOwnWallpaperLayer()) {
-            Log.i(
-                "ZMusicWallpaper",
-                "page-layer dest=$destination current=$currentDestination " +
-                    "showOwn=$showOwn path=${pageFrame.imagePath}",
-            )
-        }
-    }
     CompositionLocalProvider(
         LocalChromeWallpaperPainted provides (pageFrame != null),
         LocalChromeWallpaperFrame provides pageFrame,

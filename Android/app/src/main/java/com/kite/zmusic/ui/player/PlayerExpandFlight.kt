@@ -333,7 +333,10 @@ internal fun PlayerExpandFlightProgress(
 ) {
     if (!expand.mounted) return
     val look = rememberFlightLook(expand)
-    val mini = expand.toShell(expand.miniProgress)
+    val mini = flightProgressSource(
+        expand.toShell(expand.miniBar),
+        expand.toShell(expand.miniProgress),
+    )
     if (!mini.isProgressAnchorValid()) return
     val density = LocalDensity.current
     val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE

@@ -86,9 +86,9 @@ class RegisterViewModel(
             busy = true
             bannerError = null
             try {
-                NcmLog.i("register exist phone=${NcmLog.maskPhone(p)}")
+                
                 val existJson = api.cellphoneExistenceCheck(p)
-                NcmLog.i("register exist ${NcmLog.summarize(existJson)} body=${NcmLog.json(existJson)}")
+                
                 when (NcmJson.phoneAlreadyRegistered(existJson)) {
                     true -> {
                         bannerError = t("该手机号已注册，请返回登录")
@@ -131,9 +131,9 @@ class RegisterViewModel(
             busy = true
             bannerError = null
             try {
-                NcmLog.i("register verify phone=${NcmLog.maskPhone(p)} captchaLen=${code.length}")
+                
                 val j = api.captchaVerify(p, code)
-                NcmLog.i("register verify ${NcmLog.summarize(j)} body=${NcmLog.json(j)}")
+                
                 val codeNum = NcmJson.apiCode(j)
                 if (codeNum == 200) {
                     onOk()
@@ -186,10 +186,7 @@ class RegisterViewModel(
             busy = true
             bannerError = null
             try {
-                NcmLog.i(
-                    "register phone=${NcmLog.maskPhone(p)} captchaLen=${code.length} " +
-                        "nickLen=${nick.length}",
-                )
+                
                 val md5 = Md5Util.md5Hex(pwd)
                 val j = api.registerCellphone(
                     phone = p,
@@ -197,9 +194,9 @@ class RegisterViewModel(
                     password = md5,
                     nickname = nick,
                 )
-                NcmLog.i("register resp ${NcmLog.summarize(j)} body=${NcmLog.json(j)}")
+                
                 if (offerQrFallback(j)) {
-                    NcmLog.i("register -> qr")
+                    
                     return@launch
                 }
                 if (NcmJson.apiCode(j) != 200) {
@@ -209,7 +206,7 @@ class RegisterViewModel(
                 }
                 val cookie = NcmJson.extractCookie(j)
                 if (!cookie.isNullOrEmpty()) {
-                    NcmLog.i("register ok cookieNames=${NcmLog.cookieNames(cookie)}")
+                    
                     sessionRepository.persist(cookie, NcmJson.displayLabelFromLogin(j) ?: nick)
                     onLoggedIn()
                     return@launch
@@ -231,11 +228,11 @@ class RegisterViewModel(
         bannerError = null
         var sentOk = false
         try {
-            NcmLog.i("register captchaSent phone=${NcmLog.maskPhone(phone)}")
+            
             val j = api.captchaSent(phone)
-            NcmLog.i("register captchaSent ${NcmLog.summarize(j)} body=${NcmLog.json(j)}")
+            
             if (offerQrFallback(j)) {
-                NcmLog.i("register captchaSent -> qr")
+                
                 return
             }
             if (NcmJson.apiCode(j) != 200) {

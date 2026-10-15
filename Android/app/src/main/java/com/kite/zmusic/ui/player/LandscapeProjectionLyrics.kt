@@ -146,6 +146,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kite.zmusic.ZMusicApplication
+import com.kite.zmusic.data.LongLyricRender
 import com.kite.zmusic.data.LrcLine
 import com.kite.zmusic.data.LrcParser
 import com.kite.zmusic.data.LyricRoleStyle
@@ -1352,6 +1353,7 @@ internal fun LandscapeCenterLyricLine(
             text = primary?.text.orEmpty(),
             animMs = animMs,
             lineSpanMs = span,
+            lineStartMs = primary?.timeMs ?: 0L,
             fillWidth = fillWidth,
             maxLines = if (st > 0.5f) 2 else if (secondary != null) 3 else 6,
             overflow = if (st > 0.5f) TextOverflow.Ellipsis else TextOverflow.Clip,
@@ -1485,6 +1487,8 @@ private fun LandscapeDualPlainText(
     overflow: TextOverflow,
     modifier: Modifier = Modifier,
 ) {
+    val singleLine = rememberLongLyricRender() == LongLyricRender.Horizontal
+    val lineLimit = if (singleLine) 1 else maxLines
     val primary = TextStyle(
         color = color,
         fontFamily = FontFamily.SansSerif,
@@ -1499,9 +1503,9 @@ private fun LandscapeDualPlainText(
         Text(
             text = upper,
             style = primary,
-            maxLines = maxLines,
-            softWrap = true,
-            overflow = overflow,
+            maxLines = lineLimit,
+            softWrap = !singleLine,
+            overflow = if (singleLine) TextOverflow.Ellipsis else overflow,
             textAlign = TextAlign.Center,
             modifier = modifier,
         )
@@ -1515,9 +1519,9 @@ private fun LandscapeDualPlainText(
         Text(
             text = upper,
             style = primary,
-            maxLines = maxLines,
-            softWrap = true,
-            overflow = overflow,
+            maxLines = lineLimit,
+            softWrap = !singleLine,
+            overflow = if (singleLine) TextOverflow.Ellipsis else overflow,
             textAlign = TextAlign.Center,
             modifier = Modifier.fillMaxWidth(),
         )
@@ -1528,9 +1532,9 @@ private fun LandscapeDualPlainText(
                 lineHeight = (lineHeightSp * 0.88f).sp,
                 fontWeight = FontWeight.Medium,
             ),
-            maxLines = maxLines,
-            softWrap = true,
-            overflow = overflow,
+            maxLines = lineLimit,
+            softWrap = !singleLine,
+            overflow = if (singleLine) TextOverflow.Ellipsis else overflow,
             textAlign = TextAlign.Center,
             modifier = Modifier.fillMaxWidth(),
         )

@@ -736,13 +736,9 @@ class PluginEngine(
             PluginLog.w(true, "内置探针缺失")
             return
         }
-        when (val result = installLocked(zpp, replaceExisting = true, enable = true, clearQuarantine = true)) {
-            is PluginRegisterResult.Installed ->
-                PluginLog.d(true, "内置探针已注册 ${result.record.id}")
-            is PluginRegisterResult.Replaced ->
-                PluginLog.d(true, "内置探针已覆盖 ${result.record.id}")
-            is PluginRegisterResult.Skipped ->
-                PluginLog.w(true, "内置探针跳过: ${result.reason}")
+        val result = installLocked(zpp, replaceExisting = true, enable = true, clearQuarantine = true)
+        if (result is PluginRegisterResult.Skipped) {
+            PluginLog.w(true, "内置探针跳过: ${result.reason}")
         }
     }
 
@@ -750,29 +746,17 @@ class PluginEngine(
         val dir = debugDropDir ?: return
         dir.mkdirs()
         val packages = PluginDebugDrop.listPackages(dir)
-        if (packages.isEmpty()) {
-            PluginLog.d(true, "调试投放目录为空: ${dir.absolutePath}")
-            return
-        }
-        PluginLog.d(true, "调试投放 ${packages.size} 个 .zpp: ${dir.absolutePath}")
+        if (packages.isEmpty()) return
         for (zpp in packages) {
-            if (ZppUnpacker.peekId(zpp) == PluginDebugProbe.ID) {
-                PluginLog.d(true, "投放忽略内置探针 ${zpp.name}，以 APK 为准")
-                continue
-            }
+            if (ZppUnpacker.peekId(zpp) == PluginDebugProbe.ID) continue
             val result = installLocked(
                 zpp = zpp,
                 replaceExisting = true,
                 enable = true,
                 clearQuarantine = true,
             )
-            when (result) {
-                is PluginRegisterResult.Installed ->
-                    PluginLog.d(true, "投放已注册 ${result.record.id}")
-                is PluginRegisterResult.Replaced ->
-                    PluginLog.d(true, "投放已覆盖 ${result.record.id}")
-                is PluginRegisterResult.Skipped ->
-                    PluginLog.w(true, "投放跳过 ${zpp.name}: ${result.reason}")
+            if (result is PluginRegisterResult.Skipped) {
+                PluginLog.w(true, "投放跳过 ${zpp.name}: ${result.reason}")
             }
         }
     }

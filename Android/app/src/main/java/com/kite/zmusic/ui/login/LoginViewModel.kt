@@ -67,7 +67,7 @@ class LoginViewModel(
         qrHint = ""
         qrLoginUrl = ""
         qrImageBase64 = null
-        NcmLog.i("login fallback -> qr")
+        
         loadQrSession()
     }
 
@@ -185,12 +185,12 @@ class LoginViewModel(
             bannerError = null
             var sentOk = false
             try {
-                NcmLog.i("captchaSent phone=${NcmLog.maskPhone(phone)}")
+                
                 if (!ensurePhoneRegistered()) return@launch
                 val j = api.captchaSent(phone.trim())
-                NcmLog.i("captchaSent resp ${NcmLog.summarize(j)} body=${NcmLog.json(j)}")
+                
                 if (offerQrFallback(j)) {
-                    NcmLog.i("captchaSent -> qr")
+                    
                     return@launch
                 }
                 if (NcmJson.apiCode(j) != 200) {
@@ -229,15 +229,15 @@ class LoginViewModel(
             busy = true
             bannerError = null
             try {
-                NcmLog.i("loginSms phone=${NcmLog.maskPhone(phone)} captchaLen=${captcha.trim().length}")
+                
                 if (!ensurePhoneRegistered()) return@launch
                 val j = api.loginCellphone(
                     phone.trim(),
                     captcha = captcha.trim(),
                 )
-                NcmLog.i("loginSms resp ${NcmLog.summarize(j)} body=${NcmLog.json(j)}")
+                
                 if (offerQrFallback(j)) {
-                    NcmLog.i("loginSms -> qr")
+                    
                     return@launch
                 }
                 if (consumeLoginSuccess(j)) onDone()
@@ -260,13 +260,13 @@ class LoginViewModel(
             busy = true
             bannerError = null
             try {
-                NcmLog.i("loginPwd phone=${NcmLog.maskPhone(phone)}")
+                
                 if (!ensurePhoneRegistered()) return@launch
                 val md5 = Md5Util.md5Hex(password)
                 val j = api.loginCellphone(phone.trim(), md5Password = md5)
-                NcmLog.i("loginPwd resp ${NcmLog.summarize(j)} body=${NcmLog.json(j)}")
+                
                 if (offerQrFallback(j)) {
-                    NcmLog.i("loginPwd -> qr")
+                    
                     return@launch
                 }
                 if (consumeLoginSuccess(j)) onDone()
@@ -289,12 +289,12 @@ class LoginViewModel(
             busy = true
             bannerError = null
             try {
-                NcmLog.i("loginEmail")
+                
                 val md5 = Md5Util.md5Hex(emailPassword)
                 val j = api.loginEmail(email.trim(), md5Password = md5)
-                NcmLog.i("loginEmail resp ${NcmLog.summarize(j)} body=${NcmLog.json(j)}")
+                
                 if (offerQrFallback(j)) {
-                    NcmLog.i("loginEmail -> qr")
+                    
                     return@launch
                 }
                 if (consumeLoginSuccess(j)) onDone()
@@ -320,7 +320,7 @@ class LoginViewModel(
             NcmLog.w("login 200 but no cookie ${NcmLog.summarize(j)}")
             return false
         }
-        NcmLog.i("login ok cookieNames=${NcmLog.cookieNames(cookie)} label=${NcmJson.displayLabelFromLogin(j)}")
+        
         sessionRepository.persist(cookie, NcmJson.displayLabelFromLogin(j))
         qrRescue = false
         return true
@@ -334,7 +334,7 @@ class LoginViewModel(
 
     private suspend fun ensurePhoneRegistered(): Boolean {
         val existJson = api.cellphoneExistenceCheck(phone.trim())
-        NcmLog.i("exist ${NcmLog.summarize(existJson)} body=${NcmLog.json(existJson)}")
+        
         return when (NcmJson.phoneAlreadyRegistered(existJson)) {
             true -> true
             false -> {

@@ -1292,13 +1292,11 @@ class PlaylistCoordinator(
                     val url = resolvePlayUrl(t, cookie, notifyUnlock = false)
                     if (url.isNullOrBlank()) {
                         if (!context.isNetworkOnline()) continue
-                        Log.d(TAG, "prefetch url miss → unplayable id=${t.id}")
                         markUnplayable(t.id)
                         clearPreparedIfTrack(t.id)
                         marked = true
                     } else {
                         urlCache[t.id] = CachedUrl(url, System.currentTimeMillis())
-                        Log.d(TAG, "prefetched url id=${t.id}")
                     }
                 }
                 if (!marked) break
@@ -1874,20 +1872,12 @@ class PlaylistCoordinator(
         if (track.id <= 0L) return null
         if (!context.isNetworkOnline()) return null
         if (platformStore.current == MusicPlatform.QISHUI) {
-            Log.i("ZMusicSource", "qishui play id=${track.id} name=${track.name}")
             return runCatching { qishui.playUrl(track.id) }
                 .onFailure { Log.e("ZMusicSource", "qishui play failed id=${track.id}", it) }
                 .getOrNull()
-                .also { Log.i("ZMusicSource", "qishui result id=${track.id} empty=${it.isNullOrBlank()}") }
         }
         if (platformStore.current != MusicPlatform.NETEASE) {
-            Log.i(
-                "ZMusicSource",
-                "open play platform=${platformStore.current.id} id=${track.id} name=${track.name}",
-            )
-            val url = customPlaySource.musicUrl(platformStore.current, track, audioQualityStore.current())
-            Log.i("ZMusicSource", "open result id=${track.id} empty=${url.isNullOrBlank()}")
-            return url
+            return customPlaySource.musicUrl(platformStore.current, track, audioQualityStore.current())
         }
         val official = runCatching {
             PlayUrlResolver.resolve(

@@ -7,7 +7,6 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.util.Log
 import com.kite.zmusic.data.TrackRow
 import com.kite.zmusic.i18n.t
 
@@ -20,7 +19,6 @@ internal enum class NcmShareTarget {
 }
 
 internal object NcmShare {
-    private const val TAG = "ZMusicShare"
     private const val PKG_WECHAT = "com.tencent.mm"
     private const val PKG_QQ = "com.tencent.mobileqq"
 
@@ -74,7 +72,6 @@ internal object NcmShare {
             )
             NcmShareTarget.CopyLink, NcmShareTarget.SaveToAlbum -> false
         }
-        Log.i(TAG, "sendImage target=$target launched=$launched")
         if (launched) return NcmShareResult.Opened
         return when (target) {
             NcmShareTarget.WeChatFriend, NcmShareTarget.WeChatMoments ->

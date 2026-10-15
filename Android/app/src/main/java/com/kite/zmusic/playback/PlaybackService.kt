@@ -6,7 +6,6 @@ import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
-import android.util.Log
 import androidx.annotation.OptIn
 import androidx.media3.common.Player
 import androidx.media3.common.util.BitmapLoader
@@ -54,7 +53,6 @@ class PlaybackService : MediaSessionService() {
 
     override fun onCreate() {
         super.onCreate()
-        Log.i(TAG, "onCreate")
         val app = application as ZMusicApplication
         val bridge = app.playbackBridge
 
@@ -156,7 +154,6 @@ class PlaybackService : MediaSessionService() {
     }
 
     override fun onDestroy() {
-        Log.i(TAG, "onDestroy")
         val app = application as ZMusicApplication
         val coord = coordinator
         if (coord != null) {
@@ -418,7 +415,6 @@ class PlaybackService : MediaSessionService() {
     }
 
     companion object {
-        private const val TAG = "PlaybackService"
         private const val CHANNEL_ID = "zmusic_playback"
         const val ACTION_CYCLE_PLAYBACK_MODE = "com.kite.zmusic.CYCLE_PLAYBACK_MODE"
         const val ACTION_TOGGLE_LYRICS_OVERLAY = "com.kite.zmusic.TOGGLE_LYRICS_OVERLAY"

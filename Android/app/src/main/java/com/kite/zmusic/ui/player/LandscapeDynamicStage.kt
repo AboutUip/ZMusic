@@ -65,6 +65,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -77,12 +78,15 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.kite.zmusic.R
 import com.kite.zmusic.data.LrcLine
+import com.kite.zmusic.data.LyricRoleStyle
+import com.kite.zmusic.data.PlayerBackgroundPreset
 import com.kite.zmusic.data.PlayerDisplayPrefs
 import com.kite.zmusic.data.TrackRow
 import com.kite.zmusic.i18n.t
 import com.kite.zmusic.ui.common.UrlImage
 import com.kite.zmusic.ui.icons.ZIcons
 import kotlin.math.abs
+import kotlin.math.asin
 import kotlin.math.ceil
 import kotlin.math.cos
 import kotlin.math.floor
@@ -93,9 +97,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private val DynamicInk = Color(0xFF1C1C1E)
-private val DynamicPlayingInk = Color(0xFF1B2428)
-private val DynamicBrowseInk = Color(0xFF5A6570)
-private val DynamicMuted = Color(0xFF6E6E6E)
 private val DynamicMeta = Color(0xFF8A8A8A)
 private val CoverFrame = Color.White
 private val CoverShape = RoundedCornerShape(8.dp)
@@ -152,6 +153,15 @@ internal fun LandscapeDynamicStage(
     transportReserve: Dp = 0.dp,
     /** 方封与歌名整列水平偏移（dp），负左正右。 */
     coverOffsetXDp: Float = 0f,
+    /** 封面外层白框磨砂。1 为实心白框，0 为透出虚化封面。 */
+    coverGlass: Float = 1f,
+    /** 右侧歌词水平偏移（dp），负左正右。 */
+    lyricOffsetXDp: Float = 0f,
+    lyricPlayingStyle: LyricRoleStyle = LyricRoleStyle.DynamicPlayingDefault,
+    lyricPlayedStyle: LyricRoleStyle = LyricRoleStyle.DynamicPlayedDefault,
+    lyricUnplayedStyle: LyricRoleStyle = LyricRoleStyle.DynamicUnplayedDefault,
+    customBg: PlayerBackgroundPreset? = null,
+    customBgProgress: Float = 0f,
     modifier: Modifier = Modifier,
 ) {
     val density = LocalDensity.current
@@ -179,6 +189,8 @@ internal fun LandscapeDynamicStage(
         val coverEnterX = with(density) { (cover + leftPad + 12.dp).toPx() }
 
         LandscapeDynamicStageBack(
+            customBg = customBg,
+            customBgProgress = customBgProgress,
             modifier = Modifier.fillMaxSize(),
         )
 
@@ -198,6 +210,7 @@ internal fun LandscapeDynamicStage(
                 track = track,
                 peekNext = peekNext,
                 peekPrev = peekPrev,
+                glass = coverGlass,
                 size = cover,
                 exitXPx = coverExitX,
                 exitYPx = coverExitY,
@@ -249,6 +262,7 @@ internal fun LandscapeDynamicStage(
         Box(
             Modifier
                 .align(Alignment.CenterEnd)
+                .offset(x = lyricOffsetXDp.dp)
                 .fillMaxHeight()
                 .fillMaxWidth(LyricColWidthFrac)
                 .padding(
@@ -268,6 +282,9 @@ internal fun LandscapeDynamicStage(
                 onSeek = onSeek,
                 stageWidthPx = stageWidthPx.toFloat(),
                 lyricsLeftPx = lyricsLeftPx,
+                playingStyle = lyricPlayingStyle,
+                playedStyle = lyricPlayedStyle,
+                unplayedStyle = lyricUnplayedStyle,
                 modifier = Modifier.fillMaxSize(),
             )
         }
@@ -277,6 +294,8 @@ internal fun LandscapeDynamicStage(
 
 @Composable
 private fun LandscapeDynamicStageBack(
+    customBg: PlayerBackgroundPreset?,
+    customBgProgress: Float,
     modifier: Modifier = Modifier,
 ) {
     val expand = LocalPlayerExpand.current
@@ -285,14 +304,24 @@ private fun LandscapeDynamicStageBack(
         expand.pastHandoff -> 1f
         else -> expand.visualProgress.coerceIn(0f, 1f)
     }
-    Image(
-        painter = painterResource(R.drawable.img_dynamic_stage_back),
-        contentDescription = null,
-        contentScale = ContentScale.Crop,
-        modifier = modifier
-            .fillMaxSize()
-            .graphicsLayer { alpha = backAlpha },
-    )
+    val customT = customBgProgress.coerceIn(0f, 1f)
+    Box(modifier.fillMaxSize()) {
+        Image(
+            painter = painterResource(R.drawable.img_dynamic_stage_back),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer { alpha = backAlpha * (1f - customT) },
+        )
+        if (customBg != null && customT > 0.001f) {
+            PlayerCustomBackgroundLayer(
+                preset = customBg,
+                progress = backAlpha * customT,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+    }
 }
 
 private class ExitingDynamicCover(
@@ -311,6 +340,7 @@ private fun LandscapeDynamicSquareCover(
     track: TrackRow,
     peekNext: TrackRow?,
     peekPrev: TrackRow?,
+    glass: Float,
     size: Dp,
     exitXPx: Float,
     exitYPx: Float,
@@ -348,7 +378,14 @@ private fun LandscapeDynamicSquareCover(
     val onPrevRef = rememberUpdatedState(onSkipPrev)
     val gesturesRef = rememberUpdatedState(gesturesEnabled)
 
-    fun arcTOf(x: Float): Float = ((-x) / exitX).coerceIn(0f, 1f)
+    fun arcTOf(x: Float): Float {
+        // 角度参数若跟手指线性走，水平位移开头约是手指的 1.57 倍。
+        // 反解成水平位移等于手指位移，弧线形状保留，拖动时封面跟手。
+        val travel = ((-x) / exitX).coerceIn(0f, 1f)
+        if (travel <= 0f) return 0f
+        val angle = asin(travel)
+        return (angle / (Math.PI.toFloat() / 2f)).coerceIn(0f, 1f)
+    }
 
     fun spawnExit(outgoing: TrackRow, fromT: Float) {
         exitSeq += 1L
@@ -626,6 +663,7 @@ private fun LandscapeDynamicSquareCover(
             if (showUnder) {
                 DynamicCoverFace(
                     track = underTrack,
+                    glass = glass,
                     modifier = Modifier
                         .fillMaxSize()
                         .zIndex(0f)
@@ -646,6 +684,7 @@ private fun LandscapeDynamicSquareCover(
                 val at = coverExitArc(t, exitX, exitY)
                 DynamicCoverFace(
                     track = layer.track,
+                    glass = glass,
                     modifier = Modifier
                         .fillMaxSize()
                         .zIndex(2f)
@@ -657,6 +696,7 @@ private fun LandscapeDynamicSquareCover(
             }
             DynamicCoverFace(
                 track = topTrack,
+                glass = glass,
                 modifier = Modifier
                     .fillMaxSize()
                     .zIndex(1f)
@@ -734,8 +774,11 @@ private fun LandscapeDynamicSquareCover(
 @Composable
 private fun DynamicCoverFace(
     track: TrackRow,
+    glass: Float,
     modifier: Modifier = Modifier,
 ) {
+    val frost = glass.coerceIn(0f, 1f)
+    val sheen = 0.32f * frost
     Box(
         modifier
             .playerExpandHideFull()
@@ -745,13 +788,25 @@ private fun DynamicCoverFace(
                 ambientColor = Color.Black.copy(alpha = 0.18f),
                 spotColor = Color.Black.copy(alpha = 0.12f),
             )
-            .background(CoverFrame, CoverShape)
             .clip(CoverShape)
-            .padding(5.dp),
+            .background(CoverFrame.copy(alpha = frost)),
     ) {
+        if (frost < 0.98f && Build.VERSION.SDK_INT >= 31) {
+            UrlImage(
+                url = track.coverUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                showPlaceholder = false,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { alpha = 1f - frost }
+                    .blur((18f * (1f - frost)).dp, BlurredEdgeTreatment.Unbounded),
+            )
+        }
         Box(
             Modifier
                 .fillMaxSize()
+                .padding(5.dp)
                 .clip(CoverInnerShape),
         ) {
             UrlImage(
@@ -766,10 +821,10 @@ private fun DynamicCoverFace(
                     .matchParentSize()
                     .background(
                         Brush.verticalGradient(
-                            0.00f to Color.White.copy(alpha = 0.32f),
+                            0.00f to Color.White.copy(alpha = sheen),
                             0.11f to Color.Transparent,
                             0.89f to Color.Transparent,
-                            1.00f to Color.White.copy(alpha = 0.32f),
+                            1.00f to Color.White.copy(alpha = sheen),
                         ),
                     ),
             )
@@ -778,10 +833,10 @@ private fun DynamicCoverFace(
                     .matchParentSize()
                     .background(
                         Brush.horizontalGradient(
-                            0.00f to Color.White.copy(alpha = 0.32f),
+                            0.00f to Color.White.copy(alpha = sheen),
                             0.11f to Color.Transparent,
                             0.89f to Color.Transparent,
-                            1.00f to Color.White.copy(alpha = 0.32f),
+                            1.00f to Color.White.copy(alpha = sheen),
                         ),
                     ),
             )
@@ -861,12 +916,20 @@ private fun LandscapeDynamicLyricsFan(
     onSeek: (Long) -> Unit,
     stageWidthPx: Float,
     lyricsLeftPx: Float,
+    playingStyle: LyricRoleStyle,
+    playedStyle: LyricRoleStyle,
+    unplayedStyle: LyricRoleStyle,
     modifier: Modifier = Modifier,
 ) {
     val density = LocalDensity.current
     val scope = rememberCoroutineScope()
     val textMeasurer = rememberTextMeasurer()
-    val maxLyricWidthPx = remember(lines, textMeasurer) {
+    val lyricScale = maxOf(
+        playingStyle.sanitizedFontScale(),
+        playedStyle.sanitizedFontScale(),
+        unplayedStyle.sanitizedFontScale(),
+    )
+    val maxLyricWidthPx = remember(lines, textMeasurer, lyricScale) {
         var maxW = 0
         for (line in lines) {
             val text = line.text
@@ -879,7 +942,7 @@ private fun LandscapeDynamicLyricsFan(
             ).size.width
             if (w > maxW) maxW = w
         }
-        maxW
+        maxW * lyricScale
     }
     val animActive = lyricAnimActiveIndex(lines, positionMs, durationMs)
     val targetIndex = lyricFocusIndex(lines, animActive).let { if (it < 0) 0 else it }
@@ -1123,6 +1186,17 @@ private fun LandscapeDynamicLyricsFan(
                         density = density.density,
                         isPlayingLine = i == targetIndex,
                         isBrowseCenter = browsingNow && i == preselect && i != targetIndex,
+                        style = when {
+                            i == targetIndex || (browsingNow && i == preselect) -> playingStyle
+                            i < targetIndex -> playedStyle
+                            else -> unplayedStyle
+                        },
+                        builtinArgb = when {
+                            i == targetIndex || (browsingNow && i == preselect) ->
+                                LyricRoleStyle.DynamicPlayingDefault.preset0Argb
+                            i < targetIndex -> LyricRoleStyle.DynamicPlayedDefault.preset0Argb
+                            else -> LyricRoleStyle.DynamicUnplayedDefault.preset0Argb
+                        },
                     )
                 }
             }
@@ -1150,6 +1224,8 @@ private fun LandscapeDynamicFanLine(
     density: Float,
     isPlayingLine: Boolean = false,
     isBrowseCenter: Boolean = false,
+    style: LyricRoleStyle = LyricRoleStyle.DynamicUnplayedDefault,
+    builtinArgb: Int = LyricRoleStyle.DynamicUnplayedDefault.preset0Argb,
     modifier: Modifier = Modifier,
 ) {
     val absD = abs(offset)
@@ -1163,16 +1239,10 @@ private fun LandscapeDynamicFanLine(
         dynamicFanAlpha(absD)
     }
     val focused = absD < 0.42f || isBrowseCenter
-    val ink = when {
-        isPlayingLine -> DynamicPlayingInk
-        isBrowseCenter -> DynamicBrowseInk
-        else -> DynamicInk
-    }
-    val weight = when {
-        isPlayingLine -> FontWeight.Bold
-        isBrowseCenter -> FontWeight.SemiBold
-        else -> FontWeight.Normal
-    }
+    val ink = style.resolvedColor(builtinArgb)
+    val weight = if (style.bold) FontWeight.Bold else FontWeight.Normal
+    val fontStyle = if (style.italic) FontStyle.Italic else FontStyle.Normal
+    val fontSize = 21.sp * style.sanitizedFontScale()
     val stageBlur = blurDp > 0.dp && Build.VERSION.SDK_INT >= 31
     // 模糊半径约 3 倍才落到全透明；先垫出透明边，晕开才能渗进歌词周围，而不是切在字形上。
     val bleed = if (stageBlur) blurDp * 3f else 0.dp
@@ -1223,9 +1293,10 @@ private fun LandscapeDynamicFanLine(
                 text = text,
                 style = TextStyle(
                     color = ink,
-                    fontSize = 21.sp,
+                    fontSize = fontSize,
                     fontWeight = weight,
-                    lineHeight = 28.sp,
+                    fontStyle = fontStyle,
+                    lineHeight = 28.sp * style.sanitizedFontScale(),
                     letterSpacing = 0.12.sp,
                 ),
                 maxLines = 2,
@@ -1238,10 +1309,11 @@ private fun LandscapeDynamicFanLine(
                 Text(
                     text = companion,
                     style = TextStyle(
-                        color = DynamicMuted,
-                        fontSize = 16.sp,
+                        color = ink.copy(alpha = 0.62f),
+                        fontSize = 16.sp * style.sanitizedFontScale(),
                         fontWeight = FontWeight.Normal,
-                        lineHeight = 22.sp,
+                        fontStyle = fontStyle,
+                        lineHeight = 22.sp * style.sanitizedFontScale(),
                     ),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,

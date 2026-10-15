@@ -436,6 +436,8 @@ internal fun NowPlayingScreenLayers(
                     onDisplayPrefsChange = onDisplayPrefsChange,
                     onDisplayPrefsFlush = onDisplayPrefsFlush,
                     settingsHazeState = settingsHazeState,
+                    landscapeCustomBg = landscapeCustomBg,
+                    landscapeCustomBgProgress = landscapeCustomBgProgress,
                     playerLiquidBackdrop = if (needPlayerLiquid) playerContentBackdrop else null,
                     peekNextTrack = state.peekNextTrack,
                     peekPrevTrack = state.peekPrevTrack,

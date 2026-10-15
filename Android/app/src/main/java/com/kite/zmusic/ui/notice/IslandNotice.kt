@@ -21,6 +21,18 @@ data class IslandNotice(
     val coverUrl: String? = null,
 )
 
+/** 通知胶囊当前这一帧。播放岛据此把同一座岛变成通知，再变回去。 */
+data class IslandNoticeFrame(
+    val message: String = "",
+    val coverUrl: String? = null,
+    val expansion: Float = 0f,
+    val squashY: Float = 1f,
+    val coverBlend: Float = 0f,
+    val restWidthDp: Float = 0f,
+    val overflowing: Boolean = false,
+    val mounted: Boolean = false,
+)
+
 internal sealed class IslandWork {
     data class Sticky(val notice: IslandNotice) : IslandWork()
     data class Queued(val notice: IslandNotice) : IslandWork()
@@ -40,6 +52,28 @@ class IslandNoticeCenter {
     private val signal = Channel<Unit>(Channel.CONFLATED)
     private val _sticky = MutableStateFlow<IslandNotice?>(null)
     val sticky: StateFlow<IslandNotice?> = _sticky.asStateFlow()
+    private val _presenting = MutableStateFlow(false)
+    val presenting: StateFlow<Boolean> = _presenting.asStateFlow()
+    private val _playbackClaim = MutableStateFlow(false)
+    val playbackClaim: StateFlow<Boolean> = _playbackClaim.asStateFlow()
+    private val _frame = MutableStateFlow(IslandNoticeFrame())
+    val frame: StateFlow<IslandNoticeFrame> = _frame.asStateFlow()
+
+    fun setPresenting(showing: Boolean) {
+        if (_presenting.value == showing) return
+        _presenting.value = showing
+    }
+
+    /** 播放岛在屏上时由它接管通知外形，避免两座胶囊叠在一起。 */
+    fun setPlaybackClaim(claim: Boolean) {
+        if (_playbackClaim.value == claim) return
+        _playbackClaim.value = claim
+    }
+
+    fun setFrame(frame: IslandNoticeFrame) {
+        if (_frame.value == frame) return
+        _frame.value = frame
+    }
 
     fun show(message: String, coverUrl: String? = null) {
         val text = message.trim()

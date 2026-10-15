@@ -172,7 +172,7 @@ internal fun NeteaseLoginQrOverlay(
                     val result = PlayerDisplayQr.saveToGallery(context, bmp, name)
                     saveBusy = false
                     if (result.isSuccess) {
-                        NcmLog.i("login qr saved")
+                        
                         context.showIslandNotice(t("已保存"))
                     } else {
                         NcmLog.w("login qr save failed", result.exceptionOrNull())
@@ -189,7 +189,7 @@ internal fun NeteaseLoginQrOverlay(
                     lastJumpAt = now
                     when (NeteaseCloudApp.openApp(context)) {
                         NeteaseCloudApp.OpenResult.Opened -> {
-                            NcmLog.i("login qr open netease ok")
+                            
                         }
                         NeteaseCloudApp.OpenResult.NotInstalled -> {
                             NcmLog.w("login qr netease not installed")

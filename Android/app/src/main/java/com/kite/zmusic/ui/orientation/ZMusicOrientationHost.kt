@@ -58,7 +58,7 @@ import com.kite.zmusic.i18n.t
 private const val OrientationMaskHoldMs = 480L
 
 /**
- * 根容器：横屏隐藏状态栏；方向切换用全屏蒙版。
+ * 根容器：横屏或「忽略状态栏」时隐藏状态栏；方向切换用全屏蒙版。
  * - 立刻改方向；蒙版尽量与点击同帧出现（竖→横会 preempt）
  * - 入场无淡入延迟，仅出场淡出
  * - 样式与进入主界面的浅色黑胶一致
@@ -72,6 +72,7 @@ fun ZMusicOrientationHost(
     val activity = context as? Activity
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val ignoreStatusBar = rememberIgnoreStatusBar()
     val rotationLock = rememberSessionRotationLock()
     val systemAutoRotate = rememberSystemAutoRotateEnabled()
     val landscapeModeEnabled = rememberLandscapeModeEnabled()
@@ -89,12 +90,12 @@ fun ZMusicOrientationHost(
         }
     }
 
-    DisposableEffect(activity, isLandscape) {
+    DisposableEffect(activity, isLandscape, ignoreStatusBar) {
         val act = activity
         if (act != null) {
             val window = act.window
             val controller = WindowCompat.getInsetsController(window, window.decorView)
-            if (isLandscape) {
+            if (isLandscape || ignoreStatusBar) {
                 controller.hide(WindowInsetsCompat.Type.statusBars())
             } else {
                 controller.show(WindowInsetsCompat.Type.statusBars())

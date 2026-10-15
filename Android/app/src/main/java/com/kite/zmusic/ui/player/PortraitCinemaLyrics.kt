@@ -62,6 +62,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
+import com.kite.zmusic.data.LongLyricRender
 import com.kite.zmusic.data.LrcLine
 import com.kite.zmusic.data.LyricRoleStyle
 import com.kite.zmusic.data.PlayerDisplayPrefs
@@ -648,6 +649,7 @@ fun PortraitCinemaLyrics(
                                             visualPlayFocus,
                                             trackDurationMs,
                                         ),
+                                        lineStartMs = pair.first.timeMs,
                                         maxLines = if (pair.second != null) 3 else 4,
                                         overflow = TextOverflow.Ellipsis,
                                         instantAppear = skipPlayingEnter,
@@ -832,6 +834,8 @@ private fun PortraitDualPlainText(
     fontStyle: FontStyle = FontStyle.Normal,
     maxLinesEach: Int = 3,
 ) {
+    val singleLine = rememberLongLyricRender() == LongLyricRender.Horizontal
+    val lineLimit = if (singleLine) 1 else maxLinesEach
     val style = TextStyle(
         color = color,
         fontFamily = FontFamily.SansSerif,
@@ -852,8 +856,8 @@ private fun PortraitDualPlainText(
         Text(
             text = upper,
             style = style,
-            maxLines = maxLinesEach,
-            softWrap = true,
+            maxLines = lineLimit,
+            softWrap = !singleLine,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.fillMaxWidth(),
         )
@@ -866,8 +870,8 @@ private fun PortraitDualPlainText(
                     fontWeight = FontWeight.Medium,
                     color = color.copy(alpha = color.alpha * 0.88f),
                 ),
-                maxLines = maxLinesEach,
-                softWrap = true,
+                maxLines = lineLimit,
+                softWrap = !singleLine,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.fillMaxWidth(),
             )

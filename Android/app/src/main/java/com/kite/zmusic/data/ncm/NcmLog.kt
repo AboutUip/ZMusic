@@ -1,20 +1,12 @@
 package com.kite.zmusic.data.ncm
 
 import android.util.Log
-import org.json.JSONArray
 import org.json.JSONObject
 
-/**
- * 登录直连排查：`adb logcat -s ZMusicNcm:D`
- * 会打请求 URL、HTTP、业务 code、脱敏后的 JSON。不要把完整日志发到公开场合。
- */
+/** 登录直连失败时的 logcat 记录。 */
 internal object NcmLog {
     const val TAG = "ZMusicNcm"
     private const val MAX = 3500
-
-    fun i(msg: String) {
-        Log.i(TAG, msg.take(MAX))
-    }
 
     fun w(msg: String, err: Throwable? = null) {
         if (err != null) Log.w(TAG, msg.take(MAX), err) else Log.w(TAG, msg.take(MAX))
@@ -24,11 +16,6 @@ internal object NcmLog {
         if (err != null) Log.e(TAG, msg.take(MAX), err) else Log.e(TAG, msg.take(MAX))
     }
 
-    fun maskPhone(phone: String): String {
-        val d = phone.filter { it.isDigit() }
-        return if (d.length >= 7) d.take(3) + "****" + d.takeLast(4) else "***"
-    }
-
     fun cookieNames(header: String): String {
         if (header.isBlank()) return "(none)"
         val names = header.split(';').mapNotNull { part ->
@@ -36,8 +23,6 @@ internal object NcmLog {
         }
         return names.joinToString(",")
     }
-
-    fun json(obj: JSONObject): String = redact(obj).toString()
 
     fun summarize(obj: JSONObject): String {
         val code = obj.opt("code")
@@ -59,42 +44,4 @@ internal object NcmLog {
         else -> value.javaClass.simpleName
     }
 
-    private fun redact(value: Any?): Any? = when (value) {
-        null, JSONObject.NULL -> JSONObject.NULL
-        is JSONObject -> {
-            val out = JSONObject()
-            val keys = value.keys()
-            while (keys.hasNext()) {
-                val key = keys.next()
-                out.put(key, redactKey(key, value.opt(key)))
-            }
-            out
-        }
-        is JSONArray -> {
-            val out = JSONArray()
-            for (i in 0 until value.length()) out.put(redact(value.opt(i)))
-            out
-        }
-        else -> value
-    }
-
-    private fun redactKey(key: String, value: Any?): Any? {
-        val k = key.lowercase()
-        val sensitive = k.contains("cookie") || k.contains("token") || k.contains("password") ||
-            k.contains("secret") || k == "sk" || k.contains("captcha")
-        return if (sensitive) {
-            when (value) {
-                null, JSONObject.NULL -> JSONObject.NULL
-                is String -> if (value.isEmpty()) "" else "<redacted len=${value.length}>"
-                else -> "<redacted>"
-            }
-        } else if (k == "phone" || k == "cellphone" || k == "username") {
-            when (value) {
-                is String -> maskPhone(value)
-                else -> redact(value)
-            }
-        } else {
-            redact(value)
-        }
-    }
 }

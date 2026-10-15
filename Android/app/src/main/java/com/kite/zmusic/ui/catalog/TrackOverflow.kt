@@ -367,11 +367,6 @@ private suspend fun downloadOneTrack(
     index: Int = 1,
     totalTracks: Int = 1,
 ): Boolean {
-    TrackExportLog.i(
-        "ui start id=${track.id} name=${track.name} q=${options.quality.level} " +
-            "cover=${options.includeCover} lyrics=${options.includeLyrics} " +
-            "meta=${options.includeMetadata}",
-    )
     val cookie = app.sessionRepository.session.value?.cookie.orEmpty()
     if (cookie.isBlank()) {
         TrackExportLog.w("ui no cookie id=${track.id}")
@@ -404,7 +399,6 @@ private suspend fun downloadOneTrack(
             options,
             onAudioProgress = { received, total -> publish(received, total) },
         )
-        TrackExportLog.i("ui ok id=${track.id} folder=$folder")
         if (notify) {
             notices.clearSticky()
             notices.show(t("已保存到 Download/ZMusic"), track.coverUrl)

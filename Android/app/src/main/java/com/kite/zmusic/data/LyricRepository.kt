@@ -2,7 +2,6 @@ package com.kite.zmusic.data
 
 import android.content.Context
 import android.util.LruCache
-import android.util.Log
 import com.kite.zmusic.data.platform.MusicPlatform
 import com.kite.zmusic.data.platform.MusicPlatformStore
 import com.kite.zmusic.data.platform.OpenMusicCatalog
@@ -162,7 +161,6 @@ class LyricRepository(
         }
         val original = bundle?.original.orEmpty()
         if (original.isEmpty()) {
-            Log.i(TAG, "qq lyric empty id=$numeric mid=$mid")
             return fromDisk ?: LyricPack.Empty
         }
         return finishOpen(songId, original, bundle?.translated.orEmpty(), "qq")
@@ -177,7 +175,6 @@ class LyricRepository(
         }
         val original = bundle?.original.orEmpty()
         if (original.isEmpty()) {
-            Log.i(TAG, "kuwo lyric empty rid=$rid")
             return fromDisk ?: LyricPack.Empty
         }
         return finishOpen(songId, original, bundle?.translated.orEmpty(), "kuwo")
@@ -192,7 +189,6 @@ class LyricRepository(
         }
         val original = bundle?.original.orEmpty()
         if (original.isEmpty()) {
-            Log.i(TAG, "kugou lyric empty hash=${hash.take(8)}")
             return fromDisk ?: LyricPack.Empty
         }
         return finishOpen(songId, original, bundle?.translated.orEmpty(), "kugou")
@@ -223,7 +219,6 @@ class LyricRepository(
                 ytlrcRaw = wordTranslated.takeIf { it.isNotEmpty() }?.let(QqQrc::toYrc),
             )
         }
-        Log.i(TAG, "$label lyric lines=${original.size} words=${wordOriginal.size} trans=${translated.size}")
         return pack
     }
 
@@ -354,7 +349,6 @@ class LyricRepository(
     }
 
     companion object {
-        private const val TAG = "ZMusicSource"
         private const val DISK_MAX_FILES = 80
     }
 }

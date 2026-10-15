@@ -34,6 +34,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -63,7 +64,6 @@ import com.kite.zmusic.ZMusicApplication
 import com.kite.zmusic.ui.main.MainOverlay
 import com.kite.zmusic.ui.common.UrlImage
 import com.kite.zmusic.ui.common.UrlImageCache
-import com.kite.zmusic.ui.common.ZPullRefresh
 import com.kite.zmusic.ui.community.HomeCommunityScanButton
 import com.kite.zmusic.ui.community.rememberCommunityLoginOpener
 import com.kite.zmusic.ui.icons.ZIcons
@@ -108,6 +108,11 @@ fun HomeScreen(
         else -> 3
     }
     val communityQr = rememberCommunityLoginOpener(onPlaySong = onPlaySong)
+    val refreshBridge = LocalHomeRefreshBridge.current
+    SideEffect {
+        refreshBridge?.refreshing = ui.refreshing
+        refreshBridge?.refresh = { vm.refresh() }
+    }
 
     val onBanner: (HomeBanner) -> Unit = { b ->
         when (b.targetType) {
@@ -183,16 +188,10 @@ fun HomeScreen(
                 }
             },
         )
-        ZPullRefresh(
-            refreshing = ui.refreshing,
-            onRefresh = { vm.refresh() },
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth(),
-        ) {
             LazyColumn(
                 modifier = Modifier
-                    .fillMaxSize()
+                    .weight(1f)
+                    .fillMaxWidth()
                     .padding(horizontal = padH),
                 contentPadding = PaddingValues(bottom = contentBottomInset + 12.dp),
             ) {
@@ -346,7 +345,6 @@ fun HomeScreen(
                 }
             }
         }
-    }
 }
 
 @Composable
@@ -918,15 +916,10 @@ private fun HomeLandscapeBody(
     onScanCommunity: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    ZPullRefresh(
-        refreshing = ui.refreshing,
-        onRefresh = onRefresh,
-        modifier = modifier.fillMaxSize(),
-    ) {
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 24.dp),
+    LazyColumn(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(horizontal = 24.dp),
             contentPadding = PaddingValues(top = 16.dp, bottom = contentBottomInset + 16.dp),
         ) {
             item(key = "head") {
@@ -1088,7 +1081,6 @@ private fun HomeLandscapeBody(
                 )
             }
         }
-    }
 }
 
 @Composable

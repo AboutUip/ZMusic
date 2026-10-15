@@ -94,7 +94,6 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
@@ -1795,26 +1794,16 @@ private fun LibraryPlaylistBody(
     )
     }
     if (!hideCollection) {
-    LibrarySectionTitle(
-        text = t("收藏"),
-        trailing = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                CollectionKindSwitch(
-                    progress = pager.offset,
-                    onSelect = { kind ->
-                        pager.goTo(kind.ordinal.toFloat())
-                        onCollectionKind(kind)
-                    },
-                )
-                Spacer(Modifier.width(8.dp))
-                CollectionViewMoreChip(
-                    enabled = canMore,
-                    onClick = {
-                        onViewMoreCollection(pager.offset >= 0.5f)
-                    },
-                )
-            }
+    CollectionShelfTitle(
+        progress = pager.offset,
+        playlistCount = collected.size,
+        albumCount = albumCount,
+        canMore = canMore,
+        onSelect = { kind ->
+            pager.goTo(kind.ordinal.toFloat())
+            onCollectionKind(kind)
         },
+        onViewMore = { onViewMoreCollection(pager.offset >= 0.5f) },
     )
     CollectionSwipePages(
         progress = pager.offset,
@@ -1825,15 +1814,6 @@ private fun LibraryPlaylistBody(
                 LibrarySectionEmpty(t("还没有收藏的歌单"))
             } else {
                 Column {
-                    Text(
-                        text = t("%s 个", collected.size),
-                        style = TextStyle(
-                            color = MainPalette.Hint,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium,
-                        ),
-                        modifier = Modifier.padding(start = 4.dp, bottom = 8.dp),
-                    )
                     LibraryCollectionItems(
                         region = PluginCollections.LIBRARY_COLLECTED_PLAYLISTS,
                         entries = playlistPreview.map { pl ->
@@ -1857,7 +1837,6 @@ private fun LibraryPlaylistBody(
         album = {
             CollectedAlbumPane(
                 albums = albumPreview,
-                total = albumCount,
                 loading = albumsLoading,
                 error = albumsError,
                 isGuest = isGuest,
@@ -2020,85 +1999,117 @@ private fun CollectionSwipePages(
 }
 
 @Composable
-private fun CollectionKindSwitch(
+private fun CollectionShelfTitle(
     progress: Float,
+    playlistCount: Int,
+    albumCount: Int,
+    canMore: Boolean,
     onSelect: (LibraryCollectionKind) -> Unit,
+    onViewMore: () -> Unit,
 ) {
-    val kinds = LibraryCollectionKind.entries
-    val density = LocalDensity.current
     val haptic = LocalHapticFeedback.current
     val t = progress.coerceIn(0f, 1f)
-    BoxWithConstraints(
+    Row(
         Modifier
-            .width(148.dp)
-            .height(32.dp)
-            .wallpaperItemChrome(RoundedCornerShape(10.dp), MainPalette.Placeholder),
+            .fillMaxWidth()
+            .padding(top = 12.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        val segW = maxWidth / kinds.size
-        Box(
-            Modifier
-                .offset {
-                    IntOffset(
-                        with(density) { (segW * t + 3.dp).roundToPx() },
-                        0,
-                    )
-                }
-                .padding(vertical = 3.dp)
-                .width(segW - 6.dp)
-                .fillMaxHeight()
-                .clip(RoundedCornerShape(8.dp))
-                .background(MainPalette.Surface),
-        )
-        Row(Modifier.fillMaxSize()) {
-            kinds.forEach { kind ->
-                val active = if (kind == LibraryCollectionKind.Playlist) 1f - t else t
-                Box(
-                    Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = {
-                                val current = if (t < 0.5f) {
-                                    LibraryCollectionKind.Playlist
-                                } else {
-                                    LibraryCollectionKind.Album
-                                }
-                                if (kind != current) {
-                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    onSelect(kind)
-                                }
-                            },
-                        ),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = if (kind == LibraryCollectionKind.Playlist) t("歌单") else t("专辑"),
-                        style = TextStyle(
-                            color = androidx.compose.ui.graphics.lerp(
-                                MainPalette.Secondary,
-                                MainPalette.Accent,
-                                active,
-                            ),
-                            fontWeight = if (active >= 0.5f) {
-                                FontWeight.SemiBold
-                            } else {
-                                FontWeight.Medium
-                            },
-                            fontSize = 13.sp,
-                        ),
-                    )
-                }
-            }
+        Row(
+            Modifier.weight(1f),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            CollectionKindLabel(
+                label = t("收藏的歌单"),
+                active = 1f - t,
+                onClick = {
+                    if (t >= 0.5f) {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onSelect(LibraryCollectionKind.Playlist)
+                    }
+                },
+                modifier = Modifier.weight(1f, fill = false),
+            )
+            Text(
+                text = "|",
+                style = TextStyle(
+                    color = MainPalette.Hint,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                ),
+                modifier = Modifier.padding(horizontal = 8.dp),
+            )
+            CollectionKindLabel(
+                label = t("专辑"),
+                active = t,
+                onClick = {
+                    if (t < 0.5f) {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onSelect(LibraryCollectionKind.Album)
+                    }
+                },
+            )
         }
+        Spacer(Modifier.width(8.dp))
+        CollectionViewMoreChip(
+            enabled = canMore,
+            onClick = onViewMore,
+        )
+        Text(
+            text = "|",
+            style = TextStyle(
+                color = MainPalette.Hint,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+            ),
+            modifier = Modifier.padding(start = 2.dp, end = 8.dp),
+        )
+        Text(
+            text = "${if (t >= 0.5f) albumCount else playlistCount}",
+            style = TextStyle(
+                color = MainPalette.Accent,
+                fontSize = 17.sp,
+                fontWeight = FontWeight.Bold,
+            ),
+            maxLines = 1,
+        )
     }
+}
+
+@Composable
+private fun CollectionKindLabel(
+    label: String,
+    active: Float,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val shown = active.coerceIn(0f, 1f)
+    Text(
+        text = label,
+        style = TextStyle(
+            color = androidx.compose.ui.graphics.lerp(
+                MainPalette.Secondary,
+                MainPalette.Accent,
+                shown,
+            ),
+            fontSize = lerp(14.sp, 17.sp, shown),
+            fontWeight = if (shown >= 0.5f) FontWeight.Bold else FontWeight.Medium,
+        ),
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick,
+            ),
+    )
 }
 
 @Composable
 private fun CollectedAlbumPane(
     albums: List<CollectedAlbum>,
-    total: Int,
     loading: Boolean,
     error: String?,
     isGuest: Boolean,
@@ -2126,17 +2137,6 @@ private fun CollectedAlbumPane(
         albums.isEmpty() -> LibrarySectionEmpty(t("还没有收藏的专辑"))
         else -> {
             Column {
-                if (total > 0) {
-                    Text(
-                        text = t("%s 张", total),
-                        style = TextStyle(
-                            color = MainPalette.Hint,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium,
-                        ),
-                        modifier = Modifier.padding(start = 4.dp, bottom = 8.dp),
-                    )
-                }
                 LibraryCollectionItems(
                     region = PluginCollections.LIBRARY_COLLECTED_ALBUMS,
                     entries = albums.map { album ->

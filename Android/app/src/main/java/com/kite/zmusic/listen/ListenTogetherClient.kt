@@ -51,6 +51,9 @@ class ListenTogetherClient(
     suspend fun postChat(id: String, text: String): ListenRoomSnapshot =
         mutate("POST", "/rooms/${enc(id)}/chat", JSONObject().put("text", text))
 
+    suspend fun markChatRead(id: String, upTo: Long): ListenRoomSnapshot =
+        mutate("POST", "/rooms/${enc(id)}/chat/read", JSONObject().put("id", upTo))
+
     suspend fun get(id: String, after: Long, wait: Boolean): ListenRoomSnapshot =
         withContext(Dispatchers.IO) {
             val q = buildString {
@@ -222,6 +225,8 @@ class ListenTogetherClient(
                 qrText = json.optString("qr_text"),
                 chat = parseChat(json.optJSONArray("chat")),
                 chatIncluded = json.has("chat") && !json.isNull("chat"),
+                chatReads = parseChatReads(json.optJSONObject("chat_reads")),
+                chatReadsIncluded = json.has("chat_reads") && !json.isNull("chat_reads"),
             )
         }
 
@@ -293,6 +298,19 @@ class ListenTogetherClient(
                     avatarUrl = o.optString("avatar_url"),
                     host = o.optBoolean("host"),
                 )
+            }
+            return out
+        }
+
+        private fun parseChatReads(obj: JSONObject?): Map<String, Long> {
+            if (obj == null) return emptyMap()
+            val out = LinkedHashMap<String, Long>(obj.length())
+            val keys = obj.keys()
+            while (keys.hasNext()) {
+                val key = keys.next().trim()
+                if (key.isEmpty()) continue
+                val value = jsonLong(obj, key)
+                if (value > 0L) out[key] = value
             }
             return out
         }

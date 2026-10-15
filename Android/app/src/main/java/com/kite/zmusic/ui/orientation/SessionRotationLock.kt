@@ -167,6 +167,13 @@ fun rememberSessionRotationLock(): SessionRotationLock {
  * 设置「横屏模式」：关则不画旋转按钮，系统自动旋转仍可进横屏。
  */
 @Composable
+fun rememberIgnoreStatusBar(): Boolean {
+    val app = LocalContext.current.applicationContext as? ZMusicApplication ?: return false
+    val enabled by app.ignoreStatusBarStore.enabled.collectAsStateWithLifecycle()
+    return enabled
+}
+
+@Composable
 fun rememberLandscapeModeEnabled(): Boolean {
     val app = LocalContext.current.applicationContext as? ZMusicApplication ?: return true
     val enabled by app.landscapeModeStore.enabled.collectAsStateWithLifecycle()
