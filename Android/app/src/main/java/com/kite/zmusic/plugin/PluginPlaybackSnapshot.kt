@@ -18,6 +18,10 @@ data class PluginPlaybackSnapshot(
     val queueTracks: List<PluginTrackSnap> = emptyList(),
     val queueIds: List<Long> = emptyList(),
     val truncated: Boolean = false,
+    val mode: String = "order",
+    val lyricIndex: Int = -1,
+    val lyricText: String? = null,
+    val lyricTranslation: String? = null,
 ) {
     val trackId: Long? get() = track?.id
 
@@ -28,6 +32,12 @@ data class PluginPlaybackSnapshot(
         "liked" to liked,
         "track" to track?.toMap(liked),
         "queue" to queueMap(),
+        "mode" to mode,
+        "lyric" to mapOf(
+            "index" to lyricIndex,
+            "text" to lyricText,
+            "translation" to lyricTranslation,
+        ),
     )
 
     fun trackArg(): Any? = track?.toMap(liked)
@@ -43,6 +53,14 @@ data class PluginPlaybackSnapshot(
 
     fun stateMap(): Map<String, Any?> = mapOf("playing" to playing)
 
+    fun modeMap(): Map<String, Any?> = mapOf("mode" to mode)
+
+    fun lyricEventMap(): Map<String, Any?> = mapOf(
+        "index" to lyricIndex,
+        "text" to lyricText,
+        "translation" to lyricTranslation,
+    )
+
     companion object {
         const val QUEUE_TRACK_CAP = 100
 
@@ -53,6 +71,8 @@ data class PluginPlaybackSnapshot(
             val ids = ui.queue.map { it.id }
             val cap = QUEUE_TRACK_CAP
             val shown = ui.queue.take(cap).map { it.toPluginSnap() }
+            val lyricAt = PluginLyricMaps.indexAt(ui.lyricLines, ui.positionMs)
+            val transAt = PluginLyricMaps.indexAt(ui.translatedLyricLines, ui.positionMs)
             return PluginPlaybackSnapshot(
                 playing = ui.playWhenReady,
                 positionMs = ui.positionMs.coerceAtLeast(0L),
@@ -68,6 +88,10 @@ data class PluginPlaybackSnapshot(
                 queueTracks = shown,
                 queueIds = ids,
                 truncated = ui.queue.size > cap,
+                mode = ui.playbackMode.pluginName(),
+                lyricIndex = lyricAt,
+                lyricText = ui.lyricLines.getOrNull(lyricAt)?.text,
+                lyricTranslation = ui.translatedLyricLines.getOrNull(transAt)?.text,
             )
         }
     }

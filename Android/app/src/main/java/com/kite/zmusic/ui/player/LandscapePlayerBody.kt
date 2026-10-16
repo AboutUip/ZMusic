@@ -346,6 +346,7 @@ internal fun LandscapePlayerBody(
     onDismiss: () -> Unit,
     dismissSwipeThresholdPx: Float,
     displayPrefs: PlayerDisplayPrefs,
+    stagePrefs: PlayerDisplayPrefs = displayPrefs,
     onDisplayPrefsChange: (PlayerDisplayPrefs) -> Unit,
     onDisplayPrefsFlush: () -> Unit,
     landscapeCustomBg: PlayerBackgroundPreset? = null,
@@ -447,10 +448,10 @@ internal fun LandscapePlayerBody(
     var vinylBusy by remember { mutableStateOf(false) }
     /** 关闭陪伴后仍保留层直到屏上弹幕飞完 */
     var danmakuLayerActive by remember {
-        mutableStateOf(displayPrefs.danmakuCompanionEnabled)
+        mutableStateOf(stagePrefs.danmakuCompanionEnabled)
     }
-    LaunchedEffect(displayPrefs.danmakuCompanionEnabled) {
-        if (displayPrefs.danmakuCompanionEnabled) danmakuLayerActive = true
+    LaunchedEffect(stagePrefs.danmakuCompanionEnabled) {
+        if (stagePrefs.danmakuCompanionEnabled) danmakuLayerActive = true
     }
     var lyricResumeToken by remember { mutableIntStateOf(0) }
     var lyricSelectOpen by remember { mutableStateOf(false) }
@@ -518,7 +519,7 @@ internal fun LandscapePlayerBody(
         !backgroundEditorOpen &&
         !vinylSongPickOpen
     val density = LocalDensity.current
-    val uiScale = displayPrefs.uiScale.coerceIn(PlayerDisplayPrefs.UI_MIN, PlayerDisplayPrefs.UI_MAX)
+    val uiScale = stagePrefs.uiScale.coerceIn(PlayerDisplayPrefs.UI_MIN, PlayerDisplayPrefs.UI_MAX)
     val settingsCurve = remember { CubicBezierEasing(0.16f, 1.02f, 0.3f, 1f) }
     val vinylCenterEasing = remember { CubicBezierEasing(0.33f, 0f, 0.2f, 1f) }
     val vinylCenterMs = 480
@@ -1568,7 +1569,7 @@ internal fun LandscapePlayerBody(
         // 与左栏同源的黑胶几何：供动态歌词计算右缘侵入
         // 自选编辑 / 曲谱态强制垂直居中（忽略个性化 Y，保留 X）
         val vinylAbsT by animateFloatAsState(
-            targetValue = if (displayPrefs.vinylAbsoluteCenter || forceVinylYCentered) 1f else 0f,
+            targetValue = if (stagePrefs.vinylAbsoluteCenter || forceVinylYCentered) 1f else 0f,
             animationSpec = tween(
                 durationMillis = vinylCenterMs,
                 easing = vinylCenterEasing,
@@ -1594,10 +1595,10 @@ internal fun LandscapePlayerBody(
             androidx.compose.ui.util.lerp(1f, compactRatioForLyric, chromeT),
             vinylAbsT,
         )
-        val vinylOx = displayPrefs.vinylOffsetXDp.dp
-        val vinylSizeScale = displayPrefs.vinylSizeScale
+        val vinylOx = stagePrefs.vinylOffsetXDp.dp
+        val vinylSizeScale = stagePrefs.vinylSizeScale
             .coerceIn(PlayerDisplayPrefs.VINYL_SIZE_SCALE_MIN, PlayerDisplayPrefs.VINYL_SIZE_SCALE_MAX)
-        val vinylOuterScale = displayPrefs.vinylOuterScale
+        val vinylOuterScale = stagePrefs.vinylOuterScale
             .coerceIn(PlayerDisplayPrefs.VINYL_OUTER_SCALE_MIN, PlayerDisplayPrefs.VINYL_OUTER_SCALE_MAX)
         // 右缘按「整体 × 外圈」可视外缘（外圈可大于 100% 溢出）
         val vinylVisualScale = vinylSizeScale * maxOf(vinylOuterScale, 1f)
@@ -1606,7 +1607,7 @@ internal fun LandscapePlayerBody(
         val vinylRightEdge = vinylCenterX + discForLyric * vinylScaleForLyric * vinylVisualScale / 2f
         val lyricsColStart = leftColW + rowGap
         val lyricsColWidth = (rootMaxW - leftColW - rowGap - 4.dp).coerceAtLeast(0.dp)
-        val lyricsCenterX = lyricsColStart + lyricsColWidth / 2 + displayPrefs.lyricOffsetXDp.dp
+        val lyricsCenterX = lyricsColStart + lyricsColWidth / 2 + stagePrefs.lyricOffsetXDp.dp
         val screenCenterX = rootMaxW / 2
         val titleMaxWidth = (discExpandedForPad * 1.08f).coerceAtMost(rootMaxW * 0.52f)
         // 黑胶右缘越过歌词栏左缘的部分 + 间隙
@@ -1615,9 +1616,9 @@ internal fun LandscapePlayerBody(
             .coerceAtLeast(0.dp)
         val lyricSelectGeomTarget = rememberLyricSelectGeom(
             lines = lines,
-            playingStyle = displayPrefs.lyricPlayingStyle,
-            playedStyle = displayPrefs.lyricPlayedStyle,
-            unplayedStyle = displayPrefs.lyricUnplayedStyle,
+            playingStyle = stagePrefs.lyricPlayingStyle,
+            playedStyle = stagePrefs.lyricPlayedStyle,
+            unplayedStyle = stagePrefs.lyricUnplayedStyle,
             screenWidth = rootMaxW,
             screenHeight = rootMaxH,
         )
@@ -1669,23 +1670,23 @@ internal fun LandscapePlayerBody(
                 onArtistClick = onArtistClick,
                 transportRevealT = chromeVisualT,
                 transportReserve = dynamicTransportH,
-                coverOffsetXDp = displayPrefs.dynamicCoverOffsetXDp,
-                coverGlass = displayPrefs.dynamicCoverGlass,
-                lyricOffsetXDp = displayPrefs.dynamicLyricOffsetXDp,
+                coverOffsetXDp = stagePrefs.dynamicCoverOffsetXDp,
+                coverGlass = stagePrefs.dynamicCoverGlass,
+                lyricOffsetXDp = stagePrefs.dynamicLyricOffsetXDp,
                 lyricPlayingStyle = if (lyricStyleEditorOpen || lyricStyleT > 0.001f) {
                     draftLyricPlaying
                 } else {
-                    displayPrefs.dynamicLyricPlayingStyle
+                    stagePrefs.dynamicLyricPlayingStyle
                 },
                 lyricPlayedStyle = if (lyricStyleEditorOpen || lyricStyleT > 0.001f) {
                     draftLyricPlayed
                 } else {
-                    displayPrefs.dynamicLyricPlayedStyle
+                    stagePrefs.dynamicLyricPlayedStyle
                 },
                 lyricUnplayedStyle = if (lyricStyleEditorOpen || lyricStyleT > 0.001f) {
                     draftLyricUnplayed
                 } else {
-                    displayPrefs.dynamicLyricUnplayedStyle
+                    stagePrefs.dynamicLyricUnplayedStyle
                 },
                 customBg = landscapeCustomBg,
                 customBgProgress = landscapeCustomBgProgress,
@@ -1733,7 +1734,7 @@ internal fun LandscapePlayerBody(
                     discBudget,
                 )
                 val absT by animateFloatAsState(
-                    targetValue = if (displayPrefs.vinylAbsoluteCenter || forceVinylYCentered) 1f else 0f,
+                    targetValue = if (stagePrefs.vinylAbsoluteCenter || forceVinylYCentered) 1f else 0f,
                     animationSpec = tween(
                         durationMillis = vinylCenterMs,
                         easing = vinylCenterEasing,
@@ -1760,8 +1761,8 @@ internal fun LandscapePlayerBody(
                 )
                 val metaWidth = discExpanded
                 val edgeInset = (maxWidth - metaWidth).coerceAtLeast(0.dp)
-                val ox = displayPrefs.vinylOffsetXDp.dp
-                val oy = (displayPrefs.vinylOffsetYDp * (1f - absT)).dp
+                val ox = stagePrefs.vinylOffsetXDp.dp
+                val oy = (stagePrefs.vinylOffsetYDp * (1f - absT)).dp
                 // 从「剩余区居中」过渡到「整栏垂直居中」：约半个信息块高度
                 val layoutShiftY = with(density) {
                     (((edgeInset / 2) + 72.dp).toPx() * 0.5f +
@@ -1783,7 +1784,7 @@ internal fun LandscapePlayerBody(
 
                 @Composable
                 fun VinylDisc(mod: Modifier) {
-                    val destPlate = displayPrefs.vinylPlateColors()
+                    val destPlate = stagePrefs.vinylPlateColors()
                     val animatedPlate = rememberAnimatedVinylPlateColors(destPlate)
                     val expand = LocalPlayerExpand.current
                     val plateForStage =
@@ -1823,15 +1824,15 @@ internal fun LandscapePlayerBody(
                                 )
                                 mainVinylSizePx = minOf(b.width, b.height)
                             },
-                        fullCover = displayPrefs.vinylFullCover,
-                        centerRadiusFrac = displayPrefs.vinylCenterRadiusFrac,
+                        fullCover = stagePrefs.vinylFullCover,
+                        centerRadiusFrac = stagePrefs.vinylCenterRadiusFrac,
                         outerScale = vinylOuterScale,
-                        showOuterPlate = displayPrefs.vinylOuterEnabled,
+                        showOuterPlate = stagePrefs.vinylOuterEnabled,
                         plateColors = plateForStage,
                         prevEnterSlidePx = prevEnterSlidePx,
                         suppressEnterTransition = suppressVinylEnter,
                         gestureDamping = displayPrefs.vinylGestureDamping,
-                        spinPeriodMs = displayPrefs.vinylSpinPeriodMs(),
+                        spinPeriodMs = stagePrefs.vinylSpinPeriodMs(),
                         settleSpinUpright = vinylSongPickOpen || pickerVinylCentered,
                     )
                 }
@@ -1918,11 +1919,11 @@ internal fun LandscapePlayerBody(
                     positionMs
                 },
                 trackDurationMs = durationMs,
-                lineSpacingDp = displayPrefs.lyricLineSpacingDp,
-                playedCount = displayPrefs.lyricPlayedCount,
-                upcomingCount = displayPrefs.lyricUpcomingCount,
-                offsetXDp = displayPrefs.lyricOffsetXDp,
-                dynamicLyrics = displayPrefs.dynamicLyrics,
+                lineSpacingDp = stagePrefs.lyricLineSpacingDp,
+                playedCount = stagePrefs.lyricPlayedCount,
+                upcomingCount = stagePrefs.lyricUpcomingCount,
+                offsetXDp = stagePrefs.lyricOffsetXDp,
+                dynamicLyrics = stagePrefs.dynamicLyrics,
                 vinylLeftInset = vinylLeftInset,
                 onSeekToMs = { ms ->
                     onSeek(ms.coerceIn(0L, durationMs.coerceAtLeast(0L)))
@@ -1946,9 +1947,9 @@ internal fun LandscapePlayerBody(
                 onBandCenterPx = null,
                 selectHazeState = settingsHazeState,
                 selectOpen = lyricSelectOpen,
-                playingStyle = displayPrefs.lyricPlayingStyle,
-                playedStyle = displayPrefs.lyricPlayedStyle,
-                unplayedStyle = displayPrefs.lyricUnplayedStyle,
+                playingStyle = stagePrefs.lyricPlayingStyle,
+                playedStyle = stagePrefs.lyricPlayedStyle,
+                unplayedStyle = stagePrefs.lyricUnplayedStyle,
                 onLyricBandCoords = { lyricsBandCoords = it },
                 scrollFrozen = lyricStyleSnapshot != null,
                 clockRunning = isPlaying && playWhenReady && !buffering && !loadPending &&
@@ -1969,13 +1970,13 @@ internal fun LandscapePlayerBody(
             track = track,
             onArtistClick = onArtistClick,
             onRevealControls = { revealControls() },
-            titleAlign = displayPrefs.titleAlign,
+            titleAlign = stagePrefs.titleAlign,
             songMetaTopPad = songMetaTopPad,
-            titleOffsetYDp = displayPrefs.titleOffsetYDp,
-            titleNameColor = displayPrefs.titleNameColor(),
-            titleArtistColor = displayPrefs.titleSourceColor(),
-            titleNameFontScale = displayPrefs.titleNameStyle.sanitizedFontScale(),
-            titleArtistFontScale = displayPrefs.titleSourceStyle.sanitizedFontScale(),
+            titleOffsetYDp = stagePrefs.titleOffsetYDp,
+            titleNameColor = stagePrefs.titleNameColor(),
+            titleArtistColor = stagePrefs.titleSourceColor(),
+            titleNameFontScale = stagePrefs.titleNameStyle.sanitizedFontScale(),
+            titleArtistFontScale = stagePrefs.titleSourceStyle.sanitizedFontScale(),
             chromeSidePad = chromeSidePad,
             vinylCenterX = vinylCenterX,
             lyricsCenterX = lyricsCenterX,
@@ -1994,17 +1995,17 @@ internal fun LandscapePlayerBody(
         if (!dynamicPage && danmakuLayerActive && track.id > 0L) {
             LandscapeDanmakuOverlay(
                 songId = track.id,
-                density = displayPrefs.danmakuDensity,
-                region = displayPrefs.danmakuRegion,
-                speed = displayPrefs.danmakuSpeed,
-                scale = displayPrefs.danmakuScale,
+                density = stagePrefs.danmakuDensity,
+                region = stagePrefs.danmakuRegion,
+                speed = stagePrefs.danmakuSpeed,
+                scale = stagePrefs.danmakuScale,
                 playing = playWhenReady,
-                enabled = displayPrefs.danmakuCompanionEnabled,
+                enabled = stagePrefs.danmakuCompanionEnabled,
                 // 扑克选歌：停发并由更高 zIndex 层盖住，屏上弹幕继续飞完
                 obscured = vinylSongPickT > 0.001f,
                 hazeState = settingsHazeState,
                 onFullyIdle = {
-                    if (!displayPrefs.danmakuCompanionEnabled) {
+                    if (!stagePrefs.danmakuCompanionEnabled) {
                         danmakuLayerActive = false
                     }
                 },
@@ -2122,7 +2123,7 @@ internal fun LandscapePlayerBody(
                         },
                         tracks = queue,
                         currentIndex = queueIndex,
-                        plateColors = displayPrefs.vinylPlateColors(),
+                        plateColors = stagePrefs.vinylPlateColors(),
                         onPlayTrack = { idx, center, sizePx ->
                             startScoreFlight(idx, center, sizePx)
                         },
@@ -2154,11 +2155,11 @@ internal fun LandscapePlayerBody(
                 flight = flight,
                 targetCenter = mainVinylCenterRoot,
                 targetSizePx = mainVinylSizePx,
-                plateColors = displayPrefs.vinylPlateColors(),
-                fullCover = displayPrefs.vinylFullCover,
-                centerRadiusFrac = displayPrefs.vinylCenterRadiusFrac,
+                plateColors = stagePrefs.vinylPlateColors(),
+                fullCover = stagePrefs.vinylFullCover,
+                centerRadiusFrac = stagePrefs.vinylCenterRadiusFrac,
                 outerScale = vinylOuterScale,
-                showOuterPlate = displayPrefs.vinylOuterEnabled,
+                showOuterPlate = stagePrefs.vinylOuterEnabled,
                 // 目标尺寸来自主黑胶 bounds（已含 sizeScale / uiScale / 外圈视觉）
                 onCoverTarget = {
                     onPlayQueueIndex(flight.queueIndex)
@@ -2346,13 +2347,13 @@ internal fun LandscapePlayerBody(
                 snapCenterX = pickSnapCx,
                 snapCenterY = pickSnapCy,
                 discSize = pickDiscSize,
-                plateColors = displayPrefs.vinylPlateColors(),
-                fullCover = displayPrefs.vinylFullCover,
-                centerRadiusFrac = displayPrefs.vinylCenterRadiusFrac,
+                plateColors = stagePrefs.vinylPlateColors(),
+                fullCover = stagePrefs.vinylFullCover,
+                centerRadiusFrac = stagePrefs.vinylCenterRadiusFrac,
                 outerScale = vinylOuterScale,
-                showOuterPlate = displayPrefs.vinylOuterEnabled,
+                showOuterPlate = stagePrefs.vinylOuterEnabled,
                 hazeState = settingsHazeState,
-                titleNameStyle = displayPrefs.titleNameStyle,
+                titleNameStyle = stagePrefs.titleNameStyle,
                 uiScale = uiScale,
                 sessionKey = pickSessionGeneration,
                 onBack = { cancelVinylSongPick() },
@@ -2397,8 +2398,8 @@ internal fun LandscapePlayerBody(
         )
 
         if (showBar || chromeT > 0.001f) {
-            val transportDocked = displayPrefs.transportDocked
-            val insetDp = displayPrefs.transportBottomInsetDp
+            val transportDocked = stagePrefs.transportDocked
+            val insetDp = stagePrefs.transportBottomInsetDp
                 .takeIf { it.isFinite() }
                 ?.coerceIn(
                     PlayerDisplayPrefs.TRANSPORT_BOTTOM_INSET_MIN,

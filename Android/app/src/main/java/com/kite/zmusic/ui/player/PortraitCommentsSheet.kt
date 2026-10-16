@@ -59,6 +59,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableStateSetOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.key
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
@@ -1854,11 +1855,24 @@ private fun CommentRow(
                                 }
                                 else -> {
                                     displayReplies.forEach { reply ->
-                                        CommentReplyRow(
-                                            comment = reply,
-                                            justSent = pendingTopReply?.commentId == reply.commentId,
-                                            onOpenUser = onOpenUser,
-                                        )
+                                        key(reply.commentId) {
+                                            CommentReplyRow(
+                                                comment = reply,
+                                                justSent = pendingTopReply?.commentId == reply.commentId,
+                                                songId = songId,
+                                                cookie = cookie,
+                                                selfUid = selfUid,
+                                                commentsVm = commentsVm,
+                                                onHint = onHint,
+                                                onOpenUser = onOpenUser,
+                                                onLiked = { updated ->
+                                                    replies = replies.map { item ->
+                                                        if (item.commentId == updated.commentId) updated else item
+                                                    }
+                                                    onFloorCache(replies, repliesHasMore)
+                                                },
+                                            )
+                                        }
                                     }
                                     when {
                                         repliesLoading -> Box(
@@ -1900,11 +1914,56 @@ private fun CommentRow(
 @Composable
 private fun CommentReplyRow(
     comment: SongComment,
+    songId: Long,
+    cookie: String,
+    selfUid: Long,
+    commentsVm: CommentsViewModel,
+    onHint: (String) -> Unit,
     justSent: Boolean = false,
     onOpenUser: (Long, String, String?) -> Unit = { _, _, _ -> },
+    onLiked: (SongComment) -> Unit = {},
 ) {
     var textExpanded by remember(comment.commentId) { mutableStateOf(false) }
+    var likeBusy by remember(comment.commentId) { mutableStateOf(false) }
+    var likeOverride by remember(comment.commentId) { mutableStateOf<SongComment?>(null) }
+    val shown = likeOverride ?: comment
+    val scope = rememberCoroutineScope()
     val maybeLong = comment.content.length > 56
+    fun toggleLike() {
+        if (likeBusy) return
+        if (cookie.isBlank() || selfUid <= 0L) {
+            onHint(t("请先登录后再点赞"))
+            return
+        }
+        val base = shown
+        val nextLiked = !base.liked
+        val next = base.copy(
+            liked = nextLiked,
+            likedCount = (base.likedCount + if (nextLiked) 1 else -1).coerceAtLeast(0),
+        )
+        likeBusy = true
+        likeOverride = next
+        onLiked(next)
+        scope.launch {
+            try {
+                if (!commentsVm.like(
+                        songId = songId,
+                        commentId = base.commentId,
+                        like = nextLiked,
+                        cookie = cookie,
+                    )
+                ) {
+                    throw IllegalStateException(t("点赞失败"))
+                }
+            } catch (_: Exception) {
+                likeOverride = base
+                onLiked(base)
+                onHint(t("点赞失败，请稍后重试"))
+            } finally {
+                likeBusy = false
+            }
+        }
+    }
     val openUser = {
         if (comment.userId > 0L) {
             onOpenUser(comment.userId, comment.nickname, comment.avatarUrl)
@@ -2017,17 +2076,31 @@ private fun CommentReplyRow(
                 )
             }
             Spacer(Modifier.height(4.dp))
+            val likedTint = Color(0xFFFF6B81)
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(3.dp),
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable(
+                        enabled = !likeBusy,
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = { toggleLike() },
+                    )
+                    .padding(vertical = 2.dp),
             ) {
                 CommentLikeIcon(
                     size = 11.dp,
-                    tint = CommentHint.copy(alpha = 0.75f),
+                    tint = if (shown.liked) likedTint else CommentHint.copy(alpha = 0.75f),
                 )
                 Text(
-                    text = if (comment.likedCount > 0) formatCount(comment.likedCount) else t("赞"),
-                    color = CommentHint.copy(alpha = 0.75f),
+                    text = if (shown.likedCount > 0) formatCount(shown.likedCount) else t("赞"),
+                    color = if (shown.liked) {
+                        likedTint.copy(alpha = 0.92f)
+                    } else {
+                        CommentHint.copy(alpha = 0.75f)
+                    },
                     fontSize = 11.sp,
                 )
             }

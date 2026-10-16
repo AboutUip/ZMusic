@@ -38,7 +38,7 @@ python Distribution/Plugin/zmusic_plugin.py inspect <包.zpp>
 
 ## `init` 默认值
 
-- `engine.min`：`100`（`0.1.0`）
+- `engine.min`：`100`（`0.1.0`）即可使用当时已有的 API。`0.2.0` 的曲库、歌词加载与导航要求 `200`
 - 不写 `engine.max`
 - `capabilities`、`signatures`：空数组
 - `version`：`1`（`v 00.01`）

@@ -21,6 +21,7 @@ import com.kite.zmusic.data.PlaylistCollectionRepository
 import com.kite.zmusic.data.PlaylistEditor
 import com.kite.zmusic.data.PlaylistTracksCache
 import com.kite.zmusic.data.SearchHistoryRepository
+import com.kite.zmusic.data.SongWikiCache
 import com.kite.zmusic.data.SessionRepository
 import com.kite.zmusic.data.SessionWarmup
 import com.kite.zmusic.data.TrackExportRepository
@@ -89,6 +90,7 @@ class ZMusicApplication : Application() {
     val homeFeedRepository: HomeFeedRepository get() = container.homeFeedRepository
     val playlistTracksCache: PlaylistTracksCache get() = container.playlistTracksCache
     val albumTracksCache: AlbumTracksCache get() = container.albumTracksCache
+    internal val songWikiCache: SongWikiCache get() = container.songWikiCache
     val searchHistoryRepository: SearchHistoryRepository get() = container.searchHistoryRepository
     val playlistCollectionRepository: PlaylistCollectionRepository
         get() = container.playlistCollectionRepository
@@ -115,6 +117,7 @@ class ZMusicApplication : Application() {
     val workshopAuthStore get() = container.workshopAuthStore
     val workshopRepository get() = container.workshopRepository
     val listenTogether get() = container.listenTogether
+    val loftChat get() = container.loftChat
 
     private lateinit var queueSync: PlaybackQueueSync
     private lateinit var lyricOverlayController: LyricOverlayController
@@ -175,6 +178,7 @@ class ZMusicApplication : Application() {
                 homeFeedRepository.clear()
                 libraryHomeRepository.clear()
                 playlistTracksCache.clear()
+                songWikiCache.clear()
                 homeFeedRepository.ensureLoaded()
                 libraryHomeRepository.prefetchOnAppReady()
             }
@@ -254,7 +258,9 @@ class ZMusicApplication : Application() {
             }
         }
 
-        override fun onActivityResumed(activity: android.app.Activity) = Unit
+        override fun onActivityResumed(activity: android.app.Activity) {
+            com.kite.zmusic.plugin.PluginForegroundActivity.set(activity)
+        }
 
         override fun onActivityPaused(activity: android.app.Activity) = Unit
 
@@ -268,6 +274,8 @@ class ZMusicApplication : Application() {
 
         override fun onActivitySaveInstanceState(activity: android.app.Activity, outState: android.os.Bundle) = Unit
 
-        override fun onActivityDestroyed(activity: android.app.Activity) = Unit
+        override fun onActivityDestroyed(activity: android.app.Activity) {
+            com.kite.zmusic.plugin.PluginForegroundActivity.clear(activity)
+        }
     }
 }

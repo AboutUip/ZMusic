@@ -32,6 +32,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp as lerpColor
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -44,8 +45,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
 import com.kite.zmusic.data.PlayerDisplayPrefsStore
+import com.kite.zmusic.plugin.PluginStylePresent
+import com.kite.zmusic.plugin.PluginStyleSurface
 import com.kite.zmusic.data.TrackRow
+import com.kite.zmusic.i18n.t
 import com.kite.zmusic.ui.common.UrlImage
+import kotlin.math.roundToInt
 import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.theme.TextTheme
 
@@ -54,14 +59,23 @@ private fun rememberFlightLook(expand: PlayerExpandState): PlayerExpandLook {
     val reported = expand.look
     val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     val context = LocalContext.current
-    val fallback = remember(landscape) {
+    val stored = remember(landscape, context) {
         val name = if (landscape) {
             PlayerDisplayPrefsStore.PREFS
         } else {
             PlayerDisplayPrefsStore.PREFS_PORTRAIT
         }
-        PlayerExpandLook.from(PlayerDisplayPrefsStore(context, name).load(), landscape)
+        PlayerDisplayPrefsStore(context, name).load()
     }
+    val painted = if (landscape) {
+        PluginStylePresent.paint(
+            PluginStylePresent.paint(stored, PluginStyleSurface.Focus),
+            PluginStyleSurface.Dynamic,
+        )
+    } else {
+        PluginStylePresent.paint(stored, PluginStyleSurface.Portrait)
+    }
+    val fallback = PlayerExpandLook.from(painted, landscape)
     // 只接受当前方向的播放页偏好，避免横/竖屏个性化串台。
     return if (reported != null && reported.landscape == landscape) reported else fallback
 }
@@ -144,16 +158,17 @@ internal fun PlayerExpandFlightLayer(
                     val outerR = lerp(corner0, destOuter, styleT)
                     val innerR = lerp(corner0, destInner, styleT)
                     val padPx = destPad * styleT
-                    val fadeA = 0.32f * styleT
+                    val frame = look.coverFrameAlpha.coerceIn(0f, 1f)
+                    val fadeA = 0.32f * styleT * frame
                     Box(
                         Modifier
                             .fillMaxSize()
                             .graphicsLayer {
-                                shadowElevation = lerp(0f, 8.dp.toPx(), styleT)
+                                shadowElevation = lerp(0f, 8.dp.toPx(), styleT * frame)
                                 clip = false
                             }
                             .clip(RoundedCornerShape(with(density) { outerR.toDp() }))
-                            .background(Color.White.copy(alpha = styleT)),
+                            .background(Color.White.copy(alpha = styleT * frame)),
                     ) {
                         Box(
                             Modifier
@@ -241,32 +256,83 @@ internal fun PlayerExpandFlightLayer(
         }
 
         if (miniTitle.isAnchorValid()) {
-            Text(
-                text = track.name,
-                style = TextStyle(
-                    color = titleColor,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 13.sp,
-                ),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier
-                    .size(
-                        with(density) { miniTitle.width.toDp() },
-                        with(density) { miniTitle.height.toDp() },
-                    )
-                    .graphicsLayer {
-                        alpha = expand.flightAlpha
-                        val dest = expand.toShell(expand.fullTitle)
-                        val end = if (dest.isAnchorValid()) dest else miniTitle
-                        val scale = flightTitleScale(p, look.titleFontMul)
-                        transformOrigin = TransformOrigin(0f, 0f)
-                        translationX = lerp(miniTitle.left, end.left, p)
-                        translationY = lerp(miniTitle.top, end.top, p)
-                        scaleX = scale
-                        scaleY = scale
-                    },
-            )
+            val destTitle = expand.toShell(expand.fullTitle)
+            val endTitle = if (destTitle.isAnchorValid()) destTitle else miniTitle
+            if (look.squareCover && endTitle.width > 8f) {
+                // 按最终字号和锚点像素宽排版，只做缩放和平移。
+                // 进度在交接阈值就切到真标题，插值必须在同一阈值收完，否则会差一截再跳。
+                val destH = endTitle.height.coerceAtLeast(1f)
+                val startScale = (miniTitle.height / destH).coerceIn(0.35f, 1f)
+                val u = (p / PlayerExpandHandoff).coerceIn(0f, 1f)
+                val scale = if (u > 0.998f) 1f else lerp(startScale, 1f, u)
+                val widthPx = endTitle.width.roundToInt().coerceAtLeast(1)
+                Text(
+                    text = track.name.ifBlank { t("未知歌曲") },
+                    style = TextStyle(
+                        color = if (u > 0.998f) look.titleDestColor else titleColor,
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 25.sp,
+                        lineHeight = 32.sp,
+                        letterSpacing = (-0.5).sp,
+                    ),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .graphicsLayer {
+                            alpha = expand.flightAlpha
+                            transformOrigin = TransformOrigin(0f, 0f)
+                            scaleX = scale
+                            scaleY = scale
+                            translationX = lerp(miniTitle.left, endTitle.left, u)
+                            translationY = lerp(miniTitle.top, endTitle.top, u)
+                            clip = false
+                        }
+                        .layout { measurable, constraints ->
+                            val maxW = if (constraints.hasBoundedWidth) {
+                                constraints.maxWidth
+                            } else {
+                                widthPx
+                            }
+                            val w = widthPx.coerceIn(
+                                constraints.minWidth.coerceAtMost(maxW),
+                                maxW,
+                            ).coerceAtLeast(1)
+                            val placeable = measurable.measure(
+                                constraints.copy(minWidth = w, maxWidth = w),
+                            )
+                            layout(placeable.width, placeable.height) {
+                                placeable.place(0, 0)
+                            }
+                        },
+                )
+            } else {
+                val titleScale = flightTitleScale(p, look.titleFontMul)
+                val titleW = lerp(miniTitle.width, endTitle.width, p).coerceAtLeast(1f)
+                val titleH = lerp(miniTitle.height, endTitle.height, p).coerceAtLeast(1f)
+                val titleSp = 13f * titleScale
+                Text(
+                    text = track.name,
+                    style = TextStyle(
+                        color = titleColor,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = titleSp.sp,
+                        lineHeight = (titleSp * 1.25f).sp,
+                        letterSpacing = (0.2f * p).sp,
+                    ),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .graphicsLayer {
+                            alpha = expand.flightAlpha
+                            translationX = lerp(miniTitle.left, endTitle.left, p)
+                            translationY = lerp(miniTitle.top, endTitle.top, p)
+                        }
+                        .size(
+                            with(density) { titleW.toDp() },
+                            with(density) { titleH.toDp() },
+                        ),
+                )
+            }
         }
 
         if (miniPlay.isAnchorValid()) {

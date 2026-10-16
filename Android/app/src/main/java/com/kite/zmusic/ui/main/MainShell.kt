@@ -131,6 +131,7 @@ import com.kite.zmusic.ui.player.PlayerExpandState
 import com.kite.zmusic.ui.theme.TextTheme
 import com.kite.zmusic.ui.player.formulaMiniBarRect
 import com.kite.zmusic.ui.player.isAnchorValid
+import com.kite.zmusic.ui.player.acceptsRestingMiniBar
 import com.kite.zmusic.ui.player.preferCloseMiniBar
 import com.kite.zmusic.ui.plugin.PluginPageChrome
 import com.kite.zmusic.ui.plugin.PluginPageScreen
@@ -453,10 +454,14 @@ fun MainShell(
     }
 
     fun closeFullPlayer() {
-        if (!islandExpandSource()) {
-            if (dockRestBottomLandscape.value != landscape) {
-                rememberDockRestBottom(stableNavBarDp(navBarLive.value))
-            }
+        if (!islandExpandSource() && dockRestBottomLandscape.value != landscape) {
+            rememberDockRestBottom(stableNavBarDp(navBarLive.value))
+        }
+        // 关闭这一下布局还没闪。落点用当前真实迷你条，不要用少了导航条的公式盖掉。
+        val live = expand.toShell(expand.miniBar)
+        if (live.isAnchorValid()) {
+            expand.fallbackMiniBar = live
+        } else if (!islandExpandSource()) {
             expand.fallbackMiniBar = preferCloseMiniBar(
                 expand.fallbackMiniBar,
                 formulaMiniBarInShell(),
@@ -464,6 +469,85 @@ fun MainShell(
         }
         showFullPlayer = false
         expand.close()
+    }
+
+    SideEffect {
+        app.pluginEngine.setNavigator { req ->
+            when (req.name) {
+                "player" -> {
+                    openFullPlayer()
+                    true
+                }
+                "search" -> {
+                    pushOverlay(MainOverlay.Search)
+                    true
+                }
+                "settings" -> {
+                    pushOverlay(MainOverlay.Settings)
+                    true
+                }
+                "charts" -> {
+                    pushOverlay(MainOverlay.Charts)
+                    true
+                }
+                "fm" -> {
+                    pushOverlay(MainOverlay.Fm)
+                    true
+                }
+                "daily" -> {
+                    pushOverlay(MainOverlay.Daily)
+                    true
+                }
+                "cloud" -> {
+                    pushOverlay(MainOverlay.CloudDisk)
+                    true
+                }
+                "workshop" -> {
+                    pushOverlay(MainOverlay.CreativeWorkshop)
+                    true
+                }
+                "back" -> when {
+                    showFullPlayer -> {
+                        closeFullPlayer()
+                        true
+                    }
+                    overlayStack.isNotEmpty() -> {
+                        popOverlay()
+                        true
+                    }
+                    else -> false
+                }
+                "home" -> {
+                    if (showFullPlayer) closeFullPlayer()
+                    overlayStack = emptyList()
+                    true
+                }
+                "playlist" -> {
+                    pushOverlay(MainOverlay.Playlist(req.id, req.title.ifBlank { req.id.toString() }))
+                    true
+                }
+                "album" -> {
+                    pushOverlay(MainOverlay.Album(req.id, req.title.ifBlank { req.id.toString() }))
+                    true
+                }
+                "artist" -> {
+                    pushOverlay(MainOverlay.Artist(req.id, req.title.ifBlank { req.id.toString() }))
+                    true
+                }
+                "mv" -> {
+                    pushOverlay(MainOverlay.Mv(req.id, req.title.ifBlank { req.id.toString() }))
+                    true
+                }
+                "user" -> {
+                    pushOverlay(MainOverlay.User(req.id, req.title.ifBlank { req.id.toString() }))
+                    true
+                }
+                else -> false
+            }
+        }
+    }
+    DisposableEffect(Unit) {
+        onDispose { app.pluginEngine.setNavigator(null) }
     }
 
     val pendingOpenPlayer by playback.pendingOpenPlayer.collectAsStateWithLifecycle()
@@ -893,6 +977,9 @@ fun MainShell(
                     expand.fallbackMiniBar = resting
                 }
             }
+        } else if (!islandMusic && expand.acceptsRestingMiniBar()) {
+            val live = expand.toShell(expand.miniBar)
+            if (live.isAnchorValid()) expand.fallbackMiniBar = live
         }
     }
     val chromeInset =

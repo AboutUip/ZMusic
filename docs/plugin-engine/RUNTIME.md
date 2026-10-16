@@ -2,7 +2,7 @@
 
 入口脚本在独立环境中执行。宿主注入全局对象 **`Xuan`**（萱的拼音）。
 
-本页描述引擎 `0.1.0` 向入口脚本提供的 API 索引。各对象的完整字段与失败条件见对应专页。
+本页描述引擎 `0.2.0` 向入口脚本提供的 API 索引。各对象的完整字段与失败条件见对应专页。`0.1.0` 已有的调用方式不变。
 
 只读版本与 `register` 在入口一开始即可使用。其它宿主 API 仅在插件已成功注册 `Running` 之后可用；未 `Running` 时调用失败，不结束插件。
 
@@ -35,8 +35,8 @@
 
 | 属性 | 类型 | 说明 |
 |---|---|---|
-| `Xuan.engine.version` | `string` | 可读版本，当前 `"0.1.0"` |
-| `Xuan.engine.versionNumber` | `number` | 由 `version` 得出的整数，当前 `100` |
+| `Xuan.engine.version` | `string` | 可读版本，当前 `"0.2.0"` |
+| `Xuan.engine.versionNumber` | `number` | 由 `version` 得出的整数，当前 `200` |
 
 上述属性禁止赋值。
 
@@ -176,9 +176,17 @@ Xuan.timer.remove("tick");
 
 包内 `require`（CommonJS）与读资源。见 [PACK.md](./PACK.md)。
 
-## `Xuan.player`
+## `Xuan.player` / `Xuan.lyric`
 
-当前播放快照、队列只读、播放控制与喜欢切换。见 [PLAYER.md](./PLAYER.md)。清单建议声明 `player`，不是调用门闩。
+当前播放快照、队列、播放控制、音量、倍速、循环模式、定时停止、喜欢，以及歌词。见 [PLAYER.md](./PLAYER.md)。清单建议声明 `player` / `lyric`，不是调用门闩。
+
+## `Xuan.song` 等曲库对象
+
+搜索、专辑、艺人、歌单、评论、MV、用户、推荐与云盘只读。一律异步。见 [CATALOG.md](./CATALOG.md)。清单建议声明 `catalog`。
+
+## `Xuan.app` / `Xuan.nav` / `Xuan.user.get`
+
+语言、前后台、打开链接、振动、屏幕，以及打开宿主页面。见 [APP.md](./APP.md)。清单建议声明 `app` / `nav`。
 
 ## `Xuan.http`
 
@@ -195,6 +203,10 @@ Xuan.timer.remove("tick");
 ## `Xuan.media` / `Xuan.share` / `Xuan.clipboard`
 
 保存图片到相册、系统分享、剪贴板。见 [DEVICE.md](./DEVICE.md)。清单建议分别声明 `media` / `share` / `clipboard`，不是调用门闩。
+
+## `Xuan.style`
+
+播放页和桌面歌词按画面、按属性覆盖：颜色、字重、斜体、字号、行距、偏移、黑胶几何、预览歌词、悬浮窗。不写用户设置。见 [STYLE.md](./STYLE.md)。清单建议声明 `style`。
 
 ## `Xuan.look`
 

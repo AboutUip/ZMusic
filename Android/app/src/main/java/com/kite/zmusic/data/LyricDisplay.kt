@@ -1,5 +1,7 @@
 package com.kite.zmusic.data
 
+import com.kite.zmusic.i18n.t
+
 internal fun LrcLine.sanitizedForDisplay(): LrcLine? {
     if (words.isNotEmpty()) {
         val kept = words.mapNotNull { word ->
@@ -58,8 +60,8 @@ internal fun pickDisplayLyricBundle(
     coexist: Boolean,
     wordByWord: Boolean,
 ): DisplayLyricBundle {
-    if (!preferTranslation || translated.isEmpty()) {
-        return DisplayLyricBundle(
+    val bundle = if (!preferTranslation || translated.isEmpty()) {
+        DisplayLyricBundle(
             lines = pickDisplayLyricLines(
                 original = original,
                 translated = translated,
@@ -70,9 +72,8 @@ internal fun pickDisplayLyricBundle(
             ),
             companions = emptyList(),
         )
-    }
-    if (!coexist) {
-        return DisplayLyricBundle(
+    } else if (!coexist) {
+        DisplayLyricBundle(
             lines = pickDisplayLyricLines(
                 original = original,
                 translated = translated,
@@ -83,26 +84,33 @@ internal fun pickDisplayLyricBundle(
             ),
             companions = emptyList(),
         )
+    } else {
+        val main = pickDisplayLyricLines(
+            original = original,
+            translated = emptyList(),
+            wordOriginal = wordOriginal,
+            wordTranslated = emptyList(),
+            preferTranslation = false,
+            wordByWord = wordByWord,
+        )
+        val trans = pickDisplayLyricLines(
+            original = translated,
+            translated = emptyList(),
+            wordOriginal = wordTranslated,
+            wordTranslated = emptyList(),
+            preferTranslation = false,
+            wordByWord = wordByWord,
+        )
+        DisplayLyricBundle(
+            lines = main,
+            companions = alignLyricCompanions(main, trans),
+        )
     }
-    val main = pickDisplayLyricLines(
-        original = original,
-        translated = emptyList(),
-        wordOriginal = wordOriginal,
-        wordTranslated = emptyList(),
-        preferTranslation = false,
-        wordByWord = wordByWord,
-    )
-    val trans = pickDisplayLyricLines(
-        original = translated,
-        translated = emptyList(),
-        wordOriginal = wordTranslated,
-        wordTranslated = emptyList(),
-        preferTranslation = false,
-        wordByWord = wordByWord,
-    )
+    if (bundle.lines.isNotEmpty()) return bundle
+    // 没有可显示的行时，补一句普通歌词。样式、扇形位置、飞入都按这一句走。
     return DisplayLyricBundle(
-        lines = main,
-        companions = alignLyricCompanions(main, trans),
+        lines = listOf(LrcLine(timeMs = 0L, text = t("暂无歌词"))),
+        companions = emptyList(),
     )
 }
 

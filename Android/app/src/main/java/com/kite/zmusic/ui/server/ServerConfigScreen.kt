@@ -95,7 +95,7 @@ fun ServerConfigScreen(
             )
             Spacer(Modifier.height(8.dp))
             Text(
-                text = t("填写主机和端口，测试通过后再进入"),
+                text = t("填写 URL、域名或 IP，以及端口。测试通过后再进入"),
                 style = TextStyle(
                     color = MainPalette.Secondary,
                     fontSize = 14.sp,
@@ -114,7 +114,7 @@ fun ServerConfigScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 GateField(
-                    label = t("主机 / IP"),
+                    label = t("URL / 域名 / IP"),
                     value = vm.host,
                     onChange = vm::onHostChange,
                     keyboardType = KeyboardType.Uri,

@@ -33,6 +33,8 @@ internal class PluginSession(
     private val player: PluginPlayerController,
     private val http: PluginHttpClient?,
     private val device: PluginDeviceHost,
+    private val catalog: PluginCatalog = PluginCatalog.Noop,
+    private val local: PluginLocalHost = PluginLocalHost.Noop,
     private val store: PluginKvStore,
     private val ui: PluginUiBridge,
     private val betterncmData: File,
@@ -282,6 +284,10 @@ internal class PluginSession(
         look.setProperty("set", JSCallFunction { args -> lookSet(args) })
         look.setProperty("clear", JSCallFunction { args -> lookClear(args) })
         look.setProperty("get", JSCallFunction { lookGet(ctx) })
+        val style = ctx.createNewJSObject()
+        style.setProperty("set", JSCallFunction { args -> styleSet(args) })
+        style.setProperty("clear", JSCallFunction { args -> styleClear(args) })
+        style.setProperty("get", JSCallFunction { styleGet(ctx) })
         val hook = ctx.createNewJSObject()
         hook.setProperty("add", JSCallFunction { args -> hookAdd(args) })
         hook.setProperty("remove", JSCallFunction { args -> hookRemove(args) })
@@ -355,6 +361,7 @@ internal class PluginSession(
         xuan.setProperty("notice", notice)
         xuan.setProperty("theme", theme)
         xuan.setProperty("look", look)
+        xuan.setProperty("style", style)
         xuan.setProperty("hook", hook)
         xuan.setProperty("timer", timer)
         xuan.setProperty("pack", pack)
@@ -367,6 +374,25 @@ internal class PluginSession(
         xuan.setProperty("clipboard", clipboardObj)
         xuan.setProperty("delay", JSCallFunction { args -> delayMs(args) })
         xuan.setProperty("require", JSCallFunction { args -> requireJs(ctx, args) })
+        PluginSurface.attach(
+            ctx,
+            xuan,
+            playerObj,
+            object : PluginSurfaceHost {
+                override fun allowed(): Boolean = !ended && hostApiAllowed()
+                override fun player(): PluginPlayerController = this@PluginSession.player
+                override fun local(): PluginLocalHost = this@PluginSession.local
+                override fun catalog(op: String, args: Any?, fn: JSFunction): Boolean =
+                    enqueueCatalog(op, args, fn)
+                override fun toast(message: String) {
+                    mainHandler.post { showNotice(message, null) }
+                }
+                override fun toJs(ctx: QuickJSContext, value: Any?): Any? {
+                    if (value == null) return null
+                    return ctx.parse(PluginJson.stringify(value))
+                }
+            },
+        )
         global.setProperty("Xuan", xuan)
         clipboardObj.release()
         shareObj.release()
@@ -398,6 +424,7 @@ internal class PluginSession(
             Object.freeze(Xuan.notice);
             Object.freeze(Xuan.theme);
             Object.freeze(Xuan.look);
+            Object.freeze(Xuan.style);
             Object.freeze(Xuan.hook);
             Object.freeze(Xuan.timer);
             Object.freeze(Xuan.pack);
@@ -412,6 +439,22 @@ internal class PluginSession(
             Object.freeze(Xuan.media);
             Object.freeze(Xuan.share);
             Object.freeze(Xuan.clipboard);
+            Object.freeze(Xuan.lyric);
+            Object.freeze(Xuan.app);
+            Object.freeze(Xuan.nav);
+            Object.freeze(Xuan.user);
+            Object.freeze(Xuan.song);
+            Object.freeze(Xuan.search);
+            Object.freeze(Xuan.album);
+            Object.freeze(Xuan.artist);
+            Object.freeze(Xuan.playlist);
+            Object.freeze(Xuan.comment);
+            Object.freeze(Xuan.mv);
+            Object.freeze(Xuan.recommend);
+            Object.freeze(Xuan.home);
+            Object.freeze(Xuan.cloud);
+            Object.freeze(Xuan.play);
+            Object.freeze(Xuan.fm);
             """.trimIndent(),
         )
     }
@@ -573,6 +616,63 @@ internal class PluginSession(
             return ctx.parse("{}")
         }
         val json = PluginJson.stringify(PluginLookPresent.effectiveMap())
+        return ctx.parse(json)
+    }
+
+    private fun styleSet(args: Array<out Any?>): Any {
+        if (ended || !hostApiAllowed()) {
+            rejectHost("style.set")
+            return java.lang.Boolean.FALSE
+        }
+        val surface = (args.getOrNull(0) as? String)?.trim()?.takeIf { it.isNotEmpty() }
+            ?: return failStyle()
+        val patch = when (val copied = PluginJsonable.copy(args.getOrNull(1))) {
+            PluginJsonCopy.Fail -> return failStyle()
+            is PluginJsonCopy.Ok -> copied.value
+        }
+        if (!PluginStylePresent.set(record.id, surface, patch)) return failStyle()
+        return java.lang.Boolean.TRUE
+    }
+
+    private fun failStyle(): Any {
+        journal.append(record.id, t("Xuan.style.set 失败: 参数非法"))
+        PluginLog.w(debug(), "插件 ${record.id} style.set 失败: 参数非法")
+        return java.lang.Boolean.FALSE
+    }
+
+    private fun styleClear(args: Array<out Any?>): Any {
+        if (ended || !hostApiAllowed()) {
+            rejectHost("style.clear")
+            return java.lang.Boolean.FALSE
+        }
+        if (args.size > 2) return java.lang.Boolean.FALSE
+        val surface = when {
+            args.isEmpty() || args[0] == null -> null
+            args[0] is String -> {
+                val s = (args[0] as String).trim()
+                if (s.isEmpty()) return java.lang.Boolean.FALSE
+                s
+            }
+            else -> return java.lang.Boolean.FALSE
+        }
+        val path = when {
+            args.size < 2 || args[1] == null -> null
+            args[1] is String -> {
+                val s = (args[1] as String).trim()
+                if (s.isEmpty()) return java.lang.Boolean.FALSE
+                s
+            }
+            else -> return java.lang.Boolean.FALSE
+        }
+        if (surface == null && path != null) return java.lang.Boolean.FALSE
+        return box(PluginStylePresent.clear(record.id, surface, path))
+    }
+
+    private fun styleGet(ctx: QuickJSContext): Any {
+        if (ended || !hostApiAllowed()) {
+            return ctx.parse("{}")
+        }
+        val json = PluginJson.stringify(PluginStylePresent.overlayMap())
         return ctx.parse(json)
     }
 
@@ -784,7 +884,41 @@ internal class PluginSession(
 
     private fun playerGet(ctx: QuickJSContext): Any? {
         if (ended || !hostApiAllowed()) return null
-        return ctx.parse(PluginJson.stringify(playback().toGetMap()))
+        val snap = LinkedHashMap(playback().toGetMap())
+        snap["volume"] = player.volume().toDouble()
+        snap["rate"] = player.playbackRate().toDouble()
+        snap["sleep"] = player.sleep()
+        return ctx.parse(PluginJson.stringify(snap))
+    }
+
+    private fun enqueueCatalog(op: String, args: Any?, fn: JSFunction): Boolean {
+        if (ended || !hostApiAllowed()) return false
+        val copied = when (val parsed = PluginJsonable.copy(args)) {
+            PluginJsonCopy.Fail -> return false
+            is PluginJsonCopy.Ok -> parsed.value as? Map<*, *> ?: return false
+        }
+        val payload = LinkedHashMap<String, Any?>()
+        for ((key, value) in copied) {
+            if (key is String) payload[key] = value
+        }
+        fn.hold()
+        val accepted = catalog.enqueue(op, payload) { result ->
+            runOnWorker(
+                Runnable {
+                    try {
+                        if (!ended) {
+                            withJsGuard("catalog") { ctx -> invokeFn(ctx, fn, listOf(result)) }
+                        }
+                    } finally {
+                        runCatching { fn.release() }
+                    }
+                },
+                wait = false,
+                evenIfEnded = true,
+            )
+        }
+        if (!accepted) runCatching { fn.release() }
+        return accepted
     }
 
     private fun playerPlay(): Any {
@@ -1396,6 +1530,7 @@ internal class PluginSession(
             PluginTextThemeBridge.clearIfOwner(record.id)
             PluginCollectionPresent.clearIfOwner(record.id)
             PluginLookPresent.clearIfOwner(record.id)
+            PluginStylePresent.clearIfOwner(record.id)
             destroyContext()
         }
     }

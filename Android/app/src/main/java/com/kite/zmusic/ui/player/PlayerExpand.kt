@@ -71,6 +71,8 @@ internal data class PlayerExpandLook(
     val landscape: Boolean,
     val squareCover: Boolean = false,
     val stageDest: Color = TextTheme.PlayerStage,
+    /** 动态页白框不透明度。1 为实心，0 为透出虚化封面。 */
+    val coverFrameAlpha: Float = 1f,
 ) {
     companion object {
         fun from(prefs: PlayerDisplayPrefs, landscape: Boolean): PlayerExpandLook {
@@ -107,6 +109,11 @@ internal data class PlayerExpandLook(
                 landscape = landscape,
                 squareCover = squareCover,
                 stageDest = if (squareCover) Color.White else TextTheme.PlayerStage,
+                coverFrameAlpha = if (squareCover) {
+                    prefs.dynamicCoverGlass.coerceIn(0f, 1f)
+                } else {
+                    1f
+                },
             )
         }
     }
@@ -356,21 +363,26 @@ internal class PlayerExpandState(
         resolveMiniBarInShell(targetOpen, toShell(miniBar), fallbackMiniBar)
 
     /**
-     * 离场后 window AABB 会闪一帧。迷你锚点在展开过程 / 收起时冻结，
-     * 飞层才不会跟裁切各落各的 Y。
+     * 离场后 window AABB 会闪一帧，起飞和收回时冻结迷你锚点。
+     * 全开着必须继续收：冷启动 insets、横竖屏切换都会挪迷你条，
+     * 否则退出仍飞回打开那一刻的旧窗口坐标。
      */
     private fun shouldIgnoreMiniReport(slot: PlayerExpandSlot): Boolean {
-        if (!slot.isMiniAnchor()) return false
-        return mounted && (visualProgress > PlayerExpandMiniHide || !targetOpen)
+        if (!slot.isMiniAnchor() || !mounted) return false
+        if (targetOpen && visualProgress >= PlayerExpandHandoff) return false
+        return visualProgress > PlayerExpandMiniHide || !targetOpen
     }
 
     /**
      * 冷播放第一次布局会先报一帧偏的终点，接着才落到真位置。
-     * 飞层已经在动时再改终点，封面 / 标题 / 播放键会和裁切错位。
+     * 飞层已经在动时再改封面 / 标题，会和裁切错位。
+     * 横屏底栏、动态页封面和歌名会跟着展开进度挪。锁住开飞那一帧，
+     * 交接时才会从旧位置弹回个性化落点。
      * 还没量到时仍接受，避免超时后永远停在迷你条。
      */
     private fun shouldHoldFullAnchor(slot: PlayerExpandSlot): Boolean {
         if (slot.isMiniAnchor()) return false
+        if (targetOpen && slot.followsExpandPlacement()) return false
         return playerExpandHoldFullAnchor(
             mounted = mounted,
             targetOpen = targetOpen,
@@ -668,6 +680,23 @@ private fun PlayerExpandSlot.isMiniAnchor(): Boolean = when (this) {
     -> true
     else -> false
 }
+
+/** 这些终点在进场时会随布局移动，飞层必须跟着，不能钉在第一帧。 */
+private fun PlayerExpandSlot.followsExpandPlacement(): Boolean = when (this) {
+    PlayerExpandSlot.FullPlay,
+    PlayerExpandSlot.FullProgress,
+    PlayerExpandSlot.FullElapsedTime,
+    PlayerExpandSlot.FullDurationTime,
+    PlayerExpandSlot.FullCover,
+    PlayerExpandSlot.FullTitle,
+    PlayerExpandSlot.FullArtist,
+    -> true
+    else -> false
+}
+
+/** 空闲或已经全开时，裁切落点跟真实迷你条。起飞和收回不动它。 */
+internal fun PlayerExpandState.acceptsRestingMiniBar(): Boolean =
+    !mounted || (targetOpen && visualProgress >= PlayerExpandHandoff)
 
 internal fun Rect.isProgressAnchorValid(): Boolean =
     width > 8f && height > 1.5f && left.isFinite() && top.isFinite()

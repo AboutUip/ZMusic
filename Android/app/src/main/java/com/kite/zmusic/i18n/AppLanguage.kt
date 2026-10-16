@@ -32,7 +32,7 @@ enum class AppLanguage {
 
     val subtitle: String
         get() = when (this) {
-            Chinese -> t("默认语言")
+            Chinese -> t("界面显示为简体中文")
             English -> t("界面显示为英文")
             Japanese -> t("界面显示为日语")
         }
@@ -51,6 +51,39 @@ enum class AppLanguage {
                 t.startsWith("ja") -> Japanese
                 else -> Default
             }
+        }
+
+        /** 按国家或地区代码选界面语言。没有对应语言时用英语。 */
+        fun fromCountry(countryIso: String?): AppLanguage {
+            return when (countryIso?.trim()?.uppercase(Locale.US)) {
+                "CN", "TW", "HK", "MO" -> Chinese
+                "JP" -> Japanese
+                else -> English
+            }
+        }
+    }
+}
+
+/** 设置里的语言项。自动不写入具体语言，下次启动再按国家决定。 */
+enum class LanguageChoice {
+    Auto,
+    Chinese,
+    English,
+    Japanese,
+    ;
+
+    fun resolve(countryIso: String): AppLanguage = when (this) {
+        Auto -> AppLanguage.fromCountry(countryIso)
+        Chinese -> AppLanguage.Chinese
+        English -> AppLanguage.English
+        Japanese -> AppLanguage.Japanese
+    }
+
+    companion object {
+        fun fromStored(raw: String?): LanguageChoice {
+            val text = raw?.trim().orEmpty()
+            if (text.isEmpty()) return Auto
+            return entries.find { it.name.equals(text, ignoreCase = true) } ?: Auto
         }
     }
 }

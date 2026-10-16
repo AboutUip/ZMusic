@@ -43,6 +43,9 @@ class PluginEngine(
     private val showNotice: (message: String, coverUrl: String?) -> Unit = { _, _ -> },
     private val bundledDebugProbe: () -> File? = { null },
     host: PluginHostBindings = PluginHostBindings(),
+    private val catalog: PluginCatalog = PluginCatalog.Noop,
+    private val local: PluginLocalHost = PluginLocalHost.Noop,
+    private val navBus: PluginNavBus = PluginNavBus(),
     private val bncmBridge: BetterNcmAndroidBridge? = null,
     private val bncmEapi: (String) -> String = { """{"code":502,"msg":"unsupported"}""" },
     private val bncmLibText: (String) -> String? = { null },
@@ -55,6 +58,9 @@ class PluginEngine(
         showNotice: (message: String, coverUrl: String?) -> Unit = { _, _ -> },
         bundledDebugProbe: () -> File? = { null },
         host: PluginHostBindings = PluginHostBindings(),
+        catalog: PluginCatalog = PluginCatalog.Noop,
+        local: PluginLocalHost = PluginLocalHost.Noop,
+        navBus: PluginNavBus = PluginNavBus(),
         bncmBridge: BetterNcmAndroidBridge? = null,
         bncmEapi: (String) -> String = { """{"code":502,"msg":"unsupported"}""" },
         bncmLibText: (String) -> String? = { null },
@@ -66,6 +72,9 @@ class PluginEngine(
         showNotice = showNotice,
         bundledDebugProbe = bundledDebugProbe,
         host = host,
+        catalog = catalog,
+        local = local,
+        navBus = navBus,
         bncmBridge = bncmBridge,
         bncmEapi = bncmEapi,
         bncmLibText = bncmLibText,
@@ -142,6 +151,10 @@ class PluginEngine(
 
     fun hostFacts(): PluginHostFacts = hostFacts
 
+    fun setNavigator(handler: ((PluginNavRequest) -> Boolean)?) {
+        navBus.set(handler)
+    }
+
     fun playbackSnapshot(): PluginPlaybackSnapshot = playback
 
     /**
@@ -164,6 +177,12 @@ class PluginEngine(
         }
         if (prev.liked != next.liked) {
             broadcastHook(PluginHookEvents.PLAYER_LIKED, listOf(next.likedMap()), wait = false)
+        }
+        if (prev.mode != next.mode) {
+            broadcastHook(PluginHookEvents.PLAYER_MODE, listOf(next.modeMap()), wait = false)
+        }
+        if (prev.lyricIndex != next.lyricIndex || prev.lyricText != next.lyricText) {
+            broadcastHook(PluginHookEvents.PLAYER_LYRIC, listOf(next.lyricEventMap()), wait = false)
         }
     }
 
@@ -664,6 +683,8 @@ class PluginEngine(
             player = player,
             http = http,
             device = device,
+            catalog = catalog,
+            local = local,
             store = kvStore,
             ui = ui,
             betterncmData = File(paths.betterncmDir, rec.id),
@@ -702,6 +723,7 @@ class PluginEngine(
                 PluginTextThemeBridge.clearIfOwner(id)
                 PluginCollectionPresent.clearIfOwner(id)
                 PluginLookPresent.clearIfOwner(id)
+                PluginStylePresent.clearIfOwner(id)
                 ui.dropPlugin(id)
                 http?.cancel(id)
                 device.cancel(id)

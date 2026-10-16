@@ -61,6 +61,7 @@ import com.kite.zmusic.data.pickDisplayLyricBundle
 import com.kite.zmusic.data.PlayerDisplayPrefsStore
 import com.kite.zmusic.data.sanitizedForDisplay
 import com.kite.zmusic.playback.PlaybackUiState
+import com.kite.zmusic.plugin.PluginStylePresent
 import com.kite.zmusic.ui.icons.ZIcons
 import com.kite.zmusic.ui.player.lyricActiveIndex
 import kotlin.math.roundToInt
@@ -88,6 +89,7 @@ fun LyricOverlayContent(
     idleChrome: Boolean,
     onWake: () -> Unit,
     onAllowWindowDrag: (Boolean) -> Unit,
+    onPaintedLayout: () -> Unit = {},
 ) {
     var settingsOpen by remember { mutableStateOf(false) }
     LaunchedEffect(prefs.locked) {
@@ -103,21 +105,30 @@ fun LyricOverlayContent(
         onAllowWindowDrag(!settingsOpen && !prefs.locked)
     }
     val density = LocalDensity.current
+    val shown = PluginStylePresent.paintOverlay(prefs)
+    LaunchedEffect(
+        shown.locked,
+        shown.ignoreCutout,
+        shown.dynamicWidth,
+        shown.widthPercent,
+    ) {
+        onPaintedLayout()
+    }
 
     val playing by remember(playbackUi) {
         playbackUi.map { it.playWhenReady }.distinctUntilChanged()
     }.collectAsState(initial = playbackUi.value.playWhenReady)
 
     val availableDp = with(density) { maxWidthPx.toDp() }
-    val overlayWidth = if (prefs.dynamicWidth) {
+    val overlayWidth = if (shown.dynamicWidth) {
         availableDp
     } else {
-        availableDp * prefs.widthPercent.coerceIn(
+        availableDp * shown.widthPercent.coerceIn(
             LyricOverlayPrefs.WIDTH_PERCENT_MIN,
             LyricOverlayPrefs.WIDTH_PERCENT_MAX,
         ) / 100f
     }
-    val widthMod = if (prefs.dynamicWidth) {
+    val widthMod = if (shown.dynamicWidth) {
         Modifier.widthIn(min = 120.dp, max = availableDp)
     } else {
         Modifier.fillMaxWidth()
@@ -131,22 +142,22 @@ fun LyricOverlayContent(
     val landscape = maxWidthPx > screenHeightPx
     val settingsMaxH = if (landscape) {
         val screenH = with(density) { screenHeightPx.toDp() }
-        val lyricBudget = ((prefs.lineCount.coerceAtLeast(1) * 22) + 16).dp
+        val lyricBudget = ((shown.lineCount.coerceAtLeast(1) * 22) + 16).dp
         (screenH - lyricBudget - 64.dp).coerceIn(132.dp, 248.dp)
     } else {
         Dp.Unspecified
     }
     val shape = RoundedCornerShape(14.dp)
-    val lyricsOnly = prefs.locked || idleChrome
+    val lyricsOnly = shown.locked || idleChrome
     val showClose = !lyricsOnly
     val showWindowBg = overlayShowsWindowBackground(
         locked = prefs.locked,
         idleChrome = idleChrome,
-        windowBackgroundEnabled = prefs.windowBackground,
+        windowBackgroundEnabled = shown.windowBackground,
     )
-    val showLyricBg = prefs.lyricBackground && !idleChrome
-    val blurT = if (prefs.windowBackground) {
-        prefs.blurRadiusPx / LyricOverlayPrefs.BLUR_MAX.toFloat()
+    val showLyricBg = shown.lyricBackground && !idleChrome
+    val blurT = if (shown.windowBackground) {
+        shown.blurRadiusPx / LyricOverlayPrefs.BLUR_MAX.toFloat()
     } else {
         0f
     }
@@ -181,7 +192,7 @@ fun LyricOverlayContent(
         ) {
             OverlayLyricLines(
                 playbackUi = playbackUi,
-                prefs = prefs,
+                prefs = shown,
                 lyricBackground = showLyricBg,
                 closeGutter = if (showClose) closeBtn else 0.dp,
                 marqueeEnabled = !lyricsOnly,

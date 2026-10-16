@@ -132,6 +132,7 @@ private fun ListenChatPackCanvas(
                 when (pack.kind) {
                     ListenChatPackKind.Dice -> if (pose.edgeOn) drawDieEdge(ink, paper) else drawDieFace(face, ink, paper, accent)
                     ListenChatPackKind.Rps -> drawRpsHand(face, ink, accent)
+                    ListenChatPackKind.Sticker -> Unit
                 }
             }
         }

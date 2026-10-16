@@ -486,6 +486,25 @@ class ListenChatLogicTest {
         assertEquals(ListenChatPackKind.Rps, parseListenChatPack(body.body)!!.kind)
         assertEquals("✌️ 剪刀", listenChatVisibleBody(quoted))
         assertNull(parseListenChatPack("hello"))
+        val stickerId = "AbcdEfghijklmnopqr12"
+        val sticker = encodeListenChatSticker(stickerId)
+        val stickerPack = parseListenChatPack(sticker)
+        assertEquals(ListenChatPackKind.Sticker, stickerPack!!.kind)
+        assertEquals(stickerId, stickerPack.value)
+        assertEquals("表情包", listenChatVisibleBody(sticker))
+        assertNull(parseListenChatPack("\u200B\u200BZMpack|sticker|../etc/passwd"))
+        assertNull(parseListenChatPack("\u200B\u200BZMpack|sticker|short"))
+        val png = byteArrayOf(
+            0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 0,
+        )
+        assertEquals("image/png", listenChatStickerMime(png))
+        assertEquals("image/gif", listenChatStickerMime("GIF89a".encodeToByteArray() + ByteArray(8)))
+        assertEquals(
+            "image/jpeg",
+            listenChatStickerMime(byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte()) + ByteArray(9)),
+        )
+        assertEquals("image/webp", listenChatStickerMime("RIFF".encodeToByteArray() + ByteArray(4) + "WEBP".encodeToByteArray()))
+        assertNull(listenChatStickerMime("not-an-image!!".encodeToByteArray()))
     }
 
     @Test

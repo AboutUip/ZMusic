@@ -1,10 +1,10 @@
 package com.kite.zmusic.ui.home
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -40,7 +40,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -60,22 +59,15 @@ import androidx.compose.ui.input.pointer.changedToUp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.util.VelocityTracker
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import com.kite.zmusic.R
-import com.kite.zmusic.i18n.t
 import com.kite.zmusic.ui.main.MainPalette
 import kotlin.math.abs
 import kotlin.math.hypot
@@ -116,8 +108,20 @@ private val HomeLoftIndicatorExit = tween<Float>(
 /** 与 Material 下拉刷新相同：手指距离先折半，再拿去跟刷新线比。 */
 internal const val HomeRefreshDragMultiplier = 0.5f
 
+/** 刷新比二楼更早成立。二楼线保持不动，中间多留一段松手即刷新的距离。 */
+private val HomeRefreshThreshold = 32.dp
+private val HomeLoftThreshold = 80.dp
+
 internal val LocalHomeRefreshBridge = staticCompositionLocalOf<HomeRefreshBridge?> { null }
 internal val LocalMainFloorLocked = staticCompositionLocalOf { false }
+
+/** 二楼里的表情面板要先吃掉返回键，再交给关楼。 */
+@Stable
+internal class LoftBackClaim {
+    var held by mutableStateOf(false)
+}
+
+internal val LocalLoftBackClaim = staticCompositionLocalOf { LoftBackClaim() }
 
 @Stable
 internal class HomeRefreshBridge {
@@ -333,7 +337,8 @@ internal class HomeLoftState(
         if (active) {
             val parked = if (HomeRefreshDragMultiplier == 0f) 0f else refreshPx / HomeRefreshDragMultiplier
             animateRaw(parked)
-        } else if (adjustedPx <= refreshPx + 1f) {
+        } else if (rawPx > 0.5f) {
+            // 松手时往往还在刷新线以下，不能等它先回到线上再收。
             animateRaw(0f)
         }
     }
@@ -422,14 +427,11 @@ private class HomeLoftConnection(
     override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
         if (source != NestedScrollSource.UserInput) return Offset.Zero
         val eatX = if (state.locksFloor && available.x != 0f) available.x else 0f
-        val eatY = if (
-            available.y < 0f &&
-            (state.reveal > 0f || state.open || state.rawPx > 0f)
-        ) {
-            state.dragBy(available.y)
-        } else {
-            0f
+        if (state.open || state.reveal > 0.001f) {
+            // 二楼里的列表先滚动，吃不掉的上滑才用来回一楼。
+            return Offset(eatX, 0f)
         }
+        val eatY = if (available.y < 0f && state.rawPx > 0f) state.dragBy(available.y) else 0f
         return Offset(eatX, eatY)
     }
 
@@ -440,6 +442,7 @@ private class HomeLoftConnection(
     ): Offset {
         if (source != NestedScrollSource.UserInput) return Offset.Zero
         if (state.open || state.reveal > 0.001f) {
+            if (available.y < 0f) state.dragBy(available.y)
             return if (available.y > 0f) Offset(0f, available.y) else Offset.Zero
         }
         if (available.y <= 0f) return Offset.Zero
@@ -447,6 +450,7 @@ private class HomeLoftConnection(
     }
 
     override suspend fun onPreFling(available: Velocity): Velocity {
+        if (state.open && state.reveal > 0.98f) return Velocity.Zero
         if (!state.dragging && !state.open) return Velocity.Zero
         val pulled = state.rawPx > 0f || state.reveal > 0f || state.open
         state.settle(available.y, onRefresh)
@@ -499,10 +503,11 @@ internal fun MainLoftHost(
 ) {
     val scope = rememberCoroutineScope()
     val state = remember { HomeLoftState(scope) }
+    val backClaim = remember { LoftBackClaim() }
     val density = LocalDensity.current
     val haptic = LocalHapticFeedback.current
-    val refreshPx = with(density) { 48.dp.toPx() }
-    val loftPx = with(density) { 80.dp.toPx() }
+    val refreshPx = with(density) { HomeRefreshThreshold.toPx() }
+    val loftPx = with(density) { HomeLoftThreshold.toPx() }
     val interruptPx = with(density) { 28.dp.toPx() }
     val indicatorSizePx = with(density) { 40.dp.toPx() }
     val indicatorMarkPx = with(density) { 16.dp.toPx() }
@@ -537,14 +542,22 @@ internal fun MainLoftHost(
     SideEffect { refreshRef.action = onRefresh }
     val connection = remember(state) { HomeLoftConnection(state) { refreshRef.action() } }
     val phase = homePullPhase(state.adjustedPx, refreshPx, loftPx)
+    var refreshArmed by remember { mutableStateOf(false) }
     var loftArmed by remember { mutableStateOf(false) }
     LaunchedEffect(phase, state.dragging) {
         if (!state.dragging || state.returning) return@LaunchedEffect
+        if (phase == HomePullPhase.Refresh && !refreshArmed) {
+            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+            refreshArmed = true
+        }
         if (phase == HomePullPhase.Loft && !loftArmed) {
             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
             loftArmed = true
         }
-        if (phase == HomePullPhase.Pull) loftArmed = false
+        if (phase == HomePullPhase.Pull) {
+            refreshArmed = false
+            loftArmed = false
+        }
     }
     LaunchedEffect(phase) {
         if (phase == HomePullPhase.Loft && !state.open && !state.returning) {
@@ -558,6 +571,7 @@ internal fun MainLoftHost(
         loftPx,
     )
     SideEffect { indicator.fraction = fraction }
+    CompositionLocalProvider(LocalLoftBackClaim provides backClaim) {
     val showIndicator = !state.open &&
         !state.returning &&
         state.reveal <= 0.001f &&
@@ -572,7 +586,8 @@ internal fun MainLoftHost(
                 state.containerPx = it.height.toFloat().coerceAtLeast(0f)
             }
             .nestedScroll(connection)
-            .pointerInput(state) {
+            .pointerInput(state.open && state.reveal > 0.98f) {
+                if (state.open && state.reveal > 0.98f) return@pointerInput
                 awaitEachGesture {
                     val down = awaitFirstDown(
                         requireUnconsumed = false,
@@ -619,7 +634,8 @@ internal fun MainLoftHost(
                         clip = true
                         shape = CircleCoverShape(state.coverCenter, radius)
                     }
-                    .pointerInput(Unit) {
+                    .pointerInput(state.open, state.reveal > 0.98f) {
+                        if (state.open && state.reveal > 0.98f) return@pointerInput
                         awaitEachGesture {
                             val down = awaitFirstDown(requireUnconsumed = false)
                             down.consume()
@@ -633,7 +649,8 @@ internal fun MainLoftHost(
                     .background(MainPalette.Surface),
             ) {
                 HomeSecondFloor(
-                    Modifier
+                    onClose = { state.close() },
+                    modifier = Modifier
                         .fillMaxSize()
                         .graphicsLayer { alpha = contentAlpha },
                 )
@@ -692,13 +709,13 @@ internal fun MainLoftHost(
                 isRefreshing = refreshing && phase != HomePullPhase.Loft,
                 containerColor = MainPalette.Surface,
                 color = MainPalette.Accent,
-                threshold = 48.dp,
+                threshold = HomeRefreshThreshold,
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .padding(top = indicatorInset),
             )
         }
-        if (state.locksFloor) {
+        if (state.locksFloor && !(state.open && state.reveal > 0.98f)) {
             Box(
                 Modifier
                     .fillMaxSize()
@@ -716,57 +733,14 @@ internal fun MainLoftHost(
             )
         }
     }
+    BackHandler(enabled = state.open && !backClaim.held) { state.close() }
+    }
 }
 
 @Composable
 internal fun HomeSecondFloor(
+    onClose: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    Box(modifier.background(MainPalette.Surface)) {
-        Column(
-            Modifier
-                .align(Alignment.Center)
-                .padding(horizontal = 32.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Image(
-                painter = painterResource(R.drawable.ic_logo_vinyl_z),
-                contentDescription = null,
-                modifier = Modifier
-                    .size(76.dp)
-                    .clip(CircleShape),
-                contentScale = ContentScale.Crop,
-            )
-            Spacer(Modifier.height(18.dp))
-            Text(
-                text = "ZMusic",
-                style = TextStyle(
-                    color = MainPalette.Ink,
-                    fontSize = 32.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = (-0.6).sp,
-                ),
-            )
-            Spacer(Modifier.height(6.dp))
-            Text(
-                text = t("二楼"),
-                style = TextStyle(
-                    color = MainPalette.Secondary,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Medium,
-                ),
-            )
-        }
-        Text(
-            text = t("上滑回到一楼"),
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = navBottom + 28.dp),
-            style = TextStyle(
-                color = MainPalette.Hint,
-                fontSize = 13.sp,
-            ),
-        )
-    }
+    LoftChatFloor(onClose = onClose, modifier = modifier.background(MainPalette.Surface))
 }

@@ -3,19 +3,25 @@ package com.kite.zmusic.ui.player
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.net.Uri
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -33,6 +39,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -57,6 +64,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -69,6 +77,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -79,6 +88,14 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
@@ -111,8 +128,12 @@ import com.kite.zmusic.listen.ListenChatMsg
 import com.kite.zmusic.listen.ListenChatPackKind
 import com.kite.zmusic.listen.ListenChatReplyQuote
 import com.kite.zmusic.listen.ListenChatTranslateEntry
+import com.kite.zmusic.listen.ListenSticker
+import com.kite.zmusic.listen.ListenStickerMaxBytes
 import com.kite.zmusic.listen.encodeListenChatPack
+import com.kite.zmusic.listen.encodeListenChatSticker
 import com.kite.zmusic.listen.encodeListenChatText
+import com.kite.zmusic.listen.listenChatStickerMime
 import com.kite.zmusic.listen.listenChatClockLabel
 import com.kite.zmusic.listen.listenChatPackCaption
 import com.kite.zmusic.listen.listenChatQuoteFromMsg
@@ -128,11 +149,17 @@ import com.kite.zmusic.ui.icons.ZIcons
 import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.main.pageSheetHazeStyle
 import com.kite.zmusic.ui.notice.showIslandNotice
+import com.kite.zmusic.workshop.WorkshopApiError
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeEffect
+import java.io.ByteArrayOutputStream
 import kotlin.math.abs
 import kotlin.math.max
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
 private val ChatBubbleShape = RoundedCornerShape(14.dp)
@@ -175,6 +202,37 @@ internal fun PortraitListenChatSheet(
     var actionMsgId by remember { mutableStateOf<Long?>(null) }
     var replyTo by remember { mutableStateOf<ListenChatReplyQuote?>(null) }
     var spunPacks by remember { mutableStateOf(emptySet<String>()) }
+    var stickers by remember { mutableStateOf<List<ListenSticker>>(emptyList()) }
+    var stickerUploading by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val pickSticker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        stickerUploading = true
+        scope.launch {
+            try {
+                val bytes = withContext(Dispatchers.IO) { readListenStickerBytes(context, uri) }
+                if (listenChatStickerMime(bytes) == null) {
+                    context.showIslandNotice(t("不支持的图片"))
+                    return@launch
+                }
+                val saved = listen.uploadSticker(bytes)
+                stickers = listOf(saved) + stickers.filter { it.id != saved.id }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: ListenStickerTooLarge) {
+                context.showIslandNotice(t("图片不能超过 4MB"))
+            } catch (e: Exception) {
+                context.showIslandNotice(listenStickerFailureNotice(e))
+            } finally {
+                stickerUploading = false
+            }
+        }
+    }
+    LaunchedEffect(emojiOpen) {
+        if (!emojiOpen) return@LaunchedEffect
+        val loaded = runCatching { listen.listStickers() }.getOrNull() ?: return@LaunchedEffect
+        stickers = mergeListenStickers(stickers, loaded)
+    }
     val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val imeBottom = WindowInsets.ime.getBottom(density)
     val navBottom = WindowInsets.navigationBars.getBottom(density)
@@ -249,7 +307,19 @@ internal fun PortraitListenChatSheet(
             delay(320)
         }
     }
-    LaunchedEffect(newestId, chat.size, imeBottom) {
+    val oldestChatId = chat.asSequence().map { it.id }.filter { it > 0L }.minOrNull() ?: 0L
+    LaunchedEffect(listState, ui.room?.id, oldestChatId, chat.size) {
+        snapshotFlow {
+            val info = listState.layoutInfo
+            val visible = info.visibleItemsInfo
+            visible.isNotEmpty() && visible.last().index >= info.totalItemsCount - 2
+        }
+            .distinctUntilChanged()
+            .collect { nearOldest ->
+                if (nearOldest) listen.loadOlderChat()
+            }
+    }
+    LaunchedEffect(newestId, imeBottom) {
         if (chat.isEmpty()) return@LaunchedEffect
         kotlinx.coroutines.yield()
         listState.scrollToItem(0)
@@ -267,6 +337,12 @@ internal fun PortraitListenChatSheet(
 
     fun sendPack(kind: ListenChatPackKind) {
         val payload = encodeListenChatText(replyTo, encodeListenChatPack(kind))
+        replyTo = null
+        listen.sendChat(payload)
+    }
+
+    fun sendSticker(id: String) {
+        val payload = encodeListenChatText(replyTo, encodeListenChatSticker(id))
         replyTo = null
         listen.sendChat(payload)
     }
@@ -482,8 +558,18 @@ internal fun PortraitListenChatSheet(
                     if (emojiOpen || panelPx > 1f) {
                         ChatEmojiPanel(
                             recent = recentEmoji,
+                            stickers = stickers,
+                            stickerUploading = stickerUploading,
                             onPick = { insertEmoji(it) },
                             onSendPack = { sendPack(it) },
+                            onAddSticker = {
+                                if (!stickerUploading) {
+                                    pickSticker.launch(
+                                        arrayOf("image/*", "image/gif", "image/png", "image/webp", "image/jpeg"),
+                                    )
+                                }
+                            },
+                            onSendSticker = { sendSticker(it) },
                             modifier = Modifier.fillMaxSize(),
                         )
                     }
@@ -498,10 +584,11 @@ internal fun PortraitListenChatSheet(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun ChatRow(
+internal fun ChatRow(
     msg: ListenChatMsg,
     self: Boolean,
     read: Boolean,
+    showRead: Boolean = true,
     spunPacks: Set<String>,
     onPackSpun: (String) -> Unit,
     translation: ListenChatTranslateEntry?,
@@ -517,6 +604,7 @@ private fun ChatRow(
     val parsed = remember(msg.text) { parseListenChatText(msg.text) }
     val body = parsed.body.ifBlank { msg.text }
     val pack = remember(body) { parseListenChatPack(body) }
+    val stickerId = pack?.takeIf { it.kind == ListenChatPackKind.Sticker }?.value
     val clock = remember(msg.at) { listenChatClockLabel(msg.at) }
     val name = if (self) t("我") else msg.nickname.ifBlank { msg.uid }
     Row(
@@ -536,10 +624,6 @@ private fun ChatRow(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = if (self) Arrangement.End else Arrangement.Start,
             ) {
-                if (self && clock.isNotEmpty()) {
-                    ChatTimeLabel(clock)
-                    Spacer(Modifier.width(4.dp))
-                }
                 Text(
                     text = name,
                     color = MainPalette.Secondary,
@@ -548,55 +632,80 @@ private fun ChatRow(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.widthIn(max = 180.dp),
                 )
-                if (!self && clock.isNotEmpty()) {
+                if (clock.isNotEmpty()) {
                     Spacer(Modifier.width(4.dp))
                     ChatTimeLabel(clock)
+                }
+                if (self && showRead) {
+                    Spacer(Modifier.width(3.dp))
+                    TelegramReadMark(sending = msg.id < 0L, read = read)
                 }
             }
             Spacer(Modifier.height(4.dp))
             Box {
-                Box(
-                    Modifier
-                        .clip(ChatBubbleShape)
-                        .background(if (self) MainPalette.Accent.copy(alpha = 0.18f) else MainPalette.Card)
-                        .combinedClickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = { onDismissMenu() },
-                            onLongClick = onLongPress,
-                        )
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                ) {
-                    Column {
+                if (stickerId != null) {
+                    Column(horizontalAlignment = if (self) Alignment.End else Alignment.Start) {
                         parsed.reply?.let { quote ->
-                            ChatBubbleReplyQuote(quote = quote, self = self)
-                            Spacer(Modifier.height(6.dp))
+                            Box(
+                                Modifier
+                                    .clip(ChatBubbleShape)
+                                    .background(if (self) MainPalette.Accent.copy(alpha = 0.18f) else MainPalette.Card)
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                            ) {
+                                ChatBubbleReplyQuote(quote = quote, self = self)
+                            }
+                            Spacer(Modifier.height(4.dp))
                         }
-                        if (pack != null) {
-                            ChatPackFace(
-                                pack = pack,
-                                spin = msg.id > 0L &&
-                                    listenChatPackFresh(msg.at) &&
-                                    !spunPacks.contains(listenChatPackClaim(msg, body)),
-                                onSpinStart = { onPackSpun(listenChatPackClaim(msg, body)) },
+                        Box(Modifier.size(132.dp)) {
+                            ListenChatStickerImage(
+                                stickerId = stickerId,
+                                modifier = Modifier.fillMaxSize(),
                             )
-                        } else {
-                            Text(
-                                text = body,
-                                color = MainPalette.Ink,
-                                fontSize = 14.sp,
+                            Box(
+                                Modifier
+                                    .matchParentSize()
+                                    .combinedClickable(
+                                        interactionSource = remember(msg.id) { MutableInteractionSource() },
+                                        indication = null,
+                                        onClick = { onDismissMenu() },
+                                        onLongClick = onLongPress,
+                                    ),
                             )
                         }
-                        if (read) {
-                            Spacer(Modifier.height(2.dp))
-                            Icon(
-                                imageVector = ZIcons.Check,
-                                contentDescription = t("已读"),
-                                tint = MainPalette.Accent,
-                                modifier = Modifier
-                                    .align(Alignment.End)
-                                    .size(14.dp),
+                    }
+                } else {
+                    Box(
+                        Modifier
+                            .clip(ChatBubbleShape)
+                            .background(if (self) MainPalette.Accent.copy(alpha = 0.18f) else MainPalette.Card)
+                            .combinedClickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = { onDismissMenu() },
+                                onLongClick = onLongPress,
                             )
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                    ) {
+                        Column {
+                            parsed.reply?.let { quote ->
+                                ChatBubbleReplyQuote(quote = quote, self = self)
+                                Spacer(Modifier.height(6.dp))
+                            }
+                            if (pack != null) {
+                                ChatPackFace(
+                                    pack = pack,
+                                    spin = msg.id > 0L &&
+                                        listenChatPackFresh(msg.at) &&
+                                        !spunPacks.contains(listenChatPackClaim(msg, body)),
+                                    onSpinStart = { onPackSpun(listenChatPackClaim(msg, body)) },
+                                )
+                            } else {
+                                Text(
+                                    text = body,
+                                    color = MainPalette.Ink,
+                                    fontSize = 14.sp,
+                                )
+                            }
                         }
                     }
                 }
@@ -778,15 +887,14 @@ private fun ChatBubbleReplyQuote(
     }
     Row(
         Modifier
-            .fillMaxWidth()
+            .height(IntrinsicSize.Min)
             .clip(RoundedCornerShape(8.dp))
-            .background(wash)
-            .padding(start = 0.dp),
+            .background(wash),
     ) {
         Box(
             Modifier
                 .width(3.dp)
-                .heightIn(min = 34.dp)
+                .fillMaxHeight()
                 .background(bar),
         )
         Column(
@@ -814,7 +922,7 @@ private fun ChatBubbleReplyQuote(
 }
 
 @Composable
-private fun ChatComposerReplyBar(
+internal fun ChatComposerReplyBar(
     quote: ListenChatReplyQuote,
     onClear: () -> Unit,
 ) {
@@ -822,17 +930,18 @@ private fun ChatComposerReplyBar(
         Modifier
             .fillMaxWidth()
             .padding(bottom = 8.dp)
+            .height(IntrinsicSize.Min)
             .clip(ChatReplyBarShape)
             .background(
                 if (MainPalette.isDark) Color(0xFF2C2C2E) else Color(0xFFF2F2F7),
             )
-            .padding(start = 0.dp, end = 6.dp, top = 0.dp, bottom = 0.dp),
+            .padding(end = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
             Modifier
                 .width(3.dp)
-                .height(44.dp)
+                .fillMaxHeight()
                 .background(MainPalette.Accent),
         )
         Column(
@@ -993,7 +1102,7 @@ private fun ListenChatMsg.ncmUserId(): Long? =
     uid.trim().toLongOrNull()?.takeIf { it > 0L }
 
 @Composable
-private fun ChatComposerBar(
+internal fun ChatComposerBar(
     draft: TextFieldValue,
     emojiOpen: Boolean,
     focusRequester: FocusRequester,
@@ -1099,6 +1208,76 @@ private fun ChatComposerBar(
 }
 
 @Composable
+private fun TelegramReadMark(sending: Boolean, read: Boolean) {
+    if (sending) {
+        TelegramSendingClock()
+        return
+    }
+    val readT by animateFloatAsState(
+        targetValue = if (read) 1f else 0f,
+        animationSpec = tween(220, easing = FastOutSlowInEasing),
+        label = "tgRead",
+    )
+    val unread = MainPalette.Secondary.copy(alpha = 0.55f)
+    val readColor = MainPalette.Accent
+    Canvas(
+        Modifier
+            .size(width = 15.dp, height = 10.dp)
+            .semantics { contentDescription = if (read) t("已读") else t("发送中") },
+    ) {
+        val color = lerp(unread, readColor, readT)
+        val gap = 4.4.dp.toPx()
+        drawTgTick(color, dx = 0f)
+        if (readT > 0.01f) {
+            drawTgTick(
+                color.copy(alpha = color.alpha * readT),
+                dx = gap * readT,
+            )
+        }
+    }
+}
+
+@Composable
+private fun TelegramSendingClock() {
+    val spin by rememberInfiniteTransition(label = "tgSend").animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(tween(900, easing = LinearEasing)),
+        label = "tgSendSpin",
+    )
+    val color = MainPalette.Secondary.copy(alpha = 0.55f)
+    Canvas(
+        Modifier
+            .size(10.dp)
+            .semantics { contentDescription = t("发送中") },
+    ) {
+        rotate(spin, center) {
+            drawArc(
+                color = color,
+                startAngle = -40f,
+                sweepAngle = 270f,
+                useCenter = false,
+                style = Stroke(width = 1.15.dp.toPx(), cap = StrokeCap.Round),
+            )
+        }
+    }
+}
+
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawTgTick(color: Color, dx: Float) {
+    val stroke = Stroke(
+        width = 1.15.dp.toPx(),
+        cap = StrokeCap.Round,
+        join = StrokeJoin.Round,
+    )
+    val path = Path().apply {
+        moveTo(dx + 0.4.dp.toPx(), size.height * 0.58f)
+        lineTo(dx + 3.1.dp.toPx(), size.height * 0.84f)
+        lineTo(dx + 8.4.dp.toPx(), size.height * 0.22f)
+    }
+    drawPath(path, color, style = stroke)
+}
+
+@Composable
 private fun ChatTimeLabel(text: String) {
     Text(
         text = text,
@@ -1154,10 +1333,14 @@ private val ChatQuickEmojis = listOf(
 )
 
 @Composable
-private fun ChatEmojiPanel(
+internal fun ChatEmojiPanel(
     recent: List<String>,
+    stickers: List<ListenSticker>,
+    stickerUploading: Boolean,
     onPick: (String) -> Unit,
     onSendPack: (ListenChatPackKind) -> Unit,
+    onAddSticker: () -> Unit,
+    onSendSticker: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val glyphs = remember(recent) {
@@ -1268,26 +1451,39 @@ private fun ChatEmojiPanel(
                         }
                     }
                 }
-                else -> Row(
-                    Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 8.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                else -> LazyVerticalGrid(
+                    columns = GridCells.Adaptive(minSize = 88.dp),
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    ChatPackTile(
-                        modifier = Modifier.weight(1f),
-                        kind = ListenChatPackKind.Dice,
-                        title = t("骰子"),
-                        subtitle = t("随机 1–6"),
-                        onClick = { onSendPack(ListenChatPackKind.Dice) },
-                    )
-                    ChatPackTile(
-                        modifier = Modifier.weight(1f),
-                        kind = ListenChatPackKind.Rps,
-                        title = t("猜拳"),
-                        subtitle = t("石头剪刀布"),
-                        onClick = { onSendPack(ListenChatPackKind.Rps) },
-                    )
+                    item(key = "add") {
+                        ChatStickerAddTile(
+                            uploading = stickerUploading,
+                            onClick = onAddSticker,
+                        )
+                    }
+                    items(stickers, key = { it.id }) { sticker ->
+                        ChatStickerCell(
+                            sticker = sticker,
+                            onClick = { onSendSticker(sticker.id) },
+                        )
+                    }
+                    item(key = "dice") {
+                        ChatPackTile(
+                            kind = ListenChatPackKind.Dice,
+                            title = t("骰子"),
+                            onClick = { onSendPack(ListenChatPackKind.Dice) },
+                        )
+                    }
+                    item(key = "rps") {
+                        ChatPackTile(
+                            kind = ListenChatPackKind.Rps,
+                            title = t("猜拳"),
+                            onClick = { onSendPack(ListenChatPackKind.Rps) },
+                        )
+                    }
                 }
             }
         }
@@ -1325,42 +1521,141 @@ private fun ChatEmojiTabChip(
 private fun ChatPackTile(
     kind: ListenChatPackKind,
     title: String,
-    subtitle: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
         modifier
-            .fillMaxHeight()
-            .clip(RoundedCornerShape(16.dp))
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
             .background(MainPalette.Card)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
                 onClick = onClick,
             )
-            .padding(horizontal = 12.dp, vertical = 14.dp),
+            .padding(vertical = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
     ) {
         ListenChatPackArt(
             pack = com.kite.zmusic.listen.ListenChatPack(kind, if (kind == ListenChatPackKind.Dice) "6" else "rock"),
             play = false,
             preview = true,
-            size = 72.dp,
+            size = 56.dp,
         )
-        Spacer(Modifier.height(6.dp))
         Text(
             text = title,
-            color = MainPalette.Ink,
-            fontSize = 15.sp,
-            fontWeight = FontWeight.SemiBold,
-        )
-        Text(
-            text = subtitle,
             color = MainPalette.Secondary,
-            fontSize = 12.sp,
+            fontSize = 11.sp,
+            maxLines = 1,
         )
+    }
+}
+
+@Composable
+private fun ChatStickerAddTile(
+    uploading: Boolean,
+    onClick: () -> Unit,
+) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(MainPalette.Card)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                enabled = !uploading,
+                onClick = onClick,
+            )
+            .padding(vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Box(Modifier.size(56.dp), contentAlignment = Alignment.Center) {
+            if (uploading) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(22.dp),
+                    strokeWidth = 2.dp,
+                    color = MainPalette.Accent,
+                )
+            } else {
+                Icon(
+                    imageVector = ZIcons.Add,
+                    contentDescription = t("添加表情包"),
+                    tint = MainPalette.Accent,
+                    modifier = Modifier.size(28.dp),
+                )
+            }
+        }
+        Text(
+            text = t("添加表情包"),
+            color = MainPalette.Secondary,
+            fontSize = 11.sp,
+            maxLines = 1,
+        )
+    }
+}
+
+@Composable
+private fun ChatStickerCell(
+    sticker: ListenSticker,
+    onClick: () -> Unit,
+) {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height(76.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        ListenChatStickerImage(
+            stickerId = sticker.id,
+            modifier = Modifier.size(64.dp),
+        )
+        Box(
+            Modifier
+                .matchParentSize()
+                .clip(RoundedCornerShape(14.dp))
+                .clickable(
+                    interactionSource = remember(sticker.id) { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onClick,
+                ),
+        )
+    }
+}
+
+private class ListenStickerTooLarge : RuntimeException()
+
+private fun readListenStickerBytes(context: Context, uri: Uri): ByteArray {
+    val input = context.contentResolver.openInputStream(uri) ?: throw java.io.IOException("sticker")
+    input.use { stream ->
+        val out = ByteArrayOutputStream()
+        val buf = ByteArray(16 * 1024)
+        var total = 0
+        while (true) {
+            val n = stream.read(buf)
+            if (n < 0) break
+            total += n
+            if (total > ListenStickerMaxBytes) throw ListenStickerTooLarge()
+            out.write(buf, 0, n)
+        }
+        return out.toByteArray()
+    }
+}
+
+private fun mergeListenStickers(local: List<ListenSticker>, remote: List<ListenSticker>): List<ListenSticker> {
+    val remoteIds = remote.map { it.id }.toSet()
+    return local.filter { it.id !in remoteIds } + remote
+}
+
+private fun listenStickerFailureNotice(err: Throwable): String {
+    val code = (err as? WorkshopApiError.Message)?.message.orEmpty()
+    return when {
+        err is WorkshopApiError.RateLimited || code == "rate_limited" -> t("请求太频繁，稍后再试")
+        code == "too_large" -> t("图片不能超过 4MB")
+        code == "bad_image" -> t("不支持的图片")
+        code == "quota" -> t("表情包已满")
+        else -> t("表情包上传失败")
     }
 }
 

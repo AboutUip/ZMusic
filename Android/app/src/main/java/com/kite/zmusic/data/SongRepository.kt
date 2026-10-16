@@ -7,8 +7,9 @@ import com.kite.zmusic.i18n.t
 /**
  * 单曲查询：详情、歌手解析、红心核对。Compose 不要直接打这些接口。
  */
-class SongRepository(
+class SongRepository internal constructor(
     private val userClient: NcmUserClient,
+    private val wikiCache: SongWikiCache,
 ) {
     suspend fun tracksByIds(ids: List<Long>, cookie: String): List<TrackRow> {
         if (ids.isEmpty()) return emptyList()
@@ -41,8 +42,13 @@ class SongRepository(
         return CatalogApiAck(ok, if (ok) "" else NcmJson.userFacingMessage(json, "操作失败"))
     }
 
+    internal fun peekWiki(songId: Long, cookie: String): SongWikiPage? =
+        wikiCache.peekMemory(songId, cookie.isNotBlank())
+
     internal suspend fun wiki(songId: Long, cookie: String): SongWikiPage {
         if (songId <= 0L) return SongWikiPage()
+        val authed = cookie.isNotBlank()
+        wikiCache.load(songId, authed)?.let { return it }
         return coroutineScope {
             val summary = async {
                 runCatching { userClient.songWikiSummary(songId, cookie) }.getOrNull()
@@ -75,6 +81,7 @@ class SongRepository(
             if (page.isEmpty && summaryJson == null && creatorsJson == null && detailJson == null) {
                 error(t("百科加载失败"))
             }
+            if (!page.isEmpty) wikiCache.save(songId, page, authed)
             page
         }
     }

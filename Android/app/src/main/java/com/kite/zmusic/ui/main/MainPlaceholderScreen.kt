@@ -84,6 +84,7 @@ fun MainPlaceholderScreen(
         app.homeFeedRepository.clear()
         app.playlistTracksCache.clear()
         app.albumTracksCache.clear()
+        app.songWikiCache.clear()
         app.searchHistoryRepository.clear()
         app.playlistCollectionRepository.clear()
         app.libraryHomeRepository.clear()

@@ -27,33 +27,39 @@ class CommunityServerStore(context: Context) {
 
     fun current(): ServerConfigRepository.Endpoint = _endpoint.value
 
-    fun persist(host: String, port: Int) {
-        val h = host.trim()
-        require(h.isNotEmpty()) { "host empty" }
-        require(port in 1..65535) { "invalid port: $port" }
+    fun persist(endpoint: ServerConfigRepository.Endpoint) {
+        val e = endpoint.normalized()
+        require(e.host.isNotEmpty()) { "host empty" }
+        require(e.port in 1..65535) { "invalid port: ${e.port}" }
         prefs.edit()
-            .putString(KEY_HOST, h)
-            .putInt(KEY_PORT, port)
+            .putString(KEY_HOST, e.host)
+            .putInt(KEY_PORT, e.port)
+            .putString(KEY_SCHEME, e.scheme)
+            .putString(KEY_PATH, e.path)
             .apply()
-        _endpoint.value = ServerConfigRepository.Endpoint(h, port)
+        _endpoint.value = e
+    }
+
+    fun persist(host: String, port: Int) {
+        persist(ServerConfigRepository.Endpoint(host, port))
     }
 
     fun submitUrl(): String = "${origin()}${CommunityLoginConfig.SUBMIT_PATH}"
 
     fun siteUrl(): String = "${origin()}${CommunityLoginConfig.SITE_PATH}"
 
-    private fun origin(): String {
-        val e = current()
-        val host = e.host.trim()
-        val authority = if (e.port == 80) host else "$host:${e.port}"
-        return "http://$authority"
-    }
+    private fun origin(): String = current().toBaseUrl()
 
     private fun readStored(): ServerConfigRepository.Endpoint? {
         val host = prefs.getString(KEY_HOST, null)?.trim().orEmpty()
         val port = prefs.getInt(KEY_PORT, -1)
         if (host.isEmpty() || port !in 1..65535) return null
-        return ServerConfigRepository.Endpoint(host, port)
+        return ServerConfigRepository.Endpoint(
+            host = host,
+            port = port,
+            scheme = prefs.getString(KEY_SCHEME, null).orEmpty(),
+            path = prefs.getString(KEY_PATH, null).orEmpty(),
+        ).normalized()
     }
 
     companion object {
@@ -70,6 +76,8 @@ class CommunityServerStore(context: Context) {
         private const val PREFS_NAME = "zmusic_community_server"
         private const val KEY_HOST = "community_host"
         private const val KEY_PORT = "community_port"
+        private const val KEY_SCHEME = "community_scheme"
+        private const val KEY_PATH = "community_path"
 
         suspend fun probe(host: String, port: Int): Result<Unit> = withContext(Dispatchers.IO) {
             runCatching {

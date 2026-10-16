@@ -61,6 +61,8 @@ import com.kite.zmusic.data.PlayerDisplayPrefs
 import com.kite.zmusic.data.LandscapePlayerPageType
 import com.kite.zmusic.data.TrackRow
 import com.kite.zmusic.plugin.PluginLookPresent
+import com.kite.zmusic.plugin.PluginStylePresent
+import com.kite.zmusic.plugin.PluginStyleSurface
 import com.kite.zmusic.playback.PlaybackUiState
 import com.kite.zmusic.ui.main.LocalChromeBackdrop
 import com.kite.zmusic.ui.main.LocalChromeGlassStyle
@@ -225,8 +227,13 @@ internal fun NowPlayingScreenLayers(
     DisposableEffect(Unit) {
         onDispose { app.listenTogether.setChatForeground(false) }
     }
+    val landscapeStage = PluginStylePresent.paint(
+        PluginStylePresent.paint(displayPrefs, PluginStyleSurface.Focus),
+        PluginStyleSurface.Dynamic,
+    )
+    val portraitStage = PluginStylePresent.paint(portraitDisplayPrefs, PluginStyleSurface.Portrait)
     val expandLook = PlayerExpandLook.from(
-        prefs = if (isLandscape) displayPrefs else portraitDisplayPrefs,
+        prefs = if (isLandscape) landscapeStage else portraitStage,
         landscape = isLandscape,
     )
     // 在飞层同帧组合前写入，避免 open() 清空 look 后飞默认黑胶。
@@ -363,7 +370,7 @@ internal fun NowPlayingScreenLayers(
         PortraitLyricReadingVeil(
             progress = lyricVeilT,
             hazeState = settingsHazeState,
-            transparency = portraitDisplayPrefs.lyricBackgroundTransparency,
+            transparency = portraitStage.lyricBackgroundTransparency,
             modifier = Modifier.fillMaxSize(),
         )
 
@@ -433,6 +440,7 @@ internal fun NowPlayingScreenLayers(
                     onDismiss = onDismiss,
                     dismissSwipeThresholdPx = dismissSwipeThresholdPx,
                     displayPrefs = displayPrefs,
+                    stagePrefs = landscapeStage,
                     onDisplayPrefsChange = onDisplayPrefsChange,
                     onDisplayPrefsFlush = onDisplayPrefsFlush,
                     settingsHazeState = settingsHazeState,
@@ -521,7 +529,7 @@ internal fun NowPlayingScreenLayers(
                         onOpenUser = onOpenUser,
                         onOpenListenTogether = { openPortraitListen() },
                     ),
-                    displayPrefs = portraitDisplayPrefs,
+                    displayPrefs = portraitStage,
                     peekNextTrack = state.peekNextTrack,
                     peekPrevTrack = state.peekPrevTrack,
                     onSeek = onSeek,
@@ -990,7 +998,7 @@ internal fun NowPlayingScreenLayers(
                             draftUnplayed = draftPortraitLyricUnplayed,
                             progress = styleT,
                             targetSlot = restSlot,
-                            uiScale = portraitDisplayPrefs.uiScale,
+                            uiScale = portraitStage.uiScale,
                             contentAlpha = portraitStyleCloneAlpha,
                             modifier = Modifier.fillMaxSize(),
                         )

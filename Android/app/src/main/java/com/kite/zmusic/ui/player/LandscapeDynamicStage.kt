@@ -119,6 +119,10 @@ private const val LyricTextRotXDeg = 3.2f
 private const val LyricTextRotZDeg = 1.95f
 /** 整块歌词相对「末句开头对齐屏幕中线」再往右的固定步长。 */
 private val LyricGroupNudgeRight = 36.dp
+/** 歌名列比封面略宽，少把短句挤成两行。 */
+private const val DynamicTitleWidthMul = 1.24f
+/** 加宽后的歌名列和歌词扇形之间留出的空隙。 */
+private val DynamicTitleLyricGap = 20.dp
 /** 测最长句宽度用加粗主词，保证命中条盖住播放中那行。 */
 private val DynamicLyricHitStyle = TextStyle(
     fontSize = 21.sp,
@@ -187,6 +191,17 @@ internal fun LandscapeDynamicStage(
             (maxHeight * 0.62f).toPx().coerceAtLeast((cover * 1.45f).toPx())
         }
         val coverEnterX = with(density) { (cover + leftPad + 12.dp).toPx() }
+        val lyricLeft = maxWidth * (1f - LyricColWidthFrac) + lyricOffsetXDp.dp
+        val titleRoom = lyricLeft - leftPad - coverShiftX - DynamicTitleLyricGap
+        val titleWidth = if (titleRoom <= cover) {
+            cover
+        } else {
+            (cover * DynamicTitleWidthMul).coerceAtMost(titleRoom)
+        }
+        val titleClearStagePx = with(density) {
+            (leftPad + coverShiftX + titleWidth + DynamicTitleLyricGap).toPx()
+        }
+        val lyricOffsetPx = with(density) { lyricOffsetXDp.dp.toPx() }
 
         LandscapeDynamicStageBack(
             customBg = customBg,
@@ -197,14 +212,15 @@ internal fun LandscapeDynamicStage(
         Box(
             Modifier
                 .fillMaxSize()
-                .graphicsLayer { translationY = -liftPx },
+                // 布局位移才会进锚点。画在 graphicsLayer 上时，飞层停在没抬起的位置，交接再跳。
+                .offset { IntOffset(0, -liftPx.roundToInt()) },
         ) {
         Column(
             Modifier
                 .align(Alignment.CenterStart)
                 .padding(start = leftPad)
                 .offset(x = coverShiftX)
-                .width(cover),
+                .width(titleWidth),
         ) {
             LandscapeDynamicSquareCover(
                 track = track,
@@ -233,6 +249,7 @@ internal fun LandscapeDynamicStage(
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier
+                    .fillMaxWidth()
                     .playerExpandAnchor(PlayerExpandSlot.FullTitle)
                     .playerExpandHideFull(),
             )
@@ -282,6 +299,8 @@ internal fun LandscapeDynamicStage(
                 onSeek = onSeek,
                 stageWidthPx = stageWidthPx.toFloat(),
                 lyricsLeftPx = lyricsLeftPx,
+                lyricOffsetPx = lyricOffsetPx,
+                titleClearStagePx = titleClearStagePx,
                 playingStyle = lyricPlayingStyle,
                 playedStyle = lyricPlayedStyle,
                 unplayedStyle = lyricUnplayedStyle,
@@ -916,6 +935,8 @@ private fun LandscapeDynamicLyricsFan(
     onSeek: (Long) -> Unit,
     stageWidthPx: Float,
     lyricsLeftPx: Float,
+    lyricOffsetPx: Float,
+    titleClearStagePx: Float,
     playingStyle: LyricRoleStyle,
     playedStyle: LyricRoleStyle,
     unplayedStyle: LyricRoleStyle,
@@ -1025,14 +1046,18 @@ private fun LandscapeDynamicLyricsFan(
             spacingPx / sin(stepRad)
         }
         val lastUnplayedRelX = -(1f - cos(LyricFanRadius * stepRad)) * radius * LyricFanXPull
-        val groupShiftX = stageWidthPx * 0.5f - lyricsLeftPx - lastUnplayedRelX +
-            with(density) { LyricGroupNudgeRight.toPx() }
+        val nudgePx = with(density) { LyricGroupNudgeRight.toPx() }
+        val baseShiftX = stageWidthPx * 0.5f - lyricsLeftPx - lastUnplayedRelX + nudgePx
+        // 末句开头在屏幕上的位置。歌名列加宽后，整块扇形再往右让，避免飞入时压到标题。
+        val outerStageX = stageWidthPx * 0.5f + nudgePx + lyricOffsetPx
+        val fanPush = (titleClearStagePx - outerStageX).coerceAtLeast(0f)
+        val groupShiftX = baseShiftX + fanPush
         val lastIndex = lines.lastIndex.toFloat()
         val lastIndexInt = lines.lastIndex
         val spacingKey = spacingPx.roundToInt()
         val visualRef = rememberUpdatedState(visual)
         val preselect = visual.roundToInt().coerceIn(0, lastIndexInt)
-        val centerLocalX = stageWidthPx * 0.5f - lyricsLeftPx
+        val centerLocalX = stageWidthPx * 0.5f - lyricsLeftPx + fanPush
         val boxW = constraints.maxWidth.toFloat()
         val hitLeftPx = centerLocalX.coerceIn(0f, boxW)
         val hitWpx = (centerLocalX + maxLyricWidthPx - hitLeftPx).coerceIn(0f, boxW - hitLeftPx)

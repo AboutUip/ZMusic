@@ -3,8 +3,15 @@ package com.kite.zmusic.ui.library
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -2064,14 +2071,37 @@ private fun CollectionShelfTitle(
             ),
             modifier = Modifier.padding(start = 2.dp, end = 8.dp),
         )
+        CollectionCountLabel(
+            count = if (t >= 0.5f) albumCount else playlistCount,
+        )
+    }
+}
+
+@Composable
+private fun CollectionCountLabel(count: Int) {
+    AnimatedContent(
+        targetState = count,
+        transitionSpec = {
+            (fadeIn(tween(180, easing = FastOutSlowInEasing)) togetherWith
+                fadeOut(tween(140, easing = FastOutSlowInEasing)))
+                .using(
+                    SizeTransform(clip = false) { _, _ ->
+                        tween(durationMillis = 220, easing = FastOutSlowInEasing)
+                    },
+                )
+        },
+        contentAlignment = Alignment.CenterEnd,
+        label = "collectionCount",
+    ) { value ->
         Text(
-            text = "${if (t >= 0.5f) albumCount else playlistCount}",
+            text = "$value",
             style = TextStyle(
                 color = MainPalette.Accent,
                 fontSize = 17.sp,
                 fontWeight = FontWeight.Bold,
             ),
             maxLines = 1,
+            softWrap = false,
         )
     }
 }

@@ -15,9 +15,38 @@ class ServerConfigRepository(context: Context) {
     data class Endpoint(
         val host: String,
         val port: Int,
+        val scheme: String = "http",
+        val path: String = "",
     ) {
-        fun toBaseUrl(scheme: String = "http"): String =
-            "${scheme.trimEnd('/')}://${host.trim()}:$port"
+        fun normalized(): Endpoint {
+            val nextScheme = if (scheme.equals("https", ignoreCase = true)) "https" else "http"
+            val nextHost = host.trim().removePrefix("[").removeSuffix("]")
+            val cut = path.substringBefore('?').substringBefore('#')
+            val nextPath = when {
+                cut.isBlank() || cut == "/" -> ""
+                cut.startsWith("/") -> cut.trimEnd('/')
+                else -> "/${cut.trimEnd('/')}"
+            }
+            return copy(
+                host = nextHost,
+                port = port.coerceIn(1, 65535),
+                scheme = nextScheme,
+                path = nextPath,
+            )
+        }
+
+        fun toBaseUrl(): String {
+            val e = normalized()
+            val authority = if (e.host.contains(':')) "[${e.host}]" else e.host
+            val omitPort = (e.scheme == "https" && e.port == 443) ||
+                (e.scheme == "http" && e.port == 80)
+            val root = if (omitPort) {
+                "${e.scheme}://$authority"
+            } else {
+                "${e.scheme}://$authority:${e.port}"
+            }
+            return root + e.path
+        }
     }
 
     private val prefs: SharedPreferences = createPrefs(context.applicationContext)
@@ -31,7 +60,12 @@ class ServerConfigRepository(context: Context) {
         val host = prefs.getString(KEY_HOST, null)?.trim().orEmpty()
         val port = prefs.getInt(KEY_PORT, -1)
         if (host.isNotEmpty() && port in 1..65535) {
-            return Endpoint(host, port)
+            return Endpoint(
+                host = host,
+                port = port,
+                scheme = prefs.getString(KEY_SCHEME, null).orEmpty(),
+                path = prefs.getString(KEY_PATH, null).orEmpty(),
+            ).normalized()
         }
         return parseEndpoint(NcmApiConfig.defaultBaseUrl)
     }
@@ -42,15 +76,21 @@ class ServerConfigRepository(context: Context) {
         return host.isNotEmpty() && port in 1..65535
     }
 
-    fun persist(host: String, port: Int) {
-        val h = host.trim()
-        require(h.isNotEmpty()) { "host empty" }
-        require(port in 1..65535) { "invalid port: $port" }
+    fun persist(endpoint: Endpoint) {
+        val e = endpoint.normalized()
+        require(e.host.isNotEmpty()) { "host empty" }
+        require(e.port in 1..65535) { "invalid port: ${e.port}" }
         prefs.edit()
-            .putString(KEY_HOST, h)
-            .putInt(KEY_PORT, port)
+            .putString(KEY_HOST, e.host)
+            .putInt(KEY_PORT, e.port)
+            .putString(KEY_SCHEME, e.scheme)
+            .putString(KEY_PATH, e.path)
             .apply()
-        NcmApiConfig.setRuntimeBaseUrl(Endpoint(h, port).toBaseUrl())
+        NcmApiConfig.setRuntimeBaseUrl(e.toBaseUrl())
+    }
+
+    fun persist(host: String, port: Int) {
+        persist(Endpoint(host, port))
     }
 
     fun applyToRuntime() {
@@ -61,25 +101,60 @@ class ServerConfigRepository(context: Context) {
         private const val PREFS_NAME = "zmusic_server_config"
         private const val KEY_HOST = "server_host"
         private const val KEY_PORT = "server_port"
+        private const val KEY_SCHEME = "server_scheme"
+        private const val KEY_PATH = "server_path"
 
-        fun parseEndpoint(baseUrl: String): Endpoint {
-            val uri = Uri.parse(baseUrl.trim())
-            val host = uri.host?.trim().orEmpty().ifEmpty {
-                // 兜底：去掉 scheme 后取主机段
-                baseUrl.substringAfter("://", baseUrl)
-                    .substringBefore('/')
-                    .substringBefore(':')
-                    .trim()
+        fun parseEndpoint(baseUrl: String): Endpoint =
+            parseServerAddress(baseUrl, fallbackPort = -1)
+                ?: Endpoint(host = "127.0.0.1", port = 80)
+
+        /**
+         * 接受 IP、域名，或带 http/https 的网址。
+         * 网址里写了端口就用它；只写域名或 IP 时用 [fallbackPort]。
+         */
+        fun parseServerAddress(raw: String, fallbackPort: Int): Endpoint? {
+            val text = raw.trim().trimEnd('/')
+            if (text.isEmpty() || looksMasked(text)) return null
+            val hasScheme = text.contains("://")
+            val uri = Uri.parse(if (hasScheme) text else "http://$text")
+            val scheme = if (hasScheme) {
+                uri.scheme?.lowercase()?.takeIf { it == "http" || it == "https" } ?: return null
+            } else {
+                "http"
             }
+            if (!uri.userInfo.isNullOrEmpty()) return null
+            val host = uri.host?.trim().orEmpty().removePrefix("[").removeSuffix("]")
+            if (!isAcceptableHost(host)) return null
             val port = when {
-                uri.port > 0 -> uri.port
-                uri.scheme.equals("https", ignoreCase = true) -> 443
-                else -> 80
+                uri.port in 1..65535 -> uri.port
+                hasScheme && scheme == "https" -> 443
+                hasScheme -> 80
+                fallbackPort in 1..65535 -> fallbackPort
+                else -> return null
             }
             return Endpoint(
-                host = host.ifEmpty { "127.0.0.1" },
-                port = port.coerceIn(1, 65535),
-            )
+                host = host,
+                port = port,
+                scheme = scheme,
+                path = uri.path.orEmpty(),
+            ).normalized()
+        }
+
+        private fun isAcceptableHost(host: String): Boolean {
+            if (host.isEmpty() || host.length > 253) return false
+            if (host.any { it.isWhitespace() || it == '*' || it == '/' || it == '\\' || it == '@' }) {
+                return false
+            }
+            if (host.count { it == ':' } >= 2) {
+                return host.all { it.isDigit() || it in 'a'..'f' || it in 'A'..'F' || it == ':' }
+            }
+            val labels = host.trim('.').split('.')
+            if (labels.isEmpty() || labels.any { it.isEmpty() || it.length > 63 }) return false
+            return labels.all { label ->
+                !label.startsWith('-') &&
+                    !label.endsWith('-') &&
+                    label.all { it.isLetterOrDigit() || it == '-' || it == '_' }
+            }
         }
 
         fun maskHost(host: String): String {
@@ -97,8 +172,18 @@ class ServerConfigRepository(context: Context) {
             }
         }
 
-        fun maskEndpoint(endpoint: Endpoint): String =
-            "${maskHost(endpoint.host)}:${endpoint.port}"
+        fun maskEndpoint(endpoint: Endpoint): String {
+            val e = endpoint.normalized()
+            val authority = if (e.host.contains(':')) "[${maskHost(e.host)}]" else maskHost(e.host)
+            val omitPort = (e.scheme == "https" && e.port == 443) ||
+                (e.scheme == "http" && e.port == 80)
+            val root = if (omitPort) {
+                "${e.scheme}://$authority"
+            } else {
+                "${e.scheme}://$authority:${e.port}"
+            }
+            return root + e.path
+        }
 
         fun looksMasked(host: String): Boolean {
             val h = host.trim()

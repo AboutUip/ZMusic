@@ -79,24 +79,69 @@ fun listenChatVisibleBody(raw: String): String {
 
 private const val PACK_PREFIX = "\u200B\u200BZMpack|"
 
-enum class ListenChatPackKind { Dice, Rps }
+enum class ListenChatPackKind { Dice, Rps, Sticker }
 
 data class ListenChatPack(
     val kind: ListenChatPackKind,
     val value: String,
 )
 
+data class ListenSticker(
+    val id: String,
+    val mime: String,
+    val animated: Boolean,
+)
+
+/** 与服务端 ListenStickerMaxBytes 一致。超过的文件不上传。 */
+const val ListenStickerMaxBytes = 4 * 1024 * 1024
+
+private val ListenStickerIdPattern = Regex("^[A-Za-z0-9_-]{16,64}$")
+
 fun rollListenChatPack(kind: ListenChatPackKind): String = when (kind) {
     ListenChatPackKind.Dice -> (1..6).random().toString()
     ListenChatPackKind.Rps -> listOf("rock", "scissors", "paper").random()
+    ListenChatPackKind.Sticker -> ""
 }
 
 fun encodeListenChatPack(kind: ListenChatPackKind, value: String = rollListenChatPack(kind)): String {
     val token = when (kind) {
         ListenChatPackKind.Dice -> "dice"
         ListenChatPackKind.Rps -> "rps"
+        ListenChatPackKind.Sticker -> return encodeListenChatSticker(value)
     }
     return "$PACK_PREFIX$token|$value"
+}
+
+fun encodeListenChatSticker(id: String): String {
+    val clean = id.trim()
+    require(ListenStickerIdPattern.matches(clean))
+    return "${PACK_PREFIX}sticker|$clean"
+}
+
+internal fun listenChatStickerIdOk(id: String): Boolean = ListenStickerIdPattern.matches(id.trim())
+
+/** 只认文件头。真正的解码在服务端，这里用来挡住明显不是图片的上传。 */
+fun listenChatStickerMime(bytes: ByteArray): String? {
+    if (bytes.size < 12) return null
+    if (bytes[0] == 0x89.toByte() && bytes[1] == 0x50.toByte() && bytes[2] == 0x4E.toByte() &&
+        bytes[3] == 0x47.toByte() && bytes[4] == 0x0D.toByte() && bytes[5] == 0x0A.toByte() &&
+        bytes[6] == 0x1A.toByte() && bytes[7] == 0x0A.toByte()
+    ) {
+        return "image/png"
+    }
+    val gif = bytes.copyOfRange(0, 6).toString(Charsets.US_ASCII)
+    if (gif == "GIF87a" || gif == "GIF89a") return "image/gif"
+    if (bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte() && bytes[2] == 0xFF.toByte()) {
+        return "image/jpeg"
+    }
+    if (bytes[0] == 'R'.code.toByte() && bytes[1] == 'I'.code.toByte() &&
+        bytes[2] == 'F'.code.toByte() && bytes[3] == 'F'.code.toByte() &&
+        bytes[8] == 'W'.code.toByte() && bytes[9] == 'E'.code.toByte() &&
+        bytes[10] == 'B'.code.toByte() && bytes[11] == 'P'.code.toByte()
+    ) {
+        return "image/webp"
+    }
+    return null
 }
 
 fun parseListenChatPack(body: String): ListenChatPack? {
@@ -109,6 +154,9 @@ fun parseListenChatPack(body: String): ListenChatPack? {
         }
         "rps" -> parts[1].takeIf { it == "rock" || it == "scissors" || it == "paper" }?.let {
             ListenChatPack(ListenChatPackKind.Rps, it)
+        }
+        "sticker" -> parts[1].trim().takeIf(ListenStickerIdPattern::matches)?.let {
+            ListenChatPack(ListenChatPackKind.Sticker, it)
         }
         else -> null
     }
@@ -128,6 +176,7 @@ fun listenChatPackGlyph(pack: ListenChatPack): String = when (pack.kind) {
         "scissors" -> "✌️"
         else -> "✋"
     }
+    ListenChatPackKind.Sticker -> "🎭"
 }
 
 fun listenChatPackCaption(pack: ListenChatPack): String = when (pack.kind) {
@@ -137,11 +186,13 @@ fun listenChatPackCaption(pack: ListenChatPack): String = when (pack.kind) {
         "scissors" -> "剪刀"
         else -> "布"
     }
+    ListenChatPackKind.Sticker -> ""
 }
 
 fun listenChatPackLabel(pack: ListenChatPack): String = when (pack.kind) {
     ListenChatPackKind.Dice -> "🎲 ${pack.value}"
     ListenChatPackKind.Rps -> "${listenChatPackGlyph(pack)} ${listenChatPackCaption(pack)}"
+    ListenChatPackKind.Sticker -> "表情包"
 }
 
 internal data class ListenChatPackPose(
@@ -166,6 +217,7 @@ internal fun listenChatPackMotionValue(
     return when (kind) {
         ListenChatPackKind.Dice -> ((t * 10f).toInt() % 6 + 1).toString()
         ListenChatPackKind.Rps -> listOf("rock", "scissors", "paper")[(t * 9f).toInt() % 3]
+        ListenChatPackKind.Sticker -> result
     }
 }
 

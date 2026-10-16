@@ -39,6 +39,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import java.io.File
 import java.io.IOException
 import java.net.SocketTimeoutException
 import java.util.concurrent.ConcurrentHashMap
@@ -60,6 +61,7 @@ class ListenTogetherController(
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val opMutex = Mutex()
+    private val stickerFileMutex = Mutex()
     private val _ui = MutableStateFlow(ListenTogetherUi())
     val ui: StateFlow<ListenTogetherUi> = _ui.asStateFlow()
 
@@ -95,6 +97,11 @@ class ListenTogetherController(
     @Volatile private var postedChatReadId = 0L
     @Volatile private var inflightChatReadId = 0L
     private var chatReadJob: Job? = null
+    private var historyJob: Job? = null
+    private var historyRoomId = ""
+    private var historyExhausted = false
+    private var stuckHoleBefore = 0L
+    private var pendingOlder = false
     private var matchJob: Job? = null
     private val matchSkipUntil = java.util.concurrent.ConcurrentHashMap<String, Long>()
     @Volatile private var incomingQuietUntil = 0L
@@ -489,6 +496,106 @@ class ListenTogetherController(
         }
     }
 
+    fun loadOlderChat() {
+        startChatHistory(older = true)
+    }
+
+    private fun repairChatHoles() {
+        val room = _ui.value.room ?: return
+        val hole = listenChatHoleBefore(room.chat) ?: return
+        if (hole == stuckHoleBefore) return
+        startChatHistory(older = false)
+    }
+
+    private fun startChatHistory(older: Boolean) {
+        val room = _ui.value.room ?: return
+        if (room.closed || room.id.isBlank()) return
+        if (historyRoomId != room.id) {
+            historyRoomId = room.id
+            historyExhausted = false
+            stuckHoleBefore = 0L
+        }
+        if (historyJob?.isActive == true) {
+            if (older) pendingOlder = true
+            return
+        }
+        val hole = listenChatHoleBefore(room.chat)?.takeIf { it != stuckHoleBefore }
+        val oldest = room.chat.asSequence().map { it.id }.filter { it > 0L }.minOrNull()
+        if (hole == null) {
+            if (!older || historyExhausted) return
+            if (oldest == null || oldest <= 1L) {
+                historyExhausted = true
+                return
+            }
+        }
+        val roomId = room.id
+        historyJob = scope.launch {
+            try {
+            var allowOlder = older
+            var guard = 0
+            while (isActive && guard++ < 40) {
+                if (!isActive) return@launch
+                val cur = _ui.value.room ?: return@launch
+                if (cur.id != roomId) return@launch
+                val gap = listenChatHoleBefore(cur.chat)?.takeIf { it != stuckHoleBefore }
+                val oldestId = cur.chat.asSequence().map { it.id }.filter { it > 0L }.minOrNull()
+                if (gap == null && allowOlder && !historyExhausted && oldestId != null && oldestId <= 1L) {
+                    historyExhausted = true
+                }
+                val before = when {
+                    gap != null -> gap
+                    allowOlder && !historyExhausted && oldestId != null && oldestId > 1L -> oldestId
+                    else -> return@launch
+                }
+                val fillingGap = gap != null
+                val page = try {
+                    client.chatBefore(roomId, before)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.w(TAG, "chat history", e)
+                    return@launch
+                }
+                if (_ui.value.room?.id != roomId) return@launch
+                if (page.messages.isEmpty()) {
+                    if (fillingGap) stuckHoleBefore = before else historyExhausted = true
+                    return@launch
+                }
+                var grew = false
+                _ui.update { state ->
+                    val current = state.room ?: return@update state
+                    if (current.id != roomId) return@update state
+                    val merged = mergeListenRoomChat(
+                        previous = current.chat,
+                        incoming = page.messages,
+                        incomingIncluded = true,
+                        selfUid = state.selfUid,
+                    )
+                    grew = merged.size > current.chat.size
+                    state.copy(room = current.copy(chat = merged))
+                }
+                if (!grew) {
+                    if (fillingGap) stuckHoleBefore = before else historyExhausted = true
+                    return@launch
+                }
+                if (fillingGap) {
+                    val still = listenChatHoleBefore(_ui.value.room?.chat.orEmpty())
+                    if (still != null && still != stuckHoleBefore) continue
+                    if (!allowOlder) return@launch
+                    continue
+                }
+                if (!page.hasMore) historyExhausted = true
+                return@launch
+            }
+            } finally {
+                historyJob = null
+                val again = pendingOlder && isActive
+                pendingOlder = false
+                if (again) startChatHistory(older = true)
+            }
+        }
+    }
+
     fun markChatRead() {
         val chat = _ui.value.room?.chat.orEmpty()
         if (chat.isNotEmpty()) {
@@ -872,12 +979,16 @@ class ListenTogetherController(
         }
         if (prevId != snap.id) {
             clearChatTranslations()
+            historyRoomId = snap.id
+            historyExhausted = false
+            stuckHoleBefore = 0L
         } else {
             val merged = _ui.value.room?.chat.orEmpty()
             _chatTranslations.update {
                 retargetListenChatTranslations(it, previousChat, merged)
             }
         }
+        if (!snap.closed) repairChatHoles()
         if (ping) playChatPing()
         if (snap.closed) {
             dropLocal(t("一起听已结束"))
@@ -1175,6 +1286,12 @@ class ListenTogetherController(
         inflightChatReadId = 0L
         chatReadJob?.cancel()
         chatReadJob = null
+        historyJob?.cancel()
+        historyJob = null
+        historyRoomId = ""
+        historyExhausted = false
+        stuckHoleBefore = 0L
+        pendingOlder = false
         applyGen++
         applyingHlc = 0L
         pollAfter = 0L
@@ -1251,6 +1368,30 @@ class ListenTogetherController(
                 Log.w(TAG, "ping", t)
                 runCatching { player?.release() }
             }
+        }
+    }
+
+    suspend fun listStickers(): List<ListenSticker> = client.listStickers()
+
+    suspend fun uploadSticker(bytes: ByteArray): ListenSticker = client.uploadSticker(bytes)
+
+    suspend fun cachedStickerFile(id: String): File? = stickerFileMutex.withLock {
+        withContext(Dispatchers.IO) {
+        val clean = id.trim()
+        if (!listenChatStickerIdOk(clean)) return@withContext null
+        val dir = File(app.cacheDir, "listen-stickers")
+        if (!dir.isDirectory && !dir.mkdirs()) return@withContext null
+        val dest = File(dir, clean)
+        if (dest.isFile && dest.length() > 0L) return@withContext dest
+        val bytes = runCatching { client.downloadSticker(clean) }.getOrNull() ?: return@withContext null
+        if (listenChatStickerMime(bytes) == null) return@withContext null
+        val part = File(dir, "$clean.part")
+        part.writeBytes(bytes)
+        if (!part.renameTo(dest)) {
+            dest.writeBytes(bytes)
+            part.delete()
+        }
+            dest.takeIf { it.isFile && it.length() > 0L }
         }
     }
 

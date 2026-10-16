@@ -16,7 +16,7 @@ class CommunityServerViewModel(
 ) : ViewModel() {
 
     private val initial = store.current()
-    private var committedHost = initial.host
+    private var committed = initial
     private var hostIsMask = true
 
     var host by mutableStateOf(ServerConfigRepository.maskHost(initial.host))
@@ -35,7 +35,7 @@ class CommunityServerViewModel(
         bannerError = null
         statusHint = null
         if (hostIsMask) {
-            val mask = ServerConfigRepository.maskHost(committedHost)
+            val mask = ServerConfigRepository.maskHost(committed.host)
             if (cleaned == mask) {
                 host = mask
                 return
@@ -60,7 +60,7 @@ class CommunityServerViewModel(
 
     fun reloadFromStore() {
         val endpoint = store.current()
-        committedHost = endpoint.host
+        committed = endpoint
         hostIsMask = true
         host = ServerConfigRepository.maskHost(endpoint.host)
         portText = endpoint.port.toString()
@@ -72,36 +72,20 @@ class CommunityServerViewModel(
     fun saveAndConnect(onSuccess: () -> Unit) {
         if (busy) return
         val typed = host.trim()
-        val h = when {
-            hostIsMask -> committedHost
-            typed.isEmpty() -> committedHost
-            ServerConfigRepository.looksMasked(typed) -> {
-                bannerError = t("请输入完整主机或 IP")
-                return
-            }
-            else -> typed
-        }
-        if (h.isEmpty()) {
-            bannerError = t("请输入服务器 IP 或主机名")
-            return
-        }
-        val port = portText.toIntOrNull()
-        if (port == null || port !in 1..65535) {
-            bannerError = t("端口须为 1–65535")
-            return
-        }
+        val endpoint = resolveEndpoint(typed) ?: return
         busy = true
         bannerError = null
         statusHint = t("正在探测连接…")
         viewModelScope.launch {
-            val result = CommunityServerStore.probe(h, port)
+            val result = CommunityServerStore.probe(endpoint.host, endpoint.port)
             busy = false
             result.fold(
                 onSuccess = {
-                    store.persist(h, port)
-                    committedHost = h
+                    store.persist(endpoint)
+                    committed = endpoint
                     hostIsMask = true
-                    host = ServerConfigRepository.maskHost(h)
+                    host = ServerConfigRepository.maskHost(endpoint.host)
+                    portText = endpoint.port.toString()
                     statusHint = t("连接成功")
                     onSuccess()
                 },
@@ -111,6 +95,36 @@ class CommunityServerViewModel(
                 },
             )
         }
+    }
+
+    private fun resolveEndpoint(typed: String): ServerConfigRepository.Endpoint? {
+        if (hostIsMask || typed.isEmpty()) {
+            val port = portText.toIntOrNull()
+            if (port == null || port !in 1..65535) {
+                bannerError = t("端口须为 1–65535")
+                return null
+            }
+            return committed.copy(port = port).normalized()
+        }
+        if (ServerConfigRepository.looksMasked(typed)) {
+            bannerError = t("请输入完整的 URL、域名或 IP")
+            return null
+        }
+        val fallback = portText.toIntOrNull()
+        val parsed = ServerConfigRepository.parseServerAddress(typed, fallback ?: -1)
+        if (parsed == null) {
+            bannerError = if (
+                (fallback == null || fallback !in 1..65535) &&
+                !typed.contains("://") &&
+                !typed.contains(':')
+            ) {
+                t("端口须为 1–65535")
+            } else {
+                t("请输入 URL、域名或 IP")
+            }
+            return null
+        }
+        return parsed
     }
 }
 

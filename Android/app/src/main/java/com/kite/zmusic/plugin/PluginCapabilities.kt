@@ -14,8 +14,16 @@ object PluginCapabilities {
     const val SHARE = "share"
     const val CLIPBOARD = "clipboard"
     const val LOOK = "look"
+    const val LYRIC = "lyric"
+    const val CATALOG = "catalog"
+    const val NAV = "nav"
+    const val APP = "app"
+    const val STYLE = "style"
 
-    val KNOWN: Set<String> = setOf(THEME, PLAYER, HTTP, STORE, UI, MEDIA, SHARE, CLIPBOARD, LOOK)
+    val KNOWN: Set<String> = setOf(
+        THEME, PLAYER, HTTP, STORE, UI, MEDIA, SHARE, CLIPBOARD, LOOK,
+        LYRIC, CATALOG, NAV, APP, STYLE,
+    )
 
     /**
      * @return 规范化后的**已知**能力列表；`null` 表示字段非法（不是数组，或含非字符串）

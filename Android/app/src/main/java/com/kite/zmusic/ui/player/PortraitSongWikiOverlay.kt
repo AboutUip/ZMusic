@@ -83,14 +83,21 @@ internal fun PortraitSongWikiOverlay(
 ) {
     val context = LocalContext.current
     val repo = (context.applicationContext as ZMusicApplication).songRepository
-    var loading by remember(track.id) { mutableStateOf(true) }
-    var page by remember(track.id) { mutableStateOf<SongWikiPage?>(null) }
+    val peeked = remember(track.id, cookie) { repo.peekWiki(track.id, cookie) }
+    var loading by remember(track.id) { mutableStateOf(peeked == null) }
+    var page by remember(track.id) { mutableStateOf(peeked) }
     var failed by remember(track.id) { mutableStateOf(false) }
 
     LaunchedEffect(track.id, cookie) {
-        loading = true
+        val hit = repo.peekWiki(track.id, cookie)
+        if (hit != null) {
+            page = hit
+            failed = false
+            loading = false
+            return@LaunchedEffect
+        }
+        loading = page == null
         failed = false
-        page = null
         val result = runCatching { repo.wiki(track.id, cookie) }
         page = result.getOrNull()
         failed = result.isFailure

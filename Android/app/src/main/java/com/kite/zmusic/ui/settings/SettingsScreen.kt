@@ -83,6 +83,7 @@ import com.kite.zmusic.data.UApiProStore
 import com.kite.zmusic.data.platform.MusicPlatform
 import com.kite.zmusic.data.platform.MusicPlatformStore
 import com.kite.zmusic.i18n.I18n
+import com.kite.zmusic.i18n.LanguageChoice
 import com.kite.zmusic.i18n.t
 import com.kite.zmusic.plugin.PluginEngineVersion
 import com.kite.zmusic.ui.common.GlassAlertDialog
@@ -266,6 +267,7 @@ fun SettingsScreen(
         (context.applicationContext as ZMusicApplication).languageStore
     }
     val language by languageStore.language.collectAsStateWithLifecycle()
+    val languageChoice by languageStore.choice.collectAsStateWithLifecycle()
     val wallpaperStore = remember {
         (context.applicationContext as ZMusicApplication).chromeWallpaperStore
     }
@@ -541,7 +543,11 @@ fun SettingsScreen(
                 ) {
                     SettingsRow(
                         title = t("语言"),
-                        subtitle = language.nativeName,
+                        subtitle = if (languageChoice == LanguageChoice.Auto) {
+                            t("自动 · %s", language.nativeName)
+                        } else {
+                            language.nativeName
+                        },
                         icon = ZIcons.Translate,
                         tint = Color(0xFF3D8BFF),
                         onClick = { languageVisible.targetState = true },
@@ -1105,11 +1111,12 @@ fun SettingsScreen(
             onBack = { languageVisible.targetState = false },
         ) {
             LanguageSettingsPage(
-                selected = language,
+                selected = languageChoice,
+                resolved = language,
                 onSelect = { next ->
-                    if (next == language) return@LanguageSettingsPage
+                    if (next == languageChoice) return@LanguageSettingsPage
                     languageStore.set(next)
-                    I18n.applyToApp(next)
+                    I18n.applyToApp(languageStore.current())
                     I18n.relaunchApp(context)
                 },
                 contentBottomInset = contentBottomInset,
@@ -1447,8 +1454,8 @@ fun SettingsScreen(
                 GlassPromptField(
                     value = vm.host,
                     onValueChange = vm::onHostChange,
-                    placeholder = t("主机 / IP"),
-                    maxLength = 253,
+                    placeholder = t("URL / 域名 / IP"),
+                    maxLength = 2048,
                     keyboardOptions = KeyboardOptions(
                         keyboardType = KeyboardType.Uri,
                         imeAction = ImeAction.Next,
@@ -1511,8 +1518,8 @@ fun SettingsScreen(
                 GlassPromptField(
                     value = communityVm.host,
                     onValueChange = communityVm::onHostChange,
-                    placeholder = t("主机 / IP"),
-                    maxLength = 253,
+                    placeholder = t("URL / 域名 / IP"),
+                    maxLength = 2048,
                     keyboardOptions = KeyboardOptions(
                         keyboardType = KeyboardType.Uri,
                         imeAction = ImeAction.Next,

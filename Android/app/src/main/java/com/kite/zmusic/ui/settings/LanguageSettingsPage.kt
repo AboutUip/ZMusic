@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kite.zmusic.i18n.AppLanguage
+import com.kite.zmusic.i18n.LanguageChoice
 import com.kite.zmusic.i18n.t
 import com.kite.zmusic.ui.common.GlassAlertDialog
 import com.kite.zmusic.ui.icons.ZIcons
@@ -37,12 +38,13 @@ import com.kite.zmusic.ui.main.wallpaperItemChrome
 
 @Composable
 fun LanguageSettingsPage(
-    selected: AppLanguage,
-    onSelect: (AppLanguage) -> Unit,
+    selected: LanguageChoice,
+    resolved: AppLanguage,
+    onSelect: (LanguageChoice) -> Unit,
     contentBottomInset: Dp,
     modifier: Modifier = Modifier,
 ) {
-    var pending by remember { mutableStateOf<AppLanguage?>(null) }
+    var pending by remember { mutableStateOf<LanguageChoice?>(null) }
     Column(
         modifier
             .fillMaxSize()
@@ -63,13 +65,14 @@ fun LanguageSettingsPage(
                 .padding(horizontal = 4.dp),
         )
         Spacer(Modifier.height(20.dp))
-        AppLanguage.entries.forEachIndexed { index, language ->
+        LanguageChoice.entries.forEachIndexed { index, choice ->
             if (index > 0) Spacer(Modifier.height(12.dp))
             LanguageRow(
-                language = language,
-                selected = selected == language,
+                title = choice.title(),
+                subtitle = choice.subtitle(resolved),
+                selected = selected == choice,
                 onClick = {
-                    if (language != selected) pending = language
+                    if (choice != selected) pending = choice
                 },
             )
         }
@@ -79,7 +82,7 @@ fun LanguageSettingsPage(
             title = t("切换语言"),
             message = t(
                 "将切换到 %s。确认后会立刻重启应用。部分机型重启后不会自动回到前台，需要再打开一次。",
-                next.nativeName,
+                next.title(),
             ),
             confirmLabel = t("切换并重启"),
             onConfirm = {
@@ -92,8 +95,25 @@ fun LanguageSettingsPage(
 }
 
 @Composable
+private fun LanguageChoice.title(): String = when (this) {
+    LanguageChoice.Auto -> t("自动")
+    LanguageChoice.Chinese -> AppLanguage.Chinese.nativeName
+    LanguageChoice.English -> AppLanguage.English.nativeName
+    LanguageChoice.Japanese -> AppLanguage.Japanese.nativeName
+}
+
+@Composable
+private fun LanguageChoice.subtitle(resolved: AppLanguage): String = when (this) {
+    LanguageChoice.Auto -> t("按所在国家切换 · 当前 %s", resolved.nativeName)
+    LanguageChoice.Chinese -> AppLanguage.Chinese.subtitle
+    LanguageChoice.English -> AppLanguage.English.subtitle
+    LanguageChoice.Japanese -> AppLanguage.Japanese.subtitle
+}
+
+@Composable
 private fun LanguageRow(
-    language: AppLanguage,
+    title: String,
+    subtitle: String,
     selected: Boolean,
     onClick: () -> Unit,
 ) {
@@ -117,7 +137,7 @@ private fun LanguageRow(
     ) {
         Column(Modifier.weight(1f)) {
             Text(
-                text = language.nativeName,
+                text = title,
                 style = TextStyle(
                     color = MainPalette.Ink,
                     fontSize = 15.sp,
@@ -126,7 +146,7 @@ private fun LanguageRow(
             )
             Spacer(Modifier.height(2.dp))
             Text(
-                text = language.subtitle,
+                text = subtitle,
                 style = TextStyle(
                     color = MainPalette.Secondary,
                     fontSize = 12.sp,

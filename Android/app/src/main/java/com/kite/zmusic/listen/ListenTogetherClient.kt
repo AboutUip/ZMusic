@@ -6,8 +6,10 @@ import com.kite.zmusic.workshop.WorkshopAuthStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
@@ -28,6 +30,11 @@ class ListenTogetherClient(
         .readTimeout(25, TimeUnit.SECONDS)
         .writeTimeout(12, TimeUnit.SECONDS)
         .callTimeout(28, TimeUnit.SECONDS)
+        .build()
+    private val heavy = http.newBuilder()
+        .readTimeout(40, TimeUnit.SECONDS)
+        .writeTimeout(40, TimeUnit.SECONDS)
+        .callTimeout(45, TimeUnit.SECONDS)
         .build()
 
     suspend fun create(maxMembers: Int): ListenRoomSnapshot = mutate(
@@ -53,6 +60,18 @@ class ListenTogetherClient(
 
     suspend fun markChatRead(id: String, upTo: Long): ListenRoomSnapshot =
         mutate("POST", "/rooms/${enc(id)}/chat/read", JSONObject().put("id", upTo))
+
+    suspend fun chatBefore(id: String, before: Long): ListenChatPage =
+        withContext(Dispatchers.IO) {
+            val req = request("GET", "/rooms/${enc(id)}/chat?before=$before", null)
+            immediate.newCall(req).execute().use { resp ->
+                val json = parseObject(resp.body?.string().orEmpty())
+                ListenChatPage(
+                    messages = parseChat(json.optJSONArray("chat")),
+                    hasMore = json.optBoolean("has_more"),
+                )
+            }
+        }
 
     suspend fun get(id: String, after: Long, wait: Boolean): ListenRoomSnapshot =
         withContext(Dispatchers.IO) {
@@ -160,6 +179,60 @@ class ListenTogetherClient(
             else -> error(method)
         }
         return builder.build()
+    }
+
+    private fun binaryRequest(method: String, path: String, body: RequestBody?): Request {
+        val s = auth.current() ?: throw WorkshopApiError.Unauthorized
+        val builder = Request.Builder()
+            .url(communityUrl("$BASE$path"))
+            .header("Authorization", "Bearer ${s.appToken}")
+            .header("X-Zmusic-Uid", s.uid)
+        when (method) {
+            "GET" -> builder.get()
+            "POST" -> builder.post(body ?: ByteArray(0).toRequestBody(null))
+            else -> error(method)
+        }
+        return builder.build()
+    }
+
+    suspend fun listStickers(): List<ListenSticker> = withContext(Dispatchers.IO) {
+        heavy.newCall(request("GET", "/stickers", null)).execute().use { resp ->
+            val json = parseObject(resp.body?.string().orEmpty())
+            parseStickerList(json.optJSONArray("stickers"))
+        }
+    }
+
+    suspend fun uploadSticker(bytes: ByteArray): ListenSticker = withContext(Dispatchers.IO) {
+        val mime = listenChatStickerMime(bytes) ?: throw WorkshopApiError.Message("bad_image")
+        if (bytes.size > ListenStickerMaxBytes) throw WorkshopApiError.Message("too_large")
+        val ext = when (mime) {
+            "image/gif" -> "gif"
+            "image/png" -> "png"
+            "image/webp" -> "webp"
+            else -> "jpg"
+        }
+        val body = MultipartBody.Builder()
+            .setType(MultipartBody.FORM)
+            .addFormDataPart("file", "sticker.$ext", bytes.toRequestBody(mime.toMediaType()))
+            .build()
+        heavy.newCall(binaryRequest("POST", "/stickers", body)).execute().use { resp ->
+            val json = parseObject(resp.body?.string().orEmpty())
+            parseSticker(json.optJSONObject("sticker"))
+                ?: throw WorkshopApiError.Message("unavailable")
+        }
+    }
+
+    suspend fun downloadSticker(id: String): ByteArray = withContext(Dispatchers.IO) {
+        val clean = id.trim()
+        if (!listenChatStickerIdOk(clean)) throw WorkshopApiError.Message("bad_request")
+        heavy.newCall(binaryRequest("GET", "/stickers/${enc(clean)}", null)).execute().use { resp ->
+            val bytes = resp.body?.bytes() ?: throw WorkshopApiError.Message("unavailable")
+            if (bytes.isNotEmpty() && bytes[0] == '{'.code.toByte()) {
+                parseObject(bytes.toString(Charsets.UTF_8))
+            }
+            if (listenChatStickerMime(bytes) == null) throw WorkshopApiError.Message("bad_image")
+            bytes
+        }
     }
 
     private fun communityUrl(path: String): String {
@@ -313,6 +386,23 @@ class ListenTogetherClient(
                 if (value > 0L) out[key] = value
             }
             return out
+        }
+
+        private fun parseStickerList(arr: JSONArray?): List<ListenSticker> {
+            if (arr == null) return emptyList()
+            val out = ArrayList<ListenSticker>(arr.length())
+            for (i in 0 until arr.length()) {
+                parseSticker(arr.optJSONObject(i))?.let { out += it }
+            }
+            return out
+        }
+
+        private fun parseSticker(obj: JSONObject?): ListenSticker? {
+            if (obj == null) return null
+            val id = obj.optString("id").trim()
+            val mime = obj.optString("mime").trim()
+            if (!listenChatStickerIdOk(id) || mime.isEmpty()) return null
+            return ListenSticker(id = id, mime = mime, animated = obj.optBoolean("animated"))
         }
 
         private fun parseChat(arr: JSONArray?): List<ListenChatMsg> {

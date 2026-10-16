@@ -31,6 +31,13 @@ data class ListenChatMsg(
     val avatarUrl: String,
     val text: String,
     val at: Long,
+    /** 列表身份。乐观消息被服务端确认后保持不变，避免整行拆掉重画。 */
+    val rowKey: Long = id,
+)
+
+data class ListenChatPage(
+    val messages: List<ListenChatMsg> = emptyList(),
+    val hasMore: Boolean = false,
 )
 
 data class ListenRoomSnapshot(
@@ -456,6 +463,15 @@ fun mergeListenRoomChat(
         if (!echoed) out += msg
     }
     return out.sortedWith(compareBy<ListenChatMsg> { if (it.at > 0L) it.at else it.id }.thenBy { it.id })
+}
+
+/** 中间缺号时，返回缺口后面那条的 id，用来向前补页。 */
+fun listenChatHoleBefore(chat: List<ListenChatMsg>): Long? {
+    val ids = chat.asSequence().map { it.id }.filter { it > 0L }.distinct().sorted().toList()
+    for (i in 1 until ids.size) {
+        if (ids[i] > ids[i - 1] + 1L) return ids[i]
+    }
+    return null
 }
 
 fun listenChatBubbleText(text: String, maxRunes: Int = 20): String {

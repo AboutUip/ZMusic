@@ -915,6 +915,21 @@ class PlaylistCoordinator(
         persistSnapshot()
     }
 
+    fun setPlaybackMode(mode: PlaybackMode): Boolean {
+        if (radioActive && mode == PlaybackMode.SHUFFLE) return false
+        if (playbackMode == mode) return true
+        playbackMode = mode
+        preparedShuffleNext = null
+        if (playbackMode != PlaybackMode.SHUFFLE) {
+            shuffleHistory.clear()
+        }
+        applyRepeatMode()
+        _ui.update { it.copy(playbackMode = playbackMode) }
+        refreshPeeksAndPrefetch()
+        persistSnapshot()
+        return true
+    }
+
     fun release() {
         flushSample()
         listenReporter.flush()

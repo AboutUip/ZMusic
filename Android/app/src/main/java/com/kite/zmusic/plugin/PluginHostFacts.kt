@@ -19,6 +19,8 @@ internal object PluginHookEvents {
     const val PLAYER_STATE = "player.state"
     const val PLAYER_QUEUE = "player.queue"
     const val PLAYER_LIKED = "player.liked"
+    const val PLAYER_MODE = "player.mode"
+    const val PLAYER_LYRIC = "player.lyric"
     const val APP_FOREGROUND = "app.foreground"
     const val APP_BACKGROUND = "app.background"
     const val UI_PRESS = "ui.press"
@@ -49,6 +51,8 @@ internal object PluginHookEvents {
         PLAYER_STATE -> listOf(playback.stateMap())
         PLAYER_QUEUE -> listOf(playback.queueMap())
         PLAYER_LIKED -> listOf(playback.likedMap())
+        PLAYER_MODE -> listOf(playback.modeMap())
+        PLAYER_LYRIC -> listOf(playback.lyricEventMap())
         APP_FOREGROUND -> if (facts.foreground) emptyList() else null
         APP_BACKGROUND -> if (!facts.foreground) emptyList() else null
         else -> null

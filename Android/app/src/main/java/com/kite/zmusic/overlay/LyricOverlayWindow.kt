@@ -34,6 +34,7 @@ import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.kite.zmusic.R
 import com.kite.zmusic.data.LyricOverlayPrefs
+import com.kite.zmusic.plugin.PluginStylePresent
 import com.kite.zmusic.data.LyricOverlayStore
 import com.kite.zmusic.data.overlayClaimsWindowTouches
 import com.kite.zmusic.data.overlayClampX
@@ -116,6 +117,7 @@ internal class LyricOverlayWindow(
                     idleChrome = idleChrome,
                     onWake = { chromeIdle.value = false },
                     onAllowWindowDrag = { allow -> allowWindowDrag = allow },
+                    onPaintedLayout = { applyAppearance(store.current()) },
                 )
             }
         }
@@ -187,7 +189,7 @@ internal class LyricOverlayWindow(
     private fun relayoutForSystemDisplay() {
         val lp = layoutParams ?: return
         val view = composeView ?: return
-        val prefs = store.current()
+        val prefs = PluginStylePresent.paintOverlay(store.current())
         val screen = screenSize()
         val nextWidth = windowWidthSpec(prefs, screen.first)
         val widthPx = overlayWidthPx(prefs, screen.first)
@@ -215,7 +217,8 @@ internal class LyricOverlayWindow(
         runCatching { windowManager.updateViewLayout(view, lp) }
     }
 
-    private fun createLayoutParams(prefs: LyricOverlayPrefs): WindowManager.LayoutParams {
+    private fun createLayoutParams(raw: LyricOverlayPrefs): WindowManager.LayoutParams {
+        val prefs = PluginStylePresent.paintOverlay(raw)
         val screen = screenSize()
         val w = overlayWidthPx(prefs, screen.first)
         val x = clampedX(remapX(prefs, screen.first), w, screen.first)
@@ -236,7 +239,8 @@ internal class LyricOverlayWindow(
         }
     }
 
-    internal fun applyAppearance(prefs: LyricOverlayPrefs) {
+    internal fun applyAppearance(raw: LyricOverlayPrefs) {
+        val prefs = PluginStylePresent.paintOverlay(raw)
         val lp = layoutParams ?: return
         val view = composeView ?: return
         view.isClickable = !prefs.locked

@@ -4,6 +4,8 @@ import android.os.Handler
 import com.kite.zmusic.data.LikedPlaylistRepository
 import com.kite.zmusic.data.SessionRepository
 import com.kite.zmusic.playback.PlaybackBridge
+import com.kite.zmusic.playback.PlaybackMode
+import com.kite.zmusic.playback.SleepTimer
 
 /**
  * 主线程转发播放控制；喜欢先改本地再后台确认，失败重试后回滚。
@@ -64,6 +66,74 @@ internal class PluginAndroidPlayer(
     }
 
     override fun playbackRate(): Float = playback.pluginPlaybackRate()
+
+    override fun mode(): String = playback.ui.value.playbackMode.pluginName()
+
+    override fun setMode(name: String): Boolean {
+        val mode = playbackModeFromPlugin(name) ?: return false
+        return playback.setPlaybackMode(mode)
+    }
+
+    override fun cycleMode(): Boolean {
+        mainHandler.post { playback.cyclePlaybackMode() }
+        return true
+    }
+
+    override fun playAt(index: Int): Boolean {
+        val ui = playback.ui.value
+        if (!ui.hasQueue || index !in ui.queue.indices) return false
+        mainHandler.post { playback.playIndex(index) }
+        return true
+    }
+
+    override fun clearQueue(): Boolean {
+        mainHandler.post { playback.clearQueue() }
+        return true
+    }
+
+    override fun openPlayer(): Boolean {
+        mainHandler.post { playback.requestOpenPlayer() }
+        return true
+    }
+
+    override fun sleep(): Map<String, Any?> {
+        val ui = playback.sleepTimer.value
+        return mapOf(
+            "active" to ui.active,
+            "remainingMs" to ui.remainingMs.coerceAtLeast(0L),
+            "waitForTrackEnd" to ui.waitForTrackEnd,
+            "pendingStopAfterTrack" to ui.pendingStopAfterTrack,
+        )
+    }
+
+    override fun sleepStart(minutes: Int, waitForTrackEnd: Boolean): Boolean {
+        if (minutes !in SleepTimer.MIN_MINUTES..SleepTimer.MAX_MINUTES) return false
+        mainHandler.post { playback.startSleepTimer(minutes, waitForTrackEnd) }
+        return true
+    }
+
+    override fun sleepCancel(): Boolean {
+        mainHandler.post { playback.cancelSleepTimer() }
+        return true
+    }
+
+    override fun lyric(): Map<String, Any?> {
+        val ui = playback.ui.value
+        return PluginLyricMaps.pack(
+            original = ui.lyricLines,
+            translated = ui.translatedLyricLines,
+            positionMs = ui.positionMs,
+        )
+    }
+
+    override fun lyricLine(): Map<String, Any?>? {
+        val ui = playback.ui.value
+        return PluginLyricMaps.current(
+            original = ui.lyricLines,
+            translated = ui.translatedLyricLines,
+            positionMs = ui.positionMs,
+        )
+    }
 
     override fun setLiked(liked: Boolean): Boolean {
         val sess = session.session.value ?: return false

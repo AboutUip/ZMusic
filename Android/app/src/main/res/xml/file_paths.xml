@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths>
     <files-path name="updates" path="updates/" />
+    <external-cache-path name="update_cache" path="updates/" />
+    <external-files-path name="update_ext" path="updates/" />
     <cache-path name="plugin_share" path="plugin-share/" />
 </paths>

@@ -20,7 +20,7 @@
 
 ## 关于页与设置
 
-设置 → 关于：在现有版本信息中增加插件引擎可读版本（`0.1.0`）。
+设置 → 关于：在现有版本信息中增加插件引擎可读版本（`0.2.0`）。
 
 设置中增加「插件引擎调试」开关。产品默认关闭。行样式、开关页结构与现有设置（例如「参与测试计划」）一致，不另起视觉。
 
@@ -62,7 +62,11 @@ plugin-engine/
 
 做：注册与解压校验、按引擎版本决定能否加载、对已启用插件执行入口并注入 [RUNTIME.md](../RUNTIME.md)、进程崩溃哨兵（含 hook / timer / http 回调期间）、启动等待、调试开关与日志门控、内部调试 API 的开关门控、关于页引擎版本、灵动岛通知、同步延迟、非阻塞定时器、全局钩子总线（见 [HOOK.md](./HOOK.md)）、包内 CommonJS `require` 与读资源（见 [PACK.md](./PACK.md)）、主题（`Xuan.theme` 不再按清单门闩，见 [THEME.md](./THEME.md)）、外观 overlay（`Xuan.look`，见 [LOOK.md](./LOOK.md)）、播放快照与控制（见 [PLAYER.md](./PLAYER.md)）、出站 HTTP（见 [HTTP.md](./HTTP.md)）、持久键值（见 [STORE.md](./STORE.md)）、宿主绘制的槽位、组件树页面、弹窗与 sheet、宿主表面操作槽与陈列布置（见 [UI.md](./UI.md)）、相册 / 分享 / 剪贴板（见 [DEVICE.md](./DEVICE.md)）、插件错误/崩溃弹窗（附日志快照）、创意工坊模块页从本机安装 `.zpp`。未知 `capabilities` 字符串忽略，不挡加载。
 
-不做：未签名确认弹窗、验签、调用超时、默认把调试日志写进文件、改队列 / 搜索 / 下载、HTML 或 WebView 插件壳、声明式 `theme.json`、`import`。社区插件不能往 Dock 加标签。
+不做：未签名确认弹窗、验签、调用超时、默认把调试日志写进文件、HTML 或 WebView 插件壳、声明式 `theme.json`、`import`。社区插件不能往 Dock 加标签。
+
+## 范围（`0.2.0`）
+
+在 `0.1.0` 之上增加，且不收回旧调用：播放模式、音量、倍速、跳到队列下标、清空队列、打开播放页、睡眠定时、歌词行与按需加载、`player.mode` / `player.lyric` 钩子，以及 [CATALOG.md](../CATALOG.md) 的曲库异步接口和 [APP.md](../APP.md) 的导航与本机信息。曲库响应会去掉 cookie / token，并去掉可直接拉流的音视频地址。不提供下载地址。播放页样式走 [STYLE.md](../STYLE.md)：专注、竖屏、动态、桌面歌词四套画面按属性覆盖，只改绘制，不写偏好。
 
 打包器：`Distribution/Plugin/zmusic_plugin.py`，命令见 [TOOLKIT.md](../TOOLKIT.md)。
 
@@ -72,7 +76,7 @@ plugin-engine/
 
 引擎与 `Xuan.*.versionNumber` 均以 **可读字符串为源**，整数由 [VERSIONING.md](../VERSIONING.md) 换算，禁止另存一份可能不一致的数字。
 
-- 引擎可读：`0.1.0`
+- 引擎可读：`0.2.0`
 - `Xuan.zmusic.version`：客户端 `versionName`（例如 `1.2.3`）
 - 禁止把 Android `versionCode` 暴露给插件或用于换算
 

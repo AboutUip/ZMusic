@@ -30,9 +30,10 @@
 | `0.0.2` | `000002` | `2` |
 | `0.1.0` | `000100` | `100` |
 | `0.1.2` | `000102` | `102` |
+| `0.2.0` | `000200` | `200` |
 | `1.22.3` | `012203` | `12203` |
 
-当前引擎：`0.1.0`，整数 `100`。
+当前引擎：`0.2.0`，整数 `200`。
 
 超大更新时后两段归零；大更新时第三段归零。
 
@@ -55,6 +56,11 @@
 | `media` | 保存图片到相册：`Xuan.media`，见 [DEVICE.md](./DEVICE.md) |
 | `share` | 系统分享：`Xuan.share`，见 [DEVICE.md](./DEVICE.md) |
 | `clipboard` | 剪贴板：`Xuan.clipboard`，见 [DEVICE.md](./DEVICE.md) |
+| `lyric` | 当前歌词与按需加载：`Xuan.lyric`，见 [PLAYER.md](./PLAYER.md) |
+| `catalog` | 曲库、评论、用户与推荐：`Xuan.song` 等，见 [CATALOG.md](./CATALOG.md) |
+| `nav` | 打开宿主页面：`Xuan.nav`，见 [APP.md](./APP.md) |
+| `app` | 语言、网络、屏幕与打开链接：`Xuan.app`，见 [APP.md](./APP.md) |
+| `style` | 播放页与桌面歌词的逐项样式：`Xuan.style`，见 [STYLE.md](./STYLE.md) |
 
 字段可省略或 `[]`。写出时：空串去掉；**未知名忽略**，整包仍有效（便于旧客户端不认识的新名字）。非字符串项则清单无效。
 

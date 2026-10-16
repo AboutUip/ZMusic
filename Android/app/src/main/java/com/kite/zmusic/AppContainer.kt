@@ -63,6 +63,7 @@ import com.kite.zmusic.data.SponsorRepository
 import com.kite.zmusic.data.SearchRepository
 import com.kite.zmusic.data.CloudDiskRepository
 import com.kite.zmusic.data.SongRepository
+import com.kite.zmusic.data.SongWikiCache
 import com.kite.zmusic.data.TrackExportRepository
 import com.kite.zmusic.data.UserRepository
 import com.kite.zmusic.data.UserSpaceBackgroundStore
@@ -164,6 +165,7 @@ class AppContainer(app: Application) {
         openMusicCatalog,
     )
     val albumTracksCache = AlbumTracksCache(app, musicPlatformStore, openMusicCatalog)
+    internal val songWikiCache = SongWikiCache(app)
     val searchHistoryRepository = SearchHistoryRepository(app)
     val playlistCollectionRepository = PlaylistCollectionRepository()
     val albumCollectionRepository = AlbumCollectionRepository()
@@ -229,7 +231,7 @@ class AppContainer(app: Application) {
         libraryHomeRepository,
     )
     val mvPlayback = MvPlayback(app, sessionRepository, playbackBridge, ncmUserClient)
-    val songRepository = SongRepository(ncmUserClient)
+    val songRepository = SongRepository(ncmUserClient, songWikiCache)
     val catalogRepository = CatalogRepository(ncmUserClient, personalFmModeStore)
     val commentsRepository = CommentsRepository(
         ncmUserClient,
@@ -255,6 +257,18 @@ class AppContainer(app: Application) {
     )
     val pluginDebugStore = PluginDebugStore(app)
     val bncmBridge = com.kite.zmusic.plugin.BetterNcmAndroidBridge(app)
+    private val pluginEngineSlot = arrayOfNulls<PluginEngine>(1)
+    private val pluginNav = com.kite.zmusic.plugin.PluginNavBus()
+    private val pluginLocal = com.kite.zmusic.plugin.PluginAndroidLocal(
+        app = app,
+        session = sessionRepository,
+        community = workshopAuthStore,
+        facts = {
+            pluginEngineSlot[0]?.hostFacts()
+                ?: com.kite.zmusic.plugin.PluginHostFacts(online = true, dark = false, loggedIn = false)
+        },
+        nav = pluginNav,
+    )
     val pluginEngine = PluginEngine(
         filesDir = app.filesDir,
         debugStore = pluginDebugStore,
@@ -277,6 +291,14 @@ class AppContainer(app: Application) {
             httpClient = httpClient,
             device = com.kite.zmusic.plugin.PluginAndroidDevice(app, httpClient),
         ),
+        catalog = com.kite.zmusic.plugin.PluginAndroidCatalog(
+            user = ncmUserClient,
+            auth = ncmAuthClient,
+            session = sessionRepository,
+            playback = playbackBridge,
+        ),
+        local = pluginLocal,
+        navBus = pluginNav,
         bncmBridge = bncmBridge,
         bncmEapi = { payload ->
             com.kite.zmusic.plugin.BetterNcmEapi(sessionRepository, ncmUserClient).call(payload)
@@ -287,6 +309,9 @@ class AppContainer(app: Application) {
             }.getOrNull()
         },
     )
+    init {
+        pluginEngineSlot[0] = pluginEngine
+    }
     private val workshopHttp = httpClient.newBuilder()
         .readTimeout(0, TimeUnit.MILLISECONDS)
         .writeTimeout(0, TimeUnit.MILLISECONDS)
@@ -318,6 +343,17 @@ class AppContainer(app: Application) {
         http = workshopHttp,
         community = communityServerStore,
         auth = workshopAuthStore,
+    )
+    private val loftChatClient = com.kite.zmusic.listen.LoftChatClient(
+        http = workshopHttp,
+        community = communityServerStore,
+        auth = workshopAuthStore,
+    )
+    val loftChat = com.kite.zmusic.listen.LoftChatController(
+        client = loftChatClient,
+        auth = workshopAuthStore,
+        notices = islandNoticeCenter,
+        uapiPro = uapiProClient,
     )
     val listenTogether = com.kite.zmusic.listen.ListenTogetherController(
         app = app,

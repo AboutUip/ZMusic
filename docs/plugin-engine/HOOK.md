@@ -28,6 +28,8 @@
 | `player.state` | 播放 / 暂停意图变化 | `{ playing: boolean }` |
 | `player.queue` | 队列长度、当前下标或曲目 id 序列变化 | `{ length, index, tracks, truncated }` |
 | `player.liked` | 当前曲目的喜欢状态变化 | `{ liked: boolean \| null }` |
+| `player.mode` | 循环模式变化 | `{ mode: "order" \| "repeatOne" \| "shuffle" }` |
+| `player.lyric` | 当前歌词行变化（不是逐帧进度） | `{ index, text, translation }`。无歌词时 `index` 为 `-1` |
 | `app.foreground` | 应用进入前台 | 无 |
 | `app.background` | 应用进入后台 | 无 |
 | `ui.press` | 用户点了宿主表面上的对象 | 见下文「界面手势」 |
@@ -57,7 +59,7 @@
 - `app.online` 只在已经在线时补一次；`app.offline` 只在已经离线时补一次。
 - `app.foreground` 只在已经在前台时补一次；`app.background` 只在已经在后台时补一次。
 - `app.appearance` / `user.session` 总会补一次（带当前对象）。
-- `player.track` / `player.state` / `player.queue` / `player.liked` 总会补一次（带当前快照；无曲目时 `player.track` 的参数为 `null`）。
+- `player.track` / `player.state` / `player.queue` / `player.liked` / `player.mode` / `player.lyric` 总会补一次（带当前快照；无曲目时 `player.track` 的参数为 `null`）。
 
 `ui.press` / `ui.longPress` / `ui.menu` 与自定义 `name` 没有当前值，不补。
 
