@@ -61,6 +61,7 @@ class PlaybackBridge(
 
     @Volatile
     private var coordinator: PlaylistCoordinator? = null
+    private var onQueueReordered: ((List<TrackRow>) -> Unit)? = null
 
     private var controllerFuture: ListenableFuture<MediaController>? = null
     private var mediaController: MediaController? = null
@@ -142,6 +143,7 @@ class PlaybackBridge(
     @Synchronized
     fun attachCoordinator(coord: PlaylistCoordinator) {
         coordinator = coord
+        coord.onQueueReordered = onQueueReordered
         coord.sleepTimer = sleepTimerCtrl
         if (sleepTimerCtrl.ui.value.pendingStopAfterTrack) {
             coord.pauseForSleepTimer()
@@ -268,10 +270,37 @@ class PlaybackBridge(
 
     fun playIndex(index: Int) = runOnCoordinator { it.playIndex(index) }
 
+    /** 调整队列顺序。正在播的曲不重载。 */
+    fun moveQueueItem(from: Int, to: Int) = runOnCoordinator { it.moveQueueItem(from, to) }
+
+    /** 一起听房间曲谱落到本机。不重载正在播的那首。 */
+    fun replaceQueueOrder(tracks: List<TrackRow>) = runOnCoordinator { it.replaceQueueOrder(tracks) }
+
+    fun setQueueReorderListener(listener: ((List<TrackRow>) -> Unit)?) {
+        onQueueReordered = listener
+        coordinator?.onQueueReordered = listener
+    }
+
     /** 插到当前曲后面并立刻播放；无队列时单曲起播。 */
     fun playInsertAfterCurrent(track: TrackRow) {
         musicWillPlay?.invoke()
         runOnCoordinator { it.playInsertAfterCurrent(track) }
+    }
+
+    /** 排到当前曲后面，不打断正在播的歌。没有队列时才起播。 */
+    fun enqueuePlayNext(track: TrackRow, onResult: (PlayNextResult) -> Unit = {}) {
+        if (track.id <= 0L) {
+            onResult(PlayNextResult.Unavailable)
+            return
+        }
+        val ui = _ui.value
+        val idle = !ui.hasQueue || ui.queue.isEmpty() || ui.index !in ui.queue.indices
+        if (idle) musicWillPlay?.invoke()
+        runOnCoordinator { coord ->
+            val result = coord.enqueuePlayNext(track)
+            if (result == PlayNextResult.Started && !idle) musicWillPlay?.invoke()
+            onResult(result)
+        }
     }
 
     fun playListenTrack(track: TrackRow, positionMs: Long, playWhenReady: Boolean) {

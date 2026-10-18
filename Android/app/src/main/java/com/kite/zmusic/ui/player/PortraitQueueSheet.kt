@@ -1,9 +1,15 @@
 package com.kite.zmusic.ui.player
 
 import androidx.activity.compose.LocalActivity
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,6 +21,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -33,17 +40,22 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
@@ -52,12 +64,16 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.unit.sp
 import com.kite.zmusic.data.TrackRow
 import com.kite.zmusic.ui.common.PlayingEqualizer
@@ -71,6 +87,15 @@ import com.kite.zmusic.ui.main.pageSheetHazeStyle
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeEffect
 import com.kite.zmusic.i18n.t
+import com.kite.zmusic.playback.queueDragRowShift
+import com.kite.zmusic.playback.queueIndexAfterMove
+import kotlin.math.roundToInt
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+
+internal val QueueReorderSlide = tween<Float>(durationMillis = 180, easing = FastOutSlowInEasing)
+internal val QueueReorderDrop = tween<Float>(durationMillis = 220, easing = FastOutSlowInEasing)
 
 private val QueueLabel get() = MainPalette.Ink
 private val QueueAccent get() = MainPalette.Accent
@@ -121,6 +146,7 @@ fun PortraitQueueSheet(
     tracks: List<TrackRow>,
     currentIndex: Int,
     onPlayIndex: (Int) -> Unit,
+    onMoveQueue: (from: Int, to: Int) -> Unit = { _, _ -> },
     isPlaying: Boolean = false,
     /** 每次打开递增：滚到当前播放行 */
     revealToken: Int = 0,
@@ -160,6 +186,138 @@ fun PortraitQueueSheet(
         }
     }
     val searching = query.trim().isNotEmpty()
+    val dragScope = rememberCoroutineScope()
+    val haptic = LocalHapticFeedback.current
+    var dragFrom by remember { mutableIntStateOf(-1) }
+    var dragTo by remember { mutableIntStateOf(-1) }
+    var dragFingerY by remember { mutableFloatStateOf(0f) }
+    var dragGrabY by remember { mutableFloatStateOf(0f) }
+    var dragEdge by remember { mutableIntStateOf(0) }
+    var swallowClick by remember { mutableStateOf(false) }
+    var dragSettling by remember { mutableStateOf(false) }
+    var settle by remember { mutableStateOf<QueueDragSettle?>(null) }
+    val dragging = dragFrom >= 0
+    val held = settle?.takeUnless { tracks.getOrNull(it.to)?.id == it.id }
+    val previewFrom = if (dragging) dragFrom else held?.from ?: -1
+    val previewTo = if (dragging) dragTo else held?.to ?: -1
+    val onMoveUpdated = rememberUpdatedState(onMoveQueue)
+
+    fun hitQueueIndex(viewportY: Float): Int {
+        val items = listState.layoutInfo.visibleItemsInfo
+        val last = (listState.layoutInfo.totalItemsCount - 1).coerceAtLeast(0)
+        if (items.isEmpty()) return dragTo.coerceIn(0, last)
+        val hit = items.firstOrNull { viewportY < it.offset + it.size } ?: items.last()
+        return hit.index.coerceIn(0, last)
+    }
+
+    fun retarget(next: Int) {
+        if (next == dragTo) return
+        dragTo = next
+        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+    }
+
+    fun beginDrag(index: Int) {
+        if (dragFrom >= 0 || searching || tracks.size < 2) return
+        val info = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == index } ?: return
+        dragGrabY = info.size / 2f
+        dragFingerY = info.offset + dragGrabY
+        dragFrom = index
+        dragTo = index
+        dragEdge = 0
+        settle = null
+        swallowClick = true
+        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+    }
+
+    fun moveDrag(delta: Offset) {
+        if (dragFrom < 0 || dragSettling) return
+        dragFingerY += delta.y
+        val height = listState.layoutInfo.viewportSize.height.toFloat().coerceAtLeast(1f)
+        dragEdge = when {
+            dragFingerY < height * 0.12f -> -1
+            dragFingerY > height * 0.88f -> 1
+            else -> 0
+        }
+        retarget(hitQueueIndex(dragFingerY))
+    }
+
+    suspend fun glideFingerTo(index: Int) {
+        val info = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == index } ?: return
+        val target = info.offset + info.size / 2f
+        Animatable(dragFingerY).animateTo(target, QueueReorderDrop) {
+            dragFingerY = value
+        }
+    }
+
+    fun finishDrag() {
+        val from = dragFrom
+        val to = dragTo
+        if (from < 0 || dragSettling) return
+        dragSettling = true
+        dragEdge = 0
+        val movingId = tracks.getOrNull(from)?.id?.takeIf { from != to && to in tracks.indices }
+        val dest = if (movingId != null) to else from
+        dragScope.launch {
+            try {
+                glideFingerTo(dest)
+                if (movingId != null) {
+                    settle = QueueDragSettle(from, to, movingId)
+                    onMoveUpdated.value(from, to)
+                }
+            } finally {
+                dragFrom = -1
+                dragEdge = 0
+                dragSettling = false
+                delay(48)
+                swallowClick = false
+            }
+        }
+    }
+
+    fun cancelDrag() {
+        val from = dragFrom
+        if (from < 0 || dragSettling) return
+        dragSettling = true
+        dragEdge = 0
+        dragScope.launch {
+            try {
+                glideFingerTo(from)
+            } finally {
+                dragFrom = -1
+                dragEdge = 0
+                dragSettling = false
+                delay(48)
+                swallowClick = false
+            }
+        }
+    }
+
+    LaunchedEffect(searching) {
+        if (searching && dragFrom >= 0) {
+            dragFrom = -1
+            dragEdge = 0
+            swallowClick = false
+        }
+    }
+    LaunchedEffect(dragFrom) {
+        if (dragFrom < 0) return@LaunchedEffect
+        while (isActive && dragFrom >= 0) {
+            if (!dragSettling) {
+                if (dragEdge != 0) listState.scrollBy(dragEdge * 24f)
+                retarget(hitQueueIndex(dragFingerY))
+            }
+            delay(16)
+        }
+    }
+    LaunchedEffect(settle, tracks) {
+        val held = settle ?: return@LaunchedEffect
+        if (tracks.getOrNull(held.to)?.id == held.id) {
+            settle = null
+            return@LaunchedEffect
+        }
+        delay(400)
+        if (settle == held) settle = null
+    }
 
     fun dismissSearchIme() {
         val token = (view.findFocus() ?: activity?.currentFocus)?.windowToken ?: view.windowToken
@@ -353,27 +511,95 @@ fun PortraitQueueSheet(
                     )
                 }
             } else {
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier
+                Box(
+                    Modifier
                         .weight(1f)
                         .fillMaxWidth()
-                        .dismissImeOnPress { dismissImeLatest.value() },
-                    contentPadding = PaddingValues(bottom = 12.dp),
+                        .clipToBounds(),
                 ) {
-                    itemsIndexed(
-                        items = visibleRows,
-                        key = { _, row -> "${row.track.id}_${row.originalIndex}" },
-                    ) { _, row ->
+                    val canReorder = !searching && tracks.size > 1
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .dismissImeOnPress { dismissImeLatest.value() },
+                        contentPadding = PaddingValues(bottom = 12.dp),
+                    ) {
+                        itemsIndexed(
+                            items = visibleRows,
+                            key = { _, row -> "${row.track.id}_${row.originalIndex}" },
+                        ) { _, row ->
+                            val queueIndex = row.originalIndex
+                            val shownIndex = if (previewFrom >= 0) {
+                                queueIndexAfterMove(queueIndex, previewFrom, previewTo) + 1
+                            } else {
+                                queueIndex + 1
+                            }
+                            val shift = if (previewFrom >= 0) {
+                                queueDragRowShift(queueIndex, previewFrom, previewTo)
+                            } else {
+                                0
+                            }
+                            val rowPx = listState.layoutInfo.visibleItemsInfo
+                                .firstOrNull { it.index == previewFrom }?.size
+                                ?: listState.layoutInfo.visibleItemsInfo.firstOrNull()?.size
+                                ?: 0
+                            val draggingThis = previewFrom == queueIndex
+                            val shiftTarget = if (previewFrom >= 0 && !draggingThis) {
+                                shift * rowPx.toFloat()
+                            } else {
+                                0f
+                            }
+                            val shiftAnim = remember { Animatable(0f) }
+                            LaunchedEffect(shiftTarget) {
+                                if (previewFrom < 0) shiftAnim.snapTo(0f)
+                                else shiftAnim.animateTo(shiftTarget, QueueReorderSlide)
+                            }
+                            val shiftY = if (previewFrom < 0 || draggingThis) 0f else shiftAnim.value
+                            PortraitQueueTrackRow(
+                                index = shownIndex,
+                                track = row.track,
+                                current = queueIndex == safeIndex,
+                                playing = isPlaying,
+                                showDragHandle = canReorder,
+                                onDragStart = { beginDrag(queueIndex) },
+                                onDrag = { delta ->
+                                    if (dragFrom == queueIndex) moveDrag(delta)
+                                },
+                                onDragEnd = { if (dragFrom == queueIndex) finishDrag() },
+                                onDragCancel = { if (dragFrom == queueIndex) cancelDrag() },
+                                modifier = Modifier
+                                    .zIndex(if (draggingThis) 1f else 0f)
+                                    .offset { IntOffset(0, shiftY.roundToInt()) }
+                                    .graphicsLayer {
+                                        if (draggingThis) alpha = 0f
+                                    },
+                                onClick = {
+                                    if (swallowClick) return@PortraitQueueTrackRow
+                                    dismissSearchIme()
+                                    onPlayIndex(queueIndex)
+                                },
+                            )
+                        }
+                    }
+                    val floatIndex = if (dragging) dragFrom else held?.from ?: -1
+                    val dragged = tracks.getOrNull(floatIndex)
+                    if (dragged != null) {
                         PortraitQueueTrackRow(
-                            index = row.originalIndex + 1,
-                            track = row.track,
-                            current = row.originalIndex == safeIndex,
+                            index = (if (dragging) dragTo else held?.to ?: dragTo) + 1,
+                            track = dragged,
+                            current = floatIndex == safeIndex,
                             playing = isPlaying,
-                            onClick = {
-                                dismissSearchIme()
-                                onPlayIndex(row.originalIndex)
-                            },
+                            showDragHandle = true,
+                            dragEnabled = false,
+                            clicksEnabled = false,
+                            lifted = true,
+                            modifier = Modifier
+                                .offset {
+                                    IntOffset(0, (dragFingerY - dragGrabY).roundToInt())
+                                }
+                                .zIndex(2f),
+                            onClick = {},
                         )
                     }
                 }
@@ -458,21 +684,53 @@ private fun PortraitQueueTrackRow(
     current: Boolean,
     playing: Boolean,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    showDragHandle: Boolean = false,
+    dragEnabled: Boolean = true,
+    clicksEnabled: Boolean = true,
+    lifted: Boolean = false,
+    onDragStart: () -> Unit = {},
+    onDrag: (Offset) -> Unit = {},
+    onDragEnd: () -> Unit = {},
+    onDragCancel: () -> Unit = {},
 ) {
     val rowClick = remember { MutableInteractionSource() }
     Row(
-        Modifier
+        modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .background(if (current) MainPalette.Accent.copy(alpha = 0.08f) else Color.Transparent)
-            .clickable(
-                interactionSource = rowClick,
-                indication = null,
-                onClick = onClick,
+            .then(
+                if (lifted) {
+                    Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(MainPalette.Surface)
+                } else {
+                    Modifier
+                },
             )
-            .padding(vertical = 8.dp, horizontal = 4.dp),
+            .padding(vertical = 4.dp, horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        Row(
+            Modifier
+                .weight(1f)
+                .clip(RoundedCornerShape(10.dp))
+                .background(
+                    if (!lifted && current) MainPalette.Accent.copy(alpha = 0.08f) else Color.Transparent,
+                )
+                .then(
+                    if (clicksEnabled) {
+                        Modifier.clickable(
+                            interactionSource = rowClick,
+                            indication = null,
+                            onClick = onClick,
+                        )
+                    } else {
+                        Modifier
+                    },
+                )
+                .padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
         Box(
             modifier = Modifier.width(28.dp),
             contentAlignment = Alignment.Center,
@@ -523,14 +781,112 @@ private fun PortraitQueueTrackRow(
                 ),
             )
         }
+        }
+        if (showDragHandle) {
+            QueueReorderHandle(
+                enabled = dragEnabled,
+                onDragStart = onDragStart,
+                onDrag = onDrag,
+                onDragEnd = onDragEnd,
+                onDragCancel = onDragCancel,
+                tint = if (current) QueueAccent else QueueHint,
+            )
+        }
     }
 }
+
+private data class QueueDragSettle(val from: Int, val to: Int, val id: Long)
 
 private fun TrackRow.matchesQueueQuery(needle: String): Boolean {
     if (name.contains(needle, ignoreCase = true)) return true
     if (artists.contains(needle, ignoreCase = true)) return true
     val albumName = album
     return !albumName.isNullOrBlank() && albumName.contains(needle, ignoreCase = true)
+}
+
+@Composable
+internal fun QueueReorderHandle(
+    enabled: Boolean,
+    onDragStart: () -> Unit,
+    onDrag: (Offset) -> Unit,
+    onDragEnd: () -> Unit,
+    onDragCancel: () -> Unit,
+    modifier: Modifier = Modifier.size(40.dp),
+    tint: Color = MainPalette.Secondary,
+    scrim: Color = Color.Transparent,
+) {
+    val startState = rememberUpdatedState(onDragStart)
+    val dragState = rememberUpdatedState(onDrag)
+    val endState = rememberUpdatedState(onDragEnd)
+    val cancelState = rememberUpdatedState(onDragCancel)
+    Box(
+        modifier
+            .then(
+                if (scrim == Color.Transparent) {
+                    Modifier
+                } else {
+                    Modifier
+                        .clip(CircleShape)
+                        .background(scrim)
+                },
+            )
+            .then(
+                if (!enabled) {
+                    Modifier
+                } else {
+                    Modifier.pointerInput(Unit) {
+                        awaitEachGesture {
+                            val down = awaitFirstDown(
+                                requireUnconsumed = false,
+                                pass = PointerEventPass.Initial,
+                            )
+                            down.consume()
+                            val pointer = down.id
+                            val slop = viewConfiguration.touchSlop
+                            var dragging = false
+                            var ended = false
+                            var total = Offset.Zero
+                            try {
+                                while (true) {
+                                    val event = awaitPointerEvent(PointerEventPass.Initial)
+                                    val change = event.changes.firstOrNull { it.id == pointer }
+                                    if (change == null || !change.pressed) {
+                                        change?.consume()
+                                        if (dragging) {
+                                            ended = true
+                                            endState.value()
+                                        }
+                                        break
+                                    }
+                                    val delta = change.position - change.previousPosition
+                                    change.consume()
+                                    if (!dragging) {
+                                        total += delta
+                                        if (total.getDistance() > slop) {
+                                            dragging = true
+                                            startState.value()
+                                            dragState.value(total)
+                                        }
+                                    } else if (delta != Offset.Zero) {
+                                        dragState.value(delta)
+                                    }
+                                }
+                            } finally {
+                                if (dragging && !ended) cancelState.value()
+                            }
+                        }
+                    }
+                },
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = ZIcons.DragHandle,
+            contentDescription = t("拖动排序"),
+            tint = tint,
+            modifier = Modifier.size(22.dp),
+        )
+    }
 }
 
 private fun Modifier.dismissImeOnPress(onDismiss: () -> Unit): Modifier =

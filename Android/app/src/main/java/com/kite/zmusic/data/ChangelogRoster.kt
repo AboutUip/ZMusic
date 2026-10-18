@@ -80,8 +80,12 @@ object ChangelogRoster {
     internal fun parseRelease(raw: Any?, requireItems: Boolean = true): ChangelogEntry? {
         val o = raw as? Map<*, *> ?: return null
         val notes = o["notes"] as? Map<*, *>
+        // 忽略比对用的是目录行上的 version（与 /releases/latest 相同）。
+        // notes.version 若更低，忽略会记下小号，下次仍弹出同一条更新。
         val version = normalizeVersion(
-            catalogString(notes?.get("version") ?: o["version"]),
+            catalogString(o["version"]).ifEmpty {
+                catalogString(notes?.get("version"))
+            },
         )
         if (version.isEmpty()) return null
         val items = parseItemList(notes?.get("items") ?: o["items"])

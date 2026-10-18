@@ -81,6 +81,8 @@ class PlaybackViewModel(
 
     fun playIndex(index: Int) = bridge.playIndex(index)
 
+    fun moveQueueItem(from: Int, to: Int) = bridge.moveQueueItem(from, to)
+
     fun playInsertAfterCurrent(track: TrackRow) = bridge.playInsertAfterCurrent(track)
 
     fun clearQueue() = bridge.clearQueue()

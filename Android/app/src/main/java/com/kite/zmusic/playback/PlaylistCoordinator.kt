@@ -32,6 +32,9 @@ import com.kite.zmusic.data.LikedPlaylistRepository
 import com.kite.zmusic.data.LyricRepository
 import com.kite.zmusic.data.NcmHomeParse
 import com.kite.zmusic.data.NcmListenReporter
+import com.kite.zmusic.listen.listenReportedPositionMs
+import com.kite.zmusic.listen.listenSharedTrackIndex
+import com.kite.zmusic.listen.mergeSharedListenQueue
 import com.kite.zmusic.data.NcmUserClient
 import com.kite.zmusic.data.platform.MusicPlatform
 import com.kite.zmusic.data.platform.MusicPlatformStore
@@ -495,6 +498,46 @@ class PlaylistCoordinator(
         if (radioActive) ensureRadioLookahead()
     }
 
+    /**
+     * 排到当前曲后面，正在播的那首不停。
+     * 没有在播的队列时改为一首起播。随机模式下，下一首就锁定这首。
+     */
+    fun enqueuePlayNext(track: TrackRow): PlayNextResult {
+        if (track.id <= 0L) return PlayNextResult.Unavailable
+        val ui = _ui.value
+        if (!ui.hasQueue || ui.queue.isEmpty() || ui.index !in ui.queue.indices) {
+            playQueue(listOf(track), 0, null, track.name)
+            return PlayNextResult.Started
+        }
+        val placed = queuePlayNext(ui.queue, ui.index, track) { it.id }
+            ?: return PlayNextResult.Unavailable
+        return when (placed) {
+            QueuePlayNext.AlreadyPlaying -> PlayNextResult.AlreadyPlaying
+            QueuePlayNext.AlreadyNext -> PlayNextResult.AlreadyNext
+            is QueuePlayNext.Queued -> {
+                val old = ui.queue
+                remapShuffleIndices { i ->
+                    val id = old.getOrNull(i)?.id ?: return@remapShuffleIndices null
+                    placed.queue.indexOfFirst { it.id == id }.takeIf { it >= 0 }
+                }
+                if (playbackMode == PlaybackMode.SHUFFLE) {
+                    preparedShuffleNext = placed.insertedAt
+                }
+                _ui.update {
+                    it.copy(
+                        queue = placed.queue,
+                        index = placed.index,
+                        hasQueue = true,
+                    )
+                }
+                refreshPeeksAndPrefetch()
+                persistSnapshot()
+                onQueueReordered?.invoke(placed.queue)
+                PlayNextResult.Queued
+            }
+        }
+    }
+
     private fun remapQueueIndicesAfterRemove(removed: Int) {
         remapShuffleIndices { i ->
             when {
@@ -652,6 +695,61 @@ class PlaylistCoordinator(
     }
 
     /**
+     * 调整播放顺序。正在播的那首只改下标，不重新加载，进度留在这首上。
+     */
+    fun moveQueueItem(from: Int, to: Int) {
+        val ui = _ui.value
+        val next = reorderQueue(ui.queue, from, to) ?: return
+        val newIndex = queueIndexAfterMove(ui.index, from, to).coerceIn(0, next.lastIndex)
+        remapShuffleIndices { i -> queueIndexAfterMove(i, from, to) }
+        _ui.update {
+            it.copy(
+                queue = next,
+                index = newIndex,
+            )
+        }
+        refreshPeeksAndPrefetch()
+        persistSnapshot()
+        onQueueReordered?.invoke(next)
+    }
+
+    /**
+     * 用一起听房间曲谱替换本机顺序。正在播的那首还在列表里时只改下标，不重载。
+     */
+    fun replaceQueueOrder(shared: List<TrackRow>) {
+        if (shared.isEmpty()) return
+        val ui = _ui.value
+        val currentId = ui.currentTrack?.id ?: 0L
+        val merged = mergeSharedListenQueue(ui.queue, shared, currentId)
+        if (merged.isEmpty()) return
+        val newIndex = when {
+            currentId > 0L -> merged.indexOfFirst { it.id == currentId }.let { if (it >= 0) it else 0 }
+            else -> ui.index.coerceIn(0, merged.lastIndex)
+        }
+        val same = ui.queue.size == merged.size &&
+            ui.index == newIndex &&
+            ui.queue.indices.all { ui.queue[it].id == merged[it].id }
+        if (same) return
+        val old = ui.queue
+        remapShuffleIndices { i ->
+            val id = old.getOrNull(i)?.id ?: return@remapShuffleIndices null
+            merged.indexOfFirst { it.id == id }.takeIf { it >= 0 }
+        }
+        _ui.update {
+            it.copy(
+                queue = merged,
+                index = newIndex,
+                hasQueue = true,
+            )
+        }
+        refreshPeeksAndPrefetch()
+        persistSnapshot()
+    }
+
+    /** 本机拖动改序之后通知一起听。远端替换队列不会走这里。 */
+    var onQueueReordered: ((List<TrackRow>) -> Unit)? = null
+
+    /**
      * 同源歌单后台补全后扩展播放队列（曲谱 / 切歌 peek 与完整列表一致）。
      * 按当前曲 id 重定位索引，不打断正在播的媒体。
      */
@@ -757,14 +855,18 @@ class PlaylistCoordinator(
             setPlayWhenReady(playWhenReady)
             return
         }
+        val existing = listenSharedTrackIndex(ui.queue.map { it.id }, track.id)
+        if (existing >= 0) {
+            loadAndPlayIndex(
+                existing,
+                resumeAtMs = pos,
+                resumePlayWhenReady = playWhenReady,
+                recordShuffleHistory = true,
+            )
+            return
+        }
         var cur = ui.index
         val queue = ui.queue.toMutableList()
-        val existing = queue.indexOfFirst { it.id == track.id }
-        if (existing >= 0) {
-            queue.removeAt(existing)
-            remapQueueIndicesAfterRemove(existing)
-            if (existing < cur) cur -= 1
-        }
         val insertAt = (cur + 1).coerceAtMost(queue.size)
         queue.add(insertAt, track)
         remapQueueIndicesAfterInsert(insertAt)
@@ -1010,11 +1112,12 @@ class PlaylistCoordinator(
                 val expectedId = ui.currentTrack?.id?.toString() ?: continue
                 if (exoPlayer.currentMediaItem?.mediaId != expectedId) continue
                 if (st == Player.STATE_IDLE || st == Player.STATE_ENDED) continue
-                // seek 时 BUFFERING，currentPosition 可能短暂为 0，勿把进度条打回开头
-                val pos = exoPlayer.currentPosition.coerceAtLeast(0L)
-                if (st == Player.STATE_BUFFERING && pos <= 48L && ui.positionMs > 200L) {
-                    continue
-                }
+                // seek 时 BUFFERING 会短暂报出旧进度或 0，不要盖掉已经拨好的界面进度。
+                val pos = listenReportedPositionMs(
+                    buffering = st == Player.STATE_BUFFERING,
+                    playerPositionMs = exoPlayer.currentPosition,
+                    uiPositionMs = ui.positionMs,
+                ) ?: continue
                 _ui.update { it.copy(positionMs = pos) }
                 val dur = when {
                     exoPlayer.duration > 0L && exoPlayer.duration != C.TIME_UNSET ->

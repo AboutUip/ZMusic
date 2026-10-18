@@ -10,6 +10,7 @@ import com.kite.zmusic.data.RecommendPlaylistCard
 import com.kite.zmusic.data.TrackRow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -78,7 +79,16 @@ class HomeViewModel(
     }
 
     fun refresh() {
-        if (homeFeed.peek().refreshing) return
-        viewModelScope.launch { homeFeed.refresh(force = true) }
+        viewModelScope.launch { refreshAwait() }
+    }
+
+    /** 下拉刷新要等这次请求结束再收回指示器，不能只看中间有没有闪过 refreshing。 */
+    suspend fun refreshAwait() {
+        if (homeFeed.peek().refreshing) {
+            homeFeed.feed.first { !it.refreshing }
+            return
+        }
+        val job = viewModelScope.launch { homeFeed.refresh(force = true) }
+        job.join()
     }
 }

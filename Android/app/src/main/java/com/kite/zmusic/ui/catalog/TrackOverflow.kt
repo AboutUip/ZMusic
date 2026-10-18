@@ -27,6 +27,7 @@ import com.kite.zmusic.ui.player.NcmShareResult
 import com.kite.zmusic.ui.player.NcmShareTarget
 import com.kite.zmusic.ui.player.ShareSheet
 import com.kite.zmusic.ui.player.ShareSongPoster
+import com.kite.zmusic.playback.PlayNextResult
 import com.kite.zmusic.plugin.PluginSurfaces
 import com.kite.zmusic.plugin.PluginUiTarget
 import kotlinx.coroutines.CancellationException
@@ -174,6 +175,23 @@ internal fun TrackOverflowMenu(
                             pickingShare = true
                         },
                     )
+                    if (current.id > 0L) {
+                        add(
+                            GlassSheetAction(t("添加到下一首播放")) {
+                                app.playbackBridge.enqueuePlayNext(current) { result ->
+                                    val msg = when (result) {
+                                        PlayNextResult.Started -> t("已开始播放")
+                                        PlayNextResult.Queued -> t("已添加到下一首播放")
+                                        PlayNextResult.AlreadyPlaying -> t("正在播放这首歌")
+                                        PlayNextResult.AlreadyNext -> t("已经是下一首")
+                                        PlayNextResult.Unavailable -> t("这首歌暂时无法播放")
+                                    }
+                                    app.islandNoticeCenter.show(msg, current.coverUrl)
+                                }
+                                onDismiss()
+                            },
+                        )
+                    }
                     if (showAddToPlaylist) {
                         add(
                             GlassSheetAction(t("添加到歌单")) {

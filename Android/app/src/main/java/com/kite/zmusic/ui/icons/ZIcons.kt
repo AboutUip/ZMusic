@@ -32,6 +32,7 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Checklist
 import androidx.compose.material.icons.rounded.Cloud
 import androidx.compose.material.icons.rounded.Dns
+import androidx.compose.material.icons.rounded.DragHandle
 import androidx.compose.material.icons.rounded.EmojiEvents
 import androidx.compose.material.icons.rounded.Extension
 import androidx.compose.material.icons.rounded.Folder
@@ -134,6 +135,7 @@ object ZIcons {
     val Lyrics: ImageVector get() = Icons.Rounded.Lyrics
     val SwapHoriz: ImageVector get() = Icons.Rounded.SwapHoriz
     val Menu: ImageVector get() = Icons.Rounded.Menu
+    val DragHandle: ImageVector get() = Icons.Rounded.DragHandle
     val Favorite: ImageVector get() = Icons.Rounded.Favorite
     val FavoriteBorder: ImageVector get() = Icons.Rounded.FavoriteBorder
     val Album: ImageVector get() = Icons.Rounded.Album

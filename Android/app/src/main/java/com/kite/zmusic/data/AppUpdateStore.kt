@@ -34,11 +34,10 @@ class AppUpdateStore(context: Context) : AppUpdatePrefs {
             ?.takeIf { it.isNotEmpty() }
         set(value) {
             val v = value?.let { ChangelogRoster.normalizeVersion(it) }.orEmpty()
-            if (v.isEmpty()) {
-                prefs.edit().remove(KEY_IGNORED).apply()
-            } else {
-                prefs.edit().putString(KEY_IGNORED, v).apply()
-            }
+            val editor = prefs.edit()
+            if (v.isEmpty()) editor.remove(KEY_IGNORED) else editor.putString(KEY_IGNORED, v)
+            // 划掉后台会在 apply() 落盘前杀掉进程，忽略会丢，下次仍弹同一条更新。
+            editor.commit()
         }
 
     companion object {

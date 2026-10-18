@@ -73,6 +73,8 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kite.zmusic.ZMusicApplication
+import com.kite.zmusic.ui.common.LiquidUnderlineTabs
+import com.kite.zmusic.ui.common.animateLiquidTabTo
 import com.kite.zmusic.data.CollectedAlbum
 import com.kite.zmusic.data.NcmHomeParse
 import com.kite.zmusic.data.RecommendMvCard
@@ -638,8 +640,9 @@ private fun SearchResults(
     Column(Modifier.fillMaxSize()) {
         SearchKindTabs(
             selected = kinds[pager.currentPage],
+            position = pager.currentPage + pager.currentPageOffsetFraction,
             onKind = { kind ->
-                scope.launch { pager.animateScrollToPage(kind.ordinal) }
+                scope.launch { pager.animateLiquidTabTo(kind.ordinal) }
             },
         )
         HorizontalPager(
@@ -890,46 +893,22 @@ private fun SearchKindPage(
 @Composable
 private fun SearchKindTabs(
     selected: SearchKind,
+    position: Float,
     onKind: (SearchKind) -> Unit,
 ) {
-    Row(
-        Modifier
+    val kinds = SearchKind.entries
+    LiquidUnderlineTabs(
+        labels = kinds.map { it.label },
+        selectedIndex = kinds.indexOf(selected).coerceAtLeast(0),
+        position = position,
+        onSelect = { index -> onKind(kinds[index]) },
+        fontSize = 15.sp,
+        tabPadding = PaddingValues(end = 18.dp, top = 4.dp, bottom = 2.dp),
+        modifier = Modifier
             .fillMaxWidth()
             .horizontalScroll(rememberScrollState())
             .padding(horizontal = 20.dp, vertical = 2.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        SearchKind.entries.forEach { kind ->
-            val on = kind == selected
-            Column(
-                Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = { onKind(kind) },
-                    )
-                    .padding(end = 18.dp, top = 4.dp, bottom = 2.dp),
-            ) {
-                Text(
-                    text = kind.label,
-                    style = TextStyle(
-                        color = if (on) MainPalette.Accent else MainPalette.Secondary,
-                        fontSize = 15.sp,
-                        fontWeight = if (on) FontWeight.SemiBold else FontWeight.Medium,
-                    ),
-                )
-                Spacer(Modifier.height(6.dp))
-                Box(
-                    Modifier
-                        .width(18.dp)
-                        .height(2.dp)
-                        .clip(RoundedCornerShape(1.dp))
-                        .background(if (on) MainPalette.Accent else Color.Transparent),
-                )
-            }
-        }
-    }
+    )
 }
 
 @Composable

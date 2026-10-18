@@ -48,7 +48,9 @@ class AppUpdateEngine(
 
     fun ignoreCurrent() {
         val offer = offerOf(_ui.value) ?: pending ?: return
-        prefs.ignoredVersion = offer.version
+        val version = offer.version.trim()
+        snoozed = true
+        if (version.isNotEmpty()) prefs.ignoredVersion = version
         hidePrompt()
     }
 

@@ -14,9 +14,12 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
@@ -198,18 +201,25 @@ internal fun GlassAlertOverlay(
                     onClick = { if (spec.scrimDismiss) spec.onDismiss() },
                 ),
         )
-        GlassAlertCard(
-            spec = spec,
-            backdrop = backdrop,
-            landscape = landscape,
-            modifier = Modifier
-                .imePadding()
-                .graphicsLayer {
-                    val s = 0.92f + 0.08f * t
-                    scaleX = s
-                    scaleY = s
-                },
-        )
+        Box(
+            Modifier
+                .fillMaxSize()
+                .windowInsetsPadding(WindowInsets.safeDrawing),
+            contentAlignment = Alignment.Center,
+        ) {
+            GlassAlertCard(
+                spec = spec,
+                backdrop = backdrop,
+                landscape = landscape,
+                modifier = Modifier
+                    .imePadding()
+                    .graphicsLayer {
+                        val s = 0.92f + 0.08f * t
+                        scaleX = s
+                        scaleY = s
+                    },
+            )
+        }
     }
 }
 
@@ -221,7 +231,6 @@ private fun GlassAlertCard(
     modifier: Modifier = Modifier,
 ) {
     val screenH = LocalConfiguration.current.screenHeightDp
-    val extraMax = (screenH * 0.52f).dp
     Column(
         modifier
             .padding(horizontal = if (landscape) 48.dp else 28.dp)
@@ -274,7 +283,7 @@ private fun GlassAlertCard(
                 Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 24.dp)
-                    .heightIn(max = extraMax)
+                    .weight(1f, fill = false)
                     .verticalScroll(rememberScrollState()),
                 content = extra,
             )

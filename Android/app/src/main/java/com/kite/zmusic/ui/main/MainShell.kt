@@ -1093,6 +1093,158 @@ fun MainShell(
             indicatorInset = loftIndicatorTop,
             floorLock = floorLock,
             modifier = Modifier.fillMaxSize(),
+            overlay = { loftOpen ->
+                // 底部栏必须画在二楼圆和拦截层上面。圆的裁剪不管点击，拦在下面时回到一楼也会点不中。
+                if (!loftOpen) {
+                    val railInset = if (landscape) {
+                        LandscapeRailWidth * (1f - spaceChromeLeave(userSpaceProgress))
+                    } else {
+                        0.dp
+                    }
+                    Box(
+                        Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .padding(start = railInset)
+                            .zIndex(40f),
+                    ) {
+                        CompositionLocalProvider(LocalChromeHaze provides dockHaze) {
+                        Column(
+                            Modifier
+                                .align(Alignment.BottomCenter)
+                                .fillMaxWidth()
+                                .padding(
+                                    start = if (landscape) 20.dp else FloatingChromeSide,
+                                    end = if (landscape) 20.dp else FloatingChromeSide,
+                                    bottom = chromeBottomGap,
+                                )
+                                .zIndex(40f)
+                                .then(
+                                    if (overlay is MainOverlay.Mv) {
+                                        Modifier.pointerInput(Unit) {
+                                            awaitPointerEventScope {
+                                                while (true) {
+                                                    val event = awaitPointerEvent(PointerEventPass.Initial)
+                                                    event.changes.forEach { it.consume() }
+                                                }
+                                            }
+                                        }
+                                    } else {
+                                        Modifier
+                                    },
+                                )
+                                .graphicsLayer {
+                                    val leave = spaceChromeLeave(userSpaceProgress)
+                                    translationY = leave * 220f
+                                    alpha = (1f - leave).coerceIn(0f, 1f)
+                                },
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            if (showMini || showManage) {
+                                Box(
+                                    Modifier
+                                        .then(
+                                            if (landscape) Modifier.fillMaxWidth()
+                                            else Modifier.widthIn(max = MiniPlayerMaxWidth).fillMaxWidth(),
+                                        )
+                                        .height(MiniPlayerStackHeight),
+                                ) {
+                                    androidx.compose.animation.AnimatedVisibility(
+                                        visible = showMini,
+                                        enter = fadeIn(tween(220, easing = FastOutSlowInEasing)),
+                                        exit = fadeOut(tween(180)),
+                                    ) {
+                                        MiniPlayerSlot(
+                                            playback = playback,
+                                            mvPlayback = app.mvPlayback,
+                                            backdrop = backdrop,
+                                            onOpenFull = { openFullPlayer() },
+                                            onOpenMv = { overlayMv ->
+                                                if (overlay !is MainOverlay.Mv) {
+                                                    pushOverlay(overlayMv)
+                                                }
+                                            },
+                                            modifier = Modifier.fillMaxWidth(),
+                                        )
+                                    }
+                                    androidx.compose.animation.AnimatedVisibility(
+                                        visible = showManage,
+                                        enter = fadeIn(tween(220, easing = FastOutSlowInEasing)) +
+                                            slideInVertically(
+                                                animationSpec = tween(260, easing = FastOutSlowInEasing),
+                                                initialOffsetY = { it / 3 },
+                                            ),
+                                        exit = fadeOut(tween(180)) +
+                                            slideOutVertically(
+                                                animationSpec = tween(220, easing = FastOutSlowInEasing),
+                                                targetOffsetY = { it / 3 },
+                                            ),
+                                    ) {
+                                        PlaylistManageBar(
+                                            selectedCount = playlistManage.selectedCount,
+                                            canRemove = playlistManage.canRemove,
+                                            busy = playlistManage.busy,
+                                            onRemove = {
+                                                if (playlistManage.selectedCount <= 0) {
+                                                    hint(t("请先选择歌曲"))
+                                                } else {
+                                                    playlistManage.onRemove()
+                                                }
+                                            },
+                                            onDownload = {
+                                                if (playlistManage.selectedCount <= 0) {
+                                                    hint(t("请先选择歌曲"))
+                                                } else {
+                                                    playlistManage.onDownload()
+                                                }
+                                            },
+                                            onCancel = { playlistManage.onCancel() },
+                                            backdrop = backdrop,
+                                            modifier = Modifier.fillMaxWidth(),
+                                            canDownload = playlistManage.canDownload,
+                                            removeLabel = when (overlay) {
+                                                is MainOverlay.CachedSongs -> t("删除所选")
+                                                is MainOverlay.CloudDisk -> t("从云盘删除")
+                                                else -> t("全部移出歌单")
+                                            },
+                                        )
+                                    }
+                                }
+                            }
+                            if (!landscape) {
+                                if ((showMini || showManage) && dockReveal > 0.001f) {
+                                    Spacer(Modifier.height(FloatingChromeGap * dockReveal))
+                                }
+                                Box(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .height(dockH)
+                                        .graphicsLayer {
+                                            alpha = dockReveal.coerceIn(0f, 1f)
+                                            // 展开时不要裁剪：玻璃默认阴影/lens 溢出被矩形切开后，胶囊四角会留下水平黑线。
+                                            clip = dockReveal < 0.999f
+                                        },
+                                    contentAlignment = Alignment.BottomCenter,
+                                ) {
+                                    if (dockReveal > 0.001f) {
+                                        FloatingTabDock(
+                                            pagerState = pagerState,
+                                            onDestination = { dest -> goTo(dest) },
+                                            onDragByTabs = ::dragDockByTabs,
+                                            onDragSettled = ::settleDockPager,
+                                            landscape = landscape,
+                                            backdrop = backdrop,
+                                            showProbeTab = showProbeTab,
+                                            onOpenProbe = ::goToProbe,
+                                        )
+                                    }
+                                }
+                            }
+                            }
+                        }
+                    }
+                }
+            },
         ) {
         Row(Modifier.fillMaxSize()) {
             if (landscape) {
@@ -1292,138 +1444,6 @@ fun MainShell(
                 )
             }
         }
-        Column(
-            Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .padding(
-                    start = if (landscape) 20.dp else FloatingChromeSide,
-                    end = if (landscape) 20.dp else FloatingChromeSide,
-                    bottom = chromeBottomGap,
-                )
-                .zIndex(40f)
-                .then(
-                    if (overlay is MainOverlay.Mv) {
-                        Modifier.pointerInput(Unit) {
-                            awaitPointerEventScope {
-                                while (true) {
-                                    val event = awaitPointerEvent(PointerEventPass.Initial)
-                                    event.changes.forEach { it.consume() }
-                                }
-                            }
-                        }
-                    } else {
-                        Modifier
-                    },
-                )
-                .graphicsLayer {
-                    val leave = spaceChromeLeave(userSpaceProgress)
-                    translationY = leave * 220f
-                    alpha = (1f - leave).coerceIn(0f, 1f)
-                },
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            if (showMini || showManage) {
-                Box(
-                    Modifier
-                        .then(
-                            if (landscape) Modifier.fillMaxWidth()
-                            else Modifier.widthIn(max = MiniPlayerMaxWidth).fillMaxWidth(),
-                        )
-                        .height(MiniPlayerStackHeight),
-                ) {
-                    androidx.compose.animation.AnimatedVisibility(
-                        visible = showMini,
-                        enter = fadeIn(tween(220, easing = FastOutSlowInEasing)),
-                        exit = fadeOut(tween(180)),
-                    ) {
-                        MiniPlayerSlot(
-                            playback = playback,
-                            mvPlayback = app.mvPlayback,
-                            backdrop = backdrop,
-                            onOpenFull = { openFullPlayer() },
-                            onOpenMv = { overlayMv ->
-                                if (overlay !is MainOverlay.Mv) {
-                                    pushOverlay(overlayMv)
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    }
-                    androidx.compose.animation.AnimatedVisibility(
-                        visible = showManage,
-                        enter = fadeIn(tween(220, easing = FastOutSlowInEasing)) +
-                            slideInVertically(
-                                animationSpec = tween(260, easing = FastOutSlowInEasing),
-                                initialOffsetY = { it / 3 },
-                            ),
-                        exit = fadeOut(tween(180)) +
-                            slideOutVertically(
-                                animationSpec = tween(220, easing = FastOutSlowInEasing),
-                                targetOffsetY = { it / 3 },
-                            ),
-                    ) {
-                        PlaylistManageBar(
-                            selectedCount = playlistManage.selectedCount,
-                            canRemove = playlistManage.canRemove,
-                            busy = playlistManage.busy,
-                            onRemove = {
-                                if (playlistManage.selectedCount <= 0) {
-                                    hint(t("请先选择歌曲"))
-                                } else {
-                                    playlistManage.onRemove()
-                                }
-                            },
-                            onDownload = {
-                                if (playlistManage.selectedCount <= 0) {
-                                    hint(t("请先选择歌曲"))
-                                } else {
-                                    playlistManage.onDownload()
-                                }
-                            },
-                            onCancel = { playlistManage.onCancel() },
-                            backdrop = backdrop,
-                            modifier = Modifier.fillMaxWidth(),
-                            canDownload = playlistManage.canDownload,
-                            removeLabel = when (overlay) {
-                                is MainOverlay.CachedSongs -> t("删除所选")
-                                is MainOverlay.CloudDisk -> t("从云盘删除")
-                                else -> t("全部移出歌单")
-                            },
-                        )
-                    }
-                }
-            }
-            if (!landscape) {
-                if ((showMini || showManage) && dockReveal > 0.001f) {
-                    Spacer(Modifier.height(FloatingChromeGap * dockReveal))
-                }
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .height(dockH)
-                        .graphicsLayer {
-                            alpha = dockReveal.coerceIn(0f, 1f)
-                            // 展开时不要裁剪：玻璃默认阴影/lens 溢出被矩形切开后，胶囊四角会留下水平黑线。
-                            clip = dockReveal < 0.999f
-                        },
-                    contentAlignment = Alignment.BottomCenter,
-                ) {
-                    if (dockReveal > 0.001f) {
-                        FloatingTabDock(
-                            pagerState = pagerState,
-                            onDestination = { dest -> goTo(dest) },
-                            onDragByTabs = ::dragDockByTabs,
-                            onDragSettled = ::settleDockPager,
-                            landscape = landscape,
-                            backdrop = backdrop,
-                            showProbeTab = showProbeTab,
-                            onOpenProbe = ::goToProbe,
-                        )
-                    }
-                }
-            }
-            }
         }
         } // weight 内容格
         } // 横竖 Row
@@ -1763,6 +1783,7 @@ private fun FullPlayerSlot(
         onSkipPrev = { playback.skipPrevious() },
         onCyclePlaybackMode = playback::cyclePlaybackMode,
         onPlayQueueIndex = playback::playIndex,
+        onMoveQueue = playback::moveQueueItem,
         onHoldAutoAdvanceChange = playback::setHoldAutoAdvance,
         modifier = Modifier.fillMaxSize(),
         landscapeStartInset = 0.dp,

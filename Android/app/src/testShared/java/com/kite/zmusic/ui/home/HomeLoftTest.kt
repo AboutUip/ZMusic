@@ -62,6 +62,21 @@ class HomeLoftTest {
     }
 
     @Test
+    fun floorInterceptStopsOnceTheLoftIsOpenOrGone() {
+        assertEquals(false, homeLoftInterceptsFloor(open = false, reveal = 0f))
+        assertEquals(false, homeLoftInterceptsFloor(open = true, reveal = 1f))
+        assertEquals(true, homeLoftInterceptsFloor(open = true, reveal = 0.2f))
+        assertEquals(true, homeLoftInterceptsFloor(open = false, reveal = 0.4f))
+        assertEquals(false, homeLoftInterceptsFloor(open = false, reveal = 0.01f))
+    }
+
+    @Test
+    fun navigationUnlocksAsSoonAsTheLoftStartsClosing() {
+        assertEquals(true, homeLoftLocksNavigation(open = true))
+        assertEquals(false, homeLoftLocksNavigation(open = false))
+    }
+
+    @Test
     fun leavingTheLoftReturnsTheLoadingCircleAlongItsEntryPath() {
         val hidden = homeLoftIndicatorHiddenCenterY(indicatorTopPx = 80f, indicatorRadiusPx = 20f)
         assertEquals(60f, hidden, 0.01f)

@@ -31,6 +31,11 @@ data class ListenChatMsg(
     val avatarUrl: String,
     val text: String,
     val at: Long,
+    /**
+     * 发出时除发送者外的在场成员。null 表示旧消息，退回用当前成员。
+     * 空列表表示当时没有其他人。
+     */
+    val peers: List<String>? = null,
     /** 列表身份。乐观消息被服务端确认后保持不变，避免整行拆掉重画。 */
     val rowKey: Long = id,
 )
@@ -54,6 +59,11 @@ data class ListenRoomSnapshot(
     val chatIncluded: Boolean = true,
     val chatReads: Map<String, Long> = emptyMap(),
     val chatReadsIncluded: Boolean = false,
+    /** 房间曲谱。null 表示这份快照没带队列（旧服务或未发布）。 */
+    val queue: List<ListenQueueTrack>? = null,
+    val queueHlc: Long = 0L,
+    val queueActor: String = "",
+    val queueIncluded: Boolean = false,
 )
 
 data class ListenPeer(
@@ -103,8 +113,9 @@ data class ListenTogetherUi(
 
 object ListenTogetherClock {
     const val SEEK_JUMP_MS = 1_800L
-    const val DRIFT_MS = 3_000L
-    const val DRIFT_CHECK_MS = 8_000L
+    /** 超过一句歌词的常见间隔就要拉回，避免五人房间里亮错行。 */
+    const val DRIFT_MS = 800L
+    const val DRIFT_CHECK_MS = 2_000L
     /** 切歌后起始进度宽限：大于此值才可能是旧曲带过来的 origin。 */
     const val NEW_TRACK_ORIGIN_GRACE_MS = 2_000L
     const val NEW_TRACK_TAIL_MS = 1_500L
@@ -131,10 +142,7 @@ object ListenTogetherClock {
 
     fun shouldApply(nextHlc: Long, appliedHlc: Long): Boolean = nextHlc > appliedHlc
 
-    fun isOwnClock(actor: String, selfUid: String): Boolean {
-        val self = selfUid.trim()
-        return self.isNotEmpty() && actor.trim() == self
-    }
+    fun isOwnClock(actor: String, selfUid: String): Boolean = listenChatUidEquals(actor, selfUid)
 
     /** 客人跟远端时钟切歌；房主仍用本机队列在曲末推进。 */
     fun followRemoteAdvance(inRoom: Boolean, hosting: Boolean): Boolean = inRoom && !hosting
@@ -278,24 +286,50 @@ fun listenChatClockLabel(
     }
 }
 
+data class ListenChatReadReceipt(
+    val count: Int,
+    val total: Int,
+) {
+    val complete: Boolean get() = total > 0 && count == total
+}
+
 /**
- * 除发送者以外的在场成员都把已读游标推过这条消息。
- * 房间里只有发送者自己时没有可核对的读者，不显示已读。
+ * 已读按「发出时在场、现在还在」的其他人计算。
+ * [peers] 为空列表表示当时没有别人；为 null 时退回当前成员（旧消息）。
+ * 后加入的人不算进更早消息的分母，离开的人不再卡住勾。
+ * 两人房间 total 为 1，勾仍然表示对方已读；多人用 count/total。
  */
+fun listenChatReadReceipt(
+    msgId: Long,
+    senderUid: String,
+    peers: List<String>?,
+    members: List<ListenMember>,
+    reads: Map<String, Long>,
+): ListenChatReadReceipt {
+    if (msgId <= 0L) return ListenChatReadReceipt(0, 0)
+    val raw = peers ?: members.map { it.uid }
+    val obligated = ArrayList<String>()
+    for (uid in raw) {
+        if (uid.isBlank() || listenChatUidEquals(uid, senderUid)) continue
+        if (peers != null && members.none { listenChatUidEquals(it.uid, uid) }) continue
+        if (obligated.any { listenChatUidEquals(it, uid) }) continue
+        obligated += uid
+    }
+    if (obligated.isEmpty()) return ListenChatReadReceipt(0, 0)
+    val count = obligated.count { uid ->
+        val cursor = reads.entries.firstOrNull { listenChatUidEquals(it.key, uid) }?.value ?: 0L
+        cursor >= msgId
+    }
+    return ListenChatReadReceipt(count, obligated.size)
+}
+
+/** 除发送者以外、需要核对的人都把已读游标推过这条消息。 */
 fun listenChatReadByPeers(
     msgId: Long,
     senderUid: String,
     members: List<ListenMember>,
     reads: Map<String, Long>,
-): Boolean {
-    if (msgId <= 0L) return false
-    val others = members.filter { it.uid.isNotBlank() && !listenChatUidEquals(it.uid, senderUid) }
-    if (others.isEmpty()) return false
-    return others.all { peer ->
-        val cursor = reads.entries.firstOrNull { listenChatUidEquals(it.key, peer.uid) }?.value ?: 0L
-        cursor >= msgId
-    }
-}
+): Boolean = listenChatReadReceipt(msgId, senderUid, null, members, reads).complete
 
 fun mergeListenChatReads(
     previous: Map<String, Long>,
@@ -315,14 +349,33 @@ fun mergeListenChatReads(
 
 fun retargetListenChatToast(current: ListenChatMsg?, merged: List<ListenChatMsg>): ListenChatMsg? {
     if (current == null) return null
-    if (current.id > 0L) {
-        return merged.firstOrNull { it.id == current.id } ?: current
+    return claimListenChatEcho(current, merged, emptySet(), emptySet()) ?: current
+}
+
+/**
+ * 乐观消息对上一条还没被占用的回声。已经在上一帧里的同文消息不算这条的回声，
+ * 避免五个人连发同一句时翻译落到更早的气泡上。
+ */
+fun claimListenChatEcho(
+    local: ListenChatMsg,
+    merged: List<ListenChatMsg>,
+    previousIds: Set<Long>,
+    consumed: Set<Long>,
+): ListenChatMsg? {
+    if (local.id > 0L) {
+        return merged.firstOrNull { it.id == local.id } ?: local
     }
-    return merged.lastOrNull { remote ->
-        remote.id > 0L &&
-            listenChatUidEquals(remote.uid, current.uid) &&
-            remote.text == current.text
-    } ?: current
+    return merged.asSequence()
+        .filter { remote ->
+            remote.id > 0L &&
+                remote.id !in consumed &&
+                remote.id !in previousIds &&
+                listenChatUidEquals(remote.uid, local.uid) &&
+                remote.text == local.text
+        }
+        .minWithOrNull(
+            compareBy<ListenChatMsg>({ if (it.at > 0L) it.at else Long.MAX_VALUE }, { it.id }),
+        )
 }
 
 const val LISTEN_CHAT_TOAST_MAX = 2
@@ -338,8 +391,15 @@ fun listenChatToastKey(msg: ListenChatMsg): String =
 fun retargetListenChatToasts(
     current: List<ListenChatToast>,
     merged: List<ListenChatMsg>,
-): List<ListenChatToast> = current.map { item ->
-    item.copy(msg = retargetListenChatToast(item.msg, merged) ?: item.msg)
+    previous: List<ListenChatMsg> = emptyList(),
+): List<ListenChatToast> {
+    val previousIds = previous.map { it.id }.filter { it > 0L }.toSet()
+    val consumed = HashSet<Long>()
+    return current.map { item ->
+        val remote = claimListenChatEcho(item.msg, merged, previousIds, consumed) ?: return@map item
+        if (item.msg.id < 0L && remote.id > 0L) consumed.add(remote.id)
+        item.copy(msg = remote)
+    }
 }
 
 @Suppress("UNUSED_PARAMETER")

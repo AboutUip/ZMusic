@@ -82,6 +82,9 @@ class ListenTogetherController(
     private val postMutex = Mutex()
     private val pendingLock = Any()
     private var pendingOp: ListenPostedOp? = null
+    private var pendingQueue: JSONObject? = null
+    @Volatile private var appliedQueueHlc = 0L
+    @Volatile private var seededQueueRoomId = ""
     @Volatile private var localMemory = ListenLocalMemory()
     @Volatile private var lastDriftAt = 0L
     @Volatile private var lastNotifiedChatId = 0L
@@ -110,6 +113,7 @@ class ListenTogetherController(
     fun start() {
         if (started) return
         started = true
+        playback.setQueueReorderListener { tracks -> publishQueueOrder(tracks) }
         scope.launch {
             auth.session.collectLatest { sess ->
                 _ui.update { it.copy(selfUid = sess?.uid.orEmpty()) }
@@ -160,7 +164,9 @@ class ListenTogetherController(
     }
 
     fun setPlayerForeground(held: Boolean) {
+        val opened = held && !playerForeground
         playerForeground = held
+        if (opened) publishVisibleChatRead()
     }
 
     fun setChatForeground(open: Boolean) {
@@ -616,6 +622,13 @@ class ListenTogetherController(
         publishChatRead(roomId, upTo, force = true)
     }
 
+    /** 人在播放页时就把已读游标推上去。聊天页没拉开也算看见，否则多人房间几乎永远凑不齐。 */
+    private fun publishVisibleChatRead() {
+        val room = _ui.value.room ?: return
+        val upTo = room.chat.maxOfOrNull { it.id.coerceAtLeast(0L) } ?: 0L
+        publishChatRead(room.id, upTo)
+    }
+
     private fun publishChatRead(roomId: String, upTo: Long, force: Boolean = false) {
         val id = roomId.trim()
         if (id.isEmpty() || upTo <= 0L || leavingRoom) return
@@ -720,7 +733,7 @@ class ListenTogetherController(
             result.fold(
                 onSuccess = { ok ->
                     _chatTranslations.update {
-                        putListenChatTranslate(
+                        commitListenChatTranslate(
                             it,
                             msg,
                             ListenChatTranslateEntry(
@@ -733,7 +746,7 @@ class ListenTogetherController(
                 },
                 onFailure = { err ->
                     _chatTranslations.update {
-                        putListenChatTranslate(
+                        commitListenChatTranslate(
                             it,
                             msg,
                             ListenChatTranslateEntry(
@@ -931,7 +944,7 @@ class ListenTogetherController(
                 selfUid = self,
             )
             var lastRead = cur.lastReadChatId
-            var toasts = retargetListenChatToasts(cur.chatToasts, merged)
+            var toasts = retargetListenChatToasts(cur.chatToasts, merged, previousChat)
             lastNotifiedChatId = maxOf(
                 lastNotifiedChatId,
                 toasts.maxOfOrNull { it.msg.id.coerceAtLeast(0L) } ?: 0L,
@@ -973,15 +986,16 @@ class ListenTogetherController(
                 chatToasts = toasts,
             )
         }
-        if (chatForeground && !snap.closed && prevId == snap.id) {
-            val upTo = _ui.value.room?.chat.orEmpty().maxOfOrNull { it.id.coerceAtLeast(0L) } ?: 0L
-            publishChatRead(snap.id, upTo)
+        if ((chatForeground || playerForeground) && !snap.closed && prevId == snap.id) {
+            publishVisibleChatRead()
         }
         if (prevId != snap.id) {
             clearChatTranslations()
             historyRoomId = snap.id
             historyExhausted = false
             stuckHoleBefore = 0L
+            appliedQueueHlc = 0L
+            seededQueueRoomId = ""
         } else {
             val merged = _ui.value.room?.chat.orEmpty()
             _chatTranslations.update {
@@ -994,6 +1008,8 @@ class ListenTogetherController(
             dropLocal(t("一起听已结束"))
             return
         }
+        applySharedQueue(snap)
+        maybeSeedSharedQueue()
         if (!applyPlayer) {
             appliedHlc = maxOf(appliedHlc, snap.clock.hlc)
             return
@@ -1029,16 +1045,35 @@ class ListenTogetherController(
         applyingHlc = clock.hlc
         val localId = playback.ui.value.currentTrack?.id ?: 0L
         if (localId == clock.trackId) {
-            applyGen++
+            val gen = ++applyGen
             applyingRemote = true
-            suppressLocalUntil = SystemClock.elapsedRealtime() + 1_200L
             val nowElapsed = SystemClock.elapsedRealtime()
+            suppressLocalUntil = nowElapsed + 2_000L
             val pos = ListenTogetherClock.positionMs(clock, snap.serverNow, recvElapsed, nowElapsed)
             playback.seekTo(pos)
             playback.setPlayWhenReady(clock.playing)
             rememberAppliedClock(clock.trackId, clock.playing, pos, nowElapsed)
-            applyingRemote = false
-            suppressLocalUntil = SystemClock.elapsedRealtime() + 400L
+            scope.launch {
+                try {
+                    awaitPlayerAligned(clock.trackId, clock.playing, gen, pos, timeoutMs = 2_000L)
+                } finally {
+                    if (gen == applyGen) {
+                        val ui = playback.ui.value
+                        val landed = ui.positionMs
+                        val keep = if (
+                            ui.buffering &&
+                            kotlin.math.abs(landed - pos) > ListenTogetherClock.DRIFT_MS
+                        ) {
+                            pos
+                        } else {
+                            landed
+                        }
+                        rememberAppliedClock(clock.trackId, clock.playing, keep, SystemClock.elapsedRealtime())
+                        applyingRemote = false
+                        suppressLocalUntil = SystemClock.elapsedRealtime() + 600L
+                    }
+                }
+            }
             return
         }
         val gen = ++applyGen
@@ -1051,7 +1086,7 @@ class ListenTogetherController(
                 val track = resolveTrack(clock)
                 if (gen != applyGen || leavingRoom) return@launch
                 playback.playListenTrack(track, pos, clock.playing)
-                awaitPlayerAligned(clock.trackId, clock.playing, gen)
+                awaitPlayerAligned(clock.trackId, clock.playing, gen, pos)
             } catch (t: Throwable) {
                 Log.w(TAG, "apply clock", t)
             } finally {
@@ -1070,12 +1105,20 @@ class ListenTogetherController(
         }
     }
 
-    private suspend fun awaitPlayerAligned(trackId: Long, playing: Boolean, gen: Int) {
-        val deadline = SystemClock.elapsedRealtime() + 12_000L
+    private suspend fun awaitPlayerAligned(
+        trackId: Long,
+        playing: Boolean,
+        gen: Int,
+        expectedPos: Long? = null,
+        timeoutMs: Long = 12_000L,
+    ) {
+        val deadline = SystemClock.elapsedRealtime() + timeoutMs
         while (SystemClock.elapsedRealtime() < deadline && gen == applyGen) {
             val ui = playback.ui.value
             val id = ui.currentTrack?.id ?: 0L
-            if (id == trackId && !ui.loadPending && ui.playWhenReady == playing) {
+            val posOk = expectedPos == null ||
+                kotlin.math.abs(ui.positionMs - expectedPos) <= ListenTogetherClock.DRIFT_MS
+            if (id == trackId && !ui.loadPending && !ui.buffering && ui.playWhenReady == playing && posOk) {
                 return
             }
             delay(50)
@@ -1126,8 +1169,12 @@ class ListenTogetherController(
                     dropLocal(t("一起听已结束"))
                     return@launch
                 } catch (e: WorkshopApiError.Message) {
-                    if (e.message == "closed" || e.message == "forbidden") {
+                    if (e.message == "closed") {
                         dropLocal(t("一起听已结束"))
+                        return@launch
+                    }
+                    if (e.message == "forbidden") {
+                        dropLocal(t("已离开一起听"))
                         return@launch
                     }
                     failStreak = (failStreak + 1).coerceAtMost(4)
@@ -1147,10 +1194,9 @@ class ListenTogetherController(
         if (leavingRoom) return
         val clock = snap.clock
         if (clock.trackId <= 0L || applyingRemote) return
-        val self = auth.current()?.uid.orEmpty().ifBlank { _ui.value.selfUid }
-        val isMine = ListenTogetherClock.isOwnClock(clock.actor, self)
-        if (isMine || clock.hlc < appliedHlc) return
+        if (clock.hlc < appliedHlc) return
         val ui = playback.ui.value
+        if (ui.buffering || ui.loadPending) return
         if (ListenTogetherClock.playerNeedsClock(clock, ui.currentTrack?.id ?: 0L, ui.playWhenReady)) {
             applyClockToPlayer(snap)
             return
@@ -1165,12 +1211,7 @@ class ListenTogetherController(
             now,
         )
         if (kotlin.math.abs(ui.positionMs - expect) <= ListenTogetherClock.DRIFT_MS) return
-        applyingRemote = true
-        suppressLocalUntil = now + 800L
-        playback.seekTo(expect)
-        val mem = localMemory
-        localMemory = mem.copy(lastPosMs = expect, lastPosAt = now)
-        applyingRemote = false
+        applyClockToPlayer(snap)
     }
 
     private fun onPlayback(snap: PlaybackUiState) {
@@ -1223,17 +1264,80 @@ class ListenTogetherController(
         scope.launch { drainOps() }
     }
 
+    private fun publishQueueOrder(tracks: List<TrackRow>) {
+        if (leavingRoom || !_ui.value.inRoom) return
+        val body = listenQueueOpJson(tracks) ?: return
+        synchronized(pendingLock) { pendingQueue = body }
+        scope.launch { drainOps() }
+    }
+
+    private fun applySharedQueue(snap: ListenRoomSnapshot) {
+        if (!snap.queueIncluded || snap.queueHlc <= appliedQueueHlc) return
+        val rows = snap.queue.orEmpty().map { it.toTrackRow() }
+        if (rows.isEmpty()) return
+        appliedQueueHlc = snap.queueHlc
+        playback.replaceQueueOrder(rows)
+    }
+
+    /** 房主进房时把本机曲谱交给房间。客人只收，避免后进的人用自己的列表盖掉。 */
+    private fun maybeSeedSharedQueue() {
+        val room = _ui.value.room ?: return
+        if (!_ui.value.hosting) return
+        if (room.queueIncluded && !room.queue.isNullOrEmpty()) return
+        if (seededQueueRoomId == room.id) return
+        if (playback.ui.value.queue.isEmpty()) return
+        seededQueueRoomId = room.id
+        publishQueueOrder(playback.ui.value.queue)
+    }
+
     private suspend fun drainOps() {
         postMutex.withLock {
             while (!leavingRoom) {
+                val queue = synchronized(pendingLock) {
+                    val body = pendingQueue
+                    pendingQueue = null
+                    body
+                }
                 val next = synchronized(pendingLock) {
-                    val o = pendingOp
+                    val op = pendingOp
                     pendingOp = null
-                    o
-                } ?: break
-                postOpUnlocked(next)
+                    op
+                }
+                if (queue == null && next == null) break
+                if (queue != null) postQueueUnlocked(queue)
+                if (next != null) postOpUnlocked(next)
             }
         }
+    }
+
+    private suspend fun postQueueUnlocked(body: JSONObject) {
+        if (leavingRoom) return
+        val id = _ui.value.room?.id ?: return
+        var last: Exception? = null
+        repeat(3) { attempt ->
+            if (leavingRoom || _ui.value.room?.id != id) return
+            try {
+                val snap = client.postOp(id, body)
+                pollAfter = maxOf(pollAfter, snap.rev)
+                applySnapshot(snap, applyPlayer = false)
+                return
+            } catch (e: WorkshopApiError.Message) {
+                if (e.message == "closed" || e.message == "missing") {
+                    dropLocal(t("一起听已结束"))
+                    return
+                }
+                last = e
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                last = e
+            }
+            delay(400L * (attempt + 1))
+        }
+        if (_ui.value.room?.id == id && _ui.value.room?.queueIncluded != true) {
+            seededQueueRoomId = ""
+        }
+        if (last != null) Log.w(TAG, "queue", last)
     }
 
     private suspend fun postOpUnlocked(op: ListenPostedOp) {
@@ -1246,10 +1350,8 @@ class ListenTogetherController(
             try {
                 val snap = client.postOp(id, body)
                 lastPostedHlc = snap.clock.hlc
-                appliedHlc = maxOf(appliedHlc, snap.clock.hlc)
                 pollAfter = maxOf(pollAfter, snap.rev)
-                recvElapsed = SystemClock.elapsedRealtime()
-                _ui.update { it.copy(room = snap) }
+                applySnapshot(snap, applyPlayer = false)
                 return
             } catch (e: WorkshopApiError.Message) {
                 if (e.message == "closed" || e.message == "missing") {
@@ -1272,10 +1374,15 @@ class ListenTogetherController(
         pollJob?.cancel()
         pollJob = null
         appliedHlc = 0L
+        appliedQueueHlc = 0L
+        seededQueueRoomId = ""
         lastPostedHlc = 0L
         recvElapsed = 0L
         localMemory = ListenLocalMemory()
-        synchronized(pendingLock) { pendingOp = null }
+        synchronized(pendingLock) {
+            pendingOp = null
+            pendingQueue = null
+        }
         applyingRemote = false
         suppressLocalUntil = 0L
         lastDriftAt = 0L
@@ -1313,7 +1420,10 @@ class ListenTogetherController(
         leavingRoom = true
         applyGen++
         applyingRemote = false
-        synchronized(pendingLock) { pendingOp = null }
+        synchronized(pendingLock) {
+            pendingOp = null
+            pendingQueue = null
+        }
         pollJob?.cancel()
         pollJob = null
         suppressLocalUntil = SystemClock.elapsedRealtime() + 8_000L
@@ -1375,6 +1485,10 @@ class ListenTogetherController(
 
     suspend fun uploadSticker(bytes: ByteArray): ListenSticker = client.uploadSticker(bytes)
 
+    suspend fun saveSticker(id: String): ListenSticker = client.saveSticker(id)
+
+    suspend fun deleteSticker(id: String) = client.deleteSticker(id)
+
     suspend fun cachedStickerFile(id: String): File? = stickerFileMutex.withLock {
         withContext(Dispatchers.IO) {
         val clean = id.trim()
@@ -1414,6 +1528,7 @@ private fun PlaybackUiState.toListenLocalSnap(): ListenLocalSnap {
         playWhenReady = playWhenReady,
         loadPending = loadPending,
         hasQueue = hasQueue,
+        buffering = buffering,
     )
 }
 

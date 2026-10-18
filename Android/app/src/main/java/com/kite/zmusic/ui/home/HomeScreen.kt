@@ -111,7 +111,7 @@ fun HomeScreen(
     val refreshBridge = LocalHomeRefreshBridge.current
     SideEffect {
         refreshBridge?.refreshing = ui.refreshing
-        refreshBridge?.refresh = { vm.refresh() }
+        refreshBridge?.refresh = { vm.refreshAwait() }
     }
 
     val onBanner: (HomeBanner) -> Unit = { b ->

@@ -71,7 +71,7 @@ class LoftChatController(
         val before = _messages.value.asSequence().map { it.id }.filter { it > 0L }.minOrNull() ?: return
         olderJob = scope.launch {
             val page = runCatching { client.before(before) }.getOrNull() ?: return@launch
-            _messages.update { mergeLoft(it, page.messages) }
+            updateMessages { mergeLoft(it, page.messages) }
             _hasOlder.value = page.hasMore
         }
     }
@@ -92,15 +92,15 @@ class LoftChatController(
             text = body,
             at = System.currentTimeMillis(),
         )
-        _messages.update { ordered(it + local) }
+        updateMessages { ordered(it + local) }
         scope.launch {
             try {
                 val saved = client.post(body)
-                _messages.update { mergeLoft(it, listOf(saved)) }
+                updateMessages { mergeLoft(it, listOf(saved)) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _messages.update { cur -> cur.filter { it.id != localId } }
+                updateMessages { cur -> cur.filter { it.id != localId } }
                 notices.show(loftChatError(e))
             }
         }
@@ -132,7 +132,7 @@ class LoftChatController(
             result.fold(
                 onSuccess = { ok ->
                     _translations.update {
-                        putListenChatTranslate(
+                        commitListenChatTranslate(
                             it,
                             msg,
                             ListenChatTranslateEntry(text = ok.translatedText, visible = true, loading = false),
@@ -141,7 +141,7 @@ class LoftChatController(
                 },
                 onFailure = { err ->
                     _translations.update {
-                        putListenChatTranslate(
+                        commitListenChatTranslate(
                             it,
                             msg,
                             ListenChatTranslateEntry(visible = false, loading = false, error = err.message),
@@ -167,7 +167,7 @@ class LoftChatController(
                     kotlinx.coroutines.delay(2_000)
                     continue
                 }
-                _messages.update { mergeLoft(it.filter { msg -> msg.id < 0L }, page.messages) }
+                updateMessages { mergeLoft(it.filter { msg -> msg.id < 0L }, page.messages) }
                 _hasOlder.value = page.hasMore
                 primed = true
                 continue
@@ -178,10 +178,17 @@ class LoftChatController(
                 continue
             }
             if (page.messages.isNotEmpty()) {
-                _messages.update { mergeLoft(it, page.messages) }
+                updateMessages { mergeLoft(it, page.messages) }
             }
             if (page.hasMore) continue
         }
+    }
+
+    private fun updateMessages(block: (List<ListenChatMsg>) -> List<ListenChatMsg>) {
+        val previous = _messages.value
+        val merged = block(previous)
+        _messages.value = merged
+        _translations.update { retargetListenChatTranslations(it, previous, merged) }
     }
 
     private fun mergeLoft(previous: List<ListenChatMsg>, incoming: List<ListenChatMsg>): List<ListenChatMsg> {

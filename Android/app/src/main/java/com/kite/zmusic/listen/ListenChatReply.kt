@@ -19,14 +19,44 @@ data class ListenChatParsedText(
 /** 行首标记：零宽 + 可打印前缀，降低被当正文展示的概率。 */
 private const val REPLY_LINE_PREFIX = "\u200B\u200BZM1|"
 
+private const val QUOTE_STICKER_MARK = "\u200Bstk:"
+
 fun listenChatQuoteFromMsg(msg: ListenChatMsg): ListenChatReplyQuote {
-    val visible = listenChatVisibleBody(msg.text)
     return ListenChatReplyQuote(
         msgId = msg.id,
         uid = msg.uid,
         nickname = msg.nickname.ifBlank { msg.uid },
-        snippet = visible.lineSequence().firstOrNull().orEmpty().trim().take(120),
+        snippet = listenChatQuoteSnippet(msg.text),
     )
+}
+
+/** 引用条正文。表情包把 id 藏在零宽标记后，界面画图，其它端仍能读到「表情包」。 */
+fun listenChatQuoteSnippet(raw: String): String {
+    val body = parseListenChatText(raw).body.ifBlank { raw }
+    val pack = parseListenChatPack(body.trim())
+    if (pack?.kind == ListenChatPackKind.Sticker) {
+        return "表情包$QUOTE_STICKER_MARK${pack.value}"
+    }
+    val visible = if (pack != null) listenChatPackLabel(pack) else body
+    return visible.lineSequence().firstOrNull().orEmpty().trim().take(120)
+}
+
+/** 长按这条消息时可以收进表情包的 id。正文优先，其次是引用里的表情包。 */
+fun listenChatActionStickerId(raw: String): String? {
+    val parsed = parseListenChatText(raw)
+    val body = parsed.body.ifBlank { raw }
+    parseListenChatPack(body.trim())
+        ?.takeIf { it.kind == ListenChatPackKind.Sticker }
+        ?.let { return it.value }
+    return parsed.reply?.snippet?.let(::listenChatQuoteStickerId)
+}
+
+fun listenChatQuoteStickerId(snippet: String): String? {
+    val mark = snippet.indexOf(QUOTE_STICKER_MARK)
+    if (mark < 0) return null
+    val id = snippet.substring(mark + QUOTE_STICKER_MARK.length)
+        .takeWhile { it.isLetterOrDigit() || it == '_' || it == '-' }
+    return id.takeIf(ListenStickerIdPattern::matches)
 }
 
 fun encodeListenChatText(reply: ListenChatReplyQuote?, body: String): String {

@@ -107,6 +107,7 @@ internal fun NowPlayingScreenLayers(
     onOpenPlaylist: (Long, String, String?) -> Unit = { _, _, _ -> },
     onOpenAlbum: (Long, String, String?) -> Unit = { _, _, _ -> },
     onPlayQueueIndex: (Int) -> Unit,
+    onMoveQueue: (from: Int, to: Int) -> Unit = { _, _ -> },
     onNeedQueueThrough: (Int) -> Unit,
     trackLiked: Boolean,
     onToggleLike: () -> Unit,
@@ -455,6 +456,7 @@ internal fun NowPlayingScreenLayers(
                     queue = state.queue,
                     queueIndex = state.index,
                     onPlayQueueIndex = onPlayQueueIndex,
+                    onMoveQueue = onMoveQueue,
                     onNeedQueueThrough = onNeedQueueThrough,
                     modifier = Modifier.weight(1f),
                 )
@@ -648,6 +650,7 @@ internal fun NowPlayingScreenLayers(
                     isPlaying = state.playWhenReady,
                     revealToken = portraitScoreRevealToken,
                     onPlayIndex = onPlayQueueIndex,
+                    onMoveQueue = onMoveQueue,
                     hazeState = settingsHazeState,
                     onDragHandleVertical = { dragAmount ->
                         val deltaFrac = -dragAmount / maxSheetH

@@ -1,5 +1,6 @@
 package com.kite.zmusic.ui.player
 
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -32,8 +33,10 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
@@ -48,8 +51,11 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -60,6 +66,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kite.zmusic.R
 import com.kite.zmusic.data.TrackRow
+import com.kite.zmusic.playback.queueIndexAfterMove
 import com.kite.zmusic.ui.common.UrlImage
 import com.kite.zmusic.ui.common.UrlImageCache
 import com.kite.zmusic.ui.main.MainPalette
@@ -71,6 +78,10 @@ import kotlin.math.cos
 import kotlin.math.min
 import kotlin.math.roundToInt
 import kotlin.math.sin
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.yield
 import com.kite.zmusic.i18n.t
 
@@ -107,6 +118,7 @@ fun ScoreSheetOverlay(
     currentIndex: Int,
     plateColors: VinylPlateColors,
     onPlayTrack: (index: Int, vinylCenterRoot: Offset, vinylSizePx: Float) -> Unit,
+    onMoveQueue: (from: Int, to: Int) -> Unit = { _, _ -> },
     openGeneration: Int,
     onApproachEnd: (lastVisibleIndex: Int) -> Unit = {},
     hazeState: HazeState? = null,
@@ -261,6 +273,7 @@ fun ScoreSheetOverlay(
                             plateColors = plateColors,
                             initialIndex = initialIndex,
                             onPlayTrack = onPlayTrack,
+                            onMoveQueue = onMoveQueue,
                             interactionEnabled = !transitionBusy,
                             onApproachEnd = onApproachEnd,
                         )
@@ -295,6 +308,7 @@ private fun ScoreMorphGrid(
     plateColors: VinylPlateColors,
     initialIndex: Int,
     onPlayTrack: (index: Int, vinylCenterRoot: Offset, vinylSizePx: Float) -> Unit,
+    onMoveQueue: (from: Int, to: Int) -> Unit = { _, _ -> },
     interactionEnabled: Boolean = true,
     onApproachEnd: (lastVisibleIndex: Int) -> Unit = {},
 ) {
@@ -397,8 +411,67 @@ private fun ScoreMorphGrid(
             layoutMetrics.gapPx = gapPx
         }
 
+        val dragScope = rememberCoroutineScope()
+        val haptic = LocalHapticFeedback.current
+        val onMoveUpdated = rememberUpdatedState(onMoveQueue)
+        val maxScrollUpdated = rememberUpdatedState(maxScroll)
+        val viewportUpdated = rememberUpdatedState(viewportH)
+        var dragFrom by remember { mutableIntStateOf(-1) }
+        var dragTo by remember { mutableIntStateOf(-1) }
+        var dragFingerX by remember { mutableFloatStateOf(0f) }
+        var dragFingerY by remember { mutableFloatStateOf(0f) }
+        var dragGrabX by remember { mutableFloatStateOf(0f) }
+        var dragGrabY by remember { mutableFloatStateOf(0f) }
+        var dragEdge by remember { mutableIntStateOf(0) }
+        var swallowClick by remember { mutableStateOf(false) }
+        var dragSettling by remember { mutableStateOf(false) }
+        var settle by remember { mutableStateOf<ScoreDragSettle?>(null) }
+        val dragging = dragFrom >= 0
+        val held = settle?.takeUnless { tracks.getOrNull(it.to)?.id == it.id }
+        val previewFrom = if (dragging) dragFrom else held?.from ?: -1
+        val previewTo = if (dragging) dragTo else held?.to ?: -1
+
+        fun hitIndex(viewportX: Float, contentY: Float): Int =
+            scoreGridIndexAt(
+                viewportX = viewportX,
+                contentY = contentY,
+                columns = columns,
+                cellPx = cellPx,
+                gapPx = gapPx,
+                count = n,
+            )
+
+        fun retarget(next: Int) {
+            if (next == dragTo) return
+            dragTo = next
+            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        }
+
+        LaunchedEffect(dragFrom) {
+            if (dragFrom < 0) return@LaunchedEffect
+            while (isActive && dragFrom >= 0) {
+                if (!dragSettling) {
+                    val cap = maxScrollUpdated.value
+                    if (dragEdge != 0 && cap > 0f) {
+                        scrollY = (scrollY + dragEdge * 18f).coerceIn(0f, cap)
+                    }
+                    retarget(hitIndex(dragFingerX, dragFingerY + scrollY))
+                }
+                delay(16)
+            }
+        }
+        LaunchedEffect(settle, tracks) {
+            val held = settle ?: return@LaunchedEffect
+            if (tracks.getOrNull(held.to)?.id == held.id) {
+                settle = null
+                return@LaunchedEffect
+            }
+            delay(400)
+            if (settle == held) settle = null
+        }
+
         val scrollableState = rememberScrollableState { delta ->
-            if (!interactionEnabled) return@rememberScrollableState 0f
+            if (!interactionEnabled || dragFrom >= 0) return@rememberScrollableState 0f
             val old = scrollY
             scrollY = (old - delta).coerceIn(0f, maxScroll)
             old - scrollY
@@ -464,20 +537,169 @@ private fun ScoreMorphGrid(
                 ),
         ) {
             val sideDp = with(density) { cellPx.toDp() }
-            for (index in visibleIndices) {
-                val track = tracks[index]
-                val left = itemLeft(index)
-                val topInViewport = itemTopNow(index) - effectiveScrollY
+            val pinned = buildList {
+                if (dragFrom in 0 until n) add(dragFrom)
+                val heldFrom = held?.from
+                if (heldFrom != null && heldFrom in 0 until n) add(heldFrom)
+            }
+            val drawIndices = if (pinned.isEmpty()) {
+                visibleIndices
+            } else {
+                (visibleIndices + pinned).distinct()
+            }
+            for (index in drawIndices) {
+                val track = tracks.getOrNull(index) ?: continue
+                val slot = if (previewFrom >= 0) {
+                    queueIndexAfterMove(index, previewFrom, previewTo)
+                } else {
+                    index
+                }
+                val followFinger = dragging && index == dragFrom
+                val parked = previewFrom >= 0 && index == previewFrom && !followFinger
+                val homeLeft = itemLeft(index)
+                val homeTop = itemTopNow(index) - effectiveScrollY
+                val slotDx = if (previewFrom >= 0 && index != previewFrom) {
+                    itemLeft(slot) - homeLeft
+                } else {
+                    0f
+                }
+                val slotDy = if (previewFrom >= 0 && index != previewFrom) {
+                    itemTopNow(slot) - itemTopNow(index)
+                } else {
+                    0f
+                }
+                val canReorder = interactionEnabled && n > 1
                 key(track.id) {
+                    val dxAnim = remember { Animatable(0f) }
+                    val dyAnim = remember { Animatable(0f) }
+                    LaunchedEffect(slotDx, slotDy) {
+                        if (slotDx == 0f && slotDy == 0f) {
+                            dxAnim.snapTo(0f)
+                            dyAnim.snapTo(0f)
+                        } else {
+                            coroutineScope {
+                                launch { dxAnim.animateTo(slotDx, QueueReorderSlide) }
+                                launch { dyAnim.animateTo(slotDy, QueueReorderSlide) }
+                            }
+                        }
+                    }
+                    val left = when {
+                        followFinger -> dragFingerX - dragGrabX
+                        parked -> itemLeft(slot)
+                        previewFrom < 0 -> homeLeft
+                        else -> homeLeft + dxAnim.value
+                    }
+                    val topInViewport = when {
+                        followFinger -> dragFingerY - dragGrabY
+                        parked -> itemTopNow(slot) - effectiveScrollY
+                        previewFrom < 0 -> homeTop
+                        else -> homeTop + dyAnim.value
+                    }
                     ScoreTrackCard(
                         track = track,
                         playing = index == currentIndex,
                         plateColors = plateColors,
                         showCover = true,
+                        showReorderHandle = canReorder,
+                        onDragStart = {
+                            if (dragFrom >= 0) return@ScoreTrackCard
+                            dragGrabX = cellPx / 2f
+                            dragGrabY = cellPx / 2f
+                            dragFingerX = itemLeft(index) + dragGrabX
+                            dragFingerY = itemTopNow(index) - scrollY + dragGrabY
+                            dragFrom = index
+                            dragTo = index
+                            dragEdge = 0
+                            settle = null
+                            swallowClick = true
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        },
+                        onDrag = { delta ->
+                            if (dragFrom != index || dragSettling) return@ScoreTrackCard
+                            dragFingerX += delta.x
+                            dragFingerY += delta.y
+                            val height = viewportUpdated.value.coerceAtLeast(1f)
+                            dragEdge = when {
+                                dragFingerY < height * 0.14f -> -1
+                                dragFingerY > height * 0.86f -> 1
+                                else -> 0
+                            }
+                            retarget(hitIndex(dragFingerX, dragFingerY + scrollY))
+                        },
+                        onDragEnd = {
+                            if (dragFrom != index || dragSettling) return@ScoreTrackCard
+                            val from = dragFrom
+                            val to = dragTo
+                            val movingId = tracks.getOrNull(from)?.id?.takeIf {
+                                from != to && to in tracks.indices
+                            }
+                            val dest = if (movingId != null) to else from
+                            dragSettling = true
+                            dragEdge = 0
+                            dragScope.launch {
+                                try {
+                                    if (from >= 0 && dest >= 0) {
+                                        val targetX = itemLeft(dest) + cellPx / 2f
+                                        val targetY = itemTopNow(dest) - scrollY + cellPx / 2f
+                                        val ax = Animatable(dragFingerX)
+                                        val ay = Animatable(dragFingerY)
+                                        coroutineScope {
+                                            launch {
+                                                ax.animateTo(targetX, QueueReorderDrop) { dragFingerX = value }
+                                            }
+                                            launch {
+                                                ay.animateTo(targetY, QueueReorderDrop) { dragFingerY = value }
+                                            }
+                                        }
+                                    }
+                                    if (movingId != null) {
+                                        settle = ScoreDragSettle(from, to, movingId)
+                                        onMoveUpdated.value(from, to)
+                                    }
+                                } finally {
+                                    dragFrom = -1
+                                    dragEdge = 0
+                                    dragSettling = false
+                                    delay(48)
+                                    swallowClick = false
+                                }
+                            }
+                        },
+                        onDragCancel = {
+                            if (dragSettling || (dragFrom != index && dragFrom >= 0)) return@ScoreTrackCard
+                            val from = dragFrom
+                            if (from < 0) return@ScoreTrackCard
+                            dragSettling = true
+                            dragEdge = 0
+                            dragScope.launch {
+                                try {
+                                    val targetX = itemLeft(from) + cellPx / 2f
+                                    val targetY = itemTopNow(from) - scrollY + cellPx / 2f
+                                    val ax = Animatable(dragFingerX)
+                                    val ay = Animatable(dragFingerY)
+                                    coroutineScope {
+                                        launch {
+                                            ax.animateTo(targetX, QueueReorderDrop) { dragFingerX = value }
+                                        }
+                                        launch {
+                                            ay.animateTo(targetY, QueueReorderDrop) { dragFingerY = value }
+                                        }
+                                    }
+                                } finally {
+                                    dragFrom = -1
+                                    dragEdge = 0
+                                    dragSettling = false
+                                    delay(48)
+                                    swallowClick = false
+                                }
+                            }
+                        },
                         onClick = { center, sizePx ->
+                            if (swallowClick) return@ScoreTrackCard
                             onPlayTrack(index, center, sizePx)
                         },
                         modifier = Modifier
+                            .zIndex(if (followFinger) 2f else 0f)
                             .offset {
                                 IntOffset(left.roundToInt(), topInViewport.roundToInt())
                             }
@@ -653,6 +875,24 @@ private fun scoreGridVisibleIndices(
     }
 }
 
+private data class ScoreDragSettle(val from: Int, val to: Int, val id: Long)
+
+private fun scoreGridIndexAt(
+    viewportX: Float,
+    contentY: Float,
+    columns: Int,
+    cellPx: Float,
+    gapPx: Float,
+    count: Int,
+): Int {
+    if (count <= 0) return 0
+    val stride = cellPx + gapPx
+    if (stride < 1f || columns < 1) return 0
+    val col = ((viewportX + gapPx / 2f) / stride).toInt().coerceIn(0, columns - 1)
+    val row = ((contentY + gapPx / 2f) / stride).toInt().coerceAtLeast(0)
+    return (row * columns + col).coerceIn(0, count - 1)
+}
+
 private fun scoreGridVisibleInFixedColumns(
     columns: Int,
     cellPx: Float,
@@ -680,13 +920,20 @@ private fun ScoreTrackCard(
     onClick: (vinylCenterRoot: Offset, vinylSizePx: Float) -> Unit,
     modifier: Modifier = Modifier,
     showCover: Boolean = true,
+    showReorderHandle: Boolean = false,
+    onDragStart: () -> Unit = {},
+    onDrag: (Offset) -> Unit = {},
+    onDragEnd: () -> Unit = {},
+    onDragCancel: () -> Unit = {},
 ) {
     var vinylCoords by remember {
         mutableStateOf<androidx.compose.ui.layout.LayoutCoordinates?>(null)
     }
 
+    Box(modifier) {
     Column(
-        modifier
+        Modifier
+            .fillMaxSize()
             .clip(CardShape)
             .background(CardBg)
             .then(
@@ -771,7 +1018,9 @@ private fun ScoreTrackCard(
             ),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(end = if (showReorderHandle) 22.dp else 0.dp),
         )
         Text(
             text = track.artists.ifBlank { t("未知艺人") },
@@ -782,8 +1031,24 @@ private fun ScoreTrackCard(
             ),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(end = if (showReorderHandle) 22.dp else 0.dp),
         )
+    }
+        if (showReorderHandle) {
+            QueueReorderHandle(
+                enabled = true,
+                onDragStart = onDragStart,
+                onDrag = onDrag,
+                onDragEnd = onDragEnd,
+                onDragCancel = onDragCancel,
+                tint = if (playing) Accent else HintColor,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .size(36.dp),
+            )
+        }
     }
 }
 

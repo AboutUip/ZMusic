@@ -9,6 +9,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -40,6 +41,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -61,7 +63,9 @@ import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
@@ -126,10 +130,10 @@ internal val LocalLoftBackClaim = staticCompositionLocalOf { LoftBackClaim() }
 @Stable
 internal class HomeRefreshBridge {
     var refreshing by mutableStateOf(false)
-    var refresh: () -> Unit = {}
+    var refresh: suspend () -> Unit = {}
 }
 
-/** 二楼展开时锁住首页 / 功能 / 我的的横向切换。事件回调读这个，不读 CompositionLocal。 */
+/** 二楼打开时锁住底部导航。圆收回的过程里已经解锁，避免回到一楼后点不动。 */
 @Stable
 internal class MainFloorLock {
     var locked by mutableStateOf(false)
@@ -225,6 +229,16 @@ internal fun homeLoftIndicatorExitAlpha(leave: Float): Float {
 internal fun homeLoftIndicatorExitScale(leave: Float): Float =
     1f - 0.16f * leave.coerceIn(0f, 1f)
 
+/** 圆还在盖住一楼时才拦截点击。完全打开的二楼和已经回到一楼都不拦截。 */
+internal fun homeLoftInterceptsFloor(open: Boolean, reveal: Float): Boolean {
+    val locked = open || reveal > 0.01f
+    val fullyOpen = open && reveal > 0.98f
+    return locked && !fullyOpen
+}
+
+/** 底部导航只跟「二楼是否打开」走。close() 一置 open=false 就解锁，不等圆缩完。 */
+internal fun homeLoftLocksNavigation(open: Boolean): Boolean = open
+
 /** 没过二楼线时一楼不动。展开由圆覆盖动画接管，不跟手指。 */
 internal fun homeSheetOffset(adjustedPx: Float, loftPx: Float): Float = 0f
 
@@ -273,6 +287,10 @@ internal class HomeLoftState(
     var interruptPx by mutableFloatStateOf(48f)
     var armed by mutableStateOf(false)
     var blockPull by mutableStateOf(false)
+    var holdingRefresh by mutableStateOf(false)
+        private set
+    var retracting by mutableStateOf(false)
+        private set
     var pendingCenter by mutableStateOf(Offset.Zero)
     var coverCenter by mutableStateOf(Offset.Zero)
         private set
@@ -283,12 +301,15 @@ internal class HomeLoftState(
     var indicatorLeave by mutableFloatStateOf(0f)
         private set
     var indicatorTopPx by mutableFloatStateOf(0f)
+    var onBeforeClose: () -> Unit = {}
 
     val adjustedPx: Float get() = homeAdjustedPull(rawPx)
     val locksFloor: Boolean get() = open || reveal > 0.01f
 
     private var upward = 0f
     private var job: Job? = null
+    private var refreshJob: Job? = null
+    private var holdEpoch = 0
     private var gen = 0
 
     fun dragBy(deltaY: Float): Float {
@@ -313,7 +334,7 @@ internal class HomeLoftState(
         return homePullConsumed(before, rawPx, deltaY, Float.MAX_VALUE)
     }
 
-    fun settle(velocityY: Float, onRefresh: () -> Unit) {
+    fun settle(velocityY: Float, onRefresh: suspend () -> Unit) {
         if (!dragging && !open) return
         dragging = false
         upward = 0f
@@ -323,24 +344,55 @@ internal class HomeLoftState(
         }
         when (homePullRelease(adjustedPx, refreshPx, loftPx)) {
             HomePullRelease.OpenLoft -> beginOpen()
-            HomePullRelease.Refresh -> {
-                onRefresh()
-                val parked = if (HomeRefreshDragMultiplier == 0f) 0f else refreshPx / HomeRefreshDragMultiplier
-                animateRaw(parked)
-            }
+            HomePullRelease.Refresh -> holdRefresh(onRefresh)
             HomePullRelease.Cancel -> animateRaw(0f)
         }
     }
 
+    /** 松手后停在刷新线，请求真正结束后再收回。不依赖 refreshing 有没有被界面观察到。 */
+    fun holdRefresh(block: suspend () -> Unit) {
+        val epoch = ++holdEpoch
+        refreshJob?.cancel()
+        retracting = false
+        dragging = false
+        upward = 0f
+        holdingRefresh = true
+        blockPull = true
+        animateRaw(parkedRaw())
+        refreshJob = scope.launch {
+            try {
+                block()
+            } finally {
+                if (epoch != holdEpoch) return@launch
+                holdingRefresh = false
+                if (open || returning || reveal > 0.01f) return@launch
+                retracting = true
+                dragging = false
+                animateRaw(0f)
+            }
+        }
+    }
+
     fun onRefreshingChanged(active: Boolean) {
-        if (open || dragging || returning || reveal > 0.01f) return
+        if (open || returning || reveal > 0.01f) return
+        // 下拉触发的那次由 holdRefresh 负责收回，避免刷新标志提前变 false 时把圆收掉。
+        if (holdingRefresh) return
         if (active) {
-            val parked = if (HomeRefreshDragMultiplier == 0f) 0f else refreshPx / HomeRefreshDragMultiplier
-            animateRaw(parked)
-        } else if (rawPx > 0.5f) {
-            // 松手时往往还在刷新线以下，不能等它先回到线上再收。
+            if (retracting && rawPx > 0.5f) return
+            retracting = false
+            if (dragging) return
+            animateRaw(parkedRaw())
+            return
+        }
+        if (rawPx > 0.5f) {
+            retracting = true
+            dragging = false
             animateRaw(0f)
         }
+    }
+
+    private fun parkedRaw(): Float {
+        return if (HomeRefreshDragMultiplier == 0f) 0f else refreshPx / HomeRefreshDragMultiplier
     }
 
     fun beginOpen() {
@@ -348,34 +400,45 @@ internal class HomeLoftState(
         if (widthPx < 1f || containerPx < 1f) return
         coverCenter = pendingCenter
         coverRadius = homeLoftFullRadius(coverCenter, widthPx, containerPx)
+        dragging = false
         open = true
         upward = 0f
         animateReveal(1f)
     }
 
     fun close() {
-        if (returning) return
+        if (returning && job?.isActive == true) return
         open = false
         returning = true
+        dragging = false
         upward = 0f
         indicatorLeave = 0f
         rawPx = 0f
+        onBeforeClose()
         val my = ++gen
         job?.cancel()
         job = scope.launch {
-            if (reveal > 0.001f) {
-                Animatable(reveal).animateTo(0f, HomeLoftReveal) {
-                    if (my == gen) reveal = value
+            try {
+                if (reveal > 0.001f) {
+                    Animatable(reveal).animateTo(0f, HomeLoftReveal) {
+                        if (my == gen) reveal = value
+                    }
+                }
+                if (my != gen) return@launch
+                reveal = 0f
+                Animatable(0f).animateTo(1f, HomeLoftIndicatorExit) {
+                    if (my == gen) indicatorLeave = value
+                }
+            } finally {
+                if (my == gen) {
+                    reveal = 0f
+                    rawPx = 0f
+                    open = false
+                    dragging = false
+                    indicatorLeave = 0f
+                    returning = false
                 }
             }
-            if (my != gen) return@launch
-            reveal = 0f
-            Animatable(0f).animateTo(1f, HomeLoftIndicatorExit) {
-                if (my == gen) indicatorLeave = value
-            }
-            if (my != gen) return@launch
-            indicatorLeave = 0f
-            returning = false
         }
     }
 
@@ -402,6 +465,7 @@ internal class HomeLoftState(
             }
             if (my != gen) return@launch
             rawPx = dest
+            if (dest <= 0.5f) retracting = false
         }
     }
 
@@ -422,7 +486,7 @@ internal class HomeLoftState(
 
 private class HomeLoftConnection(
     private val state: HomeLoftState,
-    private val onRefresh: () -> Unit,
+    private val onRefresh: suspend () -> Unit,
 ) : NestedScrollConnection {
     override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
         if (source != NestedScrollSource.UserInput) return Offset.Zero
@@ -494,11 +558,12 @@ private class CircleCoverShape(
 @Composable
 internal fun MainLoftHost(
     refreshing: Boolean,
-    onRefresh: () -> Unit,
+    onRefresh: suspend () -> Unit,
     armed: Boolean,
     indicatorInset: Dp,
     floorLock: MainFloorLock,
     modifier: Modifier = Modifier,
+    overlay: @Composable BoxScope.(loftOpen: Boolean) -> Unit = { _ -> },
     content: @Composable () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -512,15 +577,23 @@ internal fun MainLoftHost(
     val indicatorSizePx = with(density) { 40.dp.toPx() }
     val indicatorMarkPx = with(density) { 16.dp.toPx() }
     val indicatorTopPx = with(density) { indicatorInset.toPx() }
+    val keyboard = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
+    val refreshHeld = state.holdingRefresh
+    val refreshClosing = state.retracting
     SideEffect {
+        state.onBeforeClose = {
+            keyboard?.hide()
+            focusManager.clearFocus(force = true)
+        }
         state.refreshPx = refreshPx
         state.loftPx = loftPx
         state.interruptPx = interruptPx
         state.startRadius = indicatorSizePx / 2f
         state.indicatorTopPx = indicatorTopPx
         state.armed = armed
-        state.blockPull = refreshing
-        floorLock.locked = state.locksFloor
+        state.blockPull = refreshing || refreshHeld || refreshClosing
+        floorLock.locked = homeLoftLocksNavigation(state.open)
         val fractionNow = homeIndicatorFraction(
             state.adjustedPx.coerceAtMost(loftPx),
             refreshPx,
@@ -538,7 +611,7 @@ internal fun MainLoftHost(
     LaunchedEffect(armed) {
         if (!armed && !state.open) state.dismissBecauseLeftHome()
     }
-    val refreshRef = remember { object { var action: () -> Unit = onRefresh } }
+    val refreshRef = remember { object { var action: suspend () -> Unit = onRefresh } }
     SideEffect { refreshRef.action = onRefresh }
     val connection = remember(state) { HomeLoftConnection(state) { refreshRef.action() } }
     val phase = homePullPhase(state.adjustedPx, refreshPx, loftPx)
@@ -585,35 +658,7 @@ internal fun MainLoftHost(
                 state.widthPx = it.width.toFloat().coerceAtLeast(0f)
                 state.containerPx = it.height.toFloat().coerceAtLeast(0f)
             }
-            .nestedScroll(connection)
-            .pointerInput(state.open && state.reveal > 0.98f) {
-                if (state.open && state.reveal > 0.98f) return@pointerInput
-                awaitEachGesture {
-                    val down = awaitFirstDown(
-                        requireUnconsumed = false,
-                        pass = PointerEventPass.Initial,
-                    )
-                    if (!state.locksFloor) return@awaitEachGesture
-                    down.consume()
-                    val tracker = VelocityTracker()
-                    tracker.addPosition(down.uptimeMillis, down.position)
-                    while (true) {
-                        val event = awaitPointerEvent(PointerEventPass.Initial)
-                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                        val delta = change.positionChange()
-                        change.consume()
-                        if (change.changedToUp()) {
-                            val velocity = tracker.calculateVelocity()
-                            state.settle(velocity.y) { refreshRef.action() }
-                            break
-                        }
-                        if (delta.y != 0f) {
-                            tracker.addPosition(change.uptimeMillis, change.position)
-                            state.dragBy(delta.y)
-                        }
-                    }
-                }
-            },
+            .nestedScroll(connection),
     ) {
         Box(Modifier.fillMaxSize()) {
             CompositionLocalProvider(LocalMainFloorLocked provides state.locksFloor) {
@@ -622,29 +667,19 @@ internal fun MainLoftHost(
         }
         if (state.reveal > 0.001f || state.open) {
             val contentAlpha = homeLoftContentAlpha(state.reveal)
+            val coverRadiusNow = homeLoftCoverRadius(
+                state.reveal,
+                state.startRadius,
+                state.coverRadius.coerceAtLeast(state.startRadius),
+            )
+            val coverShape = CircleCoverShape(state.coverCenter, coverRadiusNow)
             Box(
                 Modifier
                     .fillMaxSize()
+                    .clip(coverShape)
                     .graphicsLayer {
-                        val radius = homeLoftCoverRadius(
-                            state.reveal,
-                            state.startRadius,
-                            state.coverRadius.coerceAtLeast(state.startRadius),
-                        )
                         clip = true
-                        shape = CircleCoverShape(state.coverCenter, radius)
-                    }
-                    .pointerInput(state.open, state.reveal > 0.98f) {
-                        if (state.open && state.reveal > 0.98f) return@pointerInput
-                        awaitEachGesture {
-                            val down = awaitFirstDown(requireUnconsumed = false)
-                            down.consume()
-                            while (true) {
-                                val event = awaitPointerEvent()
-                                event.changes.forEach { it.consume() }
-                                if (event.changes.none { it.pressed }) break
-                            }
-                        }
+                        shape = coverShape
                     }
                     .background(MainPalette.Surface),
             ) {
@@ -670,6 +705,39 @@ internal fun MainLoftHost(
                     )
                 }
             }
+        }
+        if (homeLoftInterceptsFloor(state.open, state.reveal)) {
+            // 只在圆的过渡期存在。离开组合后手势节点一起拆掉，不会在回到一楼后继续吃点击。
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .pointerInput(Unit) {
+                        awaitEachGesture {
+                            val down = awaitFirstDown(
+                                requireUnconsumed = false,
+                                pass = PointerEventPass.Initial,
+                            )
+                            down.consume()
+                            val tracker = VelocityTracker()
+                            tracker.addPosition(down.uptimeMillis, down.position)
+                            while (true) {
+                                val event = awaitPointerEvent(PointerEventPass.Initial)
+                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                val delta = change.positionChange()
+                                change.consume()
+                                if (change.changedToUp()) {
+                                    val velocity = tracker.calculateVelocity()
+                                    state.settle(velocity.y) { refreshRef.action() }
+                                    break
+                                }
+                                if (delta.y != 0f) {
+                                    tracker.addPosition(change.uptimeMillis, change.position)
+                                    state.dragBy(delta.y)
+                                }
+                            }
+                        }
+                    },
+            )
         }
         if (state.returning && state.reveal <= 0.001f && !state.open) {
             val leave = state.indicatorLeave.coerceIn(0f, 1f)
@@ -715,23 +783,7 @@ internal fun MainLoftHost(
                     .padding(top = indicatorInset),
             )
         }
-        if (state.locksFloor && !(state.open && state.reveal > 0.98f)) {
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .pointerInput(Unit) {
-                        awaitEachGesture {
-                            val down = awaitFirstDown(requireUnconsumed = false)
-                            down.consume()
-                            while (true) {
-                                val event = awaitPointerEvent()
-                                event.changes.forEach { it.consume() }
-                                if (event.changes.none { it.pressed }) break
-                            }
-                        }
-                    },
-            )
-        }
+        overlay(state.open)
     }
     BackHandler(enabled = state.open && !backClaim.held) { state.close() }
     }

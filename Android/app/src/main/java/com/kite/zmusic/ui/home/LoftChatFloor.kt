@@ -92,6 +92,8 @@ import com.kite.zmusic.ui.notice.showIslandNotice
 import com.kite.zmusic.ui.player.ChatComposerBar
 import com.kite.zmusic.ui.player.ChatComposerReplyBar
 import com.kite.zmusic.ui.player.ChatEmojiPanel
+import com.kite.zmusic.ui.player.listenStickerDeleteNotice
+import com.kite.zmusic.ui.player.listenStickerSaveNotice
 import com.kite.zmusic.ui.player.ChatRow
 import com.kite.zmusic.workshop.WorkshopApiError
 import java.io.ByteArrayOutputStream
@@ -198,7 +200,10 @@ private fun LoftChatPane(
     var recentEmoji by remember { mutableStateOf(emptyList<String>()) }
     var stickers by remember { mutableStateOf<List<ListenSticker>>(emptyList()) }
     var stickerUploading by remember { mutableStateOf(false) }
+    var deletingStickerId by remember { mutableStateOf<String?>(null) }
+    var hiddenStickerIds by remember { mutableStateOf(emptySet<String>()) }
     val stickersRef = rememberUpdatedState(stickers)
+    val hiddenStickerRef = rememberUpdatedState(hiddenStickerIds)
     val closeRef = rememberUpdatedState(onClose)
     val density = LocalDensity.current
     val backClaim = LocalLoftBackClaim.current
@@ -275,6 +280,48 @@ private fun LoftChatPane(
         val loaded = runCatching { listen.listStickers() }.getOrNull() ?: return@LaunchedEffect
         stickers = loaded.filter { it.id !in stickersRef.value.map { s -> s.id }.toSet() }.let { remote ->
             stickersRef.value.filter { it.id !in remote.map { s -> s.id }.toSet() } + remote
+        }.filter { it.id !in hiddenStickerRef.value }
+    }
+    fun saveSticker(id: String) {
+        actionMsgId = null
+        if (id in stickers.map { it.id } && id !in hiddenStickerIds) {
+            context.showIslandNotice(t("已在表情包里"))
+            return
+        }
+        scope.launch {
+            try {
+                val saved = listen.saveSticker(id)
+                val current = stickers
+                val had = saved.id in current.map { it.id } && saved.id !in hiddenStickerIds
+                hiddenStickerIds = hiddenStickerIds - saved.id
+                stickers = listOf(saved) + current.filter { it.id != saved.id }
+                context.showIslandNotice(if (had) t("已在表情包里") else t("已添加到表情包"))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                context.showIslandNotice(listenStickerSaveNotice(e))
+            }
+        }
+    }
+
+    fun deleteSticker(id: String) {
+        if (deletingStickerId != null) return
+        deletingStickerId = id
+        scope.launch {
+            try {
+                listen.deleteSticker(id)
+                hiddenStickerIds = hiddenStickerIds + id
+                stickers = stickers.filter { it.id != id }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: WorkshopApiError.Missing) {
+                hiddenStickerIds = hiddenStickerIds + id
+                stickers = stickers.filter { it.id != id }
+            } catch (e: Exception) {
+                context.showIslandNotice(listenStickerDeleteNotice(e))
+            } finally {
+                if (deletingStickerId == id) deletingStickerId = null
+            }
         }
     }
     val tailKey = messages.lastOrNull()?.rowKey
@@ -412,6 +459,7 @@ private fun LoftChatPane(
                             loft.translate(msg)
                         },
                         onHideTranslation = { loft.hideTranslation(msg) },
+                        onSaveSticker = { saveSticker(it) },
                     )
                     }
                 }
@@ -493,6 +541,8 @@ private fun LoftChatPane(
                             }
                         },
                         onSendSticker = { id -> send(encodeListenChatSticker(id)) },
+                        onDeleteSticker = { id -> deleteSticker(id) },
+                        deletingStickerId = deletingStickerId,
                         modifier = Modifier.fillMaxSize(),
                     )
                 }

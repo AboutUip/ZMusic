@@ -15,6 +15,7 @@ data class ListenLocalSnap(
     val playWhenReady: Boolean = false,
     val loadPending: Boolean = false,
     val hasQueue: Boolean = false,
+    val buffering: Boolean = false,
 )
 
 data class ListenLocalMemory(
@@ -158,6 +159,11 @@ fun decideLocalPlayback(
         )
     }
     val elapsed = if (queued.lastPlayWhenReady) nowElapsed - queued.lastPosAt else 0L
+    if (snap.buffering &&
+        ListenTogetherClock.isSeekJump(queued.lastPosMs, elapsed, snap.positionMs)
+    ) {
+        return queued to ListenLocalEffect.Hold
+    }
     if (ListenTogetherClock.isSeekJump(queued.lastPosMs, elapsed, snap.positionMs) &&
         !ListenTogetherClock.looksLikeCarryOver(snap.positionMs, queued.carryOverMs)
     ) {
@@ -209,14 +215,33 @@ private fun swallowRemoteOrIdle(
     suppressUntil: Long,
 ): ListenLocalMemory {
     val keepQueue = applyingRemote || nowElapsed < suppressUntil
+    val staleBuffer = snap.buffering &&
+        ListenTogetherClock.isSeekJump(memory.lastPosMs, 0L, snap.positionMs)
     return memory.copy(
         lastTrackId = snap.trackId,
         lastPlayWhenReady = snap.playWhenReady,
-        lastPosMs = snap.positionMs,
-        lastPosAt = nowElapsed,
+        lastPosMs = if (staleBuffer) memory.lastPosMs else snap.positionMs,
+        lastPosAt = if (staleBuffer) memory.lastPosAt else nowElapsed,
         lastHasQueue = if (keepQueue) memory.lastHasQueue else snap.hasQueue,
         carryOverMs = -1L,
     )
+}
+
+/**
+ * 缓冲时播放器会短暂报出 seek 前的进度。界面已经拨到目标位置时，不要把旧进度写回去。
+ * 返回 null 表示保持界面上的进度。
+ */
+fun listenReportedPositionMs(
+    buffering: Boolean,
+    playerPositionMs: Long,
+    uiPositionMs: Long,
+): Long? {
+    val player = playerPositionMs.coerceAtLeast(0L)
+    val ui = uiPositionMs.coerceAtLeast(0L)
+    if (!buffering) return player
+    if (player <= 48L && ui > 200L) return null
+    if (kotlin.math.abs(player - ui) > 400L) return null
+    return player
 }
 
 private fun postedOriginMs(memory: ListenLocalMemory, snap: ListenLocalSnap): Long {

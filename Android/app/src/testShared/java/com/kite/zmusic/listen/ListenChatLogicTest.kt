@@ -287,8 +287,12 @@ class ListenChatLogicTest {
     fun ownClockNeverAppliesEvenWhenHlcIsNewerThanLastPost() {
         // postOp 尚未写回 lastPostedHlc 时，poll 已带回自己的 pause/track。
         assertEquals(true, ListenTogetherClock.isOwnClock("42", "42"))
+        assertEquals(true, ListenTogetherClock.isOwnClock("042", "42"))
+        assertEquals(true, ListenTogetherClock.isOwnClock("42", "042"))
         assertEquals(false, ListenTogetherClock.isOwnClock("42", ""))
         assertEquals(false, ListenTogetherClock.isOwnClock("7", "42"))
+        assertTrue(ListenTogetherClock.DRIFT_MS <= 1_000L)
+        assertTrue(ListenTogetherClock.DRIFT_CHECK_MS <= 2_500L)
         assertEquals(
             false,
             ListenTogetherClock.takeRemoteClock(
@@ -434,6 +438,111 @@ class ListenChatLogicTest {
     }
 
     @Test
+    fun reportedPositionKeepsUiDuringBufferingSeek() {
+        assertEquals(null, listenReportedPositionMs(buffering = true, playerPositionMs = 10_000L, uiPositionMs = 40_000L))
+        assertEquals(null, listenReportedPositionMs(buffering = true, playerPositionMs = 0L, uiPositionMs = 40_000L))
+        assertEquals(40_000L, listenReportedPositionMs(buffering = false, playerPositionMs = 10_000L, uiPositionMs = 40_000L))
+        assertEquals(120L, listenReportedPositionMs(buffering = true, playerPositionMs = 120L, uiPositionMs = 80L))
+    }
+
+    @Test
+    fun bufferingRewindDoesNotPublishSeek() {
+        val memory = ListenLocalMemory(
+            lastTrackId = 1L,
+            lastPlayWhenReady = true,
+            lastPosMs = 40_000L,
+            lastPosAt = 1_000L,
+            lastHasQueue = true,
+        )
+        val snap = ListenLocalSnap(
+            trackId = 1L,
+            positionMs = 10_000L,
+            playWhenReady = true,
+            hasQueue = true,
+            buffering = true,
+        )
+        val (held, effect) = decideLocalPlayback(
+            inRoom = true,
+            applyingRemote = false,
+            nowElapsed = 1_200L,
+            suppressUntil = 0L,
+            hosting = false,
+            memory = memory,
+            snap = snap,
+        )
+        assertTrue(effect is ListenLocalEffect.Hold)
+        assertEquals(40_000L, held.lastPosMs)
+        val (echo, echoEffect) = decideLocalPlayback(
+            inRoom = true,
+            applyingRemote = true,
+            nowElapsed = 1_200L,
+            suppressUntil = 0L,
+            hosting = false,
+            memory = memory,
+            snap = snap,
+        )
+        assertTrue(echoEffect is ListenLocalEffect.Hold)
+        assertEquals(40_000L, echo.lastPosMs)
+    }
+
+    @Test
+    fun translateDoesNotStickToOlderDuplicate() {
+        val older = msg(10, "42", "hello")
+        val local = msg(-2, "42", "hello").copy(at = 20L)
+        val echo = msg(11, "42", "hello").copy(at = 21L)
+        val cached = putListenChatTranslate(
+            emptyMap(),
+            local,
+            ListenChatTranslateEntry(text = "你好", visible = true),
+        )
+        val next = retargetListenChatTranslations(cached, listOf(older, local), listOf(older, echo))
+        assertEquals(null, listenChatTranslateLookup(next, older))
+        assertEquals("你好", listenChatTranslateLookup(next, echo)!!.text)
+        assertEquals(null, next[listenChatToastKey(local)])
+    }
+
+    @Test
+    fun translateCommitFollowsRetargetAndDoesNotReopen() {
+        val local = msg(-1, "42", "hello")
+        val remote = msg(88, "42", "hello")
+        val cached = putListenChatTranslate(
+            emptyMap(),
+            local,
+            ListenChatTranslateEntry(loading = true, visible = true),
+        )
+        val moved = retargetListenChatTranslations(cached, listOf(local), listOf(remote))
+        val done = commitListenChatTranslate(
+            moved,
+            local,
+            ListenChatTranslateEntry(text = "你好", visible = true),
+        )
+        assertEquals(null, done[listenChatToastKey(local)])
+        assertEquals("你好", listenChatTranslateLookup(done, remote)!!.text)
+        val hidden = hideListenChatTranslate(done, remote)
+        val late = commitListenChatTranslate(
+            hidden,
+            local,
+            ListenChatTranslateEntry(text = "你好", visible = true),
+        )
+        assertEquals(false, listenChatTranslateLookup(late, remote)!!.visible)
+        assertEquals("你好", listenChatTranslateLookup(late, remote)!!.text)
+        assertEquals(null, listenChatTranslateLookup(late, msg(89, "42", "hello")))
+    }
+
+    @Test
+    fun twoPendingTranslationsClaimDistinctEchoes() {
+        val first = msg(-1, "42", "hello").copy(at = 1L)
+        val second = msg(-2, "42", "hello").copy(at = 2L)
+        val echoA = msg(10, "42", "hello").copy(at = 3L)
+        val echoB = msg(11, "42", "hello").copy(at = 4L)
+        var map = putListenChatTranslate(emptyMap(), first, ListenChatTranslateEntry(text = "A", visible = true))
+        map = putListenChatTranslate(map, second, ListenChatTranslateEntry(text = "B", visible = true))
+        val next = retargetListenChatTranslations(map, listOf(first, second), listOf(echoA, echoB))
+        assertEquals("A", listenChatTranslateLookup(next, echoA)!!.text)
+        assertEquals("B", listenChatTranslateLookup(next, echoB)!!.text)
+    }
+
+    @Test
     fun replyEncodeDecodeRoundTrip() {
         val quote = ListenChatReplyQuote(
             msgId = 9,
@@ -494,6 +603,17 @@ class ListenChatLogicTest {
         assertEquals("表情包", listenChatVisibleBody(sticker))
         assertNull(parseListenChatPack("\u200B\u200BZMpack|sticker|../etc/passwd"))
         assertNull(parseListenChatPack("\u200B\u200BZMpack|sticker|short"))
+        val stickerMsg = msg(4, "7", sticker)
+        val stickerQuote = listenChatQuoteFromMsg(stickerMsg.copy(nickname = "曲"))
+        assertEquals(stickerId, listenChatQuoteStickerId(stickerQuote.snippet))
+        val quotedSticker = encodeListenChatText(stickerQuote, "好看")
+        val quotedParsed = parseListenChatText(quotedSticker)
+        assertEquals(stickerId, listenChatQuoteStickerId(quotedParsed.reply!!.snippet))
+        assertEquals(stickerId, listenChatActionStickerId(sticker))
+        assertEquals(stickerId, listenChatActionStickerId(quotedSticker))
+        assertEquals("好看", listenChatVisibleBody(quotedSticker))
+        assertNull(listenChatQuoteStickerId("表情包"))
+        assertEquals("🎲 4", listenChatQuoteSnippet(dice))
         val png = byteArrayOf(
             0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 0,
         )
@@ -536,6 +656,35 @@ class ListenChatLogicTest {
         val three = members + ListenMember("9", "乙", "", false)
         assertFalse(listenChatReadByPeers(2, "42", three, mapOf("7" to 2L)))
         assertTrue(listenChatReadByPeers(2, "42", three, mapOf("7" to 2L, "9" to 2L)))
+    }
+
+    @Test
+    fun groupReadUsesSendTimePeersAndShowsPartial() {
+        val members = listOf(
+            ListenMember("42", "曲", "", true),
+            ListenMember("7", "客", "", false),
+            ListenMember("9", "乙", "", false),
+            ListenMember("11", "丙", "", false),
+        )
+        val sentWith = listOf("7", "9")
+        val partial = listenChatReadReceipt(2, "42", sentWith, members, mapOf("7" to 2L))
+        assertEquals(1, partial.count)
+        assertEquals(2, partial.total)
+        assertFalse(partial.complete)
+        val both = listenChatReadReceipt(2, "42", sentWith, members, mapOf("7" to 2L, "9" to 3L))
+        assertTrue(both.complete)
+        val left = listenChatReadReceipt(
+            2,
+            "42",
+            sentWith,
+            members.filter { it.uid != "9" },
+            mapOf("7" to 2L),
+        )
+        assertEquals(1, left.total)
+        assertTrue(left.complete)
+        val solo = listenChatReadReceipt(1, "42", emptyList(), members, emptyMap())
+        assertEquals(0, solo.total)
+        assertFalse(solo.complete)
     }
 
     @Test

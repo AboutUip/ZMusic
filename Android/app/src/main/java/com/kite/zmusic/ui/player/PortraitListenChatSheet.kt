@@ -55,6 +55,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyGridItemScope
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
@@ -99,6 +100,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -136,8 +139,10 @@ import com.kite.zmusic.listen.encodeListenChatText
 import com.kite.zmusic.listen.listenChatStickerMime
 import com.kite.zmusic.listen.listenChatClockLabel
 import com.kite.zmusic.listen.listenChatPackCaption
+import com.kite.zmusic.listen.listenChatActionStickerId
 import com.kite.zmusic.listen.listenChatQuoteFromMsg
-import com.kite.zmusic.listen.listenChatReadByPeers
+import com.kite.zmusic.listen.listenChatQuoteStickerId
+import com.kite.zmusic.listen.listenChatReadReceipt
 import com.kite.zmusic.listen.listenChatTranslateLookup
 import com.kite.zmusic.listen.listenChatUidEquals
 import com.kite.zmusic.listen.listenChatVisibleBody
@@ -204,6 +209,8 @@ internal fun PortraitListenChatSheet(
     var spunPacks by remember { mutableStateOf(emptySet<String>()) }
     var stickers by remember { mutableStateOf<List<ListenSticker>>(emptyList()) }
     var stickerUploading by remember { mutableStateOf(false) }
+    var deletingStickerId by remember { mutableStateOf<String?>(null) }
+    var hiddenStickerIds by remember { mutableStateOf(emptySet<String>()) }
     val scope = rememberCoroutineScope()
     val pickSticker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
@@ -228,10 +235,13 @@ internal fun PortraitListenChatSheet(
             }
         }
     }
+    val stickersRef = rememberUpdatedState(stickers)
+    val hiddenStickerRef = rememberUpdatedState(hiddenStickerIds)
     LaunchedEffect(emojiOpen) {
         if (!emojiOpen) return@LaunchedEffect
         val loaded = runCatching { listen.listStickers() }.getOrNull() ?: return@LaunchedEffect
-        stickers = mergeListenStickers(stickers, loaded)
+        stickers = mergeListenStickers(stickersRef.value, loaded)
+            .filter { it.id !in hiddenStickerRef.value }
     }
     val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val imeBottom = WindowInsets.ime.getBottom(density)
@@ -345,6 +355,49 @@ internal fun PortraitListenChatSheet(
         val payload = encodeListenChatText(replyTo, encodeListenChatSticker(id))
         replyTo = null
         listen.sendChat(payload)
+    }
+
+    fun saveSticker(id: String) {
+        actionMsgId = null
+        if (id in stickers.map { it.id } && id !in hiddenStickerIds) {
+            context.showIslandNotice(t("已在表情包里"))
+            return
+        }
+        scope.launch {
+            try {
+                val saved = listen.saveSticker(id)
+                val current = stickers
+                val had = saved.id in current.map { it.id } && saved.id !in hiddenStickerIds
+                hiddenStickerIds = hiddenStickerIds - saved.id
+                stickers = listOf(saved) + current.filter { it.id != saved.id }
+                context.showIslandNotice(if (had) t("已在表情包里") else t("已添加到表情包"))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                context.showIslandNotice(listenStickerSaveNotice(e))
+            }
+        }
+    }
+
+    fun deleteSticker(id: String) {
+        if (deletingStickerId != null) return
+        deletingStickerId = id
+        scope.launch {
+            try {
+                listen.deleteSticker(id)
+                hiddenStickerIds = hiddenStickerIds + id
+                stickers = stickers.filter { it.id != id }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: WorkshopApiError.Missing) {
+                hiddenStickerIds = hiddenStickerIds + id
+                stickers = stickers.filter { it.id != id }
+            } catch (e: Exception) {
+                context.showIslandNotice(listenStickerDeleteNotice(e))
+            } finally {
+                if (deletingStickerId == id) deletingStickerId = null
+            }
+        }
     }
 
     fun insertEmoji(emoji: String) {
@@ -475,15 +528,19 @@ internal fun PortraitListenChatSheet(
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     items(chat.asReversed(), key = { it.id }) { msg ->
+                        val receipt = listenChatReadReceipt(
+                            msgId = msg.id,
+                            senderUid = msg.uid,
+                            peers = msg.peers,
+                            members = ui.room?.members.orEmpty(),
+                            reads = ui.room?.chatReads.orEmpty(),
+                        )
                         ChatRow(
                             msg = msg,
                             self = msg.id < 0L || listenChatUidEquals(msg.uid, ui.selfUid),
-                            read = listenChatReadByPeers(
-                                msgId = msg.id,
-                                senderUid = msg.uid,
-                                members = ui.room?.members.orEmpty(),
-                                reads = ui.room?.chatReads.orEmpty(),
-                            ),
+                            read = receipt.complete,
+                            readCount = receipt.count,
+                            readTotal = receipt.total,
                             spunPacks = spunPacks,
                             onPackSpun = { key -> spunPacks = spunPacks + key },
                             translation = listenChatTranslateLookup(translations, msg),
@@ -501,6 +558,7 @@ internal fun PortraitListenChatSheet(
                                 actionMsgId = null
                                 listen.translateChat(msg)
                             },
+                            onSaveSticker = { saveSticker(it) },
                             onHideTranslation = { listen.hideChatTranslation(msg) },
                         )
                     }
@@ -570,6 +628,8 @@ internal fun PortraitListenChatSheet(
                                 }
                             },
                             onSendSticker = { sendSticker(it) },
+                            onDeleteSticker = { deleteSticker(it) },
+                            deletingStickerId = deletingStickerId,
                             modifier = Modifier.fillMaxSize(),
                         )
                     }
@@ -588,6 +648,8 @@ internal fun ChatRow(
     msg: ListenChatMsg,
     self: Boolean,
     read: Boolean,
+    readCount: Int = 0,
+    readTotal: Int = 0,
     showRead: Boolean = true,
     spunPacks: Set<String>,
     onPackSpun: (String) -> Unit,
@@ -599,8 +661,10 @@ internal fun ChatRow(
     onCopy: () -> Unit,
     onReply: () -> Unit,
     onTranslate: () -> Unit,
+    onSaveSticker: ((String) -> Unit)? = null,
     onHideTranslation: () -> Unit,
 ) {
+    val saveStickerId = remember(msg.text) { listenChatActionStickerId(msg.text) }
     val parsed = remember(msg.text) { parseListenChatText(msg.text) }
     val body = parsed.body.ifBlank { msg.text }
     val pack = remember(body) { parseListenChatPack(body) }
@@ -639,6 +703,17 @@ internal fun ChatRow(
                 if (self && showRead) {
                     Spacer(Modifier.width(3.dp))
                     TelegramReadMark(sending = msg.id < 0L, read = read)
+                    if (readTotal > 1) {
+                        Spacer(Modifier.width(2.dp))
+                        Text(
+                            text = "$readCount/$readTotal",
+                            color = if (read) MainPalette.Accent else MainPalette.Secondary.copy(alpha = 0.7f),
+                            fontSize = 10.sp,
+                            modifier = Modifier.semantics {
+                                contentDescription = t("已读 %s/%s", readCount, readTotal)
+                            },
+                        )
+                    }
                 }
             }
             Spacer(Modifier.height(4.dp))
@@ -652,7 +727,12 @@ internal fun ChatRow(
                                     .background(if (self) MainPalette.Accent.copy(alpha = 0.18f) else MainPalette.Card)
                                     .padding(horizontal = 12.dp, vertical = 8.dp),
                             ) {
-                                ChatBubbleReplyQuote(quote = quote, self = self)
+                                ChatBubbleReplyQuote(
+                                    quote = quote,
+                                    self = self,
+                                    onClick = { onDismissMenu() },
+                                    onLongPress = onLongPress,
+                                )
                             }
                             Spacer(Modifier.height(4.dp))
                         }
@@ -688,7 +768,12 @@ internal fun ChatRow(
                     ) {
                         Column {
                             parsed.reply?.let { quote ->
-                                ChatBubbleReplyQuote(quote = quote, self = self)
+                                ChatBubbleReplyQuote(
+                                    quote = quote,
+                                    self = self,
+                                    onClick = { onDismissMenu() },
+                                    onLongPress = onLongPress,
+                                )
                                 Spacer(Modifier.height(6.dp))
                             }
                             if (pack != null) {
@@ -713,9 +798,12 @@ internal fun ChatRow(
                     visible = menuOpen,
                     self = self,
                     onDismissRequest = onDismissMenu,
-                    onCopy = onCopy,
+                    onCopy = if (stickerId == null) onCopy else null,
                     onReply = onReply,
-                    onTranslate = onTranslate,
+                    onTranslate = if (stickerId == null) onTranslate else null,
+                    onSaveSticker = saveStickerId?.let { id ->
+                        onSaveSticker?.let { save -> { save(id) } }
+                    },
                 )
             }
             val showTranslation = translation != null &&
@@ -745,9 +833,10 @@ private fun ChatMessageActionPopup(
     visible: Boolean,
     self: Boolean,
     onDismissRequest: () -> Unit,
-    onCopy: () -> Unit,
+    onCopy: (() -> Unit)?,
     onReply: () -> Unit,
-    onTranslate: () -> Unit,
+    onTranslate: (() -> Unit)?,
+    onSaveSticker: (() -> Unit)? = null,
 ) {
     val density = LocalDensity.current
     val reveal = remember { Animatable(0f) }
@@ -784,6 +873,7 @@ private fun ChatMessageActionPopup(
                 onCopy = onCopy,
                 onReply = onReply,
                 onTranslate = onTranslate,
+                onSaveSticker = onSaveSticker,
             )
         }
     }
@@ -791,13 +881,22 @@ private fun ChatMessageActionPopup(
 
 @Composable
 private fun ChatMessageActionBar(
-    onCopy: () -> Unit,
+    onCopy: (() -> Unit)?,
     onReply: () -> Unit,
-    onTranslate: () -> Unit,
+    onTranslate: (() -> Unit)?,
+    onSaveSticker: (() -> Unit)? = null,
 ) {
     val bg = if (MainPalette.isDark) Color(0xFF2C2C2E) else Color(0xFFF2F2F7)
     val fg = if (MainPalette.isDark) Color(0xFFF2F2F7) else Color(0xFF2C2C2E)
     val divider = fg.copy(alpha = 0.18f)
+    val actions = buildList {
+        if (onSaveSticker != null) {
+            add(ChatAction(ZIcons.Add, t("添加"), onSaveSticker))
+        }
+        if (onCopy != null) add(ChatAction(ZIcons.Copy, t("复制"), onCopy))
+        add(ChatAction(ZIcons.Reply, t("回复"), onReply))
+        if (onTranslate != null) add(ChatAction(ZIcons.Translate, t("翻译"), onTranslate))
+    }
     Row(
         Modifier
             .clip(ChatActionPillShape)
@@ -805,40 +904,31 @@ private fun ChatMessageActionBar(
             .padding(horizontal = 4.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        ChatActionItem(
-            icon = ZIcons.Copy,
-            label = t("复制"),
-            fg = fg,
-            onClick = onCopy,
-        )
-        Box(
-            Modifier
-                .padding(vertical = 8.dp)
-                .width(1.dp)
-                .height(22.dp)
-                .background(divider),
-        )
-        ChatActionItem(
-            icon = ZIcons.Reply,
-            label = t("回复"),
-            fg = fg,
-            onClick = onReply,
-        )
-        Box(
-            Modifier
-                .padding(vertical = 8.dp)
-                .width(1.dp)
-                .height(22.dp)
-                .background(divider),
-        )
-        ChatActionItem(
-            icon = ZIcons.Translate,
-            label = t("翻译"),
-            fg = fg,
-            onClick = onTranslate,
-        )
+        actions.forEachIndexed { index, action ->
+            if (index > 0) {
+                Box(
+                    Modifier
+                        .padding(vertical = 8.dp)
+                        .width(1.dp)
+                        .height(22.dp)
+                        .background(divider),
+                )
+            }
+            ChatActionItem(
+                icon = action.icon,
+                label = action.label,
+                fg = fg,
+                onClick = action.onClick,
+            )
+        }
     }
 }
+
+private class ChatAction(
+    val icon: ImageVector,
+    val label: String,
+    val onClick: () -> Unit,
+)
 
 @Composable
 private fun ChatActionItem(
@@ -874,10 +964,58 @@ private fun ChatActionItem(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun ChatQuoteSnippet(
+    snippet: String,
+    color: Color,
+    maxLines: Int,
+    onClick: (() -> Unit)? = null,
+    onLongPress: (() -> Unit)? = null,
+) {
+    val stickerId = listenChatQuoteStickerId(snippet)
+    if (stickerId != null) {
+        Box(
+            Modifier
+                .padding(top = 3.dp)
+                .size(48.dp),
+        ) {
+            ListenChatStickerImage(
+                stickerId = stickerId,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(RoundedCornerShape(8.dp)),
+            )
+            if (onClick != null || onLongPress != null) {
+                Box(
+                    Modifier
+                        .matchParentSize()
+                        .combinedClickable(
+                            interactionSource = remember(stickerId) { MutableInteractionSource() },
+                            indication = null,
+                            onClick = { onClick?.invoke() },
+                            onLongClick = { onLongPress?.invoke() },
+                        ),
+                )
+            }
+        }
+    } else {
+        Text(
+            text = snippet.ifBlank { "…" },
+            color = color,
+            fontSize = 12.sp,
+            maxLines = maxLines,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
 @Composable
 private fun ChatBubbleReplyQuote(
     quote: ListenChatReplyQuote,
     self: Boolean,
+    onClick: (() -> Unit)? = null,
+    onLongPress: (() -> Unit)? = null,
 ) {
     val bar = if (self) MainPalette.Accent else MainPalette.Ink.copy(alpha = 0.45f)
     val wash = if (self) {
@@ -910,12 +1048,12 @@ private fun ChatBubbleReplyQuote(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            Text(
-                text = quote.snippet.ifBlank { "…" },
+            ChatQuoteSnippet(
+                snippet = quote.snippet,
                 color = MainPalette.Secondary,
-                fontSize = 12.sp,
                 maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
+                onClick = onClick,
+                onLongPress = onLongPress,
             )
         }
     }
@@ -957,12 +1095,10 @@ internal fun ChatComposerReplyBar(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            Text(
-                text = quote.snippet.ifBlank { "…" },
+            ChatQuoteSnippet(
+                snippet = quote.snippet,
                 color = MainPalette.Secondary,
-                fontSize = 12.sp,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
             )
         }
         Box(
@@ -1341,6 +1477,8 @@ internal fun ChatEmojiPanel(
     onSendPack: (ListenChatPackKind) -> Unit,
     onAddSticker: () -> Unit,
     onSendSticker: (String) -> Unit,
+    onDeleteSticker: (String) -> Unit,
+    deletingStickerId: String? = null,
     modifier: Modifier = Modifier,
 ) {
     val glyphs = remember(recent) {
@@ -1348,13 +1486,20 @@ internal fun ChatEmojiPanel(
     }
     val pagerState = rememberPagerState { 2 }
     val scope = rememberCoroutineScope()
+    var armedStickerId by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(pagerState.currentPage) { armedStickerId = null }
+    LaunchedEffect(stickers) {
+        val armed = armedStickerId
+        if (armed != null && stickers.none { it.id == armed }) armedStickerId = null
+    }
+    BackHandler(enabled = armedStickerId != null) { armedStickerId = null }
     Column(
         modifier
             .fillMaxSize()
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
-                onClick = {},
+                onClick = { armedStickerId = null },
             ),
     ) {
         Row(
@@ -1461,27 +1606,48 @@ internal fun ChatEmojiPanel(
                     item(key = "add") {
                         ChatStickerAddTile(
                             uploading = stickerUploading,
-                            onClick = onAddSticker,
+                            onClick = {
+                                armedStickerId = null
+                                onAddSticker()
+                            },
+                            modifier = stickerGridMotion(),
                         )
                     }
                     items(stickers, key = { it.id }) { sticker ->
                         ChatStickerCell(
                             sticker = sticker,
-                            onClick = { onSendSticker(sticker.id) },
+                            deleteArmed = armedStickerId == sticker.id,
+                            deleting = deletingStickerId == sticker.id,
+                            onClick = {
+                                armedStickerId = null
+                                onSendSticker(sticker.id)
+                            },
+                            onLongPress = { armedStickerId = sticker.id },
+                            onDismissDelete = { if (armedStickerId == sticker.id) armedStickerId = null },
+                            onConfirmDelete = { onDeleteSticker(sticker.id) },
+                            modifier = stickerGridMotion(),
                         )
                     }
                     item(key = "dice") {
                         ChatPackTile(
                             kind = ListenChatPackKind.Dice,
                             title = t("骰子"),
-                            onClick = { onSendPack(ListenChatPackKind.Dice) },
+                            onClick = {
+                                armedStickerId = null
+                                onSendPack(ListenChatPackKind.Dice)
+                            },
+                            modifier = stickerGridMotion(),
                         )
                     }
                     item(key = "rps") {
                         ChatPackTile(
                             kind = ListenChatPackKind.Rps,
                             title = t("猜拳"),
-                            onClick = { onSendPack(ListenChatPackKind.Rps) },
+                            onClick = {
+                                armedStickerId = null
+                                onSendPack(ListenChatPackKind.Rps)
+                            },
+                            modifier = stickerGridMotion(),
                         )
                     }
                 }
@@ -1556,9 +1722,10 @@ private fun ChatPackTile(
 private fun ChatStickerAddTile(
     uploading: Boolean,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Column(
-        Modifier
+        modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
             .background(MainPalette.Card)
@@ -1597,30 +1764,125 @@ private fun ChatStickerAddTile(
 }
 
 @Composable
+private fun LazyGridItemScope.stickerGridMotion(): Modifier = Modifier.animateItem(
+    fadeInSpec = tween(200, easing = FastOutSlowInEasing),
+    placementSpec = tween<IntOffset>(240, easing = FastOutSlowInEasing),
+    fadeOutSpec = tween(180, easing = FastOutSlowInEasing),
+)
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
 private fun ChatStickerCell(
     sticker: ListenSticker,
+    deleteArmed: Boolean,
+    deleting: Boolean,
     onClick: () -> Unit,
+    onLongPress: () -> Unit,
+    onDismissDelete: () -> Unit,
+    onConfirmDelete: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
+    val haptic = LocalHapticFeedback.current
+    val reveal = remember { Animatable(0f) }
+    var hosted by remember { mutableStateOf(false) }
+    LaunchedEffect(deleteArmed) {
+        if (deleteArmed) {
+            hosted = true
+            reveal.animateTo(1f, ChatActionInSpec)
+        } else if (hosted) {
+            reveal.animateTo(0f, ChatActionOutSpec)
+            hosted = false
+        }
+    }
+    val t = reveal.value.coerceIn(0f, 1f)
     Box(
-        Modifier
+        modifier
             .fillMaxWidth()
             .height(76.dp),
         contentAlignment = Alignment.Center,
     ) {
         ListenChatStickerImage(
             stickerId = sticker.id,
-            modifier = Modifier.size(64.dp),
+            modifier = Modifier
+                .size(64.dp)
+                .graphicsLayer {
+                    val s = 1f - 0.04f * t
+                    scaleX = s
+                    scaleY = s
+                },
         )
         Box(
             Modifier
                 .matchParentSize()
                 .clip(RoundedCornerShape(14.dp))
-                .clickable(
+                .combinedClickable(
                     interactionSource = remember(sticker.id) { MutableInteractionSource() },
                     indication = null,
                     onClick = onClick,
+                    onLongClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onLongPress()
+                    },
                 ),
         )
+        if (hosted) {
+            val rise = with(LocalDensity.current) { 6.dp.toPx() }
+            val bg = if (MainPalette.isDark) Color(0xFF2C2C2E) else Color(0xFFF2F2F7)
+            val fg = if (MainPalette.isDark) Color(0xFFF2F2F7) else Color(0xFF2C2C2E)
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .graphicsLayer {
+                        alpha = t
+                        val s = 0.9f + 0.1f * t
+                        scaleX = s
+                        scaleY = s
+                        translationY = (1f - t) * rise
+                        transformOrigin = TransformOrigin.Center
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Box(
+                    Modifier
+                        .matchParentSize()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Color.Black.copy(alpha = 0.34f))
+                        .clickable(
+                            interactionSource = remember(sticker.id, "dismiss") { MutableInteractionSource() },
+                            indication = null,
+                            onClick = onDismissDelete,
+                        ),
+                )
+                Box(
+                    Modifier
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(bg)
+                        .clickable(
+                            interactionSource = remember(sticker.id, "delete") { MutableInteractionSource() },
+                            indication = null,
+                            enabled = !deleting,
+                            onClick = onConfirmDelete,
+                        )
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (deleting) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(14.dp),
+                            strokeWidth = 2.dp,
+                            color = fg,
+                        )
+                    } else {
+                        Text(
+                            text = t("删除"),
+                            color = fg,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -1646,6 +1908,25 @@ private fun readListenStickerBytes(context: Context, uri: Uri): ByteArray {
 private fun mergeListenStickers(local: List<ListenSticker>, remote: List<ListenSticker>): List<ListenSticker> {
     val remoteIds = remote.map { it.id }.toSet()
     return local.filter { it.id !in remoteIds } + remote
+}
+
+internal fun listenStickerSaveNotice(err: Throwable): String {
+    val code = (err as? WorkshopApiError.Message)?.message.orEmpty()
+    return when {
+        err is WorkshopApiError.RateLimited || code == "rate_limited" -> t("请求太频繁，稍后再试")
+        code == "quota" -> t("表情包已满")
+        err is WorkshopApiError.Missing || code == "missing" -> t("这个表情包已经找不到了")
+        else -> t("添加失败")
+    }
+}
+
+internal fun listenStickerDeleteNotice(err: Throwable): String {
+    val code = (err as? WorkshopApiError.Message)?.message.orEmpty()
+    return when {
+        err is WorkshopApiError.RateLimited || code == "rate_limited" -> t("请求太频繁，稍后再试")
+        code == "forbidden" -> t("不能删除这个表情包")
+        else -> t("删除失败")
+    }
 }
 
 private fun listenStickerFailureNotice(err: Throwable): String {

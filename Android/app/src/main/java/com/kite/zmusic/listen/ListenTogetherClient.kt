@@ -176,6 +176,7 @@ class ListenTogetherClient(
         when (method) {
             "GET" -> builder.get()
             "POST" -> builder.post(payload ?: "".toRequestBody(JSON))
+            "DELETE" -> builder.delete()
             else -> error(method)
         }
         return builder.build()
@@ -219,6 +220,24 @@ class ListenTogetherClient(
             val json = parseObject(resp.body?.string().orEmpty())
             parseSticker(json.optJSONObject("sticker"))
                 ?: throw WorkshopApiError.Message("unavailable")
+        }
+    }
+
+    suspend fun saveSticker(id: String): ListenSticker = withContext(Dispatchers.IO) {
+        val clean = id.trim()
+        if (!listenChatStickerIdOk(clean)) throw WorkshopApiError.Message("bad_request")
+        heavy.newCall(request("POST", "/stickers/${enc(clean)}/save", JSONObject())).execute().use { resp ->
+            val json = parseObject(resp.body?.string().orEmpty())
+            parseSticker(json.optJSONObject("sticker"))
+                ?: throw WorkshopApiError.Message("unavailable")
+        }
+    }
+
+    suspend fun deleteSticker(id: String) = withContext(Dispatchers.IO) {
+        val clean = id.trim()
+        if (!listenChatStickerIdOk(clean)) throw WorkshopApiError.Message("bad_request")
+        heavy.newCall(request("DELETE", "/stickers/${enc(clean)}", null)).execute().use { resp ->
+            parseObject(resp.body?.string().orEmpty())
         }
     }
 
@@ -300,6 +319,14 @@ class ListenTogetherClient(
                 chatIncluded = json.has("chat") && !json.isNull("chat"),
                 chatReads = parseChatReads(json.optJSONObject("chat_reads")),
                 chatReadsIncluded = json.has("chat_reads") && !json.isNull("chat_reads"),
+                queue = if (json.has("queue") && !json.isNull("queue")) {
+                    parseQueue(json.optJSONArray("queue"))
+                } else {
+                    null
+                },
+                queueHlc = jsonLong(json, "queue_hlc"),
+                queueActor = json.optString("queue_actor"),
+                queueIncluded = json.has("queue") && !json.isNull("queue"),
             )
         }
 
@@ -375,6 +402,41 @@ class ListenTogetherClient(
             return out
         }
 
+        private fun parseQueue(arr: JSONArray?): List<ListenQueueTrack> {
+            if (arr == null) return emptyList()
+            val out = ArrayList<ListenQueueTrack>(arr.length())
+            val seen = HashSet<Long>()
+            for (i in 0 until arr.length()) {
+                val o = arr.optJSONObject(i) ?: continue
+                val id = jsonLong(o, "id")
+                if (id <= 0L || !seen.add(id)) continue
+                out += ListenQueueTrack(
+                    id = id,
+                    title = o.optString("title"),
+                    artists = o.optString("artists"),
+                    coverUrl = o.optString("cover_url"),
+                    durationMs = jsonLong(o, "duration_ms"),
+                )
+                if (out.size >= ListenSharedQueueCap) break
+            }
+            return out
+        }
+
+        private fun parseUidList(arr: JSONArray?): List<String> {
+            if (arr == null) return emptyList()
+            val out = ArrayList<String>(arr.length())
+            for (i in 0 until arr.length()) {
+                val raw = arr.opt(i)
+                val uid = when (raw) {
+                    null, JSONObject.NULL -> ""
+                    is Number -> raw.toLong().toString()
+                    else -> raw.toString().trim()
+                }
+                if (uid.isNotEmpty()) out += uid
+            }
+            return out
+        }
+
         private fun parseChatReads(obj: JSONObject?): Map<String, Long> {
             if (obj == null) return emptyMap()
             val out = LinkedHashMap<String, Long>(obj.length())
@@ -419,6 +481,11 @@ class ListenTogetherClient(
                     avatarUrl = o.optString("avatar_url"),
                     text = text,
                     at = jsonLong(o, "at"),
+                    peers = if (o.has("peers") && !o.isNull("peers")) {
+                        parseUidList(o.optJSONArray("peers"))
+                    } else {
+                        null
+                    },
                 )
             }
             return out

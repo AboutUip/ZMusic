@@ -359,6 +359,7 @@ internal fun LandscapePlayerBody(
     queue: List<TrackRow>,
     queueIndex: Int,
     onPlayQueueIndex: (Int) -> Unit,
+    onMoveQueue: (from: Int, to: Int) -> Unit = { _, _ -> },
     onNeedQueueThrough: (Int) -> Unit = {},
     modifier: Modifier = Modifier,
     notice: PlaybackNotice? = null,
@@ -2127,6 +2128,7 @@ internal fun LandscapePlayerBody(
                         onPlayTrack = { idx, center, sizePx ->
                             startScoreFlight(idx, center, sizePx)
                         },
+                        onMoveQueue = onMoveQueue,
                         openGeneration = scoreOpenGeneration,
                         onApproachEnd = onNeedQueueThrough,
                         hazeState = settingsHazeState,

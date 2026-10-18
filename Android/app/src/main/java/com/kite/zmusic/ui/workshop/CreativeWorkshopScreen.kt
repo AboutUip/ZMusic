@@ -87,6 +87,8 @@ import com.kite.zmusic.ui.catalog.CatalogTopBar
 import com.kite.zmusic.ui.chrome.ChromeWallpaperBackdrop
 import com.kite.zmusic.ui.chrome.chromePage
 import com.kite.zmusic.ui.common.GlassActionSheet
+import com.kite.zmusic.ui.common.LiquidUnderlineTabs
+import com.kite.zmusic.ui.common.animateLiquidTabTo
 import com.kite.zmusic.ui.common.GlassAlertDialog
 import com.kite.zmusic.ui.common.GlassSheetAction
 import com.kite.zmusic.ui.common.UrlImage
@@ -181,10 +183,11 @@ fun CreativeWorkshopScreen(
             } else {
                 WorkshopHomeTopBar(
                     selected = pager.currentPage,
+                    position = pager.currentPage + pager.currentPageOffsetFraction,
                     onBack = onBack,
                     onSearch = { openSearch() },
                     onSelect = { page ->
-                        scope.launch { pager.animateScrollToPage(page) }
+                        scope.launch { pager.animateLiquidTabTo(page) }
                     },
                 )
                 HorizontalPager(
@@ -306,6 +309,7 @@ private fun WorkshopDrillLayer(
 @Composable
 private fun WorkshopHomeTopBar(
     selected: Int,
+    position: Float,
     onBack: () -> Unit,
     onSearch: () -> Unit,
     onSelect: (Int) -> Unit,
@@ -335,18 +339,16 @@ private fun WorkshopHomeTopBar(
                 modifier = Modifier.size(22.dp),
             )
         }
-        Row(
-            Modifier.align(Alignment.Center),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            workshopTabs().forEachIndexed { index, label ->
-                WorkshopTabLabel(
-                    label = label,
-                    selected = selected == index,
-                    onClick = { onSelect(index) },
-                )
-            }
-        }
+        LiquidUnderlineTabs(
+            labels = workshopTabs(),
+            selectedIndex = selected,
+            position = position,
+            onSelect = onSelect,
+            fontSize = 16.sp,
+            tabPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+            indicatorGap = 5.dp,
+            modifier = Modifier.align(Alignment.Center),
+        )
         Box(
             Modifier
                 .align(Alignment.CenterEnd)
@@ -366,42 +368,6 @@ private fun WorkshopHomeTopBar(
                 modifier = Modifier.size(22.dp),
             )
         }
-    }
-}
-
-@Composable
-private fun WorkshopTabLabel(
-    label: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    Column(
-        Modifier
-            .clip(RoundedCornerShape(8.dp))
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = onClick,
-            )
-            .padding(horizontal = 16.dp, vertical = 4.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text(
-            text = label,
-            style = TextStyle(
-                color = if (selected) MainPalette.Accent else MainPalette.Secondary,
-                fontSize = 16.sp,
-                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-            ),
-        )
-        Spacer(Modifier.height(5.dp))
-        Box(
-            Modifier
-                .width(18.dp)
-                .height(2.dp)
-                .clip(RoundedCornerShape(1.dp))
-                .background(if (selected) MainPalette.Accent else Color.Transparent),
-        )
     }
 }
 

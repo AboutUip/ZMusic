@@ -211,6 +211,7 @@ fun NowPlayingScreen(
     onOpenArtist: (() -> Unit)? = null,
     onOpenUser: (Long, String, String?) -> Unit = { _, _, _ -> },
     onPlayQueueIndex: (Int) -> Unit = {},
+    onMoveQueue: (from: Int, to: Int) -> Unit = { _, _ -> },
     /** 竖屏评论打开时挂起曲末自动下一首 */
     onHoldAutoAdvanceChange: (Boolean) -> Unit = {},
     /** 横屏额外左侧 inset（本页已无 Dock，通常为 0） */
@@ -1280,6 +1281,7 @@ fun NowPlayingScreen(
         onOpenPlaylist = onOpenPlaylist,
         onOpenAlbum = onOpenAlbum,
         onPlayQueueIndex = onPlayQueueIndex,
+        onMoveQueue = onMoveQueue,
         onNeedQueueThrough = ::needQueueThrough,
         trackLiked = trackLiked,
         onToggleLike = ::toggleTrackLike,

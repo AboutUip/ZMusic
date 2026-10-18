@@ -44,7 +44,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -64,6 +63,8 @@ import com.kite.zmusic.data.FollowedUser
 import com.kite.zmusic.data.LikedArtist
 import com.kite.zmusic.data.SessionRepository
 import com.kite.zmusic.ui.common.GlassActionSheet
+import com.kite.zmusic.ui.common.LiquidUnderlineTabs
+import com.kite.zmusic.ui.common.animateLiquidTabTo
 import com.kite.zmusic.ui.common.GlassAlertDialog
 import com.kite.zmusic.ui.common.GlassSheetAction
 import com.kite.zmusic.ui.common.UrlImage
@@ -108,10 +109,11 @@ fun LikedArtistsScreen(
     ) {
         FollowsTopBar(
             selected = pager.currentPage,
+            position = pager.currentPage + pager.currentPageOffsetFraction,
             onBack = onBack,
             onSearch = { onSearch(pager.currentPage == 1) },
             onSelect = { page ->
-                scope.launch { pager.animateScrollToPage(page) }
+                scope.launch { pager.animateLiquidTabTo(page) }
             },
         )
         HorizontalPager(
@@ -168,6 +170,7 @@ private fun followTabs() = listOf(t("歌手"), t("用户"))
 @Composable
 private fun FollowsTopBar(
     selected: Int,
+    position: Float,
     onBack: () -> Unit,
     onSearch: () -> Unit,
     onSelect: (Int) -> Unit,
@@ -197,18 +200,16 @@ private fun FollowsTopBar(
                 modifier = Modifier.size(22.dp),
             )
         }
-        Row(
-            Modifier.align(Alignment.Center),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            followTabs().forEachIndexed { index, label ->
-                FollowTab(
-                    label = label,
-                    selected = selected == index,
-                    onClick = { onSelect(index) },
-                )
-            }
-        }
+        LiquidUnderlineTabs(
+            labels = followTabs(),
+            selectedIndex = selected,
+            position = position,
+            onSelect = onSelect,
+            fontSize = 16.sp,
+            tabPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+            indicatorGap = 5.dp,
+            modifier = Modifier.align(Alignment.Center),
+        )
         Box(
             Modifier
                 .align(Alignment.CenterEnd)
@@ -228,42 +229,6 @@ private fun FollowsTopBar(
                 modifier = Modifier.size(22.dp),
             )
         }
-    }
-}
-
-@Composable
-private fun FollowTab(
-    label: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    Column(
-        Modifier
-            .clip(RoundedCornerShape(8.dp))
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = onClick,
-            )
-            .padding(horizontal = 16.dp, vertical = 4.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text(
-            text = label,
-            style = TextStyle(
-                color = if (selected) MainPalette.Accent else MainPalette.Secondary,
-                fontSize = 16.sp,
-                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-            ),
-        )
-        Spacer(Modifier.height(5.dp))
-        Box(
-            Modifier
-                .width(18.dp)
-                .height(2.dp)
-                .clip(RoundedCornerShape(1.dp))
-                .background(if (selected) MainPalette.Accent else Color.Transparent),
-        )
     }
 }
 
