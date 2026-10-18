@@ -151,6 +151,9 @@ internal val ProfileAvatarBadgeHang = 0.dp
 
 private enum class LibraryCollectionKind { Playlist, Album }
 
+/** 横滑时两页之间露出的底色，避免歌单和专辑贴在一起。 */
+private val CollectionPageGap = 24.dp
+
 @Stable
 private class CollectionPagerState(
     private val scope: CoroutineScope,
@@ -1925,7 +1928,9 @@ private fun CollectionSwipePages(
     album: @Composable () -> Unit,
 ) {
     val haptic = LocalHapticFeedback.current
-    var widthPx by remember { mutableFloatStateOf(1f) }
+    var pageWidthPx by remember { mutableFloatStateOf(1f) }
+    val gapPx = with(LocalDensity.current) { CollectionPageGap.roundToPx() }
+    val stridePx = (pageWidthPx + gapPx).coerceAtLeast(1f)
     var dragFrom by remember { mutableStateOf(0) }
     val nestedDispatcher = remember { NestedScrollDispatcher() }
     val nestedConnection = remember { object : NestedScrollConnection {} }
@@ -1935,7 +1940,7 @@ private fun CollectionSwipePages(
             NestedScrollSource.UserInput,
         )
         val remaining = delta - parentPre.x
-        val self = pager.dragDelta(remaining, widthPx)
+        val self = pager.dragDelta(remaining, stridePx)
         nestedDispatcher.dispatchPostScroll(
             consumed = Offset(self, 0f),
             available = Offset(remaining - self, 0f),
@@ -1946,7 +1951,7 @@ private fun CollectionSwipePages(
         modifier = Modifier
             .fillMaxWidth()
             .clipToBounds()
-            .onSizeChanged { widthPx = it.width.toFloat().coerceAtLeast(1f) }
+            .onSizeChanged { pageWidthPx = it.width.toFloat().coerceAtLeast(1f) }
             .nestedScroll(nestedConnection, nestedDispatcher)
             .draggable(
                 state = drag,
@@ -1997,10 +2002,11 @@ private fun CollectionSwipePages(
             playlistPlaceable.height +
                 (albumPlaceable.height - playlistPlaceable.height) * t
             ).roundToInt().coerceAtLeast(0)
-        val x = (-t * pageW).roundToInt()
+        val stride = pageW + gapPx
+        val x = (-t * stride).roundToInt()
         layout(pageW, height) {
             playlistPlaceable.placeRelative(x, 0)
-            albumPlaceable.placeRelative(x + pageW, 0)
+            albumPlaceable.placeRelative(x + stride, 0)
         }
     }
 }

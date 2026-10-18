@@ -1,6 +1,7 @@
 package com.kite.zmusic.ui.player
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.material3.Text
@@ -14,16 +15,19 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameMillis
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import com.kite.zmusic.data.LyricWord
+import com.kite.zmusic.data.lyricWordProgress
 
 /**
- * 仅用于当前播放行：已唱完的字用播放中颜色，未唱的字用未播放颜色。
- * 每个字单独上色，避免整行 Text 把颜色盖掉。
+ * 仅用于当前播放行。
+ * [sweep] 为 false 时一个字整颗变色；为 true 时高亮按这个字的宽度从左往右扫过。
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -37,6 +41,7 @@ internal fun KaraokeLyricText(
     modifier: Modifier = Modifier,
     maxLines: Int = 6,
     overflow: TextOverflow = TextOverflow.Clip,
+    sweep: Boolean = false,
 ) {
     val pos = rememberSmoothedLyricPositionMs(positionMs, tracking)
     val horizontal = when (style.textAlign) {
@@ -52,13 +57,13 @@ internal fun KaraokeLyricText(
     ) {
         words.forEachIndexed { index, word ->
             key(index, word.timeMs, word.text) {
-                val color = wordColor(word, pos, playingColor, unplayedColor)
-                Text(
-                    text = word.text,
-                    color = color,
-                    style = style.copy(color = color),
-                    maxLines = 1,
-                    softWrap = false,
+                KaraokeWordText(
+                    word = word,
+                    positionMs = pos,
+                    playingColor = playingColor,
+                    unplayedColor = unplayedColor,
+                    style = style,
+                    sweep = sweep,
                     overflow = overflow,
                 )
             }
@@ -66,24 +71,69 @@ internal fun KaraokeLyricText(
     }
 }
 
+@Composable
+internal fun KaraokeWordText(
+    word: LyricWord,
+    positionMs: Long,
+    playingColor: Color,
+    unplayedColor: Color,
+    style: TextStyle,
+    sweep: Boolean,
+    overflow: TextOverflow = TextOverflow.Clip,
+) {
+    val progress = lyricWordProgress(word, positionMs)
+    if (!sweep) {
+        val color = wordColor(word, positionMs, playingColor, unplayedColor)
+        KaraokeWordLabel(word.text, color, style, overflow)
+        return
+    }
+    when {
+        progress <= 0f -> KaraokeWordLabel(word.text, unplayedColor, style, overflow)
+        progress >= 1f -> KaraokeWordLabel(word.text, playingColor, style, overflow)
+        else -> {
+            Box {
+                KaraokeWordLabel(word.text, unplayedColor, style, overflow)
+                KaraokeWordLabel(
+                    text = word.text,
+                    color = playingColor,
+                    style = style,
+                    overflow = overflow,
+                    modifier = Modifier.drawWithContent {
+                        clipRect(right = size.width * progress) {
+                            this@drawWithContent.drawContent()
+                        }
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun KaraokeWordLabel(
+    text: String,
+    color: Color,
+    style: TextStyle,
+    overflow: TextOverflow,
+    modifier: Modifier = Modifier,
+) {
+    Text(
+        text = text,
+        color = color,
+        style = style.copy(color = color),
+        maxLines = 1,
+        softWrap = false,
+        overflow = overflow,
+        modifier = modifier,
+    )
+}
+
 internal fun wordColor(
     word: LyricWord,
     positionMs: Long,
     playingColor: Color,
     unplayedColor: Color,
-): Color {
-    val start = word.timeMs
-    val dur = word.durationMs.coerceAtLeast(1L)
-    val end = start + dur
-    return when {
-        positionMs <= start -> unplayedColor
-        positionMs >= end -> playingColor
-        else -> {
-            val t = ((positionMs - start).toFloat() / dur.toFloat()).coerceIn(0f, 1f)
-            lerp(unplayedColor, playingColor, t)
-        }
-    }
-}
+): Color = lerp(unplayedColor, playingColor, lyricWordProgress(word, positionMs))
 
 /**
  * 逐字着色用的平滑进度：只在播放源 **位置真正变大** 之后，于两次 UI tick（约 200ms）之间补帧。

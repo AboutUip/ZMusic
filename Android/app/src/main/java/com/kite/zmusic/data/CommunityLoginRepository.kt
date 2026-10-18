@@ -7,11 +7,18 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import com.kite.zmusic.i18n.t
 
+internal fun settleCommunityGrant(ack: CommunitySubmitAck): CommunitySubmitAck {
+    if (ack.ok && !ack.appToken.isNullOrBlank()) return ack
+    if (ack.ok) return ack.copy(ok = false, status = "forbidden")
+    return ack
+}
+
 data class CommunityLoginPreview(
     val sid: String,
     val uid: Long,
     val nickname: String,
     val avatarUrl: String?,
+    val direct: Boolean = false,
 )
 
 class CommunityLoginRepository(
@@ -22,7 +29,12 @@ class CommunityLoginRepository(
     private val workshopAuthStore: WorkshopAuthStore,
     private val client: CommunityLoginClient = CommunityLoginClient(),
 ) {
-    suspend fun preview(sid: String): CommunityLoginPreview {
+    suspend fun preview(sid: String): CommunityLoginPreview = loadIdentity(sid, direct = false)
+
+    suspend fun previewSelf(): CommunityLoginPreview =
+        loadIdentity(CommunityLoginConfig.APP_GRANT_SID, direct = true)
+
+    private suspend fun loadIdentity(sid: String, direct: Boolean): CommunityLoginPreview {
         val session = sessionRepository.session.value
             ?: error(t("请先登录网易云账号"))
         if (session.isGuest) error(t("游客无法授权，请先登录"))
@@ -42,6 +54,7 @@ class CommunityLoginRepository(
             uid = uid,
             nickname = nickname,
             avatarUrl = avatar,
+            direct = direct,
         )
     }
 
@@ -80,6 +93,28 @@ class CommunityLoginRepository(
             }
         }
         return firstForbidden ?: error(t("提交失败"))
+    }
+
+    suspend fun grant(preview: CommunityLoginPreview): CommunitySubmitAck {
+        val now = System.currentTimeMillis() / 1000L
+        val assertion = CommunityJwt.hs256(
+            iss = "zmusic",
+            aud = CommunityLoginConfig.CLIENT_ID,
+            sid = CommunityLoginConfig.APP_GRANT_SID,
+            uid = preview.uid.toString(),
+            nickname = preview.nickname,
+            avatarUrl = preview.avatarUrl.orEmpty(),
+            iat = now,
+            exp = now + CommunityLoginConfig.ASSERTION_TTL_SEC,
+            secretHex = CommunityLoginConfig.HMAC_SECRET_HEX,
+        )
+        val settled = settleCommunityGrant(client.grantApp(communityServerStore.appGrantUrl(), assertion))
+        val token = settled.appToken
+        if (settled.ok && !token.isNullOrBlank()) {
+            val uidText = settled.uid?.takeIf { it.isNotBlank() } ?: preview.uid.toString()
+            workshopAuthStore.save(token, uidText)
+        }
+        return settled
     }
 
     suspend fun deny(sid: String): CommunitySubmitAck = withContext(Dispatchers.IO) {

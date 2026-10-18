@@ -64,6 +64,8 @@ data class ListenRoomSnapshot(
     val queueHlc: Long = 0L,
     val queueActor: String = "",
     val queueIncluded: Boolean = false,
+    /** 这份快照没带 members 时为 false，沿用上一份名单，避免切歌把头像清掉。 */
+    val membersIncluded: Boolean = true,
 )
 
 data class ListenPeer(
@@ -483,6 +485,52 @@ fun listenUnreadChatCount(
 ): Int {
     val self = selfUid.trim()
     return chat.count { !listenChatUidEquals(it.uid, self) && it.id > lastReadId }
+}
+
+/** 协议相对地址补成 https；JSON null 经常被解析成字符串 "null"。 */
+fun normalizeListenAvatarUrl(raw: String): String {
+    val t = raw.trim()
+    if (t.isEmpty() || t.equals("null", ignoreCase = true)) return ""
+    return if (t.startsWith("//")) "https:$t" else t
+}
+
+/**
+ * 切歌 / 分享歌曲的回包有时不带成员，或把头像写成空。
+ * 名单还在时沿用上一张头像，避免播放页上的脸突然消失。
+ */
+fun resolveListenMembers(
+    previous: List<ListenMember>,
+    incoming: List<ListenMember>,
+    incomingIncluded: Boolean,
+): List<ListenMember> {
+    if (!incomingIncluded || incoming.isEmpty()) return previous.ifEmpty { incoming }
+    if (previous.isEmpty()) return incoming
+    return incoming.map { member ->
+        val prior = previous.firstOrNull { listenChatUidEquals(it.uid, member.uid) }
+            ?: return@map member
+        val avatar = member.avatarUrl.ifBlank { prior.avatarUrl }
+        if (avatar == member.avatarUrl) member else member.copy(avatarUrl = avatar)
+    }
+}
+
+/** 新消息没带头像时，用房间成员或上一条同一个人的头像补上。 */
+fun preserveListenChatFaces(
+    chat: List<ListenChatMsg>,
+    previous: List<ListenChatMsg>,
+    members: List<ListenMember>,
+): List<ListenChatMsg> {
+    if (chat.isEmpty()) return chat
+    return chat.map { msg ->
+        if (msg.avatarUrl.isNotBlank()) return@map msg
+        val avatar = members.firstOrNull { listenChatUidEquals(it.uid, msg.uid) }
+            ?.avatarUrl
+            ?.takeIf { it.isNotBlank() }
+            ?: previous.firstOrNull {
+                listenChatUidEquals(it.uid, msg.uid) && it.avatarUrl.isNotBlank()
+            }?.avatarUrl
+            ?: return@map msg
+        msg.copy(avatarUrl = avatar)
+    }
 }
 
 fun mergeListenRoomChat(

@@ -122,7 +122,7 @@ internal class PluginAndroidPlayer(
         return PluginLyricMaps.pack(
             original = ui.lyricLines,
             translated = ui.translatedLyricLines,
-            positionMs = ui.positionMs,
+            positionMs = ui.lyricClockMs(),
         )
     }
 
@@ -131,7 +131,7 @@ internal class PluginAndroidPlayer(
         return PluginLyricMaps.current(
             original = ui.lyricLines,
             translated = ui.translatedLyricLines,
-            positionMs = ui.positionMs,
+            positionMs = ui.lyricClockMs(),
         )
     }
 

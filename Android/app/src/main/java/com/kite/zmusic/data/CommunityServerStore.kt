@@ -46,6 +46,8 @@ class CommunityServerStore(context: Context) {
 
     fun submitUrl(): String = "${origin()}${CommunityLoginConfig.SUBMIT_PATH}"
 
+    fun appGrantUrl(): String = "${origin()}${CommunityLoginConfig.APP_PATH}"
+
     fun siteUrl(): String = "${origin()}${CommunityLoginConfig.SITE_PATH}"
 
     private fun origin(): String = current().toBaseUrl()

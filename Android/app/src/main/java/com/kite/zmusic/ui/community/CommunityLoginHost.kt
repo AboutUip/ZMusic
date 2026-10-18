@@ -1,9 +1,7 @@
 package com.kite.zmusic.ui.community
 
 import android.Manifest
-import android.content.Intent
 import android.content.pm.PackageManager
-import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -96,7 +94,6 @@ class CommunityQrOpener(
 
 @Composable
 fun rememberCommunityLoginOpener(
-    offerWebsite: Boolean = false,
     onPlaySong: ((Long) -> Unit)? = null,
 ): CommunityQrOpener {
     val context = LocalContext.current
@@ -106,7 +103,6 @@ fun rememberCommunityLoginOpener(
     var phase by remember { mutableStateOf<CommunityLoginPhase>(CommunityLoginPhase.Hidden) }
     var busy by remember { mutableStateOf(false) }
     var previewJob by remember { mutableStateOf<Job?>(null) }
-    var showChoice by remember { mutableStateOf(false) }
     var pendingSong by remember { mutableStateOf<PendingSongScan?>(null) }
     var pendingListenId by remember { mutableStateOf<String?>(null) }
     var pendingListenNeedLogin by remember { mutableStateOf(false) }
@@ -252,12 +248,20 @@ fun rememberCommunityLoginOpener(
         }
     }
 
-    fun openWebsite() {
-        val url = app.communityServerStore.siteUrl()
-        val ok = runCatching {
-            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-        }.isSuccess
-        if (!ok) toast(t("无法打开社区网站"))
+    fun openLogin() {
+        previewJob?.cancel()
+        phase = CommunityLoginPhase.Loading
+        previewJob = scope.launch {
+            val result = runCatching { app.communityLoginRepository.previewSelf() }
+            if (!isActive) return@launch
+            result.fold(
+                onSuccess = { phase = CommunityLoginPhase.Authorize(it) },
+                onFailure = { e ->
+                    toast(e.message?.takeIf { it.isNotBlank() } ?: t("无法读取当前账号"))
+                    phase = CommunityLoginPhase.Hidden
+                },
+            )
+        }
     }
 
     if (phase is CommunityLoginPhase.Scanner) {
@@ -272,7 +276,7 @@ fun rememberCommunityLoginOpener(
         ) {
             QrScannerOverlay(
                 title = t("扫描二维码"),
-                subtitle = t("对准分享海报或社区登录码，也可从相册选取"),
+                subtitle = t("对准分享海报或一起听邀请，也可从相册选取"),
                 onDetected = { raw ->
                     if (!looksLikeKnownQr(raw)) return@QrScannerOverlay false
                     queuedQr = raw
@@ -319,7 +323,13 @@ fun rememberCommunityLoginOpener(
                     if (busy) return@CommunityAuthorizeLayer
                     busy = true
                     scope.launch {
-                        val result = runCatching { app.communityLoginRepository.allow(preview) }
+                        val result = runCatching {
+                            if (preview.direct) {
+                                app.communityLoginRepository.grant(preview)
+                            } else {
+                                app.communityLoginRepository.allow(preview)
+                            }
+                        }
                         busy = false
                         result.fold(
                             onSuccess = { ack ->
@@ -328,7 +338,9 @@ fun rememberCommunityLoginOpener(
                                         toast(
                                             if (!ack.appToken.isNullOrBlank()) {
                                                 if (app.listenTogether.ui.value.pendingJoinId != null) {
-                                                    t("已确认，正在加入一起听")
+                                                    t("已登录，正在加入一起听")
+                                                } else if (preview.direct) {
+                                                    t("已登录社区")
                                                 } else {
                                                     t("已确认，创意工坊可用")
                                                 }
@@ -336,6 +348,8 @@ fun rememberCommunityLoginOpener(
                                         )
                                         phase = CommunityLoginPhase.Hidden
                                     }
+                                    ack.status == "forbidden" && preview.direct ->
+                                        toast(t("授权未通过，请稍后再试"))
                                     ack.status == "forbidden" ->
                                         toast(t("授权未通过，请刷新社区页二维码后再扫"))
                                     ack.status == "expired" ->
@@ -363,6 +377,10 @@ fun rememberCommunityLoginOpener(
                     val preview = (phase as? CommunityLoginPhase.Authorize)?.preview
                         ?: return@CommunityAuthorizeLayer
                     if (busy) return@CommunityAuthorizeLayer
+                    if (preview.direct) {
+                        phase = CommunityLoginPhase.Hidden
+                        return@CommunityAuthorizeLayer
+                    }
                     busy = true
                     scope.launch {
                         val result = runCatching { app.communityLoginRepository.deny(preview.sid) }
@@ -411,13 +429,13 @@ fun rememberCommunityLoginOpener(
     pendingListenId?.let { roomId ->
         if (pendingListenNeedLogin) {
             GlassAlertDialog(
-                title = t("先登录社区"),
-                message = t("加入一起听需要先登录过社区，和创意工坊是同一套确认。"),
-                confirmLabel = t("去登录"),
+                title = t("请先授权登录社区"),
+                message = t("加入一起听需要先授权登录社区。点一次即可，之后会一直记住。"),
+                confirmLabel = t("授权登录"),
                 onConfirm = {
                     pendingListenNeedLogin = false
                     pendingListenId = null
-                    if (offerWebsite) showChoice = true else openScanner()
+                    openLogin()
                 },
                 onDismiss = {
                     pendingListenNeedLogin = false
@@ -435,8 +453,8 @@ fun rememberCommunityLoginOpener(
                     scope.launch {
                         val ok = app.listenTogether.join(roomId)
                         if (!ok && !app.workshopAuthStore.hasToken()) {
-                            toast(t("加入一起听需要先登录社区"))
-                            if (offerWebsite) showChoice = true else openScanner()
+                            toast(t("请先授权登录社区"))
+                            openLogin()
                         }
                     }
                 },
@@ -445,28 +463,9 @@ fun rememberCommunityLoginOpener(
         }
     }
 
-    if (offerWebsite && showChoice) {
-        GlassAlertDialog(
-            title = t("如何确认？"),
-            message = t("可扫描社区页上的登录码，或先打开社区网站。"),
-            confirmLabel = t("去扫码"),
-            cancelLabel = null,
-            tertiaryLabel = t("打开社区网站"),
-            onConfirm = {
-                showChoice = false
-                openScanner()
-            },
-            onDismiss = { showChoice = false },
-            onTertiary = {
-                showChoice = false
-                openWebsite()
-            },
-        )
-    }
-
     return CommunityQrOpener(
         openScanner = { openScanner() },
-        openLogin = { if (offerWebsite) showChoice = true else openScanner() },
+        openLogin = { openLogin() },
     )
 }
 
@@ -544,7 +543,11 @@ private fun CommunityAuthorizeLayer(
                     )
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        text = t("将允许该社区识别你的网易云账号，并读取昵称、头像"),
+                        text = if (phase.preview.direct) {
+                            t("授权后，社区会记住这个网易云账号。创意工坊、一起听和二楼都会用这份登录，更新应用也不会掉。")
+                        } else {
+                            t("将允许该社区识别你的网易云账号，并读取昵称、头像")
+                        },
                         style = TextStyle(
                             color = MainPalette.Secondary,
                             fontSize = 13.sp,
@@ -583,14 +586,14 @@ private fun CommunityAuthorizeLayer(
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
                         AuthTextButton(
-                            text = t("拒绝"),
+                            text = if (phase.preview.direct) t("取消") else t("拒绝"),
                             filled = false,
                             enabled = !busy,
                             onClick = onDeny,
                             modifier = Modifier.weight(1f),
                         )
                         AuthTextButton(
-                            text = if (busy) t("提交中") else t("允许"),
+                            text = if (busy) t("提交中") else if (phase.preview.direct) t("授权") else t("允许"),
                             filled = true,
                             enabled = !busy,
                             onClick = onAllow,

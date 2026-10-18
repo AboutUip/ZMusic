@@ -22,6 +22,7 @@ import com.kite.zmusic.data.LongLyricAlign
 import com.kite.zmusic.data.LongLyricMotion
 import com.kite.zmusic.data.LongLyricRender
 import com.kite.zmusic.data.LyricWord
+import com.kite.zmusic.data.LyricWordRender
 import com.kite.zmusic.data.longLyricOffsetPx
 import com.kite.zmusic.data.longLyricProgress
 import com.kite.zmusic.data.longLyricSungFraction
@@ -34,6 +35,16 @@ internal fun rememberLongLyricRender(): LongLyricRender {
         (context.applicationContext as ZMusicApplication).lyricRenderStore
     }
     val mode by store.longLine.collectAsStateWithLifecycle()
+    return mode
+}
+
+@Composable
+internal fun rememberLyricWordRender(): LyricWordRender {
+    val context = LocalContext.current
+    val store = remember(context) {
+        (context.applicationContext as ZMusicApplication).lyricRenderStore
+    }
+    val mode by store.wordRender.collectAsStateWithLifecycle()
     return mode
 }
 
@@ -63,6 +74,7 @@ internal fun LongLyricText(
     lineSpanMs: Long = 0L,
 ) {
     val horizontal = rememberLongLyricRender() == LongLyricRender.Horizontal
+    val sweep = rememberLyricWordRender() == LyricWordRender.Width
     val karaoke = words.isNotEmpty() && unplayedColor != null
     if (!horizontal) {
         if (karaoke) {
@@ -76,6 +88,7 @@ internal fun LongLyricText(
                 modifier = modifier,
                 maxLines = maxLines,
                 overflow = overflow,
+                sweep = sweep,
             )
         } else {
             Text(
@@ -116,13 +129,13 @@ internal fun LongLyricText(
             Row {
                 words.forEachIndexed { index, word ->
                     key(index, word.timeMs, word.text) {
-                        val color = wordColor(word, pos, style.color, idleColor)
-                        Text(
-                            text = word.text,
-                            color = color,
-                            style = style.copy(color = color),
-                            maxLines = 1,
-                            softWrap = false,
+                        KaraokeWordText(
+                            word = word,
+                            positionMs = pos,
+                            playingColor = style.color,
+                            unplayedColor = idleColor,
+                            style = style,
+                            sweep = sweep,
                         )
                     }
                 }

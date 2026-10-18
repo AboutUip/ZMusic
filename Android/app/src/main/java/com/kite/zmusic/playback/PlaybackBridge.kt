@@ -197,13 +197,17 @@ class PlaybackBridge(
         ensureLyricsForCurrentTrack()
     }
 
-    /** 当前曲目无歌词时异步补齐（磁盘优先，不依赖是否正在播放）。 */
+    /** 服务还没起来时，给队列里的当前曲补歌词。播放器起来之后由它按实际曲目对齐。 */
     private fun ensureLyricsForCurrentTrack() {
+        if (coordinator != null) return
         val track = _ui.value.currentTrack ?: return
         val trackId = track.id
+        if (_ui.value.lyricTrackId == trackId && _ui.value.lyricLines.isNotEmpty()) return
         lyricRepository.peekPack(trackId)?.takeIf { it.translationResolved }?.let { cached ->
             if (cached.original.isNotEmpty()) {
-                _ui.value = _ui.value.withLyricPack(cached)
+                _ui.value = _ui.value.withLyricPack(cached, trackId).copy(
+                    lyricPositionMs = _ui.value.positionMs,
+                )
             }
             return
         }
@@ -213,8 +217,11 @@ class PlaybackBridge(
             val cookie = sessionRepository.session.value?.cookie.orEmpty()
             val pack = lyricRepository.loadBestEffort(trackId, cookie, track)
             if (pack.original.isEmpty()) return@launch
+            if (coordinator != null) return@launch
             if (_ui.value.currentTrack?.id == trackId) {
-                _ui.value = _ui.value.withLyricPack(pack)
+                _ui.value = _ui.value.withLyricPack(pack, trackId).copy(
+                    lyricPositionMs = _ui.value.positionMs,
+                )
             }
         }
     }
@@ -460,7 +467,8 @@ class PlaybackBridge(
         val sameTrack = !isExplicitClear &&
             incoming.currentTrack?.id != null &&
             incoming.currentTrack?.id == _ui.value.currentTrack?.id
-        val merged = if (sameTrack) {
+        // 播放器已经标明歌词属于哪一首时，空词是「上一首清掉了、这一首还在加载」，不要把旧词填回去。
+        val merged = if (sameTrack && incoming.lyricTrackId <= 0L) {
             incoming.copy(
                 lyricLines = incoming.lyricLines.ifEmpty { _ui.value.lyricLines },
                 translatedLyricLines = incoming.translatedLyricLines.ifEmpty {
@@ -469,6 +477,16 @@ class PlaybackBridge(
                 wordLyricLines = incoming.wordLyricLines.ifEmpty { _ui.value.wordLyricLines },
                 translatedWordLyricLines = incoming.translatedWordLyricLines.ifEmpty {
                     _ui.value.translatedWordLyricLines
+                },
+                lyricTrackId = if (_ui.value.lyricLines.isNotEmpty()) {
+                    _ui.value.lyricTrackId
+                } else {
+                    incoming.lyricTrackId
+                },
+                lyricPositionMs = if (incoming.lyricLines.isEmpty()) {
+                    _ui.value.lyricPositionMs
+                } else {
+                    incoming.lyricPositionMs
                 },
             )
         } else {

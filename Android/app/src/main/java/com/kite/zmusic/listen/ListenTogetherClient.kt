@@ -299,6 +299,7 @@ class ListenTogetherClient(
                 hostUid = jsonUid(json, "host_uid"),
                 maxMembers = json.optInt("max_members", 2),
                 members = parseMembers(json.optJSONArray("members")),
+                membersIncluded = json.has("members") && !json.isNull("members"),
                 clock = ListenPlaybackClock(
                     hlc = jsonLong(clockObj, "hlc"),
                     actor = clockObj.optString("actor"),
@@ -362,7 +363,7 @@ class ListenTogetherClient(
             return ListenPeer(
                 uid = uid,
                 nickname = obj.optString("nickname").ifBlank { uid },
-                avatarUrl = obj.optString("avatar_url"),
+                avatarUrl = listenAvatarField(obj),
             )
         }
 
@@ -373,6 +374,11 @@ class ListenTogetherClient(
                 is String -> raw.trim().toLongOrNull() ?: 0L
                 else -> 0L
             }
+        }
+
+        internal fun listenAvatarField(obj: JSONObject): String {
+            val raw = obj.optString("avatar_url").ifBlank { obj.optString("avatarUrl") }
+            return normalizeListenAvatarUrl(raw)
         }
 
         internal fun jsonUid(obj: JSONObject, key: String = "uid"): String {
@@ -395,7 +401,7 @@ class ListenTogetherClient(
                 out += ListenMember(
                     uid = uid,
                     nickname = o.optString("nickname").ifBlank { uid },
-                    avatarUrl = o.optString("avatar_url"),
+                    avatarUrl = listenAvatarField(o),
                     host = o.optBoolean("host"),
                 )
             }
@@ -478,7 +484,7 @@ class ListenTogetherClient(
                     id = jsonLong(o, "id"),
                     uid = jsonUid(o),
                     nickname = o.optString("nickname"),
-                    avatarUrl = o.optString("avatar_url"),
+                    avatarUrl = listenAvatarField(o),
                     text = text,
                     at = jsonLong(o, "at"),
                     peers = if (o.has("peers") && !o.isNull("peers")) {

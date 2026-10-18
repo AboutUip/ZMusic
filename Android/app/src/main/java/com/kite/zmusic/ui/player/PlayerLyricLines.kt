@@ -17,7 +17,7 @@ internal fun rememberDisplayLyrics(
     portraitPrefs: PlayerDisplayPrefs,
 ): DisplayLyricBundle {
     val app = LocalContext.current.applicationContext as ZMusicApplication
-    val wordByWord by app.lyricRenderStore.wordByWord.collectAsStateWithLifecycle()
+    val wordRender by app.lyricRenderStore.wordRender.collectAsStateWithLifecycle()
     val prefer = portraitPrefs.portraitLyricPreferTranslation
     return pickDisplayLyricBundle(
         original = state.lyricLines.mapNotNull { it.sanitizedForDisplay() },
@@ -26,6 +26,6 @@ internal fun rememberDisplayLyrics(
         wordTranslated = state.translatedWordLyricLines.mapNotNull { it.sanitizedForDisplay() },
         preferTranslation = prefer,
         coexist = prefer && portraitPrefs.portraitLyricTranslationCoexist,
-        wordByWord = wordByWord,
+        wordByWord = wordRender.usesWordTiming,
     )
 }

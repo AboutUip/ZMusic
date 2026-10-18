@@ -197,7 +197,7 @@ internal fun PortraitListenTogetherSheet(
                 )
                 Spacer(Modifier.height(16.dp))
                 if (!loggedIn) {
-                    ListenPrimaryButton(title = t("登录社区后开启"), enabled = !ui.busy) {
+                    ListenPrimaryButton(title = t("授权后开启"), enabled = !ui.busy) {
                         onNeedLogin()
                     }
                     Spacer(Modifier.height(10.dp))

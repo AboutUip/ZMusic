@@ -71,8 +71,8 @@ data class PluginPlaybackSnapshot(
             val ids = ui.queue.map { it.id }
             val cap = QUEUE_TRACK_CAP
             val shown = ui.queue.take(cap).map { it.toPluginSnap() }
-            val lyricAt = PluginLyricMaps.indexAt(ui.lyricLines, ui.positionMs)
-            val transAt = PluginLyricMaps.indexAt(ui.translatedLyricLines, ui.positionMs)
+            val lyricAt = PluginLyricMaps.indexAt(ui.lyricLines, ui.lyricClockMs())
+            val transAt = PluginLyricMaps.indexAt(ui.translatedLyricLines, ui.lyricClockMs())
             return PluginPlaybackSnapshot(
                 playing = ui.playWhenReady,
                 positionMs = ui.positionMs.coerceAtLeast(0L),

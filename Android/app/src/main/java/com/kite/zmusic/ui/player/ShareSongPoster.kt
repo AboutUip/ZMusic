@@ -21,6 +21,7 @@ import android.text.TextPaint
 import android.text.TextUtils
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.core.graphics.withClip
 import androidx.core.graphics.withTranslation
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
@@ -34,6 +35,7 @@ import com.kite.zmusic.data.WallpaperFrame
 import com.kite.zmusic.data.SongCommentsCache
 import com.kite.zmusic.data.TrackRow
 import com.kite.zmusic.data.ZMusicSongLink
+import com.kite.zmusic.listen.listenChatUidEquals
 import com.kite.zmusic.plugin.PluginLookPresent
 import com.kite.zmusic.ui.common.UrlImageCache
 import java.io.File
@@ -101,11 +103,13 @@ internal object ShareSongPoster {
             val profile = profileJob.await()
             val comment = commentJob.await()
             val background = bgJob.await()
-            val avatar = if (loggedIn) {
-                loadUrlBitmap(app, profile?.avatarUrl, 240)
-            } else {
-                decodeResourceBitmap(app, R.drawable.ic_logo_vinyl_z, 240)
-            }
+            val listenFace = listenSelfFace(app)
+            val avatar = loadShareAvatar(
+                app = app,
+                profileUrl = profile?.avatarUrl,
+                listenUrl = listenFace?.avatarUrl,
+                loggedIn = loggedIn,
+            )
             val commentAvatar = loadUrlBitmap(app, comment?.avatarUrl, 180)
             val ncmMark = drawableBitmap(app, R.drawable.ic_ncm_mark, 96)
             val zMark = decodeResourceBitmap(app, R.drawable.ic_logo_vinyl_z, 160)
@@ -134,6 +138,7 @@ internal object ShareSongPoster {
                 comment = comment,
                 commentAvatar = commentAvatar,
                 nickname = profile?.nickname?.ifBlank { null }
+                    ?: listenFace?.nickname?.ifBlank { null }
                     ?: session?.displayLabel?.ifBlank { null }
                     ?: "ZMusic",
                 avatar = avatar,
@@ -930,6 +935,32 @@ internal object ShareSongPoster {
     private fun formatLiked(count: Int): String =
         com.kite.zmusic.i18n.I18n.formatCompactCount(count.toLong())
 
+    private fun listenSelfFace(app: ZMusicApplication) = run {
+        val ui = app.listenTogether.ui.value
+        val room = ui.room?.takeIf { ui.inRoom } ?: return@run null
+        val self = ui.selfUid
+        room.members.firstOrNull { listenChatUidEquals(it.uid, self) }
+            ?: room.members.firstOrNull { it.host && ui.hosting }
+    }
+
+    private suspend fun loadShareAvatar(
+        app: ZMusicApplication,
+        profileUrl: String?,
+        listenUrl: String?,
+        loggedIn: Boolean,
+    ): Bitmap? {
+        val primary = profileUrl?.takeIf { it.isNotBlank() }
+        val secondary = listenUrl?.takeIf { it.isNotBlank() && it != primary }
+        if (primary != null) {
+            loadUrlBitmap(app, primary, 480)?.let { return it }
+        }
+        if (secondary != null) {
+            loadUrlBitmap(app, secondary, 480)?.let { return it }
+        }
+        if (!loggedIn) return decodeResourceBitmap(app, R.drawable.ic_logo_vinyl_z, 240)
+        return null
+    }
+
     private suspend fun loadUrlBitmap(context: Context, url: String?, minSide: Int): Bitmap? {
         val key = UrlImageCache.normalizeKey(url) ?: return null
         return withContext(Dispatchers.IO) {
@@ -937,17 +968,9 @@ internal object ShareSongPoster {
                 val file = UrlImageCache.diskFile(context, key)
                 if (!file.exists()) UrlImageCache.prefetch(context, key)
                 if (!file.exists()) return@runCatching null
-                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                BitmapFactory.decodeFile(file.absolutePath, bounds)
-                val shortest = minOf(bounds.outWidth, bounds.outHeight).coerceAtLeast(1)
-                var sample = 1
-                while (shortest / (sample * 2) >= minSide * 2) sample *= 2
-                val opts = BitmapFactory.Options().apply {
-                    inSampleSize = sample
-                    inPreferredConfig = Bitmap.Config.ARGB_8888
-                    inScaled = false
-                }
-                BitmapFactory.decodeFile(file.absolutePath, opts)
+                // 重新解码一份，画完可以回收，不能动 UrlImage 内存缓存里的那张。
+                UrlImageCache.decodeSampledBitmap(file.readBytes(), minSide.coerceAtLeast(1))
+                    ?.asAndroidBitmap()
             }.getOrNull()
         }
     }

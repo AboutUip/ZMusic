@@ -167,7 +167,7 @@ private fun LoftLoginGate(
                 .padding(horizontal = 22.dp, vertical = 12.dp),
             contentAlignment = Alignment.Center,
         ) {
-            Text(text = t("登录社区"), color = androidx.compose.ui.graphics.Color.White, fontWeight = FontWeight.SemiBold)
+            Text(text = t("授权登录"), color = androidx.compose.ui.graphics.Color.White, fontWeight = FontWeight.SemiBold)
         }
         Spacer(Modifier.height(18.dp))
         Text(text = t("上滑回到一楼"), color = MainPalette.Hint, fontSize = 13.sp)

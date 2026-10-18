@@ -275,4 +275,20 @@ class PlayerExpandMiniBarTest {
             ),
         )
     }
+
+    @Test
+    fun restingProgressTrackFillsAnchorWhileThumbStaysOnMaterialSlot() {
+        val anchor = 400f
+        val thumb = 12f
+        val frac = 0.35f
+        val slot = materialSliderTrackSlot(anchor, thumb)
+        val painted = restingProgressTrackFrame(anchor)
+        assertEquals(0f, painted.left, 0.01f)
+        assertEquals(anchor, painted.width, 0.01f)
+        assertEquals(thumb / 2f, slot.left, 0.01f)
+        assertEquals(anchor - thumb, slot.width, 0.01f)
+        val flightCenter = painted.left + thumb / 2f + (painted.width - thumb) * frac
+        val materialCenter = slot.left + slot.width * frac
+        assertEquals(materialCenter, flightCenter, 0.01f)
+    }
 }

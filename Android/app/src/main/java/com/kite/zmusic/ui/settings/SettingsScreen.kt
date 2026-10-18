@@ -77,6 +77,7 @@ import com.kite.zmusic.ZMusicApplication
 import com.kite.zmusic.data.AppAppearance
 import com.kite.zmusic.data.ChromeGlassStyle
 import com.kite.zmusic.data.LongLyricRender
+import com.kite.zmusic.data.LyricWordRender
 import com.kite.zmusic.data.MiniQuickSkipAxis
 import com.kite.zmusic.data.ServerConfigRepository
 import com.kite.zmusic.data.UApiProStore
@@ -253,7 +254,7 @@ fun SettingsScreen(
     val lyricRenderStore = remember {
         (context.applicationContext as ZMusicApplication).lyricRenderStore
     }
-    val lyricWordByWord by lyricRenderStore.wordByWord.collectAsStateWithLifecycle()
+    val lyricWordRender by lyricRenderStore.wordRender.collectAsStateWithLifecycle()
     val longLyric by lyricRenderStore.longLine.collectAsStateWithLifecycle()
     val glassStore = remember {
         (context.applicationContext as ZMusicApplication).chromeGlassStore
@@ -457,10 +458,10 @@ fun SettingsScreen(
                     )
                     SettingsRow(
                         title = t("逐字歌词"),
-                        subtitle = if (lyricWordByWord) {
-                            t("按字渲染 · 需歌曲提供逐字歌词")
-                        } else {
-                            t("按行渲染")
+                        subtitle = when (lyricWordRender) {
+                            LyricWordRender.Word -> t("按字渲染 · 需歌曲提供逐字歌词")
+                            LyricWordRender.Width -> t("按字宽渲染 · 需歌曲提供逐字歌词")
+                            LyricWordRender.Line -> t("按行渲染")
                         },
                         icon = ZIcons.Lyrics,
                         tint = Color(0xFF5B8DEF),
@@ -963,11 +964,17 @@ fun SettingsScreen(
             onBack = { wordLyricVisible.targetState = false },
         ) {
             WordLyricSettingsPage(
-                wordByWord = lyricWordByWord,
-                onWordByWordChange = { next ->
-                    if (next == lyricWordByWord) return@WordLyricSettingsPage
-                    lyricRenderStore.setWordByWord(next)
-                    context.showIslandNotice(if (next) t("已切换到按字渲染") else t("已切换到按行渲染"))
+                mode = lyricWordRender,
+                onModeChange = { next ->
+                    if (next == lyricWordRender) return@WordLyricSettingsPage
+                    lyricRenderStore.setWordRender(next)
+                    context.showIslandNotice(
+                        when (next) {
+                            LyricWordRender.Word -> t("已切换到按字渲染")
+                            LyricWordRender.Width -> t("已切换到按字宽渲染")
+                            LyricWordRender.Line -> t("已切换到按行渲染")
+                        },
+                    )
                 },
                 contentBottomInset = contentBottomInset,
                 modifier = Modifier.fillMaxSize(),

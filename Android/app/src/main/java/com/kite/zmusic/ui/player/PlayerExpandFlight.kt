@@ -551,6 +551,25 @@ private fun DrawScope.drawFlightProgressBar(
     }
 }
 
+internal data class ProgressTrackFrame(
+    val left: Float,
+    val width: Float,
+)
+
+/**
+ * Material3 Slider 先量手柄，再把轨道槽缩短一个手柄宽，并内收半个手柄。
+ * 飞层终点是锚点全宽。落位后如果按这条槽来画，两端会各短半个手柄。
+ */
+internal fun materialSliderTrackSlot(sliderWidth: Float, thumbWidth: Float): ProgressTrackFrame {
+    val thumb = thumbWidth.coerceAtLeast(0f)
+    val width = (sliderWidth - thumb).coerceAtLeast(0f)
+    return ProgressTrackFrame(left = thumb / 2f, width = width)
+}
+
+/** 视觉轨道铺满锚点。手柄仍走槽位上的行程，间隙才和飞层终点重合。 */
+internal fun restingProgressTrackFrame(anchorWidth: Float): ProgressTrackFrame =
+    ProgressTrackFrame(left = 0f, width = anchorWidth.coerceAtLeast(0f))
+
 internal fun DrawScope.drawPlayerProgressTracksAt(
     left: Float,
     top: Float,

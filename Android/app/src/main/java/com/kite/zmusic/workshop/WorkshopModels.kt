@@ -14,7 +14,7 @@ data class WorkshopSession(
 )
 
 /**
- * 首次扫码确认后的长期工坊凭证。跨应用更新保留；清数据才丢。
+ * 授权后的长期社区凭证。跨应用更新保留；清数据才丢。
  */
 class WorkshopAuthStore(context: Context) {
     private val prefs: SharedPreferences = createPrefs(context.applicationContext)

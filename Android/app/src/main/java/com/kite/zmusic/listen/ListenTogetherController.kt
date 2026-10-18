@@ -202,7 +202,7 @@ class ListenTogetherController(
 
     fun startMatch() {
         if (!auth.hasToken()) {
-            notices.show(t("需要先登录社区"))
+            notices.show(t("请先授权登录社区"))
             return
         }
         if (!_ui.value.hosting) {
@@ -234,7 +234,7 @@ class ListenTogetherController(
                 } catch (e: IOException) {
                     delay(1_200)
                 } catch (e: WorkshopApiError.Unauthorized) {
-                    notices.show(t("需要先登录社区"))
+                    notices.show(t("请先授权登录社区"))
                     stopMatch(null)
                     return@launch
                 } catch (e: WorkshopApiError.Message) {
@@ -937,6 +937,12 @@ class ListenTogetherController(
         val previousChat = _ui.value.room?.chat.orEmpty()
         _ui.update { cur ->
             val self = auth.current()?.uid.orEmpty().ifBlank { cur.selfUid }
+            val sameRoom = cur.room?.id == snap.id
+            val members = resolveListenMembers(
+                previous = if (sameRoom) cur.room?.members.orEmpty() else emptyList(),
+                incoming = snap.members,
+                incomingIncluded = snap.membersIncluded,
+            )
             val merged = mergeListenRoomChat(
                 previous = cur.room?.chat.orEmpty(),
                 incoming = snap.chat,
@@ -979,8 +985,13 @@ class ListenTogetherController(
                     snap.chatReadsIncluded,
                 )
             }
+            val faced = preserveListenChatFaces(
+                chat = merged,
+                previous = if (sameRoom) previousChat else emptyList(),
+                members = members,
+            )
             cur.copy(
-                room = snap.copy(chat = merged, chatReads = reads),
+                room = snap.copy(members = members, chat = faced, chatReads = reads),
                 selfUid = self,
                 lastReadChatId = lastRead,
                 chatToasts = toasts,
@@ -1434,7 +1445,7 @@ class ListenTogetherController(
 
     private fun fail(e: Exception) {
         val msg = when (e) {
-            is WorkshopApiError.Unauthorized -> t("需要先登录社区")
+            is WorkshopApiError.Unauthorized -> t("请先授权登录社区")
             is WorkshopApiError.RateLimited -> t("操作太快，请稍后再试")
             is WorkshopApiError.Missing -> t("一起听不存在或已结束")
             is WorkshopApiError.Message -> when (e.message) {

@@ -21,6 +21,13 @@ data class PlaybackUiState(
     val positionMs: Long = 0L,
     val durationMs: Long = 0L,
     val lyricLines: List<LrcLine> = emptyList(),
+    /** 这套歌词属于哪一首。0 表示还没绑定。 */
+    val lyricTrackId: Long = 0L,
+    /**
+     * 歌词还停在正在出声的上一首、进度条已经指向下一首时，歌词用这个进度。
+     * 两边是同一首时，歌词直接读 [positionMs]。
+     */
+    val lyricPositionMs: Long = 0L,
     /** 网易云 `tlyric`；空表示无译文或尚未解析。 */
     val translatedLyricLines: List<LrcLine> = emptyList(),
     val wordLyricLines: List<LrcLine> = emptyList(),
@@ -50,11 +57,27 @@ data class PlaybackUiState(
     val radioActive: Boolean
         get() = fmActive || intelligenceActive
 
-    fun withLyricPack(pack: LyricPack): PlaybackUiState = copy(
+    fun lyricClockMs(): Long = LyricPlaybackAlign.lyricClockMs(
+        positionMs = positionMs,
+        lyricPositionMs = lyricPositionMs,
+        lyricTrackId = lyricTrackId,
+        queueTrackId = currentTrack?.id ?: 0L,
+    )
+
+    fun withLyricPack(pack: LyricPack, trackId: Long): PlaybackUiState = copy(
+        lyricTrackId = if (trackId > 0L) trackId else lyricTrackId,
         lyricLines = pack.original,
         translatedLyricLines = pack.translated,
         wordLyricLines = pack.wordOriginal,
         translatedWordLyricLines = pack.wordTranslated,
+    )
+
+    fun clearLyricsFor(trackId: Long): PlaybackUiState = copy(
+        lyricTrackId = trackId,
+        lyricLines = emptyList(),
+        translatedLyricLines = emptyList(),
+        wordLyricLines = emptyList(),
+        translatedWordLyricLines = emptyList(),
     )
 
     /**

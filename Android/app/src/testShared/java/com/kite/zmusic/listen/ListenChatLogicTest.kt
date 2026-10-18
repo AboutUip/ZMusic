@@ -120,6 +120,38 @@ class ListenChatLogicTest {
     }
 
     @Test
+    fun songSyncKeepsFacesWhenMembersOrAvatarsAreMissing() {
+        val previous = listOf(ListenMember("42", "曲", "https://a.example/u.png", true))
+        val omitted = ListenTogetherClient.parseSnapshot(
+            """{"ok":true,"id":"r1","host_uid":42,"clock":{"track_id":9}}""",
+        )
+        assertFalse(omitted.membersIncluded)
+        assertEquals(
+            previous,
+            resolveListenMembers(previous, omitted.members, omitted.membersIncluded),
+        )
+        val blank = ListenTogetherClient.parseSnapshot(
+            """{"ok":true,"id":"r1","members":[{"uid":42,"nickname":"曲","avatar_url":null,"host":true}]}""",
+        )
+        assertTrue(blank.membersIncluded)
+        assertEquals("", blank.members.single().avatarUrl)
+        assertEquals(
+            "https://a.example/u.png",
+            resolveListenMembers(previous, blank.members, blank.membersIncluded).single().avatarUrl,
+        )
+        val relative = ListenTogetherClient.parseSnapshot(
+            """{"ok":true,"id":"r1","members":[{"uid":7,"nickname":"客","avatarUrl":"//p1.music.126.net/a.jpg","host":false}]}""",
+        )
+        assertEquals("https://p1.music.126.net/a.jpg", relative.members.single().avatarUrl)
+        val chat = preserveListenChatFaces(
+            chat = listOf(msg(3, "42", "这首歌")),
+            previous = emptyList(),
+            members = previous,
+        )
+        assertEquals("https://a.example/u.png", chat.single().avatarUrl)
+    }
+
+    @Test
     fun parseSnapshotOmittingChatKeepsChatExcluded() {
         val snap = ListenTogetherClient.parseSnapshot(
             """{"ok":true,"id":"r1","host_uid":42,"chat":null}""",

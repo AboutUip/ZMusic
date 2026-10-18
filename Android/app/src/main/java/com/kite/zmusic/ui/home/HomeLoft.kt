@@ -119,6 +119,9 @@ private val HomeLoftThreshold = 80.dp
 internal val LocalHomeRefreshBridge = staticCompositionLocalOf<HomeRefreshBridge?> { null }
 internal val LocalMainFloorLocked = staticCompositionLocalOf { false }
 
+/** 二楼开合时，一楼导航和音乐组件的可见程度。1 为完全在一楼。 */
+internal val LocalLoftChromeReveal = staticCompositionLocalOf { 1f }
+
 /** 二楼里的表情面板要先吃掉返回键，再交给关楼。 */
 @Stable
 internal class LoftBackClaim {
@@ -234,6 +237,12 @@ internal fun homeLoftInterceptsFloor(open: Boolean, reveal: Float): Boolean {
     val locked = open || reveal > 0.01f
     val fullyOpen = open && reveal > 0.98f
     return locked && !fullyOpen
+}
+
+/** 一楼底栏和音乐岛跟圆的开合走。完全打开时为 0，回到一楼后为 1。 */
+internal fun homeLoftChromeReveal(open: Boolean, reveal: Float): Float {
+    if (!open && reveal <= 0.001f) return 1f
+    return (1f - reveal.coerceIn(0f, 1f)).coerceIn(0f, 1f)
 }
 
 /** 底部导航只跟「二楼是否打开」走。close() 一置 open=false 就解锁，不等圆缩完。 */
@@ -563,7 +572,7 @@ internal fun MainLoftHost(
     indicatorInset: Dp,
     floorLock: MainFloorLock,
     modifier: Modifier = Modifier,
-    overlay: @Composable BoxScope.(loftOpen: Boolean) -> Unit = { _ -> },
+    overlay: @Composable BoxScope.(loftOpen: Boolean, reveal: Float) -> Unit = { _, _ -> },
     content: @Composable () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -644,7 +653,10 @@ internal fun MainLoftHost(
         loftPx,
     )
     SideEffect { indicator.fraction = fraction }
-    CompositionLocalProvider(LocalLoftBackClaim provides backClaim) {
+    CompositionLocalProvider(
+        LocalLoftBackClaim provides backClaim,
+        LocalLoftChromeReveal provides homeLoftChromeReveal(state.open, state.reveal),
+    ) {
     val showIndicator = !state.open &&
         !state.returning &&
         state.reveal <= 0.001f &&
@@ -783,7 +795,7 @@ internal fun MainLoftHost(
                     .padding(top = indicatorInset),
             )
         }
-        overlay(state.open)
+        overlay(state.open, state.reveal)
     }
     BackHandler(enabled = state.open && !backClaim.held) { state.close() }
     }

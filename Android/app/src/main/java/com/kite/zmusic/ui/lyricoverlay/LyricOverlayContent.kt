@@ -498,8 +498,9 @@ private fun overlayLyricSnap(
     return OverlayLyricSnap(
         lines = bundle.lines,
         companions = bundle.companions,
-        active = lyricActiveIndex(bundle.lines, ui.positionMs),
-        title = ui.currentTrack?.name.orEmpty(),
+        active = lyricActiveIndex(bundle.lines, ui.lyricClockMs()),
+        title = ui.queue.firstOrNull { it.id == ui.lyricTrackId }?.name
+            ?: ui.currentTrack?.name.orEmpty(),
     )
 }
 

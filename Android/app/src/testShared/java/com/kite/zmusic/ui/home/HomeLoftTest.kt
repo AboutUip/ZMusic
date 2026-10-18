@@ -77,6 +77,15 @@ class HomeLoftTest {
     }
 
     @Test
+    fun floorChromeFollowsTheCircleInsteadOfPopping() {
+        assertEquals(1f, homeLoftChromeReveal(open = false, reveal = 0f), 0.001f)
+        assertEquals(0f, homeLoftChromeReveal(open = true, reveal = 1f), 0.001f)
+        assertEquals(0.4f, homeLoftChromeReveal(open = false, reveal = 0.6f), 0.001f)
+        assertEquals(0.4f, homeLoftChromeReveal(open = true, reveal = 0.6f), 0.001f)
+        assertEquals(0f, homeLoftChromeReveal(open = false, reveal = 1f), 0.001f)
+    }
+
+    @Test
     fun leavingTheLoftReturnsTheLoadingCircleAlongItsEntryPath() {
         val hidden = homeLoftIndicatorHiddenCenterY(indicatorTopPx = 80f, indicatorRadiusPx = 20f)
         assertEquals(60f, hidden, 0.01f)

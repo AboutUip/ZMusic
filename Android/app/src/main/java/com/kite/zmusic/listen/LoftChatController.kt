@@ -227,7 +227,7 @@ class LoftChatController(
         val code = (err as? WorkshopApiError.Message)?.message.orEmpty()
         return when {
             err is WorkshopApiError.RateLimited || code == "rate_limited" -> t("请求太频繁，稍后再试")
-            err is WorkshopApiError.Unauthorized -> t("登录社区")
+            err is WorkshopApiError.Unauthorized -> t("请先授权登录社区")
             else -> t("发送失败")
         }
     }

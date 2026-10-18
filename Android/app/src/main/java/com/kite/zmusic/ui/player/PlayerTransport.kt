@@ -958,39 +958,43 @@ private fun PlayerProgressSlider(
     }
     val on = if (enabled) colors.activeTrackColor else colors.disabledActiveTrackColor
     val off = if (enabled) colors.inactiveTrackColor else colors.disabledInactiveTrackColor
-    Slider(
-        value = value,
-        onValueChange = onValueChange,
-        modifier = modifier,
-        enabled = enabled,
-        valueRange = valueRange,
-        onValueChangeFinished = onValueChangeFinished,
-        colors = colors,
-        interactionSource = interactionSource,
-        thumb = {
-            SliderDefaults.Thumb(
-                interactionSource = interactionSource,
-                colors = colors,
-                enabled = enabled,
-                thumbSize = DpSize(PlayerProgressHandle.ThumbWidth, thumbH),
+    Box(modifier.height(trackHeight)) {
+        Canvas(Modifier.fillMaxSize()) {
+            val frame = restingProgressTrackFrame(size.width)
+            drawPlayerProgressTracksAt(
+                left = frame.left,
+                top = 0f,
+                width = frame.width,
+                height = size.height,
+                frac = fraction,
+                thumbWidth = PlayerProgressHandle.ThumbWidth.toPx(),
+                gap = PlayerProgressHandle.TrackGap.toPx(),
+                insideCorner = PlayerProgressHandle.InsideCorner.toPx(),
+                active = on,
+                inactive = off,
+                insetForThumb = true,
             )
-        },
-        track = {
-            Canvas(Modifier.fillMaxWidth().height(trackHeight)) {
-                drawPlayerProgressTracksAt(
-                    left = 0f,
-                    top = 0f,
-                    width = size.width,
-                    height = size.height,
-                    frac = fraction,
-                    thumbWidth = PlayerProgressHandle.ThumbWidth.toPx(),
-                    gap = PlayerProgressHandle.TrackGap.toPx(),
-                    insideCorner = PlayerProgressHandle.InsideCorner.toPx(),
-                    active = on,
-                    inactive = off,
-                    insetForThumb = false,
+        }
+        Slider(
+            value = value,
+            onValueChange = onValueChange,
+            modifier = Modifier.fillMaxSize(),
+            enabled = enabled,
+            valueRange = valueRange,
+            onValueChangeFinished = onValueChangeFinished,
+            colors = colors,
+            interactionSource = interactionSource,
+            thumb = {
+                SliderDefaults.Thumb(
+                    interactionSource = interactionSource,
+                    colors = colors,
+                    enabled = enabled,
+                    thumbSize = DpSize(PlayerProgressHandle.ThumbWidth, thumbH),
                 )
-            }
-        },
-    )
+            },
+            track = {
+                Spacer(Modifier.fillMaxWidth().height(trackHeight))
+            },
+        )
+    }
 }

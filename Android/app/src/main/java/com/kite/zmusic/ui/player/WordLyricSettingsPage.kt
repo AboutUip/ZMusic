@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kite.zmusic.data.LrcLine
 import com.kite.zmusic.data.LyricWord
+import com.kite.zmusic.data.LyricWordRender
 import com.kite.zmusic.data.karaokeWords
 import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.main.wallpaperItemChrome
@@ -45,8 +46,8 @@ private val ChipShape = RoundedCornerShape(12.dp)
 
 @Composable
 internal fun WordLyricSettingsPage(
-    wordByWord: Boolean,
-    onWordByWordChange: (Boolean) -> Unit,
+    mode: LyricWordRender,
+    onModeChange: (LyricWordRender) -> Unit,
     contentBottomInset: Dp = 0.dp,
     modifier: Modifier = Modifier,
 ) {
@@ -60,7 +61,7 @@ internal fun WordLyricSettingsPage(
     ) {
         Spacer(Modifier.height(8.dp))
         Text(
-            text = t("仅当正在播放的歌曲提供逐字歌词时才会按字渲染，否则仍按行显示。"),
+            text = t("按字和按字宽都要这首歌自带逐字歌词，没有就仍按整行显示。按字宽时，高亮顺着每个字的宽度从左往右扫过。"),
             style = TextStyle(
                 color = MainPalette.Secondary,
                 fontSize = 13.sp,
@@ -70,23 +71,30 @@ internal fun WordLyricSettingsPage(
         )
         Row(
             Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             RenderModeChip(
                 title = t("按行渲染"),
-                selected = !wordByWord,
-                onClick = { onWordByWordChange(false) },
+                selected = mode == LyricWordRender.Line,
+                onClick = { onModeChange(LyricWordRender.Line) },
                 modifier = Modifier.weight(1f),
             )
             RenderModeChip(
                 title = t("按字渲染"),
-                selected = wordByWord,
-                onClick = { onWordByWordChange(true) },
+                selected = mode == LyricWordRender.Word,
+                onClick = { onModeChange(LyricWordRender.Word) },
+                modifier = Modifier.weight(1f),
+            )
+            RenderModeChip(
+                title = t("按字宽渲染"),
+                selected = mode == LyricWordRender.Width,
+                onClick = { onModeChange(LyricWordRender.Width) },
                 modifier = Modifier.weight(1f),
             )
         }
         WordLyricPreview(
-            wordByWord = wordByWord,
+            mode = mode,
             modifier = Modifier.fillMaxWidth(),
         )
     }
@@ -113,7 +121,7 @@ private fun RenderModeChip(
                 indication = null,
                 onClick = onClick,
             )
-            .padding(vertical = 12.dp),
+            .padding(horizontal = 4.dp, vertical = 12.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(
@@ -121,15 +129,19 @@ private fun RenderModeChip(
             style = TextStyle(
                 color = if (selected) MainPalette.Accent else MainPalette.Ink,
                 fontWeight = FontWeight.SemiBold,
-                fontSize = 14.sp,
+                fontSize = 13.sp,
+                lineHeight = 16.sp,
+                textAlign = TextAlign.Center,
             ),
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }
 
 @Composable
 private fun WordLyricPreview(
-    wordByWord: Boolean,
+    mode: LyricWordRender,
     modifier: Modifier = Modifier,
 ) {
     val lines = remember { demoWordLyricLines() }
@@ -175,7 +187,7 @@ private fun WordLyricPreview(
                 lineHeight = if (isPlaying) 28.sp else 20.sp,
                 textAlign = TextAlign.Center,
             )
-            if (wordByWord && isPlaying && line.words.isNotEmpty()) {
+            if (mode != LyricWordRender.Line && isPlaying && line.words.isNotEmpty()) {
                 KaraokeLyricText(
                     words = line.karaokeWords(),
                     positionMs = positionMs,
@@ -186,6 +198,7 @@ private fun WordLyricPreview(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.fillMaxWidth(),
+                    sweep = mode == LyricWordRender.Width,
                 )
             } else {
                 Text(

@@ -102,8 +102,15 @@ import com.kite.zmusic.ui.chrome.pagerPageShowsOwnWallpaper
 import com.kite.zmusic.ui.chrome.preloadWallpaperBitmap
 import com.kite.zmusic.ui.chrome.wallpaperSurface
 import com.kite.zmusic.ui.home.HomeRefreshBridge
+import com.kite.zmusic.ui.home.HomeStagePagerBlock
+import com.kite.zmusic.ui.home.HomeStagePose
 import com.kite.zmusic.ui.home.LocalHomeRefreshBridge
+import com.kite.zmusic.ui.home.LocalHomeStagePagerBlock
+import com.kite.zmusic.ui.home.LocalHomeStagePose
+import com.kite.zmusic.ui.home.homeStageFollow
+import com.kite.zmusic.ui.home.LocalLoftChromeReveal
 import com.kite.zmusic.ui.home.LocalMainFloorLocked
+import com.kite.zmusic.ui.home.homeLoftChromeReveal
 import com.kite.zmusic.ui.home.MainFloorLock
 import com.kite.zmusic.ui.home.MainLoftHost
 import com.kite.zmusic.ui.common.PredictiveBackAxis
@@ -735,6 +742,8 @@ fun MainShell(
 
     val floorLock = remember { MainFloorLock() }
     val homeRefresh = remember { HomeRefreshBridge() }
+    val homeStageBlock = remember { HomeStagePagerBlock() }
+    val homeStagePose = remember { HomeStagePose() }
 
     fun goTo(dest: MainDestination) {
         if (floorLock.locked) return
@@ -1082,7 +1091,11 @@ fun MainShell(
         } else {
             statusTop + MainContentPadTop + MainPageHeaderHeight
         }
-        CompositionLocalProvider(LocalHomeRefreshBridge provides homeRefresh) {
+        CompositionLocalProvider(
+            LocalHomeRefreshBridge provides homeRefresh,
+            LocalHomeStagePagerBlock provides homeStageBlock,
+            LocalHomeStagePose provides homeStagePose,
+        ) {
         MainLoftHost(
             refreshing = homeRefresh.refreshing,
             onRefresh = { homeRefresh.refresh() },
@@ -1093,9 +1106,47 @@ fun MainShell(
             indicatorInset = loftIndicatorTop,
             floorLock = floorLock,
             modifier = Modifier.fillMaxSize(),
-            overlay = { loftOpen ->
-                // 底部栏必须画在二楼圆和拦截层上面。圆的裁剪不管点击，拦在下面时回到一楼也会点不中。
-                if (!loftOpen) {
+            overlay = { loftOpen, reveal ->
+                val loftChrome = homeLoftChromeReveal(loftOpen, reveal)
+                // 完全打开时不放进组合，避免透明底栏挡住二楼。开合过程跟圆一起淡入淡出。
+                if (loftChrome > 0.01f) {
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .zIndex(46f)
+                            .homeStageFollow(homeStagePose, density.density),
+                    ) {
+                    if (islandMusic) {
+                        val music by remember(playback) {
+                            playback.ui.map { it.currentTrack to it.playWhenReady }.distinctUntilChanged()
+                        }.collectAsStateWithLifecycle(
+                            playback.ui.value.currentTrack to playback.ui.value.playWhenReady,
+                        )
+                        val track = music.first
+                        if (track != null) {
+                            val leave = spaceChromeLeave(userSpaceProgress)
+                            PlaybackIsland(
+                                track = track,
+                                isPlaying = music.second,
+                                landscape = landscape,
+                                handoffNotices = leave < 0.2f && loftChrome > 0.8f,
+                                onOpen = { openFullPlayer() },
+                                onTogglePlay = { playback.togglePlayPause() },
+                                backdrop = backdrop,
+                                modifier = Modifier
+                                    .align(Alignment.TopCenter)
+                                    .zIndex(45f)
+                                    .windowInsetsPadding(
+                                        WindowInsets.statusBars.union(WindowInsets.displayCutout),
+                                    )
+                                    .padding(top = if (landscape) 8.dp else 6.dp)
+                                    .graphicsLayer {
+                                        alpha = ((1f - leave) * loftChrome).coerceIn(0f, 1f)
+                                        translationY = leave * -28f + (1f - loftChrome) * -24.dp.toPx()
+                                    },
+                            )
+                        }
+                    }
                     val railInset = if (landscape) {
                         LandscapeRailWidth * (1f - spaceChromeLeave(userSpaceProgress))
                     } else {
@@ -1135,8 +1186,8 @@ fun MainShell(
                                 )
                                 .graphicsLayer {
                                     val leave = spaceChromeLeave(userSpaceProgress)
-                                    translationY = leave * 220f
-                                    alpha = (1f - leave).coerceIn(0f, 1f)
+                                    translationY = leave * 220f + (1f - loftChrome) * 32.dp.toPx()
+                                    alpha = ((1f - leave) * loftChrome).coerceIn(0f, 1f)
                                 },
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
@@ -1151,7 +1202,11 @@ fun MainShell(
                                 ) {
                                     androidx.compose.animation.AnimatedVisibility(
                                         visible = showMini,
-                                        enter = fadeIn(tween(220, easing = FastOutSlowInEasing)),
+                                        enter = if (loftChrome < 0.98f) {
+                                            androidx.compose.animation.EnterTransition.None
+                                        } else {
+                                            fadeIn(tween(220, easing = FastOutSlowInEasing))
+                                        },
                                         exit = fadeOut(tween(180)),
                                     ) {
                                         MiniPlayerSlot(
@@ -1169,11 +1224,15 @@ fun MainShell(
                                     }
                                     androidx.compose.animation.AnimatedVisibility(
                                         visible = showManage,
-                                        enter = fadeIn(tween(220, easing = FastOutSlowInEasing)) +
-                                            slideInVertically(
-                                                animationSpec = tween(260, easing = FastOutSlowInEasing),
-                                                initialOffsetY = { it / 3 },
-                                            ),
+                                        enter = if (loftChrome < 0.98f) {
+                                            androidx.compose.animation.EnterTransition.None
+                                        } else {
+                                            fadeIn(tween(220, easing = FastOutSlowInEasing)) +
+                                                slideInVertically(
+                                                    animationSpec = tween(260, easing = FastOutSlowInEasing),
+                                                    initialOffsetY = { it / 3 },
+                                                )
+                                        },
                                         exit = fadeOut(tween(180)) +
                                             slideOutVertically(
                                                 animationSpec = tween(220, easing = FastOutSlowInEasing),
@@ -1243,12 +1302,14 @@ fun MainShell(
                             }
                         }
                     }
+                    }
                 }
             },
         ) {
         Row(Modifier.fillMaxSize()) {
             if (landscape) {
                 val spaceT = spaceChromeLeave(userSpaceProgress)
+                val loftChrome = LocalLoftChromeReveal.current
                 val railLayoutW = LandscapeRailWidth * (1f - spaceT)
                 if (railLayoutW > 0.5.dp) {
                     val slidePx = with(density) { (LandscapeRailWidth - railLayoutW).toPx() }
@@ -1274,8 +1335,8 @@ fun MainShell(
                                 }
                             },
                             modifier = Modifier.graphicsLayer {
-                                translationX = -slidePx
-                                alpha = (1f - spaceT).coerceIn(0f, 1f)
+                                translationX = -slidePx - (1f - loftChrome) * 24.dp.toPx()
+                                alpha = ((1f - spaceT) * loftChrome).coerceIn(0f, 1f)
                             },
                         )
                     }
@@ -1351,7 +1412,8 @@ fun MainShell(
                         .chromePage(),
                     beyondViewportPageCount = 1,
                     userScrollEnabled = !playerHeld && !overlayOpen && !spaceOpen &&
-                        !LocalMainFloorLocked.current,
+                        !LocalMainFloorLocked.current &&
+                        !homeStageBlock.blocked,
                 ) { page ->
                     if (showProbeTab && page == probePageIndex) {
                         PagerDestinationPane(
@@ -1410,41 +1472,6 @@ fun MainShell(
             )
         }
 
-        CompositionLocalProvider(
-            LocalChromeHaze provides dockHaze,
-        ) {
-        if (islandMusic) {
-            val music by remember(playback) {
-                playback.ui.map { it.currentTrack to it.playWhenReady }.distinctUntilChanged()
-            }.collectAsStateWithLifecycle(
-                playback.ui.value.currentTrack to playback.ui.value.playWhenReady,
-            )
-            val track = music.first
-            if (track != null) {
-                val leave = spaceChromeLeave(userSpaceProgress)
-                PlaybackIsland(
-                    track = track,
-                    isPlaying = music.second,
-                    landscape = landscape,
-                    handoffNotices = leave < 0.2f,
-                    onOpen = { openFullPlayer() },
-                    onTogglePlay = { playback.togglePlayPause() },
-                    backdrop = backdrop,
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .zIndex(45f)
-                        .windowInsetsPadding(
-                            WindowInsets.statusBars.union(WindowInsets.displayCutout),
-                        )
-                        .padding(top = if (landscape) 8.dp else 6.dp)
-                        .graphicsLayer {
-                            alpha = (1f - leave).coerceIn(0f, 1f)
-                            translationY = leave * -28f
-                        },
-                )
-            }
-        }
-        }
         } // weight 内容格
         } // 横竖 Row
         } // 二楼

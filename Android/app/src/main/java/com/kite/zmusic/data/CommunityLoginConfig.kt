@@ -13,7 +13,10 @@ object CommunityLoginConfig {
     val DISPLAY_NAME: String get() = t("量子像素 · ZMusic")
     const val QR_PREFIX = "ZMLOGIN1:"
     const val SUBMIT_PATH = "/api/v1/communities/zmusic/login/submit"
-    /** 社区网页登录页（扫码确认用）。 */
+    /** 客户端一键授权。不经过网页二维码。 */
+    const val APP_PATH = "/api/v1/communities/zmusic/login/app"
+    const val APP_GRANT_SID = "app-direct-login"
+    /** 社区网页登录页（网页自己扫码时仍可用）。 */
     const val SITE_PATH = "/zmusic/login"
     const val ASSERTION_TTL_SEC = 90L
     const val SID_MIN = 16

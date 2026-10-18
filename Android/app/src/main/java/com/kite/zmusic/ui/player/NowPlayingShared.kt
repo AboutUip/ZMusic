@@ -562,6 +562,8 @@ internal fun GeminiOrbsBackdrop(
     loadPending: Boolean = false,
     /** 评论 / 歌词等叠层打开时停相位，把 GPU 让给手势 */
     motionEnabled: Boolean = true,
+    /** 没有频谱时也保持可见。播放页用 0，侧栏要把光球抬起来。 */
+    idleGlow: Float = 0f,
 ) {
     val app = LocalContext.current.applicationContext as ZMusicApplication
     val spectrumHolder = remember { arrayOf(AudioSpectrumBands.ZERO) }
@@ -735,6 +737,7 @@ internal fun GeminiOrbsBackdrop(
         } else {
             1f
         }
+        val glow = idleGlow.coerceIn(0f, 1f)
         val w = size.width
         val h = size.height
         val twoPi = (Math.PI * 2).toFloat()
@@ -763,21 +766,21 @@ internal fun GeminiOrbsBackdrop(
             cy = h * (0.32f + 0.16f * sin(a)),
             radius = minOf(w, h) * 0.5f * pulse * (1f + 0.18f * lowT),
             color = OrbGlowPink,
-            alpha = (0.22f * baseScale + 0.58f * lowT).coerceIn(0f, 0.92f),
+            alpha = (0.22f * baseScale + 0.58f * lowT + 0.72f * glow).coerceIn(0f, 0.92f),
         )
         orb(
             cx = w * (0.72f + 0.12f * cos(b + 1.2f)),
             cy = h * (0.68f + 0.14f * sin(b + 0.4f)),
             radius = minOf(w, h) * 0.58f * (0.96f + 0.04f * sin(b)) * (1f + 0.16f * highT),
             color = OrbGlowBlue,
-            alpha = (0.20f * baseScale + 0.55f * highT).coerceIn(0f, 0.90f),
+            alpha = (0.20f * baseScale + 0.55f * highT + 0.68f * glow).coerceIn(0f, 0.92f),
         )
         orb(
             cx = w * (0.58f + 0.11f * sin(c)),
             cy = h * (0.40f + 0.17f * cos(c)),
             radius = minOf(w, h) * 0.44f * pulseInv * (1f + 0.14f * midT),
             color = OrbGlowPurple,
-            alpha = (0.18f * baseScale + 0.52f * midT).coerceIn(0f, 0.88f),
+            alpha = (0.18f * baseScale + 0.52f * midT + 0.64f * glow).coerceIn(0f, 0.90f),
         )
         val ambience = maxOf(lowT, midT, highT)
         orb(
@@ -785,7 +788,7 @@ internal fun GeminiOrbsBackdrop(
             cy = h * (0.88f + 0.04f * cos(b * 2f)),
             radius = w * 0.46f * (0.94f + 0.06f * sin(c)) * (1f + 0.08f * ambience),
             color = OrbGlowPeach,
-            alpha = 0.18f * baseScale + 0.22f * ambience,
+            alpha = (0.18f * baseScale + 0.22f * ambience + 0.34f * glow).coerceIn(0f, 0.72f),
         )
     }
 }

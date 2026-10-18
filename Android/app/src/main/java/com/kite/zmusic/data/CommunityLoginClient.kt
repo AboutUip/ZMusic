@@ -28,6 +28,9 @@ class CommunityLoginClient(
     suspend fun submitAllow(url: String, assertion: String): CommunitySubmitAck =
         post(url, JSONObject().put("assertion", assertion))
 
+    suspend fun grantApp(url: String, assertion: String): CommunitySubmitAck =
+        post(url, JSONObject().put("assertion", assertion))
+
     suspend fun submitDeny(url: String, sid: String): CommunitySubmitAck =
         post(
             url,
@@ -43,31 +46,13 @@ class CommunityLoginClient(
             .post(body.toString().toRequestBody(JSON_TYPE))
             .build()
         http.newCall(req).execute().use { resp ->
-            val text = resp.body?.string().orEmpty()
-            if (text.isBlank()) {
-                error("empty")
-            }
-            val json = runCatching { JSONObject(text) }.getOrElse {
-                error(t("提交失败"))
-            }
-            val bodyObj = json.optJSONObject("data") ?: json
-            val ok = jsonOk(bodyObj) || jsonOk(json)
-            val status = firstStatus(bodyObj, json)
-            val token = firstString(bodyObj, json, "app_token")
-                ?.takeIf { it.matches(TOKEN_RE) }
-            val uid = firstString(bodyObj, json, "uid")
-            CommunitySubmitAck(
-                ok = ok,
-                status = status,
-                appToken = if (ok) token else null,
-                uid = if (ok) uid else null,
-            )
+            parseCommunitySubmit(resp.body?.string().orEmpty())
         }
     }
 
     companion object {
         private val JSON_TYPE = "application/json; charset=utf-8".toMediaType()
-        private val TOKEN_RE = Regex("^[A-Za-z0-9_-]{16,128}$")
+        internal val TOKEN_RE = Regex("^[A-Za-z0-9_-]{16,128}$")
 
         private fun jsonOk(obj: JSONObject): Boolean = when (val value = obj.opt("ok")) {
             is Boolean -> value
@@ -82,6 +67,25 @@ class CommunityLoginClient(
                 if (status.isNotEmpty() && status != "null") return status
             }
             return ""
+        }
+
+        internal fun parseCommunitySubmit(text: String): CommunitySubmitAck {
+            if (text.isBlank()) error("empty")
+            val json = runCatching { JSONObject(text) }.getOrElse {
+                error(t("提交失败"))
+            }
+            val bodyObj = json.optJSONObject("data") ?: json
+            val ok = jsonOk(bodyObj) || jsonOk(json)
+            val status = firstStatus(bodyObj, json)
+            val token = firstString(bodyObj, json, "app_token")
+                ?.takeIf { it.matches(TOKEN_RE) }
+            val uid = firstString(bodyObj, json, "uid")
+            return CommunitySubmitAck(
+                ok = ok,
+                status = status,
+                appToken = if (ok) token else null,
+                uid = if (ok) uid else null,
+            )
         }
 
         private fun firstString(a: JSONObject, b: JSONObject, key: String): String? {

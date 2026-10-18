@@ -76,7 +76,8 @@ fun MainSectionContent(
                 onPlayTracks = onPlayTracks,
                 onPlaySong = onPlaySong,
                 onHint = onHint,
-                modifier = pageMod,
+                // 竖屏舞台要铺到状态栏后面，横屏仍把内容让开状态栏。
+                modifier = if (isLandscape) pageMod else modifier.fillMaxSize(),
             )
         }
         MainDestination.Features -> {

@@ -155,6 +155,18 @@ internal fun absoluteWordTimes(lineStartMs: Long, words: List<LyricWord>): List<
     return words.map { word -> word.copy(timeMs = word.timeMs + lineStartMs) }
 }
 
+/** 这个字唱到哪了。0 还没开始，1 已经唱完，中间按它自己的时长线性走。 */
+internal fun lyricWordProgress(word: LyricWord, positionMs: Long): Float {
+    val start = word.timeMs
+    val dur = word.durationMs.coerceAtLeast(1L)
+    val end = start + dur
+    return when {
+        positionMs <= start -> 0f
+        positionMs >= end -> 1f
+        else -> ((positionMs - start).toFloat() / dur.toFloat()).coerceIn(0f, 1f)
+    }
+}
+
 /**
  * 逐字渲染用的字时间。行开始早于首字时，把首字起点拉到行首并拉长时长，
  * 避免切到播放位后整行停在未唱色。时间轴固定，不会在首字真正开唱时跳回原时间

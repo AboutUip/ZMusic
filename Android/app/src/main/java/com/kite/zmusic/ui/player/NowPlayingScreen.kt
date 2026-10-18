@@ -323,7 +323,6 @@ fun NowPlayingScreen(
     val workshopAuth by app.workshopAuthStore.session.collectAsStateWithLifecycle()
     val listenUi by app.listenTogether.ui.collectAsStateWithLifecycle()
     val communityQr = rememberCommunityLoginOpener(
-        offerWebsite = true,
         onPlaySong = onPlayInsertSong,
     )
     var pendingOpenListen by remember { mutableStateOf(false) }
@@ -395,7 +394,11 @@ fun NowPlayingScreen(
     val duration = seekClock.durationMs
     val seekDisplayPos = seekClock.positionMs
     val displayPos = if (sliderDragging) sliderValue.toLong() else seekDisplayPos
-    val lyricPos = if (sliderDragging) sliderValue.toLong() else state.positionMs
+    val lyricPos = if (sliderDragging && (state.lyricTrackId <= 0L || state.lyricTrackId == track.id)) {
+        sliderValue.toLong()
+    } else {
+        state.lyricClockMs()
+    }
     // 歌词选择抽到小函数：避免在超大 Composable 里混用 List/Boolean 的 remember key（ART VerifyError）
     val lyricBundle = rememberDisplayLyrics(
         state = state,
@@ -1130,9 +1133,9 @@ fun NowPlayingScreen(
                     val srcW = with(portraitDensity) { bandBounds.width.toDp() }
                     val srcH = with(portraitDensity) { bandBounds.height.toDp() }
                     val lines = lyricLines
-                    val animActive = lyricAnimActiveIndex(lines, state.positionMs, state.durationMs)
+                    val animActive = lyricAnimActiveIndex(lines, lyricPos, state.durationMs)
                     val focus = lyricFocusIndex(lines, animActive)
-                    portraitLyricStyleFrozenPositionMs = state.positionMs
+                    portraitLyricStyleFrozenPositionMs = lyricPos
                     portraitLyricStyleSnapshot = LyricStyleSnapshot(
                         lines = lines,
                         focusIndex = focus,

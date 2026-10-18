@@ -15,6 +15,7 @@ import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
 import android.text.TextUtils
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.core.content.FileProvider
 import androidx.core.graphics.withClip
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
@@ -227,17 +228,8 @@ internal object ShareListenCard {
                 val file = UrlImageCache.diskFile(context, key)
                 if (!file.exists()) UrlImageCache.prefetch(context, key)
                 if (!file.exists()) return@runCatching null
-                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                BitmapFactory.decodeFile(file.absolutePath, bounds)
-                val shortest = minOf(bounds.outWidth, bounds.outHeight).coerceAtLeast(1)
-                var sample = 1
-                while (shortest / (sample * 2) >= minSide * 2) sample *= 2
-                val opts = BitmapFactory.Options().apply {
-                    inSampleSize = sample
-                    inPreferredConfig = Bitmap.Config.ARGB_8888
-                    inScaled = false
-                }
-                BitmapFactory.decodeFile(file.absolutePath, opts)
+                UrlImageCache.decodeSampledBitmap(file.readBytes(), minSide.coerceAtLeast(1))
+                    ?.asAndroidBitmap()
             }.getOrNull()
         }
     }

@@ -130,7 +130,7 @@ fun CreativeWorkshopScreen(
     val app = LocalContext.current.applicationContext as ZMusicApplication
     val auth by app.workshopAuthStore.session.collectAsStateWithLifecycle()
     val net by app.networkMode.state.collectAsStateWithLifecycle()
-    val communityQr = rememberCommunityLoginOpener(offerWebsite = true, onPlaySong = onPlaySong)
+    val communityQr = rememberCommunityLoginOpener(onPlaySong = onPlaySong)
     val pager = rememberPagerState(initialPage = 0, pageCount = { 2 })
     val scope = rememberCoroutineScope()
     val offline = net.phase == NetworkPhase.Offline
@@ -423,7 +423,7 @@ private fun WorkshopGate(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
-            t("首次确认社区身份"),
+            t("授权登录社区"),
             style = TextStyle(
                 color = MainPalette.Ink,
                 fontSize = 20.sp,
@@ -432,7 +432,7 @@ private fun WorkshopGate(
         )
         Spacer(Modifier.height(10.dp))
         Text(
-            t("扫一次社区登录码，社区会保存你的资料，之后创意工坊长期可用（含应用更新）。"),
+            t("点一次授权，社区会记住这个网易云账号。之后创意工坊、一起听和二楼都用这份登录，更新应用也不会掉。"),
             style = TextStyle(
                 color = MainPalette.Secondary,
                 fontSize = 14.sp,
@@ -452,7 +452,7 @@ private fun WorkshopGate(
                 .padding(horizontal = 22.dp, vertical = 12.dp),
         ) {
             Text(
-                t("去扫码确认"),
+                t("授权登录"),
                 style = TextStyle(
                     color = Color.White,
                     fontSize = 15.sp,

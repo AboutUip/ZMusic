@@ -186,6 +186,7 @@ class PlaylistCoordinator(
 
     private var loadJob: Job? = null
     private var lyricJob: Job? = null
+    private var lyricLoadFor = 0L
     private var prefetchJob: Job? = null
     private var tickerJob: Job? = null
     private var noticeJob: Job? = null
@@ -242,18 +243,28 @@ class PlaylistCoordinator(
                     val ui = _ui.value
                     val mediaId = exoPlayer.currentMediaItem?.mediaId
                     if (!PlaybackLoadGate.canCommitReady(ui.loadPending, mediaId, ui.currentTrack?.id)) {
+                        alignLyricsToPlayer()
+                        noteAudibleLyricPosition()
                         return
                     }
                     val d = exoPlayer.duration
                     val pos = exoPlayer.currentPosition.coerceAtLeast(0L)
+                    val playingId = LyricPlaybackAlign.playingTrackId(mediaId)
                     _ui.update {
+                        val lyricPos = if (it.lyricTrackId == playingId || it.lyricTrackId <= 0L) {
+                            pos
+                        } else {
+                            it.lyricPositionMs
+                        }
                         it.copy(
                             buffering = false,
                             loadPending = false,
                             positionMs = pos,
+                            lyricPositionMs = lyricPos,
                             durationMs = if (d > 0 && d != C.TIME_UNSET) d else it.durationMs,
                         )
                     }
+                    alignLyricsToPlayer()
                     persistSnapshot()
                 }
                 Player.STATE_BUFFERING -> _ui.update { it.copy(buffering = true) }
@@ -263,6 +274,10 @@ class PlaylistCoordinator(
                 }
                 Player.STATE_IDLE -> _ui.update { it.copy(buffering = false) }
             }
+        }
+
+        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            alignLyricsToPlayer()
         }
 
         override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -326,13 +341,16 @@ class PlaylistCoordinator(
             if (radioActive && playbackMode == PlaybackMode.SHUFFLE) {
                 playbackMode = PlaybackMode.ORDER
             }
-            val mem = snap.currentTrack?.id?.let { lyricRepository.peekPack(it) }
-            _ui.value = if (mem != null && mem.original.isNotEmpty()) {
+            val restoredId = snap.currentTrack?.id ?: 0L
+            val mem = if (restoredId > 0L) lyricRepository.peekPack(restoredId) else null
+            _ui.value = if (restoredId > 0L && mem != null && mem.original.isNotEmpty()) {
                 snap.copy(
                     lyricLines = mem.original,
                     translatedLyricLines = mem.translated,
                     wordLyricLines = mem.wordOriginal,
                     translatedWordLyricLines = mem.wordTranslated,
+                    lyricTrackId = restoredId,
+                    lyricPositionMs = snap.positionMs,
                     playbackMode = playbackMode,
                     fmActive = fmActive,
                     intelligenceActive = intelligenceActive,
@@ -345,12 +363,13 @@ class PlaylistCoordinator(
                 )
             }
             if (radioActive) ensureRadioLookahead()
-            snap.currentTrack?.id?.let { songId ->
+            if (restoredId > 0L) {
                 scope.launch {
                     val cookie = sessionRepository.session.value?.cookie.orEmpty()
-                    val pack = lyricRepository.loadBestEffort(songId, cookie, snap.currentTrack)
-                    if (_ui.value.currentTrack?.id == songId && pack.original.isNotEmpty()) {
-                        _ui.update { it.withLyricPack(pack) }
+                    val pack = lyricRepository.loadBestEffort(restoredId, cookie, snap.currentTrack)
+                    if (pack.original.isEmpty() || !lyricsMayBindTo(restoredId)) return@launch
+                    _ui.update {
+                        it.withLyricPack(pack, restoredId).copy(lyricPositionMs = it.lyricPositionMs)
                     }
                 }
             }
@@ -441,10 +460,6 @@ class PlaylistCoordinator(
                 error = null,
                 loadPending = true,
                 hasQueue = true,
-                lyricLines = emptyList(),
-                translatedLyricLines = emptyList(),
-                wordLyricLines = emptyList(),
-                translatedWordLyricLines = emptyList(),
                 sourcePlaylistId = sourcePlaylistId,
                 sourcePlaylistTitle = sourcePlaylistTitle,
                 playbackMode = playbackMode,
@@ -944,7 +959,13 @@ class PlaylistCoordinator(
         val from = exoPlayer.currentPosition.coerceAtLeast(0L)
         val jumped = kotlin.math.abs(target - from) > 400L
         exoPlayer.seekTo(target)
-        _ui.update { it.copy(positionMs = target) }
+        _ui.update {
+            if (it.lyricTrackId <= 0L || it.lyricTrackId == it.currentTrack?.id) {
+                it.copy(positionMs = target, lyricPositionMs = target)
+            } else {
+                it.copy(positionMs = target)
+            }
+        }
         // 大幅跳转且正在播放：1s 声音渐起，避免位置硬切
         if (jumped && exoPlayer.isPlaying) {
             persistentFocus.fadeInFromSilence(durationMs = 1_000L)
@@ -1082,6 +1103,8 @@ class PlaylistCoordinator(
         tickerJob = scope.launch {
             while (true) {
                 delay(200)
+                alignLyricsToPlayer()
+                noteAudibleLyricPosition()
                 val ui = _ui.value
                 val st = exoPlayer.playbackState
                 if (!ui.loadPending && ui.currentTrack != null) {
@@ -1118,7 +1141,14 @@ class PlaylistCoordinator(
                     playerPositionMs = exoPlayer.currentPosition,
                     uiPositionMs = ui.positionMs,
                 ) ?: continue
-                _ui.update { it.copy(positionMs = pos) }
+                val playingId = LyricPlaybackAlign.playingTrackId(exoPlayer.currentMediaItem?.mediaId)
+                _ui.update {
+                    if (it.lyricTrackId == playingId || it.lyricTrackId <= 0L || it.lyricTrackId == it.currentTrack?.id) {
+                        it.copy(positionMs = pos, lyricPositionMs = pos)
+                    } else {
+                        it.copy(positionMs = pos)
+                    }
+                }
                 val dur = when {
                     exoPlayer.duration > 0L && exoPlayer.duration != C.TIME_UNSET ->
                         exoPlayer.duration
@@ -1525,14 +1555,12 @@ class PlaylistCoordinator(
                 error = null,
                 positionMs = startPos,
                 durationMs = track.durationMs.coerceAtLeast(0L),
-                lyricLines = cachedLyrics?.original.orEmpty(),
-                translatedLyricLines = cachedLyrics?.translated.orEmpty(),
-                wordLyricLines = cachedLyrics?.wordOriginal.orEmpty(),
-                translatedWordLyricLines = cachedLyrics?.wordTranslated.orEmpty(),
                 isPlaying = false,
                 playWhenReady = false,
             )
         }
+        alignLyricsToPlayer()
+        noteAudibleLyricPosition()
         // 切歌：只暂停旧曲，勿 stop/clearMediaItems —— 清空播放列表会拆掉 Media3 通知再重建，触发系统 FGS 警告
         exoPlayer.playWhenReady = false
         refreshPeeksAndPrefetch()
@@ -1550,16 +1578,17 @@ class PlaylistCoordinator(
                 } else {
                     null
                 }
-                if (localLyrics != null && localLyrics.original.isNotEmpty() &&
-                    _ui.value.currentTrack?.id == track.id
-                ) {
-                    _ui.update { it.withLyricPack(localLyrics) }
-                } else if (_ui.value.lyricLines.isEmpty() ||
-                    cachedLyrics?.translationResolved != true
+                if (localLyrics != null && localLyrics.original.isNotEmpty()) {
+                    if (lyricsMayBindTo(track.id)) {
+                        _ui.update { it.withLyricPack(localLyrics, track.id) }
+                    }
+                } else if (cachedLyrics == null ||
+                    cachedLyrics.original.isEmpty() ||
+                    !cachedLyrics.translationResolved
                 ) {
                     val diskOrNet = lyricRepository.loadBestEffort(track.id, cookie, track)
-                    if (diskOrNet.original.isNotEmpty() && _ui.value.currentTrack?.id == track.id) {
-                        _ui.update { it.withLyricPack(diskOrNet) }
+                    if (diskOrNet.original.isNotEmpty() && lyricsMayBindTo(track.id)) {
+                        _ui.update { it.withLyricPack(diskOrNet, track.id) }
                     }
                 }
                 // 已被更新的快切目标取代则放弃
@@ -1728,12 +1757,71 @@ class PlaylistCoordinator(
             .build()
     }
 
+    private fun lyricsMayBindTo(trackId: Long): Boolean = LyricPlaybackAlign.mayBindLyrics(
+        playingTrackId = LyricPlaybackAlign.playingTrackId(exoPlayer.currentMediaItem?.mediaId),
+        queueTrackId = _ui.value.currentTrack?.id ?: 0L,
+        lyricTargetId = trackId,
+    )
+
+    /** 播放器曲目已经换了，而界面歌词还是另一首时，立刻换成正在响的那首。 */
+    private fun alignLyricsToPlayer() {
+        val playingId = LyricPlaybackAlign.playingTrackId(exoPlayer.currentMediaItem?.mediaId)
+        if (!LyricPlaybackAlign.needsRepair(playingId, _ui.value.lyricTrackId)) return
+        val known = _ui.value.queue.any { it.id == playingId } || _ui.value.currentTrack?.id == playingId
+        if (!LyricPlaybackAlign.shouldReplaceLyrics(playingId, _ui.value.lyricTrackId, known)) return
+        val track = _ui.value.queue.firstOrNull { it.id == playingId }
+            ?: _ui.value.currentTrack?.takeIf { it.id == playingId }
+            ?: return
+        val pos = exoPlayer.currentPosition.coerceAtLeast(0L)
+        val cached = lyricRepository.peekPack(playingId)?.takeIf { it.original.isNotEmpty() }
+        if (cached != null) {
+            _ui.update { cur ->
+                if (!LyricPlaybackAlign.needsRepair(playingId, cur.lyricTrackId)) cur
+                else cur.withLyricPack(cached, playingId).copy(lyricPositionMs = pos)
+            }
+            if (!cached.translationResolved) {
+                val cookie = sessionRepository.session.value?.cookie.orEmpty()
+                loadLyricsAsync(track, cookie)
+            }
+            return
+        }
+        _ui.update { cur ->
+            if (!LyricPlaybackAlign.needsRepair(playingId, cur.lyricTrackId)) cur
+            else cur.clearLyricsFor(playingId).copy(lyricPositionMs = pos)
+        }
+        val cookie = sessionRepository.session.value?.cookie.orEmpty()
+        loadLyricsAsync(track, cookie)
+    }
+
+    /** 进度条已切走时，歌词进度继续跟还在响的那一首，不跟进度条。 */
+    private fun noteAudibleLyricPosition() {
+        val playingId = LyricPlaybackAlign.playingTrackId(exoPlayer.currentMediaItem?.mediaId)
+        val ui = _ui.value
+        if (playingId <= 0L || ui.lyricTrackId != playingId) return
+        if (ui.currentTrack?.id == playingId) return
+        val st = exoPlayer.playbackState
+        if (st == Player.STATE_IDLE || st == Player.STATE_ENDED) return
+        val pos = exoPlayer.currentPosition.coerceAtLeast(0L)
+        if (pos == ui.lyricPositionMs) return
+        _ui.update { cur ->
+            if (cur.lyricTrackId == playingId && cur.currentTrack?.id != playingId) {
+                cur.copy(lyricPositionMs = pos)
+            } else {
+                cur
+            }
+        }
+    }
+
     private fun loadLyricsAsync(track: TrackRow, cookie: String) {
+        if (lyricJob?.isActive == true && lyricLoadFor == track.id) return
         lyricJob?.cancel()
+        lyricLoadFor = track.id
         lyricJob = scope.launch {
             val pack = lyricRepository.loadBestEffort(track.id, cookie, track)
-            if (_ui.value.currentTrack?.id == track.id) {
-                _ui.update { it.withLyricPack(pack) }
+            if (pack.original.isEmpty() || !lyricsMayBindTo(track.id)) return@launch
+            _ui.update { cur ->
+                if (!lyricsMayBindTo(track.id)) cur
+                else cur.withLyricPack(pack, track.id)
             }
         }
     }
