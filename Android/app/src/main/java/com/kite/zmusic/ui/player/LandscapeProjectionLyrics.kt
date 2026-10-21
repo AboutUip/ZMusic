@@ -85,6 +85,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -591,6 +592,14 @@ internal fun LandscapeProjectionLyrics(
 
     // 选句进入：不滚动列表，仅水平滑入挖孔，避免丢焦点
 
+    val sweepSync = rememberLyricSweepSync(
+        lines = lines,
+        displayedIndex = visualPlayFocus,
+        trackDurationMs = trackDurationMs,
+        positionMs = positionMs,
+        clockRunning = clockRunning,
+    )
+    CompositionLocalProvider(LocalLyricSweepSync provides sweepSync) {
     BoxWithConstraints(
         modifier.fillMaxSize(),
     ) {
@@ -990,6 +999,7 @@ internal fun LandscapeProjectionLyrics(
                 }
             }
         }
+    }
     }
 }
 

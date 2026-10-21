@@ -637,6 +637,15 @@ internal object NcmLibraryParse {
         )
     }
 
+    /**
+     * 歌单磁盘缓存写过 `fee` 的代际。
+     * 旧文件没有这个字段，曲目上的 `fee` 缺省成 0，不能当成「不是 VIP」。
+     */
+    const val TRACK_FEE_CACHE_REVISION = 1
+
+    fun trackFeeCacheTrusted(root: JSONObject): Boolean =
+        root.optInt("feeRevision", 0) >= TRACK_FEE_CACHE_REVISION
+
     /** 歌曲对象上的 `fee`；缺失时读嵌套 `privilege.fee`。 */
     fun songFee(t: JSONObject): Int {
         if (t.has("fee") && !t.isNull("fee")) return t.optInt("fee", 0)
@@ -758,6 +767,10 @@ internal object NcmLibraryParse {
                 durationMs = incoming.durationMs.takeIf { it > 0L } ?: old.durationMs,
                 coverUrl = cover,
                 artistRefs = incoming.artistRefs.ifEmpty { old.artistRefs },
+                localAudioUri = incoming.localAudioUri ?: old.localAudioUri,
+                localFolder = incoming.localFolder ?: old.localFolder,
+                localLyricUri = incoming.localLyricUri ?: old.localLyricUri,
+                localTransLyricUri = incoming.localTransLyricUri ?: old.localTransLyricUri,
             ),
             old,
         )

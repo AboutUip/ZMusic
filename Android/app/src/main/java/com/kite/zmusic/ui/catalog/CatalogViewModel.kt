@@ -237,7 +237,7 @@ open class CatalogViewModel(
                 }
                 if (!force && _list.value.tracks.isNotEmpty()) {
                     _list.update { it.copy(refreshing = false, loading = false) }
-                    val needsOrderFix = liked == null || liked.displayIds.isEmpty()
+                    val needsOrderFix = liked == null || liked.displayIds.isEmpty() || !liked.feeTrusted
                     if (!needsOrderFix) return@launch
                     cookieOrNull() ?: return@launch
                     try {
@@ -285,9 +285,11 @@ open class CatalogViewModel(
                     ?.takeIf { it.playlistId == id && it.tracks.isNotEmpty() }
                 if (cached != null) {
                     applyPlaylistEntry(cached, title, seededCover)
-                    refreshSubscribeMeta(id)
-                    _list.update { it.copy(refreshing = false, loading = false, error = null) }
-                    return@launch
+                    if (cached.feeTrusted) {
+                        refreshSubscribeMeta(id)
+                        _list.update { it.copy(refreshing = false, loading = false, error = null) }
+                        return@launch
+                    }
                 }
             } else if (_list.value.playlistId == id && _list.value.tracks.isNotEmpty()) {
                 _list.update { it.copy(refreshing = true, error = null) }

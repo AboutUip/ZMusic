@@ -111,6 +111,7 @@ import com.kite.zmusic.ui.home.homeStageFollow
 import com.kite.zmusic.ui.home.LocalLoftChromeReveal
 import com.kite.zmusic.ui.home.LocalMainFloorLocked
 import com.kite.zmusic.ui.home.homeLoftChromeReveal
+import com.kite.zmusic.ui.home.loftHitBlock
 import com.kite.zmusic.ui.home.MainFloorLock
 import com.kite.zmusic.ui.home.MainLoftHost
 import com.kite.zmusic.ui.common.PredictiveBackAxis
@@ -1125,15 +1126,8 @@ fun MainShell(
                         val track = music.first
                         if (track != null) {
                             val leave = spaceChromeLeave(userSpaceProgress)
-                            PlaybackIsland(
-                                track = track,
-                                isPlaying = music.second,
-                                landscape = landscape,
-                                handoffNotices = leave < 0.2f && loftChrome > 0.8f,
-                                onOpen = { openFullPlayer() },
-                                onTogglePlay = { playback.togglePlayPause() },
-                                backdrop = backdrop,
-                                modifier = Modifier
+                            Box(
+                                Modifier
                                     .align(Alignment.TopCenter)
                                     .zIndex(45f)
                                     .windowInsetsPadding(
@@ -1144,7 +1138,21 @@ fun MainShell(
                                         alpha = ((1f - leave) * loftChrome).coerceIn(0f, 1f)
                                         translationY = leave * -28f + (1f - loftChrome) * -24.dp.toPx()
                                     },
-                            )
+                            ) {
+                                PlaybackIsland(
+                                    track = track,
+                                    isPlaying = music.second,
+                                    landscape = landscape,
+                                    handoffNotices = leave < 0.2f && loftChrome > 0.8f,
+                                    onOpen = { openFullPlayer() },
+                                    onTogglePlay = { playback.togglePlayPause() },
+                                    backdrop = backdrop,
+                                )
+                                if (loftOpen) {
+                                    // 音乐岛画在二楼上面。打开过程里透明度近 0 时仍会接到播放。
+                                    Box(Modifier.matchParentSize().loftHitBlock())
+                                }
+                            }
                         }
                     }
                     val railInset = if (landscape) {
@@ -1300,6 +1308,10 @@ fun MainShell(
                                 }
                             }
                             }
+                        }
+                        if (loftOpen) {
+                            // 底栏画在二楼上面。打开过程里点底部会进到迷你播放器，而不是二楼。
+                            Box(Modifier.matchParentSize().loftHitBlock())
                         }
                     }
                     }

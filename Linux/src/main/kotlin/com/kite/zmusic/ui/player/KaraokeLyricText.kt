@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
@@ -19,6 +20,14 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import com.kite.zmusic.data.LyricWord
+
+/** 按字填色跟切句提前量。没有提供时按字面时间。 */
+internal data class LyricSweepSync(
+    val leadMs: Long = 0L,
+    val lineEndMs: Long = Long.MAX_VALUE,
+)
+
+internal val LocalLyricSweepSync = compositionLocalOf { LyricSweepSync() }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -46,7 +55,9 @@ internal fun KaraokeLyricText(
         maxLines = maxLines.coerceAtLeast(1),
     ) {
         words.forEach { word ->
-            val color = wordColor(word, pos, playingColor, unplayedColor)
+            val sync = LocalLyricSweepSync.current
+            val progress = lyricSweepProgress(word, pos, sync.leadMs, sync.lineEndMs)
+            val color = wordColor(progress, playingColor, unplayedColor)
             Text(
                 text = word.text,
                 color = color,
@@ -60,23 +71,10 @@ internal fun KaraokeLyricText(
 }
 
 internal fun wordColor(
-    word: LyricWord,
-    positionMs: Long,
+    progress: Float,
     playingColor: Color,
     unplayedColor: Color,
-): Color {
-    val start = word.timeMs
-    val dur = word.durationMs.coerceAtLeast(1L)
-    val end = start + dur
-    return when {
-        positionMs <= start -> unplayedColor
-        positionMs >= end -> playingColor
-        else -> {
-            val t = ((positionMs - start).toFloat() / dur.toFloat()).coerceIn(0f, 1f)
-            lerp(unplayedColor, playingColor, t)
-        }
-    }
-}
+): Color = lerp(unplayedColor, playingColor, progress.coerceIn(0f, 1f))
 
 @Composable
 internal fun rememberSmoothedLyricPositionMs(

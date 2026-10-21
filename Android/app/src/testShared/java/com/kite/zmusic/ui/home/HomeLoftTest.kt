@@ -71,6 +71,16 @@ class HomeLoftTest {
     }
 
     @Test
+    fun openLoftStillBlocksTheFloorAfterTheTransitionInterceptorLeaves() {
+        assertEquals(true, homeLoftBlocksUnderlyingPointers(open = true, reveal = 1f))
+        assertEquals(false, homeLoftInterceptsFloor(open = true, reveal = 1f))
+        assertEquals(true, homeLoftBlocksUnderlyingPointers(open = true, reveal = 0.2f))
+        assertEquals(true, homeLoftBlocksUnderlyingPointers(open = false, reveal = 0.4f))
+        assertEquals(false, homeLoftBlocksUnderlyingPointers(open = false, reveal = 0f))
+        assertEquals(false, homeLoftBlocksUnderlyingPointers(open = false, reveal = 0.01f))
+    }
+
+    @Test
     fun navigationUnlocksAsSoonAsTheLoftStartsClosing() {
         assertEquals(true, homeLoftLocksNavigation(open = true))
         assertEquals(false, homeLoftLocksNavigation(open = false))

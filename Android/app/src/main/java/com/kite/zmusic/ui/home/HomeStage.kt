@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
@@ -26,6 +27,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Rect
@@ -94,12 +96,10 @@ internal const val HomeStageTravelFraction = 0.74f
 
 private const val HomeStageOpenScale = 0.86f
 private const val HomeStageOpenRotation = -18f
-/** 左面板绕中线转，靠缝的一边退进屏幕。正值让右侧远离眼前。 */
-private const val HomeStageSidebarRotation = 18f
 /** 拉开后两块面板之间的缝，占屏宽的比例。 */
 internal const val HomeStageGapFraction = 0.12f
-/** 左面板上下留白，边才不会贴死屏幕、把透视裁掉。左缘贴屏幕。 */
-internal const val HomeStageSidebarInsetYFraction = 0.05f
+/** 左缘伸出屏幕，盖住背景平移留下的缝，屏幕上看不见这条边。 */
+private val HomeStageSidebarBleed = 48.dp
 private val HomeStageSidebarShape = RoundedCornerShape(
     topEnd = 36.dp,
     bottomEnd = 36.dp,
@@ -125,7 +125,6 @@ internal data class HomeStageFrame(
     val shadowPx: Float,
     val cavityTranslationX: Float,
     val wingTranslationX: Float,
-    val wingRotationY: Float,
 )
 
 internal fun homeStageFrame(
@@ -145,20 +144,24 @@ internal fun homeStageFrame(
         shadowPx = shadowPx * p,
         cavityTranslationX = cavityDriftPx * p,
         wingTranslationX = -wingLagPx * (1f - p),
-        wingRotationY = HomeStageSidebarRotation * p,
     )
 }
 
 /**
- * 侧栏贴左缘，右缘停在景片左边。上下缩进，绕 Y 转时上下边收成梯形。
+ * 侧栏右缘停在景片左边，上下贴齐屏幕。左缘按 [bleedPx] 伸出屏幕，不绕 Y 转，
+ * 所以左缘和上下缘都不会在屏幕里收成斜边或竖边。
  */
-internal fun homeStageSidebarRect(progress: Float, widthPx: Float, heightPx: Float): Rect {
+internal fun homeStageSidebarRect(
+    progress: Float,
+    widthPx: Float,
+    heightPx: Float,
+    bleedPx: Float,
+): Rect {
     val p = progress.coerceIn(0f, 1f)
     val pageLeft = widthPx * HomeStageTravelFraction * p
     val gap = widthPx * HomeStageGapFraction * p
     val right = (pageLeft - gap).coerceAtLeast(0f)
-    val insetY = heightPx * HomeStageSidebarInsetYFraction * p
-    return Rect(0f, insetY, right, (heightPx - insetY).coerceAtLeast(insetY))
+    return Rect(-bleedPx * p, 0f, right, heightPx)
 }
 
 /** 景片绕左缘中点缩放。矩形是未旋转的占位，用来把液态背景让开。 */
@@ -177,9 +180,16 @@ internal fun homeStageProgressForDelta(current: Float, deltaPx: Float, widthPx: 
     return (current + deltaPx / travel).coerceIn(0f, 1f)
 }
 
+/** 还没过触摸阈值时返回 null。true 表示这是水平拖。 */
+internal fun homeStageDragAxis(totalX: Float, totalY: Float, slopPx: Float): Boolean? {
+    if (abs(totalX) < slopPx && abs(totalY) < slopPx) return null
+    return abs(totalX) >= abs(totalY) * 1.2f
+}
+
 /**
  * 未决定时返回 null。关上时向右拖拉出侧栏，向左拖留给底栏翻页。
  * 拉开之后两个方向都跟主页走。
+ * 水平滚动的子组件要先滚，见 [homeStageYieldsToHorizontalChild]。
  */
 internal fun homeStageClaimsDrag(
     progress: Float,
@@ -187,10 +197,63 @@ internal fun homeStageClaimsDrag(
     totalY: Float,
     slopPx: Float,
 ): Boolean? {
-    if (abs(totalX) < slopPx && abs(totalY) < slopPx) return null
-    if (abs(totalX) < abs(totalY) * 1.2f) return false
+    val horizontal = homeStageDragAxis(totalX, totalY, slopPx) ?: return null
+    if (!horizontal) return false
     if (progress > 0.02f) return true
     return totalX > 0f
+}
+
+/** 侧栏还关着，且手指按在轮播或横滑列表上。拉开之后主页自己跟手。 */
+internal fun homeStageYieldsToHorizontalChild(progress: Float, onHorizontalChild: Boolean): Boolean =
+    progress <= 0.02f && onHorizontalChild
+
+private class HomeStageHorizontalTouch {
+    var holding: Boolean = false
+}
+
+private val LocalHomeStageDrawer = staticCompositionLocalOf { false }
+
+private val LocalHomeStageHorizontalTouch = staticCompositionLocalOf<HomeStageHorizontalTouch?> { null }
+
+/**
+ * 标在本身能横向滚的组件上。按下时告诉侧栏：这次手势归这里。
+ * 底栏翻页也会消费水平拖，不能靠「有没有被消费」来判断，否则侧栏永远打不开。
+ */
+internal fun Modifier.homeStageHorizontalContent(): Modifier = composed {
+    val touch = LocalHomeStageHorizontalTouch.current ?: return@composed this
+    pointerInput(touch) {
+        awaitEachGesture {
+            val down = awaitFirstDown(
+                requireUnconsumed = false,
+                pass = PointerEventPass.Initial,
+            )
+            touch.holding = true
+            try {
+                val slop = viewConfiguration.touchSlop
+                var totalX = 0f
+                var totalY = 0f
+                var horizontal: Boolean? = null
+                while (true) {
+                    val event = awaitPointerEvent(PointerEventPass.Final)
+                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                    if (change.changedToUp()) break
+                    val delta = change.positionChangeIgnoreConsumed()
+                    totalX += delta.x
+                    totalY += delta.y
+                    if (horizontal == null) {
+                        when (homeStageDragAxis(totalX, totalY, slop)) {
+                            null -> continue
+                            false -> break
+                            true -> horizontal = true
+                        }
+                    }
+                    change.consume()
+                }
+            } finally {
+                touch.holding = false
+            }
+        }
+    }
 }
 
 internal fun homeStageSettlesOpen(progress: Float, velocityX: Float): Boolean {
@@ -257,8 +320,10 @@ internal fun HomeStageDrawer(
     }
     val card = homeStageCardRect(frame, widthPx, heightPx)
     val edgePx = with(density) { HomeStageEdge.toPx() }
+    val horizontalTouch = remember { HomeStageHorizontalTouch() }
+    var horizontalChildGesture by remember { mutableStateOf(false) }
     SideEffect {
-        pagerBlock?.blocked = progress > 0.001f
+        pagerBlock?.blocked = progress > 0.001f || horizontalChildGesture
         pose?.progress = progress
         pose?.translationX = frame.pageTranslationX
         pose?.scale = frame.pageScale
@@ -292,7 +357,7 @@ internal fun HomeStageDrawer(
                     Rect(0f, 0f, edgePx, coords.size.height.toFloat())
                 }
             }
-            .pointerInput(floorLocked) {
+            .pointerInput(floorLocked, horizontalTouch) {
                 if (floorLocked) return@pointerInput
                 val slop = viewConfiguration.touchSlop
                 awaitEachGesture {
@@ -300,10 +365,26 @@ internal fun HomeStageDrawer(
                         requireUnconsumed = false,
                         pass = PointerEventPass.Initial,
                     )
+                    val origin = dragProgress ?: anim.value
+                    val downFinal = awaitPointerEvent(PointerEventPass.Final)
+                    val downChange = downFinal.changes.firstOrNull { it.id == down.id }
+                    if (downChange == null || downChange.changedToUp()) return@awaitEachGesture
+                    if (homeStageYieldsToHorizontalChild(origin, horizontalTouch.holding)) {
+                        horizontalChildGesture = true
+                        try {
+                            while (true) {
+                                val rest = awaitPointerEvent(PointerEventPass.Final)
+                                val resting = rest.changes.firstOrNull { it.id == down.id } ?: break
+                                if (resting.changedToUp()) break
+                            }
+                        } finally {
+                            horizontalChildGesture = false
+                        }
+                        return@awaitEachGesture
+                    }
                     var totalX = 0f
                     var totalY = 0f
                     var claimed: Boolean? = null
-                    val origin = dragProgress ?: anim.value
                     val tracker = VelocityTracker()
                     tracker.addPosition(down.uptimeMillis, down.position)
                     while (true) {
@@ -323,9 +404,7 @@ internal fun HomeStageDrawer(
                             }
                             break
                         }
-                        if (change.isConsumed) {
-                            if (claimed != true) break
-                        }
+                        if (change.isConsumed && claimed != true) break
                         val delta = change.positionChangeIgnoreConsumed()
                         totalX += delta.x
                         totalY += delta.y
@@ -348,7 +427,8 @@ internal fun HomeStageDrawer(
             },
     ) {
         if (progress > 0.001f && widthPx > 1f) {
-            val side = homeStageSidebarRect(progress, widthPx, heightPx)
+            val sideBleedPx = with(density) { HomeStageSidebarBleed.toPx() }
+            val side = homeStageSidebarRect(progress, widthPx, heightPx, sideBleedPx)
             Box(
                 Modifier
                     .fillMaxSize()
@@ -370,14 +450,7 @@ internal fun HomeStageDrawer(
                             height = with(density) { side.height.toDp() },
                         )
                         .graphicsLayer {
-                            cameraDistance = 22f * densityScale
-                            // 绕面板中线，而不是靠缝的那条边。那条边若是支点，转完仍是直线。
-                            transformOrigin = TransformOrigin(0.5f, 0.5f)
                             translationX = frame.wingTranslationX
-                            rotationY = frame.wingRotationY
-                            shadowElevation = 18.dp.toPx() * progress
-                            shape = HomeStageSidebarShape
-                            clip = false
                         }
                         .clip(HomeStageSidebarShape),
                 ) {
@@ -416,7 +489,12 @@ internal fun HomeStageDrawer(
                     shadowElevation = frame.shadowPx
                 },
         ) {
-            content()
+            CompositionLocalProvider(
+                LocalHomeStageDrawer provides true,
+                LocalHomeStageHorizontalTouch provides horizontalTouch,
+            ) {
+                content()
+            }
             if (progress > 0.04f) {
                 Box(
                     Modifier

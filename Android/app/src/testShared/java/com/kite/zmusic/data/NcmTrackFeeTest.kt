@@ -76,4 +76,32 @@ class NcmTrackFeeTest {
         assertEquals(0, restoredFree?.fee)
         assertFalse(restoredFree!!.isVipSong)
     }
+
+    @Test
+    fun oldPlaylistCacheWithoutFeeRevisionIsUntrusted() {
+        assertFalse(NcmLibraryParse.trackFeeCacheTrusted(JSONObject()))
+        assertFalse(NcmLibraryParse.trackFeeCacheTrusted(JSONObject().put("feeRevision", 0)))
+        assertTrue(
+            NcmLibraryParse.trackFeeCacheTrusted(
+                JSONObject().put("feeRevision", NcmLibraryParse.TRACK_FEE_CACHE_REVISION),
+            ),
+        )
+    }
+
+    @Test
+    fun refreshingFeeKeepsLocalAudioOnAPreviouslyCachedSong() {
+        val cached = TrackRow(
+            id = 2L,
+            name = "Vip",
+            artists = "B",
+            album = null,
+            durationMs = 1000L,
+            fee = 0,
+            localAudioUri = "content://song",
+        )
+        val fresh = cached.copy(fee = 1, localAudioUri = null)
+        val merged = NcmLibraryParse.preferExistingCover(cached, fresh)
+        assertTrue(merged.isVipSong)
+        assertEquals("content://song", merged.localAudioUri)
+    }
 }

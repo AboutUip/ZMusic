@@ -9,6 +9,7 @@ import com.kite.zmusic.data.HomeBanner
 import com.kite.zmusic.data.HomeFeed
 import com.kite.zmusic.data.HomeFeedRepository
 import com.kite.zmusic.data.LrcLine
+import com.kite.zmusic.data.LyricWord
 import com.kite.zmusic.data.LrcParser
 import com.kite.zmusic.data.NcmHomeParse
 import com.kite.zmusic.data.NcmJson
@@ -29,9 +30,13 @@ import com.kite.zmusic.playback.PlaybackMode
 import com.kite.zmusic.ui.catalog.parseSearchHits
 import com.kite.zmusic.ui.player.lyricActiveIndex
 import com.kite.zmusic.ui.player.lyricAnimActiveIndex
+import com.kite.zmusic.ui.player.lyricAnimTiming
 import com.kite.zmusic.ui.player.lyricAnimTimingForWindow
 import com.kite.zmusic.ui.player.lyricFocusIndex
 import com.kite.zmusic.ui.player.lyricIsLive
+import com.kite.zmusic.ui.player.lyricLineEndMs
+import com.kite.zmusic.ui.player.lyricSweepLeadMs
+import com.kite.zmusic.ui.player.lyricSweepProgress
 import com.kite.zmusic.ui.theme.LinuxSystemTheme
 import com.kite.zmusic.ui.main.MainOverlay
 import com.kite.zmusic.ui.main.OverlayStack
@@ -564,6 +569,28 @@ class LyricTimingLogicTest {
         assertTrue(tight.leadMs < wide.leadMs)
         val lines = listOf(LrcLine(0, "a"), LrcLine(400, "b"))
         assertTrue(lyricAnimActiveIndex(lines, 200, 0) >= 0)
+    }
+
+    @Test
+    fun wordColorFinishesTheLastWordWhenTheLineSwitches() {
+        val lines = listOf(
+            LrcLine(
+                timeMs = 0L,
+                text = "你好",
+                words = listOf(
+                    LyricWord(0L, 500L, "你"),
+                    LyricWord(500L, 500L, "好"),
+                ),
+            ),
+            LrcLine(timeMs = 1_000L, text = "世界"),
+        )
+        val at = 200L
+        assertEquals(lyricAnimTiming(lines, at, 0L).leadMs, lyricSweepLeadMs(lines, 0, 0L))
+        val lead = lyricSweepLeadMs(lines, 0, 0L)
+        val lineEnd = lyricLineEndMs(lines, 0, 0L)
+        val switchAt = lineEnd - lead
+        assertEquals(1, lyricAnimActiveIndex(lines, switchAt, 0L))
+        assertEquals(1f, lyricSweepProgress(lines[0].words.last(), switchAt, lead, lineEnd), 0.001f)
     }
 }
 

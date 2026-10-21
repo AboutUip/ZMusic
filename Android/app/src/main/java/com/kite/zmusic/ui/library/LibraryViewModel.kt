@@ -292,14 +292,15 @@ class LibraryViewModel(
                         playlists = LibraryHomeRepository.mergeHeartTrackCount(it.playlists, cached),
                     )
                 }
-                return@launch
-            }
-            _ui.update {
-                it.copy(
-                    sheetIsHeart = true,
-                    sheetRefreshing = false,
-                    sheet = LibrarySheet.Loading(playlistId, title),
-                )
+                if (cached.feeTrusted) return@launch
+            } else {
+                _ui.update {
+                    it.copy(
+                        sheetIsHeart = true,
+                        sheetRefreshing = false,
+                        sheet = LibrarySheet.Loading(playlistId, title),
+                    )
+                }
             }
             try {
                 val snap = likedPlaylistRepository.forceRefresh()
@@ -337,11 +338,16 @@ class LibraryViewModel(
                 if (!isActive) return@launch
                 _ui.update {
                     it.copy(
-                        sheet = LibrarySheet.Failed(
-                            playlistId,
-                            title,
-                            NcmJson.userFacingThrowable(e, "加载曲目失败"),
-                        ),
+                        sheetRefreshing = false,
+                        sheet = if (it.sheet is LibrarySheet.Ready) {
+                            it.sheet
+                        } else {
+                            LibrarySheet.Failed(
+                                playlistId,
+                                title,
+                                NcmJson.userFacingThrowable(e, "加载曲目失败"),
+                            )
+                        },
                     )
                 }
             }
@@ -376,7 +382,7 @@ class LibraryViewModel(
                         ),
                     )
                 }
-                if (!forceNetwork) return@launch
+                if (!forceNetwork && cached.feeTrusted) return@launch
             } else {
                 _ui.update {
                     it.copy(

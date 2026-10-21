@@ -115,9 +115,13 @@ internal fun LongLyricText(
     }
     val pos = rememberSmoothedLyricPositionMs(positionMs, tracking)
     val karaokeColor = unplayedColor?.takeIf { words.isNotEmpty() }
+    val wordSync = if (karaokeColor != null) LocalLyricSweepSync.current else null
+    val sungAt = if (wordSync != null) lyricSweepClockMs(pos, wordSync.leadMs) else pos
     HorizontalLyricViewport(
         motion = if (karaokeColor != null) {
-            LongLyricMotion.Karaoke(longLyricSungFraction(words, pos))
+            LongLyricMotion.Karaoke(
+                longLyricSungFraction(words, sungAt, wordSync?.lineEndMs ?: Long.MAX_VALUE),
+            )
         } else {
             LongLyricMotion.Timed(longLyricProgress(pos, lineStartMs, lineSpanMs))
         },

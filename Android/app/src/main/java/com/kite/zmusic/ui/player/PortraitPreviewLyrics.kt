@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
@@ -116,6 +117,14 @@ internal fun PortraitPreviewLyrics(
             onClick = onOpenLyrics,
         )
 
+    val sweepSync = rememberLyricSweepSync(
+        lines = lines,
+        displayedIndex = focus,
+        trackDurationMs = durationMs,
+        positionMs = positionMs,
+        clockRunning = clockRunning,
+    )
+    CompositionLocalProvider(LocalLyricSweepSync provides sweepSync) {
     if (!fancy) {
         PreviewLyricStaticColumn(
             lines = lines,
@@ -136,7 +145,7 @@ internal fun PortraitPreviewLyrics(
             clockRunning = clockRunning,
             modifier = rootMod,
         )
-        return
+        return@CompositionLocalProvider
     }
 
     val density = LocalDensity.current
@@ -311,6 +320,7 @@ internal fun PortraitPreviewLyrics(
                 )
             }
         }
+    }
     }
 }
 

@@ -232,11 +232,43 @@ internal fun homeLoftIndicatorExitAlpha(leave: Float): Float {
 internal fun homeLoftIndicatorExitScale(leave: Float): Float =
     1f - 0.16f * leave.coerceIn(0f, 1f)
 
-/** 圆还在盖住一楼时才拦截点击。完全打开的二楼和已经回到一楼都不拦截。 */
+/**
+ * 圆还在过渡时整屏接住手势，用来跟手关掉。
+ * 完全打开后必须拆掉，否则二楼自己的点击、滚动和输入会被吃掉。
+ */
 internal fun homeLoftInterceptsFloor(open: Boolean, reveal: Float): Boolean {
     val locked = open || reveal > 0.01f
     val fullyOpen = open && reveal > 0.98f
     return locked && !fullyOpen
+}
+
+/**
+ * 二楼还占着屏幕时，一楼不能再接到点击。
+ * 和 [homeLoftInterceptsFloor] 不是一回事：完全打开后过渡拦截会拆掉，
+ * 但一楼的歌单和播放控件还在下面，必须继续挡住。
+ */
+internal fun homeLoftBlocksUnderlyingPointers(open: Boolean, reveal: Float): Boolean =
+    open || reveal > 0.01f
+
+/**
+ * 让这块区域成为命中目标。
+ * Compose 里 background、clip、padding、graphicsLayer 只影响绘制，点在上面会穿过，落到后面的兄弟节点。
+ * 不消费事件。挂在二楼内容外面时，消息、输入框和按钮照常接到自己范围内的点击；
+ * 导航栏留白、页边距这些没有命中目标的空隙才落在这里，不会再进一楼。
+ * 盖在一楼内容上时，它是更靠前的直接命中，一楼的歌单和播放控件不会再接到。
+ */
+internal fun Modifier.loftHitBlock(): Modifier = pointerInput(Unit) {
+    awaitEachGesture {
+        // Final 在子节点处理完 Main 之后。不消费，避免抢走二楼里的点击、滚动和输入。
+        val down = awaitFirstDown(
+            requireUnconsumed = false,
+            pass = PointerEventPass.Final,
+        )
+        while (true) {
+            val event = awaitPointerEvent(PointerEventPass.Final)
+            if (event.changes.none { it.id == down.id && it.pressed }) break
+        }
+    }
 }
 
 /** 一楼底栏和音乐岛跟圆的开合走。完全打开时为 0，回到一楼后为 1。 */
@@ -313,7 +345,7 @@ internal class HomeLoftState(
     var onBeforeClose: () -> Unit = {}
 
     val adjustedPx: Float get() = homeAdjustedPull(rawPx)
-    val locksFloor: Boolean get() = open || reveal > 0.01f
+    val locksFloor: Boolean get() = homeLoftBlocksUnderlyingPointers(open, reveal)
 
     private var upward = 0f
     private var job: Job? = null
@@ -676,6 +708,10 @@ internal fun MainLoftHost(
             CompositionLocalProvider(LocalMainFloorLocked provides state.locksFloor) {
                 content()
             }
+            if (homeLoftBlocksUnderlyingPointers(state.open, state.reveal)) {
+                // 一楼仍在组合里。二楼没接住的点，以及透明度为 0 的横屏导航，都停在这一层。
+                Box(Modifier.matchParentSize().loftHitBlock())
+            }
         }
         if (state.reveal > 0.001f || state.open) {
             val contentAlpha = homeLoftContentAlpha(state.reveal)
@@ -693,7 +729,8 @@ internal fun MainLoftHost(
                         clip = true
                         shape = coverShape
                     }
-                    .background(MainPalette.Surface),
+                    .background(MainPalette.Surface)
+                    .loftHitBlock(),
             ) {
                 HomeSecondFloor(
                     onClose = { state.close() },
@@ -719,7 +756,8 @@ internal fun MainLoftHost(
             }
         }
         if (homeLoftInterceptsFloor(state.open, state.reveal)) {
-            // 只在圆的过渡期存在。离开组合后手势节点一起拆掉，不会在回到一楼后继续吃点击。
+            // 只在圆的过渡期存在，负责跟手关掉。完全打开后拆掉，不挡二楼。
+            // 挡住一楼靠上面的 loftHitBlock，不能把这一层留到打开之后。
             Box(
                 Modifier
                     .fillMaxSize()

@@ -83,8 +83,8 @@ android {
         applicationId = "com.kite.zmusic"
         minSdk = 29
         targetSdk = 36
-        versionCode = 19
-        versionName = "1.4.2"
+        versionCode = 20
+        versionName = "1.4.3"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 

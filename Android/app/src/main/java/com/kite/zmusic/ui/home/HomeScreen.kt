@@ -473,7 +473,9 @@ private fun HomeBannerPager(
         HorizontalPager(
             state = pager,
             beyondViewportPageCount = 1,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .homeStageHorizontalContent(),
         ) { page ->
             val b = banners[bannerLoopPage(page, count)]
             Box(
@@ -605,7 +607,7 @@ private fun DailySongStrip(
     modifier: Modifier = Modifier,
 ) {
     LazyRow(
-        modifier = modifier,
+        modifier = modifier.homeStageHorizontalContent(),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         contentPadding = PaddingValues(end = 4.dp),
     ) {
@@ -719,6 +721,7 @@ private fun CoverStrip(
     cardWidth: Dp = 86.dp,
 ) {
     LazyRow(
+        modifier = Modifier.homeStageHorizontalContent(),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         contentPadding = PaddingValues(end = 4.dp),
     ) {
@@ -788,6 +791,7 @@ private fun MvRow(
     onOpen: (RecommendMvCard) -> Unit,
 ) {
     LazyRow(
+        modifier = Modifier.homeStageHorizontalContent(),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         contentPadding = PaddingValues(end = 4.dp),
     ) {

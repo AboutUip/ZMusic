@@ -147,6 +147,8 @@ import androidx.compose.ui.util.lerp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kite.zmusic.ZMusicApplication
 import com.kite.zmusic.data.LrcLine
+import com.kite.zmusic.data.LyricWord
+import com.kite.zmusic.data.lyricWordProgress
 import com.kite.zmusic.data.LrcParser
 import com.kite.zmusic.data.LyricRoleStyle
 import com.kite.zmusic.data.NcmJson
@@ -283,6 +285,61 @@ fun lyricAnimActiveIndex(
 ): Int {
     val lead = lyricAnimTiming(lines, positionMs, trackDurationMs).leadMs
     return lyricActiveIndex(lines, positionMs + lead)
+}
+
+/** 这一句的结束时刻：下一句开始，或曲终。 */
+fun lyricLineEndMs(
+    lines: List<LrcLine>,
+    index: Int,
+    trackDurationMs: Long,
+): Long {
+    if (index !in lines.indices) return Long.MAX_VALUE
+    return lines[index].timeMs + lyricLineSpanMs(lines, index, trackDurationMs)
+}
+
+/**
+ * 正在显示的这一句会提前多久被切走。
+ * 与 [lyricAnimTiming] 在本句仍是真实播放句时算出的 [LyricAnimTiming.leadMs] 相同。
+ */
+fun lyricSweepLeadMs(
+    lines: List<LrcLine>,
+    displayedIndex: Int,
+    trackDurationMs: Long,
+): Long {
+    if (displayedIndex !in lines.indices) return 0L
+    val curr = lyricLineSpanMs(lines, displayedIndex, trackDurationMs)
+    val next = if (displayedIndex + 1 in lines.indices) {
+        lyricLineSpanMs(lines, displayedIndex + 1, trackDurationMs)
+    } else {
+        curr
+    }
+    return lyricAnimTimingForWindow(minOf(curr, next)).leadMs
+}
+
+/** 逐字、逐字宽填色时钟：叠上切句提前量。 */
+fun lyricSweepClockMs(positionMs: Long, leadMs: Long): Long =
+    positionMs + leadMs.coerceAtLeast(0L)
+
+/**
+ * 逐字、逐字宽的字进度。
+ * 切句用提前量，填色若仍按字面时间走，切走时末字往往只到一半。
+ * 时钟加上同一提前量，并把字的结束收到本句结束，末字在切句时填完。
+ */
+fun lyricSweepProgress(
+    word: LyricWord,
+    positionMs: Long,
+    leadMs: Long,
+    lineEndMs: Long,
+): Float {
+    val start = word.timeMs
+    val natural = word.durationMs.coerceAtLeast(1L)
+    val dur = if (lineEndMs > start) {
+        minOf(natural, (lineEndMs - start).coerceAtLeast(1L))
+    } else {
+        natural
+    }
+    val timed = if (dur == word.durationMs) word else word.copy(durationMs = dur)
+    return lyricWordProgress(timed, lyricSweepClockMs(positionMs, leadMs))
 }
 
 /** 播放位下标：有歌词时永不返回 -1。空行应在解析阶段已剔除。 */

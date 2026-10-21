@@ -7,9 +7,12 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
@@ -22,12 +25,62 @@ import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import com.kite.zmusic.data.LrcLine
 import com.kite.zmusic.data.LyricWord
-import com.kite.zmusic.data.lyricWordProgress
+import kotlin.math.abs
+
+/**
+ * 按字、按字宽跟切句用同一提前量。暂停且进度没跳走时留着上次的提前量，避免填色被拉回。
+ * 拖动、跳进度时改跟真实位置。
+ */
+internal data class LyricSweepSync(
+    val leadMs: Long = 0L,
+    val lineEndMs: Long = Long.MAX_VALUE,
+)
+
+internal val LocalLyricSweepSync = compositionLocalOf { LyricSweepSync() }
+
+private const val LyricSweepHoldSlackMs = 80L
+
+@Composable
+internal fun rememberLyricSweepSync(
+    lines: List<LrcLine>,
+    displayedIndex: Int,
+    trackDurationMs: Long,
+    positionMs: Long,
+    clockRunning: Boolean,
+): LyricSweepSync {
+    val lineEndMs = lyricLineEndMs(lines, displayedIndex, trackDurationMs)
+    val live = if (clockRunning && displayedIndex in lines.indices) {
+        LyricSweepSync(
+            leadMs = lyricSweepLeadMs(lines, displayedIndex, trackDurationMs),
+            lineEndMs = lineEndMs,
+        )
+    } else {
+        LyricSweepSync(leadMs = 0L, lineEndMs = lineEndMs)
+    }
+    var latched by remember { mutableStateOf(LyricSweepSync()) }
+    var latchedIndex by remember { mutableIntStateOf(Int.MIN_VALUE) }
+    var latchedPos by remember { mutableLongStateOf(Long.MIN_VALUE) }
+    if (clockRunning) {
+        if (latched != live) latched = live
+        if (latchedIndex != displayedIndex) latchedIndex = displayedIndex
+        if (latchedPos != positionMs) latchedPos = positionMs
+        return live
+    }
+    val lineHeld = latchedIndex != Int.MIN_VALUE && displayedIndex == latchedIndex
+    val posHeld = latchedPos != Long.MIN_VALUE && abs(positionMs - latchedPos) <= LyricSweepHoldSlackMs
+    if (lineHeld && posHeld) return latched
+    if (latched != live) latched = live
+    if (latchedIndex != displayedIndex) latchedIndex = displayedIndex
+    if (latchedPos != positionMs) latchedPos = positionMs
+    return live
+}
 
 /**
  * 仅用于当前播放行。
  * [sweep] 为 false 时一个字整颗变色；为 true 时高亮按这个字的宽度从左往右扫过。
+ * 两种都跟切句提前量对齐，末字在句子被切走时填完。
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -81,9 +134,10 @@ internal fun KaraokeWordText(
     sweep: Boolean,
     overflow: TextOverflow = TextOverflow.Clip,
 ) {
-    val progress = lyricWordProgress(word, positionMs)
+    val sync = LocalLyricSweepSync.current
+    val progress = lyricSweepProgress(word, positionMs, sync.leadMs, sync.lineEndMs)
     if (!sweep) {
-        val color = wordColor(word, positionMs, playingColor, unplayedColor)
+        val color = wordColor(progress, playingColor, unplayedColor)
         KaraokeWordLabel(word.text, color, style, overflow)
         return
     }
@@ -129,11 +183,10 @@ private fun KaraokeWordLabel(
 }
 
 internal fun wordColor(
-    word: LyricWord,
-    positionMs: Long,
+    progress: Float,
     playingColor: Color,
     unplayedColor: Color,
-): Color = lerp(unplayedColor, playingColor, lyricWordProgress(word, positionMs))
+): Color = lerp(unplayedColor, playingColor, progress.coerceIn(0f, 1f))
 
 /**
  * 逐字着色用的平滑进度：只在播放源 **位置真正变大** 之后，于两次 UI tick（约 200ms）之间补帧。

@@ -52,6 +52,11 @@ class LikedPlaylistRepository(
         val allLikedIds: List<Long> = emptyList(),
         /** 心形歌单 trackIds 展示序（新喜欢一般在前）；分页必须用它。 */
         val displayIds: List<Long> = emptyList(),
+        /**
+         * 为 false 表示这份缓存写于 VIP 徽标之前，`fee` 全是缺省 0。
+         * 下次拉歌时不能把这些曲目当成已加载而跳过详情。
+         */
+        val feeTrusted: Boolean = true,
     ) {
         val likedIds: Set<Long>
             get() = allLikedIds.ifEmpty { displayIds.ifEmpty { tracks.map { it.id } } }.toSet()
@@ -313,6 +318,7 @@ class LikedPlaylistRepository(
             complete = false,
             allLikedIds = nextIds,
             displayIds = nextDisplay,
+            feeTrusted = current?.feeTrusted ?: true,
         )
         _snapshot.value = next
         if (next.playlistId > 0L && nextDisplay.isNotEmpty()) {
@@ -372,14 +378,14 @@ class LikedPlaylistRepository(
         if (session.isGuest) return _snapshot.value
         if (!force) {
             val cached = _snapshot.value
-            if (cached != null && cached.tracks.isNotEmpty() && cached.playlistId > 0L) {
+            if (cached != null && cached.tracks.isNotEmpty() && cached.playlistId > 0L && cached.feeTrusted) {
                 return cached
             }
         }
         return ioMutex.withLock {
             if (!force) {
                 val cached = _snapshot.value
-                if (cached != null && cached.tracks.isNotEmpty() && cached.playlistId > 0L) {
+                if (cached != null && cached.tracks.isNotEmpty() && cached.playlistId > 0L && cached.feeTrusted) {
                     return@withLock cached
                 }
             }
@@ -470,12 +476,15 @@ class LikedPlaylistRepository(
                 return@withLock empty
             }
             val orderedIds = displayIds.ifEmpty { mergedIds }
+            val feesTrusted = previous?.feeTrusted != false
             val known = buildList {
                 addAll(pendingAdds.values)
-                previous?.tracks.orEmpty().forEach { add(it) }
+                if (feesTrusted) previous?.tracks.orEmpty().forEach { add(it) }
             }.distinctBy { it.id }
+            val cachedSpan = if (feesTrusted) 0 else previous?.tracks?.size ?: 0
             val want = known.size
                 .coerceAtLeast(PlaylistTrackLoader.FIRST_BATCH)
+                .coerceAtLeast(cachedSpan)
                 .coerceAtMost(orderedIds.size.coerceAtLeast(1))
             val loaded = withContext(Dispatchers.IO) {
                 PlaylistTrackLoader.loadOrderedIds(
@@ -490,6 +499,18 @@ class LikedPlaylistRepository(
                 loaded,
                 previous?.tracks.orEmpty(),
             )
+            val fetchedIds = loaded.mapTo(HashSet(loaded.size + known.size)) { it.id }
+            known.forEach { fetchedIds.add(it.id) }
+            val wantedIds = orderedIds.take(want)
+            val shownIds = tracks.mapTo(HashSet(tracks.size)) { it.id }
+            val staleShown = if (feesTrusted) {
+                emptyList()
+            } else {
+                previous?.tracks.orEmpty().map { it.id }.filter { it in shownIds }
+            }
+            val feeTrusted = feesTrusted || (
+                staleShown.all { it in fetchedIds } && wantedIds.all { it in fetchedIds }
+                )
             val snap = Snapshot(
                 playlistId = playlistId,
                 title = heart?.name ?: previous?.title ?: t("我喜欢的音乐"),
@@ -500,6 +521,7 @@ class LikedPlaylistRepository(
                 complete = orderedIds.isEmpty() || tracks.size >= orderedIds.size,
                 allLikedIds = mergedIds.ifEmpty { orderedIds },
                 displayIds = orderedIds,
+                feeTrusted = feeTrusted,
             )
             _snapshot.value = snap
             mergeCheckedLikes(mergedIds.associateWith { true })
@@ -629,6 +651,7 @@ class LikedPlaylistRepository(
                         complete = ordered.size >= displayIds.size,
                         allLikedIds = live.allLikedIds.ifEmpty { displayIds },
                         displayIds = displayIds,
+                        feeTrusted = live.feeTrusted,
                     )
                     _snapshot.value = next
                     withContext(Dispatchers.IO) { persistToDisk(next) }
@@ -722,6 +745,7 @@ class LikedPlaylistRepository(
                 complete,
                 allLikedIds,
                 displayIds,
+                feeTrusted = NcmLibraryParse.trackFeeCacheTrusted(root),
             )
         }.getOrNull()
     }
@@ -757,6 +781,7 @@ class LikedPlaylistRepository(
                 .put("pendingRemoveIds", JSONArray().also { arrIds ->
                     pendingRemoves.forEach { arrIds.put(it) }
                 })
+                .put("feeRevision", if (snap.feeTrusted) NcmLibraryParse.TRACK_FEE_CACHE_REVISION else 0)
                 .put("tracks", arr)
             if (generation.get() != gen) return@runCatching
             cacheFile.writeText(root.toString(), Charsets.UTF_8)

@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -171,6 +172,15 @@ internal fun LandscapeProjectionLyrics(
         }
     }
 
+    val wordSync = if (wordByWord && playFocus in lines.indices) {
+        LyricSweepSync(
+            leadMs = lyricSweepLeadMs(lines, playFocus, trackDurationMs),
+            lineEndMs = lyricLineEndMs(lines, playFocus, trackDurationMs),
+        )
+    } else {
+        LyricSweepSync()
+    }
+    CompositionLocalProvider(LocalLyricSweepSync provides wordSync) {
     BoxWithConstraints(modifier.fillMaxSize()) {
         val colW = maxWidth
         val dynT = dynamicT.value
@@ -240,5 +250,6 @@ internal fun LandscapeProjectionLyrics(
                 }
             }
         }
+    }
     }
 }

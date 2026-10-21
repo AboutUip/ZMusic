@@ -45,6 +45,11 @@ class PlaylistTracksCache(
         val allIds: List<Long> = emptyList(),
         /** 仅内存：磁盘缓存不存收藏态，避免过期 */
         val subscribeMeta: PlaylistSubscribeMeta? = null,
+        /**
+         * 为 false 表示这份缓存写于 VIP 徽标之前，曲目 `fee` 不能信。
+         * 打开歌单时要重拉详情，不能一直用这份列表。
+         */
+        val feeTrusted: Boolean = true,
     )
 
     private val appContext = context.applicationContext
@@ -112,9 +117,9 @@ class PlaylistTracksCache(
         title: String,
         cookie: String,
     ): Entry {
-        val cached = peek(playlistId)?.takeIf { it.tracks.isNotEmpty() }
+        val cached = peek(playlistId)?.takeIf { it.tracks.isNotEmpty() && it.feeTrusted }
         if (cached != null) return cached
-        return fetchAndStore(playlistId, title, cookie, force = false)
+        return fetchAndStore(playlistId, title, cookie, force = true)
     }
 
     /** 再往后补到至少 [minCount] 首（或整张歌单结束）。 */
@@ -164,6 +169,7 @@ class PlaylistTracksCache(
                 complete = tracks.size >= allIds.size,
                 allIds = allIds,
                 subscribeMeta = entry.subscribeMeta,
+                feeTrusted = entry.feeTrusted,
             )
             publish(next)
             withContext(Dispatchers.IO) { persistToDisk(next) }
@@ -302,7 +308,7 @@ class PlaylistTracksCache(
         force: Boolean,
     ): Entry = ioMutex.withLock {
         if (!force) {
-            memory[playlistId]?.takeIf { it.tracks.isNotEmpty() }?.let { return@withLock it }
+            memory[playlistId]?.takeIf { it.tracks.isNotEmpty() && it.feeTrusted }?.let { return@withLock it }
         }
         if (platformStore.current == MusicPlatform.QISHUI) {
             val tracks = withContext(Dispatchers.IO) { qishui.playlistTracks(playlistId) }
@@ -339,7 +345,8 @@ class PlaylistTracksCache(
             PlaylistTrackLoader.loadFirstBatch(userClient, playlistId, cookie)
         }
         val retained = previous?.tracks.orEmpty()
-        val tracks = withContext(Dispatchers.IO) {
+        val feesTrusted = previous?.feeTrusted != false
+        val (tracks, freshIds) = withContext(Dispatchers.IO) {
             val want = retained.size
                 .coerceAtLeast(first.tracks.size)
                 .coerceAtMost(first.allIds.size.coerceAtLeast(first.tracks.size))
@@ -348,13 +355,18 @@ class PlaylistTracksCache(
                     userClient = userClient,
                     cookie = cookie,
                     ids = first.allIds.take(want),
-                    known = first.tracks + retained,
+                    known = if (feesTrusted) first.tracks + retained else first.tracks,
                 )
             } else {
                 first.tracks
             }
-            NcmLibraryParse.mergeLoadedInOrder(first.allIds, loaded, retained)
+            val merged = NcmLibraryParse.mergeLoadedInOrder(first.allIds, loaded, retained)
+            val fresh = HashSet<Long>(first.tracks.size + loaded.size)
+            first.tracks.forEach { fresh.add(it.id) }
+            loaded.forEach { fresh.add(it.id) }
+            merged to fresh
         }
+        val feeTrusted = feesTrusted || tracks.all { it.id in freshIds }
         val entry = Entry(
             playlistId = playlistId,
             title = first.subscribeMeta?.name?.takeIf { it.isNotBlank() } ?: title,
@@ -364,6 +376,7 @@ class PlaylistTracksCache(
             complete = first.allIds.isEmpty() || tracks.size >= first.allIds.size,
             allIds = first.allIds,
             subscribeMeta = first.subscribeMeta ?: previous?.subscribeMeta,
+            feeTrusted = feeTrusted,
         )
         publish(entry)
         withContext(Dispatchers.IO) { persistToDisk(entry) }
@@ -411,7 +424,16 @@ class PlaylistTracksCache(
             } else {
                 emptyList()
             }
-            Entry(id, title, tracks, updatedAtMs, expectedCount, complete, allIds)
+            Entry(
+                id,
+                title,
+                tracks,
+                updatedAtMs,
+                expectedCount,
+                complete,
+                allIds,
+                feeTrusted = NcmLibraryParse.trackFeeCacheTrusted(root),
+            )
         }.onFailure {
             Log.w(TAG, "load playlist cache failed id=$playlistId", it)
         }.getOrNull()
@@ -430,6 +452,7 @@ class PlaylistTracksCache(
                 .put("expectedCount", entry.expectedCount)
                 .put("complete", entry.complete)
                 .put("allIds", JSONArray(entry.allIds))
+                .put("feeRevision", if (entry.feeTrusted) NcmLibraryParse.TRACK_FEE_CACHE_REVISION else 0)
                 .put("tracks", arr)
             diskFile(entry.playlistId).writeText(root.toString(), Charsets.UTF_8)
             trimDiskLocked()

@@ -49,6 +49,8 @@ class LongLyricScrollTest {
         assertEquals(0.75f, longLyricSungFraction(words, 150L), 0.001f)
         assertEquals(0f, longLyricSungFraction(words, 0L), 0.001f)
         assertEquals(1f, longLyricSungFraction(words, 200L), 0.001f)
+        val held = listOf(LyricWord(0L, 800L, "啊"))
+        assertEquals(1f, longLyricSungFraction(held, 200L, lineEndMs = 200L), 0.001f)
     }
 
     private fun offset(

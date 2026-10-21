@@ -6,6 +6,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import com.kite.zmusic.data.LrcLine
+import com.kite.zmusic.data.LyricWord
 import kotlin.math.abs
 
 fun lyricActiveIndex(lines: List<LrcLine>, positionMs: Long): Int {
@@ -92,6 +93,65 @@ fun lyricAnimActiveIndex(
 ): Int {
     val lead = lyricAnimTiming(lines, positionMs, trackDurationMs).leadMs
     return lyricActiveIndex(lines, positionMs + lead)
+}
+
+/** 这一句的结束时刻：下一句开始，或曲终。 */
+fun lyricLineEndMs(
+    lines: List<LrcLine>,
+    index: Int,
+    trackDurationMs: Long,
+): Long {
+    if (index !in lines.indices) return Long.MAX_VALUE
+    return lines[index].timeMs + lyricLineSpanMs(lines, index, trackDurationMs)
+}
+
+/**
+ * 正在显示的这一句会提前多久被切走。
+ * 与 [lyricAnimTiming] 在本句仍是真实播放句时算出的提前量相同。
+ */
+fun lyricSweepLeadMs(
+    lines: List<LrcLine>,
+    displayedIndex: Int,
+    trackDurationMs: Long,
+): Long {
+    if (displayedIndex !in lines.indices) return 0L
+    val curr = lyricLineSpanMs(lines, displayedIndex, trackDurationMs)
+    val next = if (displayedIndex + 1 in lines.indices) {
+        lyricLineSpanMs(lines, displayedIndex + 1, trackDurationMs)
+    } else {
+        curr
+    }
+    return lyricAnimTimingForWindow(minOf(curr, next)).leadMs
+}
+
+/** 逐字填色时钟：叠上切句提前量。 */
+fun lyricSweepClockMs(positionMs: Long, leadMs: Long): Long =
+    positionMs + leadMs.coerceAtLeast(0L)
+
+/**
+ * 逐字进度。切句带提前量，填色按字面时间会在切走时停在半亮。
+ * 时钟加上同一提前量，并把字的结束收到本句结束。
+ */
+fun lyricSweepProgress(
+    word: LyricWord,
+    positionMs: Long,
+    leadMs: Long,
+    lineEndMs: Long,
+): Float {
+    val start = word.timeMs
+    val natural = word.durationMs.coerceAtLeast(1L)
+    val dur = if (lineEndMs > start) {
+        minOf(natural, (lineEndMs - start).coerceAtLeast(1L))
+    } else {
+        natural
+    }
+    val clock = lyricSweepClockMs(positionMs, leadMs)
+    val end = start + dur
+    return when {
+        clock <= start -> 0f
+        clock >= end -> 1f
+        else -> ((clock - start).toFloat() / dur.toFloat()).coerceIn(0f, 1f)
+    }
 }
 
 fun lyricFocusIndex(lines: List<LrcLine>, activeIndex: Int): Int {
