@@ -97,17 +97,13 @@ fun LanguageSettingsPage(
 @Composable
 private fun LanguageChoice.title(): String = when (this) {
     LanguageChoice.Auto -> t("自动")
-    LanguageChoice.Chinese -> AppLanguage.Chinese.nativeName
-    LanguageChoice.English -> AppLanguage.English.nativeName
-    LanguageChoice.Japanese -> AppLanguage.Japanese.nativeName
+    else -> language?.nativeName.orEmpty()
 }
 
 @Composable
 private fun LanguageChoice.subtitle(resolved: AppLanguage): String = when (this) {
     LanguageChoice.Auto -> t("按所在国家切换 · 当前 %s", resolved.nativeName)
-    LanguageChoice.Chinese -> AppLanguage.Chinese.subtitle
-    LanguageChoice.English -> AppLanguage.English.subtitle
-    LanguageChoice.Japanese -> AppLanguage.Japanese.subtitle
+    else -> language?.subtitle.orEmpty()
 }
 
 @Composable

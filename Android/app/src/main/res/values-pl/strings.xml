@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">ZMusic</string>
+    <string name="poster_make">Zrób plakat</string>
+    <string name="playback_notification_channel_name">Teraz gra</string>
+    <string name="playback_notification_channel_desc">Sterowanie i stan odtwarzania</string>
+    <string name="playback_mode_order">Powtarzaj wszystko</string>
+    <string name="playback_mode_repeat_one">Powtarzaj jeden</string>
+    <string name="playback_mode_shuffle">Losowo</string>
+    <string name="playback_lyrics_overlay_on">Ukryj tekst</string>
+    <string name="playback_lyrics_overlay_off">Pokaż tekst</string>
+    <string name="playback_lyrics_overlay_unlock">Odblokuj</string>
+</resources>

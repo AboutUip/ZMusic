@@ -10,7 +10,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import java.util.Locale
 
 /**
- * 界面语言。未选择时为自动，按国家决定；选定后固定为简体中文 / English / 日本語。
+ * 界面语言。未选择时为自动，按国家决定；选定后固定为该语言。
  */
 class LanguageStore(context: Context) {
 

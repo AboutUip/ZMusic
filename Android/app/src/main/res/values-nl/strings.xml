@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">ZMusic</string>
+    <string name="poster_make">Poster maken</string>
+    <string name="playback_notification_channel_name">Wordt afgespeeld</string>
+    <string name="playback_notification_channel_desc">Afspeelbediening en status</string>
+    <string name="playback_mode_order">Alles herhalen</string>
+    <string name="playback_mode_repeat_one">Eén herhalen</string>
+    <string name="playback_mode_shuffle">Willekeurig</string>
+    <string name="playback_lyrics_overlay_on">Tekst verbergen</string>
+    <string name="playback_lyrics_overlay_off">Tekst tonen</string>
+    <string name="playback_lyrics_overlay_unlock">Ontgrendelen</string>
+</resources>

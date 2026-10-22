@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">ZMusic</string>
+    <string name="poster_make">포스터 만들기</string>
+    <string name="playback_notification_channel_name">재생 중</string>
+    <string name="playback_notification_channel_desc">재생 제어와 상태</string>
+    <string name="playback_mode_order">전체 반복</string>
+    <string name="playback_mode_repeat_one">한 곡 반복</string>
+    <string name="playback_mode_shuffle">무작위</string>
+    <string name="playback_lyrics_overlay_on">가사 끄기</string>
+    <string name="playback_lyrics_overlay_off">가사 표시</string>
+    <string name="playback_lyrics_overlay_unlock">잠금 해제</string>
+</resources>

@@ -18,20 +18,25 @@ object I18n {
         private set
 
     @Volatile
-    private var en: Map<String, String> = emptyMap()
+    private var catalogs: Map<AppLanguage, Map<String, String>> = emptyMap()
 
     @Volatile
-    private var ja: Map<String, String> = emptyMap()
-
-    @Volatile
-    private var reverse: Map<String, String> = emptyMap()
+    private var reverse: Map<AppLanguage, Map<String, String>> = emptyMap()
 
     fun install(context: Context, language: AppLanguage) {
-        if (en.isEmpty() || ja.isEmpty()) {
+        if (catalogs.isEmpty()) {
             val app = context.applicationContext
-            en = loadAsset(app, "i18n/en.json")
-            ja = loadAsset(app, "i18n/ja.json")
-            reverse = buildReverse(en) + buildReverse(ja)
+            val loaded = HashMap<AppLanguage, Map<String, String>>()
+            val reverseAll = HashMap<AppLanguage, Map<String, String>>()
+            for (item in AppLanguage.entries) {
+                val path = item.asset ?: continue
+                val map = loadAsset(app, path)
+                if (map.isEmpty()) continue
+                loaded[item] = map
+                reverseAll[item] = buildReverse(map)
+            }
+            catalogs = loaded
+            reverse = reverseAll
         }
         setLanguage(language)
     }
@@ -74,27 +79,30 @@ object I18n {
      */
     fun sourceOf(displayed: String): String {
         if (language == AppLanguage.Chinese) return displayed
-        return reverse[displayed] ?: displayed
+        return reverse[language]?.get(displayed) ?: displayed
     }
 
-    fun formatCompactCount(n: Long): String {
+    fun formatCompactCount(n: Long): String = when (language) {
+        AppLanguage.Chinese -> wanYi(n, "万", "亿")
+        AppLanguage.Traditional -> wanYi(n, "萬", "億")
+        AppLanguage.Japanese -> wanYi(n, "万", "億")
+        AppLanguage.Korean -> wanYi(n, "만", "억")
+        else -> western(n)
+    }
+
+    private fun templateOf(zh: String): String {
+        if (language == AppLanguage.Chinese) return zh
+        return catalogs[language]?.get(zh)?.takeIf { it.isNotEmpty() } ?: zh
+    }
+
+    private fun western(n: Long): String {
         val abs = abs(n)
-        return when (language) {
-            AppLanguage.English -> when {
-                abs >= 1_000_000_000L -> compact(n / 1_000_000_000.0, "B")
-                abs >= 1_000_000L -> compact(n / 1_000_000.0, "M")
-                abs >= 1_000L -> compact(n / 1_000.0, "k")
-                else -> n.toString()
-            }
-            AppLanguage.Japanese -> wanYi(n, "万", "億")
-            AppLanguage.Chinese -> wanYi(n, "万", "亿")
+        return when {
+            abs >= 1_000_000_000L -> compact(n / 1_000_000_000.0, "B")
+            abs >= 1_000_000L -> compact(n / 1_000_000.0, "M")
+            abs >= 1_000L -> compact(n / 1_000.0, "k")
+            else -> n.toString()
         }
-    }
-
-    private fun templateOf(zh: String): String = when (language) {
-        AppLanguage.Chinese -> zh
-        AppLanguage.English -> en[zh] ?: zh
-        AppLanguage.Japanese -> ja[zh] ?: zh
     }
 
     private fun loadAsset(context: Context, path: String): Map<String, String> {

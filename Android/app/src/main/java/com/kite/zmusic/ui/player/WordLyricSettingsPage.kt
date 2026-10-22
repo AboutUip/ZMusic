@@ -224,11 +224,13 @@ private fun demoWordLyricLines(): List<LrcLine> {
         return LrcLine(start, words.joinToString("") { it.text }, words)
     }
     return when (com.kite.zmusic.i18n.I18n.language) {
-        com.kite.zmusic.i18n.AppLanguage.English -> listOf(
-            line(0L, listOf("In" to 280L, " this" to 240L, " late" to 220L, " night" to 800L)),
-            line(1600L, listOf("I" to 220L, " hear" to 240L, " your" to 260L, " voice" to 800L)),
-            line(3600L, listOf("like" to 240L, " wind" to 260L, " down" to 240L, " the" to 220L, " hall" to 800L)),
-            line(5600L, listOf("leaving" to 320L, " thoughts" to 280L, " behind" to 800L)),
+        com.kite.zmusic.i18n.AppLanguage.Chinese,
+        com.kite.zmusic.i18n.AppLanguage.Traditional,
+        -> listOf(
+            line(0L, listOf("在" to 280L, "这" to 240L, "个" to 220L, "夜" to 320L, "晚" to 480L)),
+            line(1600L, listOf("我" to 220L, "听" to 240L, "见" to 260L, "你" to 280L, "的" to 200L, "声" to 280L, "音" to 520L)),
+            line(3600L, listOf("像" to 240L, "风" to 260L, "穿" to 240L, "过" to 220L, "走" to 280L, "廊" to 520L)),
+            line(5600L, listOf("只" to 220L, "把" to 240L, "心" to 260L, "事" to 280L, "留" to 260L, "下" to 560L)),
         )
         com.kite.zmusic.i18n.AppLanguage.Japanese -> listOf(
             line(0L, listOf("こ" to 200L, "の" to 180L, "夜" to 280L, "に" to 400L)),
@@ -237,10 +239,10 @@ private fun demoWordLyricLines(): List<LrcLine> {
             line(5600L, listOf("心" to 240L, "を" to 180L, "残" to 240L, "して" to 500L)),
         )
         else -> listOf(
-            line(0L, listOf("在" to 280L, "这" to 240L, "个" to 220L, "夜" to 320L, "晚" to 480L)),
-            line(1600L, listOf("我" to 220L, "听" to 240L, "见" to 260L, "你" to 280L, "的" to 200L, "声" to 280L, "音" to 520L)),
-            line(3600L, listOf("像" to 240L, "风" to 260L, "穿" to 240L, "过" to 220L, "走" to 280L, "廊" to 520L)),
-            line(5600L, listOf("只" to 220L, "把" to 240L, "心" to 260L, "事" to 280L, "留" to 260L, "下" to 560L)),
+            line(0L, listOf("In" to 280L, " this" to 240L, " late" to 220L, " night" to 800L)),
+            line(1600L, listOf("I" to 220L, " hear" to 240L, " your" to 260L, " voice" to 800L)),
+            line(3600L, listOf("like" to 240L, " wind" to 260L, " down" to 240L, " the" to 220L, " hall" to 800L)),
+            line(5600L, listOf("leaving" to 320L, " thoughts" to 280L, " behind" to 800L)),
         )
     }
 }

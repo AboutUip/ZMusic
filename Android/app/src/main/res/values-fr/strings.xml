@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">ZMusic</string>
+    <string name="poster_make">Créer une affiche</string>
+    <string name="playback_notification_channel_name">Lecture en cours</string>
+    <string name="playback_notification_channel_desc">Commandes et état de lecture</string>
+    <string name="playback_mode_order">Tout répéter</string>
+    <string name="playback_mode_repeat_one">Répéter le titre</string>
+    <string name="playback_mode_shuffle">Aléatoire</string>
+    <string name="playback_lyrics_overlay_on">Masquer les paroles</string>
+    <string name="playback_lyrics_overlay_off">Afficher les paroles</string>
+    <string name="playback_lyrics_overlay_unlock">Déverrouiller</string>
+</resources>

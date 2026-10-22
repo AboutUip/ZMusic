@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">ZMusic</string>
+    <string name="poster_make">Vytvořit plakát</string>
+    <string name="playback_notification_channel_name">Právě hraje</string>
+    <string name="playback_notification_channel_desc">Ovládání a stav přehrávání</string>
+    <string name="playback_mode_order">Opakovat vše</string>
+    <string name="playback_mode_repeat_one">Opakovat jednu</string>
+    <string name="playback_mode_shuffle">Náhodně</string>
+    <string name="playback_lyrics_overlay_on">Skrýt text</string>
+    <string name="playback_lyrics_overlay_off">Zobrazit text</string>
+    <string name="playback_lyrics_overlay_unlock">Odemknout</string>
+</resources>

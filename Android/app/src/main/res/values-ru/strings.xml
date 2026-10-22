@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">ZMusic</string>
+    <string name="poster_make">Сделать постер</string>
+    <string name="playback_notification_channel_name">Сейчас играет</string>
+    <string name="playback_notification_channel_desc">Управление и состояние воспроизведения</string>
+    <string name="playback_mode_order">Повтор всех</string>
+    <string name="playback_mode_repeat_one">Повтор одного</string>
+    <string name="playback_mode_shuffle">Перемешать</string>
+    <string name="playback_lyrics_overlay_on">Скрыть текст</string>
+    <string name="playback_lyrics_overlay_off">Показать текст</string>
+    <string name="playback_lyrics_overlay_unlock">Разблокировать</string>
+</resources>

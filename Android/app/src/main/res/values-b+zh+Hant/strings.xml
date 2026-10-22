@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">ZMusic</string>
+    <string name="poster_make">製作海報</string>
+    <string name="playback_notification_channel_name">正在播放</string>
+    <string name="playback_notification_channel_desc">音樂播放控制與狀態</string>
+    <string name="playback_mode_order">清單循環</string>
+    <string name="playback_mode_repeat_one">單曲循環</string>
+    <string name="playback_mode_shuffle">隨機播放</string>
+    <string name="playback_lyrics_overlay_on">關閉歌詞</string>
+    <string name="playback_lyrics_overlay_off">歌詞顯示</string>
+    <string name="playback_lyrics_overlay_unlock">取消鎖定</string>
+</resources>
