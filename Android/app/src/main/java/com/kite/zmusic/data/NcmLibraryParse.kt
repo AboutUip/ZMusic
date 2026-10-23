@@ -434,7 +434,8 @@ internal object NcmLibraryParse {
                     pl.isSubscribed -> 2
                     else -> 3
                 }
-            }.thenBy { it.name },
+            }.thenByDescending { pl -> if (pl.isOwned) pl.createTime else pl.subscribedTime }
+                .thenBy { it.name },
         )
     }
 
@@ -456,6 +457,8 @@ internal object NcmLibraryParse {
             name = name,
         )
         val playCount = o.optLong("playCount", 0L)
+        val createTime = o.optLong("createTime", 0L)
+        val subscribedTime = o.optLong("subscribedTime", o.optLong("subTime", 0L))
         return PlaylistSummary(
             id = id,
             name = name,
@@ -465,6 +468,8 @@ internal object NcmLibraryParse {
             isOwned = isOwned,
             isSubscribed = subscribed,
             playCount = playCount,
+            createTime = createTime,
+            subscribedTime = subscribedTime,
         )
     }
 
@@ -489,6 +494,7 @@ internal object NcmLibraryParse {
             isOwned = true,
             isSubscribed = false,
             playCount = pl?.optLong("playCount", 0L) ?: 0L,
+            createTime = System.currentTimeMillis(),
         )
     }
 

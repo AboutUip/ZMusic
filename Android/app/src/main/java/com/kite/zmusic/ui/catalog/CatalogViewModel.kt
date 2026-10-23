@@ -668,6 +668,7 @@ open class CatalogViewModel(
         company = state.albumCompany,
         type = state.albumType,
         alias = state.albumAlias,
+        subTime = System.currentTimeMillis(),
     )
 
     fun loadAlbum(id: Long, title: String, force: Boolean = false) {
@@ -1413,6 +1414,7 @@ open class CatalogViewModel(
         isOwned = false,
         isSubscribed = true,
         playCount = state.playCount,
+        subscribedTime = System.currentTimeMillis(),
     )
 
     private fun closePlaylist() {

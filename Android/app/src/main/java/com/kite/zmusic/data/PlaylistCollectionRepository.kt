@@ -88,7 +88,8 @@ class PlaylistCollectionRepository {
             if (list.any { it.id == playlist.id }) {
                 list.map { pl -> if (pl.id == playlist.id) playlist else pl }
             } else {
-                val insertAt = list.indexOfLast { it.isHeartPlaylist || it.isOwned } + 1
+                val insertAt = list.indexOfFirst { it.isOwned && !it.isHeartPlaylist }
+                    .takeIf { it >= 0 } ?: (list.indexOfLast { it.isHeartPlaylist } + 1)
                 list.take(insertAt) + playlist + list.drop(insertAt)
             }
         }
@@ -201,22 +202,40 @@ class PlaylistCollectionRepository {
     ): List<PlaylistSummary> {
         if (subscribed) {
             val existing = list.find { it.id == id }
-            return when {
-                existing != null -> list.map { pl ->
+            /**
+             * 说实话不用java视角我也有点看不懂
+             * 这里的map不是传统的key-value键值对
+             * 这里是对列表里的每一个元素(起名叫 pl),执行大括号里的逻辑，把返回值收集起来，得到一个新列表。
+             * 类似于list.stram().map(x->f(x)).collect(toList())
+             */
+            if (existing != null) {
+                return list.map { pl ->
+                    //如果歌单列表中有我需要的那个歌单
                     if (pl.id == id) {
-                        pl.copy(isSubscribed = true)
+                        pl.copy(
+                            //克隆 pl
+                            isSubscribed = true,
+                            //如果没有收藏时间就用系统时间
+                            subscribedTime = if (pl.subscribedTime > 0L) pl.subscribedTime else System.currentTimeMillis(),
+                        )
                     } else {
                         pl
                     }
                 }
-                insert != null -> list + insert.copy(
-                    id = id,
-                    isSubscribed = true,
-                    isOwned = false,
-                    isHeartPlaylist = false,
-                )
-                else -> list
             }
+            if (insert == null) return list
+            val fresh = insert.copy(
+                id = id,
+                isSubscribed = true,
+                isOwned = false,
+                isHeartPlaylist = false,
+                subscribedTime = System.currentTimeMillis(),
+            )
+            //找第一个“非自建”歌单的下标
+            val insertAt = list.indexOfFirst { !it.isOwned }
+                .takeIf { it >= 0 } ?: list.size
+
+            return list.take(insertAt) + fresh + list.drop(insertAt)
         }
         return list.filter { it.id != id || it.isOwned }
     }

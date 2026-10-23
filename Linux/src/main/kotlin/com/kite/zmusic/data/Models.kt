@@ -25,6 +25,8 @@ data class PlaylistSummary(
     val isOwned: Boolean,
     val isSubscribed: Boolean,
     val playCount: Long,
+    val createTime: Long = 0L,
+    val subscribedTime: Long = 0L,
 )
 
 data class HomeBanner(
@@ -65,6 +67,7 @@ data class CollectedAlbum(
     val name: String,
     val coverUrl: String?,
     val artist: String?,
+    val subTime: Long = 0L,
 )
 
 data class ChartSummary(

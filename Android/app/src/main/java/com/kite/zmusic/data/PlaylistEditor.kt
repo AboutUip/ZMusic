@@ -43,6 +43,7 @@ class PlaylistEditor(
                 isOwned = true,
                 isSubscribed = false,
                 playCount = 0L,
+                createTime = System.currentTimeMillis(),
             )
         if (created.id <= 0L) return NcmJson.userFacingMessage(json, "创建失败")
         val named = created.copy(
