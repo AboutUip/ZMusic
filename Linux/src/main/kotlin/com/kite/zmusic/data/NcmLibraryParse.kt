@@ -5,6 +5,7 @@ import org.json.JSONObject
 
 internal object NcmLibraryParse {
 
+
     fun playlistsFromUserPlaylist(json: JSONObject, selfUserId: Long): List<PlaylistSummary> {
         if (NcmJson.apiCode(json) != 200) return emptyList()
         val arr = json.optJSONArray("playlist") ?: return emptyList()
@@ -14,6 +15,7 @@ internal object NcmLibraryParse {
                 add(parsePlaylistItem(o, selfUserId))
             }
         }
+
         return raw.sortedWith(
             compareBy<PlaylistSummary> { pl ->
                 when {
@@ -22,7 +24,8 @@ internal object NcmLibraryParse {
                     pl.isSubscribed -> 2
                     else -> 3
                 }
-            }.thenBy { it.name },
+            }.thenByDescending { pl -> if (pl.isOwned) pl.createTime else pl.subscribedTime }
+                .thenBy { it.name },
         )
     }
 
@@ -44,6 +47,8 @@ internal object NcmLibraryParse {
             name = name,
         )
         val playCount = o.optLong("playCount", 0L)
+        val createTime = o.optLong("createTime", 0L)
+        val subscribedTime = o.optLong("subscribedTime", o.optLong("subTime", 0L))
         return PlaylistSummary(
             id = id,
             name = name,
@@ -53,6 +58,8 @@ internal object NcmLibraryParse {
             isOwned = isOwned,
             isSubscribed = subscribed,
             playCount = playCount,
+            createTime = createTime,
+            subscribedTime = subscribedTime,
         )
     }
 
@@ -307,7 +314,7 @@ internal object NcmHomeParse {
             ?: json.optJSONArray("hotAlbums")
             ?: json.optJSONObject("data")?.optJSONArray("albums")
             ?: return emptyList()
-        return buildList {
+        val out = buildList {
             for (i in 0 until arr.length()) {
                 val o = arr.optJSONObject(i) ?: continue
                 val id = o.optLong("id", 0L)
@@ -333,10 +340,12 @@ internal object NcmHomeParse {
                             .ifBlank { o.optString("coverImgUrl", "") }
                             .takeIf { it.isNotBlank() },
                         artist = artist,
+                        subTime = o.optLong("subTime", o.optLong("subscribedTime", 0L)),
                     ),
                 )
             }
         }
+        return out.sortedByDescending { it.subTime }
     }
 
     fun charts(json: JSONObject): List<ChartSummary> {

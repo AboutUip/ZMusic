@@ -71,6 +71,7 @@ class AlbumCollectionRepository {
             val agreed = if (subscribed) onServer else !onServer
             if (agreed) subscribeOverrides.remove(id)
         }
+        next = next.sortedByDescending { it.subTime }
         _snapshot.value = AlbumCollectionSnapshot(
             albums = next,
             total = total.coerceAtLeast(next.size),
@@ -91,7 +92,7 @@ class AlbumCollectionRepository {
         _snapshot.update { cur ->
             val seen = cur.albums.mapTo(HashSet()) { it.id }
             val extra = albums.filter { seen.add(it.id) }
-            val merged = cur.albums + extra
+            val merged = (cur.albums + extra).sortedByDescending { it.subTime }
             cur.copy(
                 albums = merged,
                 total = total.coerceAtLeast(merged.size),

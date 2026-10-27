@@ -76,6 +76,10 @@ data class PlaylistSummary(
     /** 收藏他人的歌单 */
     val isSubscribed: Boolean,
     val playCount: Long,
+    /** 歌单创建时间，Unix 毫秒；接口没给则为 0。数据来自网易云接口。 */
+    val createTime: Long = 0L,
+    /** 收藏该歌单的时间，Unix 毫秒；自建歌单为 0。数据来自网易云接口。 */
+    val subscribedTime: Long = 0L,
 ) {
     /**
      * 列表/弹窗用封面：空歌单或网易默认音符图视为无封面，交给黑胶占位。
@@ -190,6 +194,8 @@ data class CollectedAlbum(
     val company: String? = null,
     val type: String? = null,
     val alias: String? = null,
+    /** 收藏该专辑的时间，Unix 毫秒；接口没给则为 0。数据来自网易云接口。 */
+    val subTime: Long = 0L,
 ) {
     val yearLabel: String?
         get() = formatAlbumYear(publishTime)

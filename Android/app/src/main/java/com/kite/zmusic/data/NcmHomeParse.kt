@@ -474,6 +474,7 @@ internal object NcmHomeParse {
             company = o.optString("company", "").trim().takeIf { it.isNotEmpty() && it != "null" },
             type = o.optString("type", "").trim().takeIf { it.isNotEmpty() && it != "null" },
             alias = firstAlias(o.optJSONArray("alias"), o.optJSONArray("transNames")),
+            subTime = o.optLong("subTime", o.optLong("subscribedTime", 0L)),
         )
     }
 
