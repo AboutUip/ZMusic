@@ -2,6 +2,8 @@ package com.kite.zmusic.ui.main
 
 import android.content.res.Configuration
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.tween
@@ -20,6 +22,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -83,6 +86,13 @@ fun CatalogOverlayHost(
     isPlaying: Boolean = false,
     manageBridge: PlaylistManageBridge? = null,
     includeMv: Boolean = true,
+    /**
+     * 评论头像飞入主页时，这一页的横滑跟 [flightProgress] 走，
+     * 不再另播一段 enter，避免和头像进度断开。
+     */
+    flightKey: String? = null,
+    flightProgress: Float = 1f,
+    backEnabled: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val app = LocalContext.current.applicationContext as ZMusicApplication
@@ -111,7 +121,7 @@ fun CatalogOverlayHost(
     val pushing = overlayStack.size >= held.size
     var snapPop by remember { mutableStateOf(false) }
     val backUi = rememberPredictiveBackUi(
-        enabled = overlayStack.isNotEmpty(),
+        enabled = overlayStack.isNotEmpty() && backEnabled,
         onPeekCommit = { peeked -> snapPop = peeked },
         onBack = onBack,
     )
@@ -138,17 +148,37 @@ fun CatalogOverlayHost(
                 visibleState.targetState = overlayStack.any { it.stackKey() == item.stackKey() }
                 val isTop = overlayStack.lastOrNull()?.stackKey() == item.stackKey()
                 val cover = landscape && item is MainOverlay.Settings
+                val manualFlight = flightKey != null && item.stackKey() == flightKey
                 AnimatedVisibility(
                     visibleState = visibleState,
                     modifier = Modifier
                         .fillMaxSize()
                         .zIndex(index.toFloat())
                         .then(
-                            if (isTop) Modifier.predictiveBackLayer(backUi)
+                            if (isTop && backEnabled) Modifier.predictiveBackLayer(backUi)
                             else Modifier,
+                        )
+                        .then(
+                            if (manualFlight) {
+                                Modifier.graphicsLayer {
+                                    val p = flightProgress.coerceIn(0f, 1f)
+                                    translationX = size.width * (1f - p)
+                                    alpha = (p / (220f / 320f)).coerceIn(0f, 1f)
+                                }
+                            } else {
+                                Modifier
+                            },
                         ),
-                    enter = if (cover) LandscapeCoverEnter else enter,
-                    exit = if (cover) LandscapeCoverExit else exit,
+                    enter = when {
+                        manualFlight -> EnterTransition.None
+                        cover -> LandscapeCoverEnter
+                        else -> enter
+                    },
+                    exit = when {
+                        manualFlight -> ExitTransition.None
+                        cover -> LandscapeCoverExit
+                        else -> exit
+                    },
                 ) {
                     Box(Modifier.fillMaxSize()) {
                         ChromeWallpaperBackdrop()

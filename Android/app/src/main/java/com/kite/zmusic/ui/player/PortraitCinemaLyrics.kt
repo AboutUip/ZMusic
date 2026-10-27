@@ -159,9 +159,10 @@ fun PortraitCinemaLyrics(
     // 打开意图或进度未归零：全程冻跟滚，避免出场末帧切回浏览态闪一下
     val selectFrozen = selectOpen || selectMorphing
 
-    val timing = lyricAnimTiming(lines, positionMs, trackDurationMs)
+    val lyricClock = rememberSmoothedLyricPositionMs(positionMs, clockRunning)
+    val timing = lyricAnimTiming(lines, lyricClock, trackDurationMs)
     val animActive = if (clockRunning) {
-        lyricAnimActiveIndex(lines, positionMs, trackDurationMs)
+        lyricAnimActiveIndex(lines, lyricClock, trackDurationMs)
     } else {
         lyricActiveIndex(lines, positionMs)
     }
@@ -171,7 +172,7 @@ fun PortraitCinemaLyrics(
     val emphasis by animateFloatAsState(
         targetValue = if (live && !selectFrozen) 1f else 0f,
         animationSpec = tween(
-            durationMillis = (animMs * 1.25f).toInt().coerceIn(280, 520),
+            durationMillis = animMs.coerceIn(90, 420),
             easing = LyricSoftEasing,
         ),
         label = "portraitLyricEmphasis",
@@ -286,7 +287,12 @@ fun PortraitCinemaLyrics(
         val centerPad = with(density) { centerPadPx.toDp() }
         val hPad = lerp(18f, 12f, selectT).dp
 
-        suspend fun scrollToCenteredIndex(index: Int, animated: Boolean, softSnap: Boolean = false) {
+        suspend fun scrollToCenteredIndex(
+            index: Int,
+            animated: Boolean,
+            softSnap: Boolean = false,
+            followDurationMs: Int? = null,
+        ) {
             val gen = followGen
             listState.scrollLyricToCenteredIndex(
                 index = index,
@@ -297,6 +303,7 @@ fun PortraitCinemaLyrics(
                 followGen = gen,
                 currentFollowGen = { followGen },
                 setSuppressBrowseDetect = { suppressBrowseDetect = it },
+                followDurationMs = followDurationMs,
             )
         }
 
@@ -362,7 +369,11 @@ fun PortraitCinemaLyrics(
             if (!browsing && !dragSession) {
                 // 进歌词页 / 仅 pad 变化：直接落在播放行。切句才跟滚动画。
                 val animate = lastFollowedFocus >= 0 && lastFollowedFocus != playFocus
-                scrollToCenteredIndex(playFocus, animated = animate)
+                scrollToCenteredIndex(
+                    playFocus,
+                    animated = animate,
+                    followDurationMs = if (animate) animMs else null,
+                )
                 lastFollowedFocus = playFocus
                 if (skipPlayingEnter) {
                     withFrameMillis { }

@@ -241,7 +241,7 @@ internal fun StableCenterLyricText(
         if (focus == shownFocus && shownText == text && shownSecondary == pairKey) {
             return@LaunchedEffect
         }
-        val phaseMs = animMs.coerceIn(220, 420)
+        val phaseMs = animMs.coerceIn(90, 420)
         val liftPx = with(density) { 10.dp.toPx() }
         // 选句退出后首次挂回：不要再播一遍翻页入场
         if (shownFocus < 0 && instantAppear) {

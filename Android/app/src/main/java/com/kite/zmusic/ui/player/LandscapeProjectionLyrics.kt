@@ -246,9 +246,10 @@ internal fun LandscapeProjectionLyrics(
         }
         return
     }
-    val timing = lyricAnimTiming(lines, positionMs, trackDurationMs)
+    val lyricClock = rememberSmoothedLyricPositionMs(positionMs, clockRunning)
+    val timing = lyricAnimTiming(lines, lyricClock, trackDurationMs)
     val animActive = if (clockRunning) {
-        lyricAnimActiveIndex(lines, positionMs, trackDurationMs)
+        lyricAnimActiveIndex(lines, lyricClock, trackDurationMs)
     } else {
         lyricActiveIndex(lines, positionMs)
     }
@@ -410,6 +411,8 @@ internal fun LandscapeProjectionLyrics(
         softSnap: Boolean = false,
         /** 选句退出：快速柔和回正，禁止先顶对齐再下移 */
         resumeSoft: Boolean = false,
+        /** 播放跟句时与切句提前量相同。 */
+        followDurationMs: Int? = null,
     ) {
         val gen = followGen
         if (resumeSoft && animated) {
@@ -486,11 +489,21 @@ internal fun LandscapeProjectionLyrics(
             followGen = gen,
             currentFollowGen = { followGen },
             setSuppressBrowseDetect = { suppressBrowseDetect = it },
+            followDurationMs = followDurationMs,
         )
     }
 
-    suspend fun scrollToPlayFocus(animated: Boolean, resumeSoft: Boolean = false) {
-        scrollToCenteredIndex(playFocus, animated, resumeSoft = resumeSoft)
+    suspend fun scrollToPlayFocus(
+        animated: Boolean,
+        resumeSoft: Boolean = false,
+        followDurationMs: Int? = null,
+    ) {
+        scrollToCenteredIndex(
+            playFocus,
+            animated,
+            resumeSoft = resumeSoft,
+            followDurationMs = followDurationMs,
+        )
     }
 
     /** 仅当偏离中心较多时做一次轻对齐；接近则不动，去掉强磁吸感 */
@@ -559,7 +572,7 @@ internal fun LandscapeProjectionLyrics(
     LaunchedEffect(playFocus, browsing, lines.size, centerPadPx, selectMode, scrollFrozen) {
         if (scrollFrozen) return@LaunchedEffect
         if (!browsing && !selectMode && !resumeSettling) {
-            scrollToPlayFocus(animated = true)
+            scrollToPlayFocus(animated = true, followDurationMs = animMs)
         }
     }
 

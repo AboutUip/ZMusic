@@ -43,6 +43,8 @@ internal suspend fun LazyListState.scrollLyricToCenteredIndex(
     followGen: Int,
     currentFollowGen: () -> Int,
     setSuppressBrowseDetect: (Boolean) -> Unit,
+    /** 播放跟句：与切句提前量相同，滚动在下一句时间戳上停住。 */
+    followDurationMs: Int? = null,
 ) {
     if (lastIndex < 0) return
     setSuppressBrowseDetect(true)
@@ -82,7 +84,15 @@ internal suspend fun LazyListState.scrollLyricToCenteredIndex(
             }
         }
 
-        val scrollSpec = if (softSnap) LyricScrollSnapSpec else LyricScrollFollowSpec
+        val followBudget = followDurationMs?.coerceIn(90, 420)
+        val scrollSpec = when {
+            softSnap -> LyricScrollSnapSpec
+            followBudget != null -> tween<Float>(
+                durationMillis = (followBudget - 48).coerceAtLeast(60),
+                easing = LyricSoftEasing,
+            )
+            else -> LyricScrollFollowSpec
+        }
 
         if (!animated) {
             jumpToCentered()
@@ -114,7 +124,10 @@ internal suspend fun LazyListState.scrollLyricToCenteredIndex(
         if (fine != null && abs(fine) > 2.5f) {
             animateScrollBy(
                 fine,
-                animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing),
+                animationSpec = tween(
+                    durationMillis = if (followBudget != null) 48 else 180,
+                    easing = FastOutSlowInEasing,
+                ),
             )
         }
     } finally {

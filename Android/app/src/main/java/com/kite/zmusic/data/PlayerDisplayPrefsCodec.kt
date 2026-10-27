@@ -348,6 +348,9 @@ fun lerpPlayerDisplayPrefs(
             to.dynamicLyricUnplayedStyle,
             u,
         ),
+        cinemaCameraMotion = lf(from.cinemaCameraMotion, to.cinemaCameraMotion),
+        cinemaLyricDepth = pick(from.cinemaLyricDepth, to.cinemaLyricDepth),
+        cinemaSpectrumLighting = pick(from.cinemaSpectrumLighting, to.cinemaSpectrumLighting),
     )
 }
 

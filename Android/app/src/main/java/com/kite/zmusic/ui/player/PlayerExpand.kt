@@ -77,8 +77,11 @@ internal data class PlayerExpandLook(
     companion object {
         fun from(prefs: PlayerDisplayPrefs, landscape: Boolean): PlayerExpandLook {
             val ui = prefs.uiScale.coerceIn(PlayerDisplayPrefs.UI_MIN, PlayerDisplayPrefs.UI_MAX)
+            val landscapePage = prefs.landscapePageType.displayed()
             val squareCover = landscape &&
-                prefs.landscapePageType == LandscapePlayerPageType.Dynamic
+                landscapePage == LandscapePlayerPageType.Dynamic
+            val cinema = landscape &&
+                landscapePage == LandscapePlayerPageType.Cinema
             val titleMul = if (squareCover) {
                 25f / 13f
             } else if (landscape) {
@@ -108,7 +111,11 @@ internal data class PlayerExpandLook(
                 },
                 landscape = landscape,
                 squareCover = squareCover,
-                stageDest = if (squareCover) Color.White else TextTheme.PlayerStage,
+                stageDest = when {
+                    squareCover -> Color.White
+                    cinema -> Color(0xFF06080D)
+                    else -> TextTheme.PlayerStage
+                },
                 coverFrameAlpha = if (squareCover) {
                     prefs.dynamicCoverGlass.coerceIn(0f, 1f)
                 } else {

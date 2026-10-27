@@ -10,6 +10,14 @@ import org.junit.Test
 class LyricSweepClockTest {
 
     @Test
+    fun lineTransitionFinishesWhenTheNextLineStarts() {
+        val lines = sampleLines()
+        val timing = lyricAnimTiming(lines, 200L, 0L)
+        assertTrue(timing.leadMs > 0L)
+        assertEquals(timing.leadMs, timing.durationMs.toLong())
+    }
+
+    @Test
     fun sweepLeadMatchesTheLineSwitchLeadWhileThatLineIsCurrent() {
         val lines = sampleLines()
         val at = 200L
@@ -34,35 +42,31 @@ class LyricSweepClockTest {
         val last = lines[0].words.last()
         val raw = lyricWordProgress(last, switchAt)
         assertTrue("raw progress $raw", raw < 0.85f)
-        assertEquals(1f, lyricSweepProgress(last, switchAt, lead, lineEnd), 0.001f)
+        assertEquals(1f, lyricSweepProgress(last, switchAt, lead), 0.001f)
+        val earlier = lines[0].words.first()
+        assertEquals(
+            lyricWordProgress(earlier, switchAt),
+            lyricSweepProgress(earlier, switchAt, 0L),
+            0.001f,
+        )
     }
 
     @Test
-    fun aWordThatRunsPastTheLineStillFinishesAtTheSwitch() {
-        val lines = listOf(
-            LrcLine(
-                timeMs = 0L,
-                text = "你好",
-                words = listOf(
-                    LyricWord(0L, 400L, "你"),
-                    LyricWord(400L, 2_000L, "好"),
-                ),
-            ),
-            LrcLine(timeMs = 1_000L, text = "下一句"),
-        )
-        val lead = lyricSweepLeadMs(lines, 0, 0L)
-        val lineEnd = 1_000L
-        val switchAt = lineEnd - lead
-        val last = lines[0].words.last()
-        assertTrue(lyricWordProgress(last, lineEnd) < 0.5f)
-        assertEquals(1f, lyricSweepProgress(last, switchAt, lead, lineEnd), 0.001f)
+    fun lastWordRenderLengthDropsTheSwitchLead() {
+        val word = LyricWord(timeMs = 400L, durationMs = 2_000L, text = "好")
+        val lead = 300L
+        assertEquals(1_700L, lyricLastWordRenderDurationMs(word.durationMs, lead))
+        val doneAt = word.timeMs + word.durationMs - lead
+        assertEquals(1f, lyricSweepProgress(word, doneAt, lead), 0.001f)
+        assertTrue(lyricSweepProgress(word, doneAt - 1, lead) < 1f)
+        assertEquals(1L, lyricLastWordRenderDurationMs(80L, 300L))
     }
 
     @Test
     fun zeroLeadLeavesWordProgressAlone() {
         val word = LyricWord(timeMs = 1_000L, durationMs = 400L, text = "宽")
-        assertEquals(100L, lyricSweepClockMs(100L, -20L))
-        assertEquals(0.5f, lyricSweepProgress(word, 1_200L, 0L, Long.MAX_VALUE), 0.001f)
+        assertEquals(400L, lyricLastWordRenderDurationMs(word.durationMs, 0L))
+        assertEquals(0.5f, lyricSweepProgress(word, 1_200L, 0L), 0.001f)
     }
 
     private fun sampleLines(): List<LrcLine> = listOf(

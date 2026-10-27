@@ -10,9 +10,20 @@ enum class LandscapePlayerPageType {
     Focus,
     /** 方封 + 景深歌词 */
     Dynamic,
+    /**
+     * 临时丢弃。设置入口已隐藏，已保存的选择经 [displayed] 按专注使用。
+     * 舞台实现仍留在 LandscapeCinemaStage，恢复时把本项加回 [selectable]。
+     */
+    Cinema,
     ;
 
+    /** 当前展示用的模式。影院临时丢弃，不改已写入的偏好。 */
+    fun displayed(): LandscapePlayerPageType = if (this == Cinema) Focus else this
+
     companion object {
+        /** 设置里可切换的横屏模式。影院临时丢弃，不在此列。 */
+        val selectable: List<LandscapePlayerPageType> = listOf(Focus, Dynamic)
+
         fun fromOrdinal(v: Int): LandscapePlayerPageType =
             entries.getOrElse(v) { Focus }
     }
@@ -638,6 +649,12 @@ data class PlayerDisplayPrefs(
     val dynamicLyricPlayedStyle: LyricRoleStyle = LyricRoleStyle.DynamicPlayedDefault,
     /** 动态页未播放歌词。 */
     val dynamicLyricUnplayedStyle: LyricRoleStyle = LyricRoleStyle.DynamicUnplayedDefault,
+    /** 影院页运镜强度：0 = 静止机位，1 = 完整推拉 / 漂移 / 视差。 */
+    val cinemaCameraMotion: Float = CINEMA_CAMERA_MOTION_DEFAULT,
+    /** 影院页歌词景深：关掉后所有歌词等大等亮，便于阅读。 */
+    val cinemaLyricDepth: Boolean = true,
+    /** 影院页频谱灯光：舞台光与封面光门跟随低频 / 中频 / 高频呼吸。 */
+    val cinemaSpectrumLighting: Boolean = true,
 ) {
     fun activeCustomPreset(): VinylCustomPreset =
         vinylCustomPresets.getOrElse(vinylCustomPresetIndex.coerceIn(0, VINYL_CUSTOM_PRESET_COUNT - 1)) {
@@ -794,6 +811,11 @@ data class PlayerDisplayPrefs(
             dynamicLyricPlayingStyle = dynamicLyricPlayingStyle.sanitized(),
             dynamicLyricPlayedStyle = dynamicLyricPlayedStyle.sanitized(),
             dynamicLyricUnplayedStyle = dynamicLyricUnplayedStyle.sanitized(),
+            cinemaCameraMotion = cinemaCameraMotion.finiteCoerceIn(
+                CINEMA_CAMERA_MOTION_MIN,
+                CINEMA_CAMERA_MOTION_MAX,
+                CINEMA_CAMERA_MOTION_DEFAULT,
+            ),
             transportBottomInsetDp = transportBottomInsetDp.finiteCoerceIn(
                 TRANSPORT_BOTTOM_INSET_MIN,
                 TRANSPORT_BOTTOM_INSET_MAX,
@@ -947,6 +969,10 @@ data class PlayerDisplayPrefs(
         const val DYNAMIC_LYRIC_OFFSET_X_MAX = 160f
         const val DYNAMIC_COVER_GLASS_MIN = 0f
         const val DYNAMIC_COVER_GLASS_MAX = 1f
+        /** 影院页运镜强度 */
+        const val CINEMA_CAMERA_MOTION_MIN = 0f
+        const val CINEMA_CAMERA_MOTION_MAX = 1f
+        const val CINEMA_CAMERA_MOTION_DEFAULT = 0.80f
         /** 标题信息垂直偏移 */
         const val TITLE_OFFSET_Y_MIN = -40f
         const val TITLE_OFFSET_Y_MAX = 72f
@@ -1322,6 +1348,12 @@ class PlayerDisplayPrefsStore(
                 prefs.safeString(KEY_DYNAMIC_LYRIC_UNPLAYED_STYLE, null),
                 LyricRoleStyle.DynamicUnplayedDefault,
             ),
+            cinemaCameraMotion = prefs.safeFloat(
+                KEY_CINEMA_CAMERA_MOTION,
+                PlayerDisplayPrefs.CINEMA_CAMERA_MOTION_DEFAULT,
+            ),
+            cinemaLyricDepth = prefs.safeBoolean(KEY_CINEMA_LYRIC_DEPTH, true),
+            cinemaSpectrumLighting = prefs.safeBoolean(KEY_CINEMA_SPECTRUM_LIGHTING, true),
         )
     }
 
@@ -1446,6 +1478,9 @@ class PlayerDisplayPrefsStore(
                     KEY_DYNAMIC_LYRIC_UNPLAYED_STYLE,
                     encodeLyricRoleStyle(v.dynamicLyricUnplayedStyle),
                 )
+                .putFloat(KEY_CINEMA_CAMERA_MOTION, v.cinemaCameraMotion)
+                .putBoolean(KEY_CINEMA_LYRIC_DEPTH, v.cinemaLyricDepth)
+                .putBoolean(KEY_CINEMA_SPECTRUM_LIGHTING, v.cinemaSpectrumLighting)
                 .apply()
         }
     }
@@ -1567,6 +1602,9 @@ class PlayerDisplayPrefsStore(
         private const val KEY_DYNAMIC_LYRIC_PLAYING_STYLE = "dynamic_lyric_playing_style"
         private const val KEY_DYNAMIC_LYRIC_PLAYED_STYLE = "dynamic_lyric_played_style"
         private const val KEY_DYNAMIC_LYRIC_UNPLAYED_STYLE = "dynamic_lyric_unplayed_style"
+        private const val KEY_CINEMA_CAMERA_MOTION = "cinema_camera_motion"
+        private const val KEY_CINEMA_LYRIC_DEPTH = "cinema_lyric_depth"
+        private const val KEY_CINEMA_SPECTRUM_LIGHTING = "cinema_spectrum_lighting"
     }
 }
 

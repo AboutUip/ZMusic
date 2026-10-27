@@ -114,6 +114,7 @@ import com.kite.zmusic.data.SongCommentsCache
 import com.kite.zmusic.data.SongCommentsSnapshot
 import com.kite.zmusic.i18n.t
 import com.kite.zmusic.ui.common.UrlImage
+import com.kite.zmusic.ui.user.rememberUserAvatarTap
 import com.kite.zmusic.ui.easter.MjEasterEgg
 import com.kite.zmusic.ui.icons.ZIconSize
 import com.kite.zmusic.ui.icons.ZIcons
@@ -1209,6 +1210,12 @@ private fun CommentRow(
     var hugAnimPlaying by remember(comment.commentId) { mutableStateOf(false) }
     val hugAnimProgress = remember(comment.commentId) { Animatable(0f) }
     val scope = rememberCoroutineScope()
+    val avatarTap = rememberUserAvatarTap(
+        userId = comment.userId,
+        name = comment.nickname,
+        avatarUrl = comment.avatarUrl,
+        onOpenUser = onOpenUser,
+    )
 
     val collapseLines = 4
     // 粗估：短文直接展示；略长才给「展开」
@@ -1426,6 +1433,7 @@ private fun CommentRow(
                     Box(
                         Modifier
                             .size(40.dp)
+                            .then(avatarTap.modifier)
                             .clip(CircleShape)
                             .then(
                                 if (hugged) {
@@ -1440,13 +1448,7 @@ private fun CommentRow(
                                     Modifier.clickable(
                                         interactionSource = remember { MutableInteractionSource() },
                                         indication = null,
-                                        onClick = {
-                                            onOpenUser(
-                                                comment.userId,
-                                                comment.nickname,
-                                                comment.avatarUrl,
-                                            )
-                                        },
+                                        onClick = avatarTap.open,
                                     )
                                 } else {
                                     Modifier
@@ -1496,13 +1498,7 @@ private fun CommentRow(
                                         Modifier.clickable(
                                             interactionSource = remember { MutableInteractionSource() },
                                             indication = null,
-                                            onClick = {
-                                                onOpenUser(
-                                                    comment.userId,
-                                                    comment.nickname,
-                                                    comment.avatarUrl,
-                                                )
-                                            },
+                                            onClick = avatarTap.open,
                                         )
                                     } else {
                                         Modifier
@@ -1928,6 +1924,12 @@ private fun CommentReplyRow(
     var likeOverride by remember(comment.commentId) { mutableStateOf<SongComment?>(null) }
     val shown = likeOverride ?: comment
     val scope = rememberCoroutineScope()
+    val avatarTap = rememberUserAvatarTap(
+        userId = comment.userId,
+        name = comment.nickname,
+        avatarUrl = comment.avatarUrl,
+        onOpenUser = onOpenUser,
+    )
     val maybeLong = comment.content.length > 56
     fun toggleLike() {
         if (likeBusy) return
@@ -1964,11 +1966,7 @@ private fun CommentReplyRow(
             }
         }
     }
-    val openUser = {
-        if (comment.userId > 0L) {
-            onOpenUser(comment.userId, comment.nickname, comment.avatarUrl)
-        }
-    }
+    val openUser = avatarTap.open
     Row(
         Modifier
             .fillMaxWidth()
@@ -1987,6 +1985,7 @@ private fun CommentReplyRow(
         Box(
             Modifier
                 .size(28.dp)
+                .then(avatarTap.modifier)
                 .clip(CircleShape)
                 .background(CommentAvatarBg)
                 .then(

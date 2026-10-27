@@ -206,8 +206,8 @@ fun lyricActiveIndex(lines: List<LrcLine>, positionMs: Long): Int {
 
 /**
  * 歌词切换动画时序：短句自动压缩，避免固定 260ms 盖过行间隔。
- * - [leadMs]：虚拟进度提前量（过渡在真实时间戳附近收束）
- * - [durationMs]：进入/退出动画时长
+ * - [leadMs]：提前量。切句从这里开始
+ * - [durationMs]：入场时长，与 [leadMs] 相同，过渡在下一句时间戳上收住
  */
 data class LyricAnimTiming(
     val leadMs: Long,
@@ -263,18 +263,18 @@ fun lyricAnimTiming(
 fun lyricAnimTimingForWindow(windowMs: Long): LyricAnimTiming {
     val w = windowMs.coerceAtLeast(1L)
     // 短句提高占比与下限，保证仍有可感知过渡；长句略放宽更丝滑
-    val durationMs = when {
+    val wanted = when {
         w < 280L -> (w * 0.62f).toInt().coerceIn(140, 180)
         w < 480L -> (w * 0.54f).toInt().coerceIn(170, 230)
         w < 800L -> (w * 0.48f).toInt().coerceIn(210, 280)
         w < 1_500L -> (w * 0.42f).toInt().coerceIn(260, 340)
         else -> 380
     }
-    // 提前量略小于时长，短句也能看到完整入场再切走
-    val leadMs = (durationMs * 0.88f).toLong()
+    // 入场时长就是提前量。跟滚若比提前量更长，新句会在歌声出来之后才落到播放位。
+    val leadMs = wanted.toLong()
         .coerceAtMost((w * 0.50f).toLong())
         .coerceAtLeast(56L)
-    return LyricAnimTiming(leadMs = leadMs, durationMs = durationMs)
+    return LyricAnimTiming(leadMs = leadMs, durationMs = leadMs.toInt())
 }
 
 /** 供 UI 动画用的激活下标（已含自适应提前量）。 */
@@ -316,30 +316,25 @@ fun lyricSweepLeadMs(
     return lyricAnimTimingForWindow(minOf(curr, next)).leadMs
 }
 
-/** 逐字、逐字宽填色时钟：叠上切句提前量。 */
-fun lyricSweepClockMs(positionMs: Long, leadMs: Long): Long =
-    positionMs + leadMs.coerceAtLeast(0L)
-
 /**
- * 逐字、逐字宽的字进度。
- * 切句用提前量，填色若仍按字面时间走，切走时末字往往只到一半。
- * 时钟加上同一提前量，并把字的结束收到本句结束，末字在切句时填完。
+ * 最后一个字的渲染时长。其余的字用原来的时长。
+ * 只把切句动画提前量从这一字的总长度里减去，它会在句子开始切走时填完。
  */
+fun lyricLastWordRenderDurationMs(durationMs: Long, switchLeadMs: Long): Long {
+    val natural = durationMs.coerceAtLeast(1L)
+    if (switchLeadMs <= 0L) return natural
+    return (natural - switchLeadMs).coerceAtLeast(1L)
+}
+
+/** 逐字、逐字宽按字面时间填色。[renderShortenMs] 只给当前句最后一个字。 */
 fun lyricSweepProgress(
     word: LyricWord,
     positionMs: Long,
-    leadMs: Long,
-    lineEndMs: Long,
+    renderShortenMs: Long = 0L,
 ): Float {
-    val start = word.timeMs
-    val natural = word.durationMs.coerceAtLeast(1L)
-    val dur = if (lineEndMs > start) {
-        minOf(natural, (lineEndMs - start).coerceAtLeast(1L))
-    } else {
-        natural
-    }
+    val dur = lyricLastWordRenderDurationMs(word.durationMs, renderShortenMs)
     val timed = if (dur == word.durationMs) word else word.copy(durationMs = dur)
-    return lyricWordProgress(timed, lyricSweepClockMs(positionMs, leadMs))
+    return lyricWordProgress(timed, positionMs)
 }
 
 /** 播放位下标：有歌词时永不返回 -1。空行应在解析阶段已剔除。 */

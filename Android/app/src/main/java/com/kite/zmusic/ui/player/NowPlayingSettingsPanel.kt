@@ -1356,7 +1356,7 @@ fun NowPlayingSettingsSheet(
                     SettingsAlpha(dim) {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             SettingsLandscapePageTypeRow(
-                                selected = prefs.landscapePageType,
+                                selected = prefs.landscapePageType.displayed(),
                                 onSelect = { onPrefsChange(prefs.copy(landscapePageType = it)) },
                             )
                             SettingsSwitchRow(
@@ -1370,7 +1370,7 @@ fun NowPlayingSettingsSheet(
                     }
                 }
 
-                if (prefs.landscapePageType == LandscapePlayerPageType.Focus) {
+                if (prefs.landscapePageType.displayed() == LandscapePlayerPageType.Focus) {
                 SettingsCategory(title = t("氛围"), titleAlpha = dim) {
                     SettingsAlpha(dim) {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1757,7 +1757,7 @@ fun NowPlayingSettingsSheet(
                         }
                     }
                 }
-                } else {
+                } else if (prefs.landscapePageType.displayed() == LandscapePlayerPageType.Dynamic) {
                     SettingsCategory(title = t("氛围"), titleAlpha = dim) {
                         SettingsAlpha(dim) {
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1841,6 +1841,63 @@ fun NowPlayingSettingsSheet(
                                     onPreviewDrag(SettingsPreviewKey.DynamicCoverOffsetX, it)
                                 },
                             )
+                        }
+                    }
+                } else {
+                    // 影院临时丢弃。displayed() 为专注或动态时走不到这里。
+                    SettingsCategory(title = t("影院"), titleAlpha = dim) {
+                        SettingsAlpha(dim) {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                SettingsSliderRow(
+                                    title = t("运镜强度"),
+                                    valueLabel = String.format(
+                                        "%.0f%%",
+                                        prefs.cinemaCameraMotion * 100f,
+                                    ),
+                                    value = prefs.cinemaCameraMotion,
+                                    valueRange = PlayerDisplayPrefs.CINEMA_CAMERA_MOTION_MIN..
+                                        PlayerDisplayPrefs.CINEMA_CAMERA_MOTION_MAX,
+                                    onValueChange = {
+                                        onPrefsChange(prefs.copy(cinemaCameraMotion = it))
+                                    },
+                                )
+                                SettingsSwitchRow(
+                                    title = t("歌词景深"),
+                                    subtitle = t("近处更大更亮，远处收到地平线；关闭后句子大小接近"),
+                                    checked = prefs.cinemaLyricDepth,
+                                    colors = switchColors,
+                                    onCheckedChange = {
+                                        onPrefsChange(prefs.copy(cinemaLyricDepth = it))
+                                    },
+                                )
+                                SettingsSwitchRow(
+                                    title = t("频谱灯光"),
+                                    subtitle = t("地平线高光跟随低频和高频轻轻呼吸"),
+                                    checked = prefs.cinemaSpectrumLighting,
+                                    colors = switchColors,
+                                    onCheckedChange = {
+                                        onPrefsChange(prefs.copy(cinemaSpectrumLighting = it))
+                                    },
+                                )
+                                Text(
+                                    text = t("歌词一侧上下拖动推进镜头，松手跳到该句 · 点击封面播放或暂停"),
+                                    style = TextStyle(
+                                        color = LocalSettingsChrome.current.hint,
+                                        fontSize = 12.sp,
+                                        lineHeight = 17.sp,
+                                    ),
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                                )
+                                Text(
+                                    text = t("歌词 / 标题样式与「专注」共用，可在专注页调整后回到影院"),
+                                    style = TextStyle(
+                                        color = LocalSettingsChrome.current.hint.copy(alpha = 0.72f),
+                                        fontSize = 11.sp,
+                                        lineHeight = 16.sp,
+                                    ),
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                                )
+                            }
                         }
                     }
                 }
@@ -2088,16 +2145,24 @@ private fun SettingsLandscapePageTypeRow(
     onSelect: (LandscapePlayerPageType) -> Unit,
 ) {
     val chrome = LocalSettingsChrome.current
-    val modes = LandscapePlayerPageType.entries
-    val labels = listOf(t("专注"), t("动态"))
+    // 影院临时丢弃，只列出 selectable。
+    val modes = LandscapePlayerPageType.selectable
+    val labels = modes.map { mode ->
+        when (mode) {
+            LandscapePlayerPageType.Focus -> t("专注")
+            LandscapePlayerPageType.Dynamic -> t("动态")
+            LandscapePlayerPageType.Cinema -> t("影院")
+        }
+    }
+    val selectedIndex = modes.indexOf(selected).coerceAtLeast(0)
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
-    val indicator = remember { Animatable(selected.ordinal.toFloat()) }
+    val indicator = remember { Animatable(selectedIndex.toFloat()) }
     var dragOffsetPx by remember { mutableFloatStateOf(0f) }
 
-    LaunchedEffect(selected) {
+    LaunchedEffect(selectedIndex) {
         indicator.animateTo(
-            targetValue = selected.ordinal.toFloat(),
+            targetValue = selectedIndex.toFloat(),
             animationSpec = spring(dampingRatio = 0.82f, stiffness = 380f),
         )
     }
@@ -2135,7 +2200,7 @@ private fun SettingsLandscapePageTypeRow(
                 .height(36.dp)
                 .clip(RoundedCornerShape(10.dp))
                 .background(MainPalette.TrackOff)
-                .pointerInput(modes.size) {
+                .pointerInput(modes.size, selectedIndex) {
                     val segW = size.width / modes.size.toFloat()
                     detectHorizontalDragGestures(
                         onDragStart = {
@@ -2144,13 +2209,13 @@ private fun SettingsLandscapePageTypeRow(
                         },
                         onHorizontalDrag = { _, dragAmount ->
                             dragOffsetPx += dragAmount
-                            val live = (selected.ordinal + dragOffsetPx / segW)
+                            val live = (selectedIndex + dragOffsetPx / segW)
                                 .coerceIn(0f, (modes.lastIndex).toFloat())
                             scope.launch { indicator.snapTo(live) }
                         },
                         onDragEnd = {
                             val segWPx = size.width / modes.size.toFloat()
-                            val idx = (selected.ordinal + dragOffsetPx / segWPx)
+                            val idx = (selectedIndex + dragOffsetPx / segWPx)
                                 .roundToInt()
                                 .coerceIn(0, modes.lastIndex)
                             dragOffsetPx = 0f
@@ -2160,7 +2225,7 @@ private fun SettingsLandscapePageTypeRow(
                             } else {
                                 scope.launch {
                                     indicator.animateTo(
-                                        targetValue = selected.ordinal.toFloat(),
+                                        targetValue = selectedIndex.toFloat(),
                                         animationSpec = spring(
                                             dampingRatio = 0.82f,
                                             stiffness = 380f,
@@ -2173,7 +2238,7 @@ private fun SettingsLandscapePageTypeRow(
                             dragOffsetPx = 0f
                             scope.launch {
                                 indicator.animateTo(
-                                    targetValue = selected.ordinal.toFloat(),
+                                    targetValue = selectedIndex.toFloat(),
                                     animationSpec = spring(
                                         dampingRatio = 0.82f,
                                         stiffness = 380f,

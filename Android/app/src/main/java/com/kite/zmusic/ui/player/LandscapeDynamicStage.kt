@@ -164,6 +164,7 @@ internal fun LandscapeDynamicStage(
     lyricPlayingStyle: LyricRoleStyle = LyricRoleStyle.DynamicPlayingDefault,
     lyricPlayedStyle: LyricRoleStyle = LyricRoleStyle.DynamicPlayedDefault,
     lyricUnplayedStyle: LyricRoleStyle = LyricRoleStyle.DynamicUnplayedDefault,
+    clockRunning: Boolean = false,
     customBg: PlayerBackgroundPreset? = null,
     customBgProgress: Float = 0f,
     modifier: Modifier = Modifier,
@@ -294,6 +295,7 @@ internal fun LandscapeDynamicStage(
                 companions = lyricCompanions,
                 positionMs = positionMs,
                 durationMs = durationMs,
+                clockRunning = clockRunning,
                 originalOnTop = originalOnTop,
                 showCompanionOnOthers = showCompanionOnOthers,
                 onSeek = onSeek,
@@ -930,6 +932,7 @@ private fun LandscapeDynamicLyricsFan(
     companions: List<LrcLine?>,
     positionMs: Long,
     durationMs: Long,
+    clockRunning: Boolean,
     originalOnTop: Boolean,
     showCompanionOnOthers: Boolean,
     onSeek: (Long) -> Unit,
@@ -965,7 +968,9 @@ private fun LandscapeDynamicLyricsFan(
         }
         maxW * lyricScale
     }
-    val animActive = lyricAnimActiveIndex(lines, positionMs, durationMs)
+    val lyricClock = rememberSmoothedLyricPositionMs(positionMs, clockRunning)
+    val lyricTiming = lyricAnimTiming(lines, lyricClock, durationMs)
+    val animActive = lyricAnimActiveIndex(lines, lyricClock, durationMs)
     val targetIndex = lyricFocusIndex(lines, animActive).let { if (it < 0) 0 else it }
     val focus = remember { Animatable(targetIndex.toFloat()) }
     var browsing by remember { mutableStateOf(false) }
@@ -994,12 +999,11 @@ private fun LandscapeDynamicLyricsFan(
         val dest = targetIndex.toFloat().coerceIn(0f, lines.lastIndex.toFloat())
         val jump = abs(dest - focus.value)
         if (jump < 0.02f) return@LaunchedEffect
-        val followMs = (400f + jump * 52f).toInt().coerceIn(380, 820)
         focus.animateTo(
             targetValue = dest,
             animationSpec = tween(
-                durationMillis = followMs,
-                easing = CubicBezierEasing(0.33f, 0.0f, 0.2f, 1f),
+                durationMillis = lyricTiming.durationMs.coerceIn(90, 420),
+                easing = LyricSoftEasing,
             ),
         )
     }

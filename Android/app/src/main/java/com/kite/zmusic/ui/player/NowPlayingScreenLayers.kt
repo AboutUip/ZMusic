@@ -279,9 +279,9 @@ internal fun NowPlayingScreenLayers(
                         .fillMaxSize()
                         .playerExpandStageFill(),
                 )
-                val landscapeDynamic =
-                    displayPrefs.landscapePageType == LandscapePlayerPageType.Dynamic
-                if (!landscapeDynamic) {
+                val landscapeImmersive =
+                    displayPrefs.landscapePageType.displayed() != LandscapePlayerPageType.Focus
+                if (!landscapeImmersive) {
                 Box(Modifier.fillMaxSize().playerExpandAtmosphereReveal()) {
                     GeminiOrbsBackdrop(
                         modifier = Modifier

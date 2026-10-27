@@ -66,9 +66,10 @@ internal fun PortraitPreviewLyrics(
     modifier: Modifier = Modifier,
 ) {
     if (lines.isEmpty()) return
-    val timing = lyricAnimTiming(lines, positionMs, durationMs)
+    val lyricClock = rememberSmoothedLyricPositionMs(positionMs, clockRunning)
+    val timing = lyricAnimTiming(lines, lyricClock, durationMs)
     val animActive = if (clockRunning) {
-        lyricAnimActiveIndex(lines, positionMs, durationMs)
+        lyricAnimActiveIndex(lines, lyricClock, durationMs)
     } else {
         lyricActiveIndex(lines, positionMs)
     }
@@ -190,7 +191,7 @@ internal fun PortraitPreviewLyrics(
         focusAnim.animateTo(
             targetValue = focus.toFloat(),
             animationSpec = tween(
-                durationMillis = animMs.coerceIn(220, 420),
+                durationMillis = animMs.coerceIn(90, 420),
                 easing = LyricSoftEasing,
             ),
         )

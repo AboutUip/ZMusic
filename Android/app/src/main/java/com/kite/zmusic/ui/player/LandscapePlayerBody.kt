@@ -27,7 +27,6 @@ import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -67,7 +66,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.wrapContentWidth
@@ -213,7 +211,7 @@ private val DynamicTransportHazeStyle = HazeStyle(
 /** 动态底栏控件带高度（不含 Home Indicator）。 */
 private val DynamicTransportBand = 36.dp
 
-/** 专注/动态切换：布局落地后再停留，遮住封面/舞台跳变。 */
+/** 专注/动态/影院切换：布局落地后再停留，遮住封面/舞台跳变。 */
 private const val PageTypeMaskHoldMs = 480L
 
 /** 右侧悬浮板离场：滑过面板宽 + 右缝，避免缝里还留一条再被卸掉。 */
@@ -465,10 +463,12 @@ internal fun LandscapePlayerBody(
     val forceVinylYCentered = editorVinylCentered || scoreVinylCentered || scoreFlight != null ||
         pickerVinylCentered
     // 设置 / 曲谱 / 自选编辑 / 选句 / 黑胶选歌与底部播放条互斥；编辑时强制隐藏（忽略常显）
-    val dynamicPage =
-        displayPrefs.landscapePageType == LandscapePlayerPageType.Dynamic
-    LaunchedEffect(dynamicPage) {
-        if (!dynamicPage) return@LaunchedEffect
+    val landscapePage = displayPrefs.landscapePageType.displayed()
+    val dynamicPage = landscapePage == LandscapePlayerPageType.Dynamic
+    // 影院临时丢弃，displayed() 目前不会走到这一支；舞台调用保留。
+    val cinemaPage = landscapePage == LandscapePlayerPageType.Cinema
+    LaunchedEffect(dynamicPage, cinemaPage) {
+        if (!dynamicPage && !cinemaPage) return@LaunchedEffect
         if (vinylSongPickOpen || pickerVinylCentered) {
             vinylSongPickOpen = false
             pickerVinylCentered = false
@@ -1512,6 +1512,8 @@ internal fun LandscapePlayerBody(
     val barSlidePx = with(density) { (52.dp + navBottom).toPx() }
     val dynamicTransportH = DynamicTransportBand + navBottom
     val dynamicBarSlidePx = with(density) { dynamicTransportH.toPx() }
+    /** 影院底栏占位，近景封面和标题停在这条暗带之上。 */
+    val cinemaTransportReserve = 68.dp + navBottom
 
     BoxWithConstraints(
         modifier
@@ -1642,7 +1644,56 @@ internal fun LandscapePlayerBody(
                 .hazeSource(state = settingsHazeState, zIndex = 1f)
                 .graphicsLayer { clip = false },
         ) {
-        if (dynamicPage) {
+        if (cinemaPage) {
+            LandscapeCinemaStage(
+                track = track,
+                lines = lines,
+                lyricCompanions = lyricCompanions,
+                originalOnTop = originalOnTop,
+                showCompanionOnOthers = showCompanionOnOthers,
+                positionMs = positionMs,
+                durationMs = durationMs,
+                isPlaying = isPlaying,
+                playWhenReady = playWhenReady,
+                buffering = buffering,
+                loadPending = loadPending,
+                gesturesEnabled = !settingsOpen &&
+                    !lyricSelectOpen &&
+                    !backgroundEditorOpen,
+                cameraMotion = stagePrefs.cinemaCameraMotion,
+                lyricDepth = stagePrefs.cinemaLyricDepth,
+                spectrumLighting = stagePrefs.cinemaSpectrumLighting,
+                lyricPlayingStyle = stagePrefs.lyricPlayingStyle,
+                lyricPlayedStyle = stagePrefs.lyricPlayedStyle,
+                lyricUnplayedStyle = stagePrefs.lyricUnplayedStyle,
+                titleNameColor = stagePrefs.titleNameColor(),
+                titleArtistColor = stagePrefs.titleSourceColor(),
+                titleNameFontScale = stagePrefs.titleNameStyle.sanitizedFontScale(),
+                titleArtistFontScale = stagePrefs.titleSourceStyle.sanitizedFontScale(),
+                onSeek = { ms ->
+                    onSeek(ms.coerceIn(0L, durationMs.coerceAtLeast(0L)))
+                },
+                onArtistClick = onArtistClick,
+                onTogglePlay = {
+                    if (!controlsLocked) onTogglePlay()
+                },
+                transportRevealT = chromeVisualT,
+                transportReserve = cinemaTransportReserve,
+                floorCovers = remember(queue, queueIndex, track.coverUrl) {
+                    val urls = ArrayList<String?>(12)
+                    val size = queue.size
+                    if (size > 0) {
+                        val start = (queueIndex - 5).coerceAtLeast(0)
+                        for (i in 0 until 12) {
+                            urls += queue.getOrNull((start + i) % size)?.coverUrl
+                        }
+                    }
+                    while (urls.size < 12) urls += track.coverUrl
+                    urls
+                },
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else if (dynamicPage) {
             LandscapeDynamicStage(
                 track = track,
                 peekNext = peekNextTrack,
@@ -1689,6 +1740,8 @@ internal fun LandscapePlayerBody(
                 } else {
                     stagePrefs.dynamicLyricUnplayedStyle
                 },
+                clockRunning = isPlaying && playWhenReady && !buffering && !loadPending &&
+                    !sliderDragging && lyricStyleSnapshot == null,
                 customBg = landscapeCustomBg,
                 customBgProgress = landscapeCustomBgProgress,
                 modifier = Modifier.fillMaxSize(),
@@ -1993,7 +2046,7 @@ internal fun LandscapePlayerBody(
         } // 专注构图
         } // hazeSource：仅播放内容作磨砂源（chrome 提到叠层之上，避免被 OutsideDismiss 盖住）
 
-        if (!dynamicPage && danmakuLayerActive && track.id > 0L) {
+        if (!dynamicPage && !cinemaPage && danmakuLayerActive && track.id > 0L) {
             LandscapeDanmakuOverlay(
                 songId = track.id,
                 density = stagePrefs.danmakuDensity,
@@ -2410,11 +2463,13 @@ internal fun LandscapePlayerBody(
                 ?: 16f
             val transportBottomPad = when {
                 dynamicPage -> 0.dp
+                cinemaPage -> 0.dp
                 transportDocked -> 0.dp
                 else -> insetDp.dp
             }
             val transportShape = when {
                 dynamicPage -> RectangleShape
+                cinemaPage -> RectangleShape
                 transportDocked -> RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp)
                 else -> RoundedCornerShape(14.dp)
             }
@@ -2433,10 +2488,17 @@ internal fun LandscapePlayerBody(
                 Modifier
                     .fillMaxWidth()
                     .then(
-                        if (dynamicPage) {
-                            Modifier.height(dynamicTransportH)
+                        if (cinemaPage) {
+                            Modifier.padding(bottom = navBottom)
                         } else {
-                            Modifier.padding(
+                            Modifier
+                        },
+                    )
+                    .then(
+                        when {
+                            cinemaPage -> Modifier
+                            dynamicPage -> Modifier.height(dynamicTransportH)
+                            else -> Modifier.padding(
                                 start = chromeSidePad,
                                 end = chromeSidePad,
                                 bottom = transportBottomPad,
@@ -2445,13 +2507,19 @@ internal fun LandscapePlayerBody(
                     )
                     .clip(transportShape)
                     .then(
-                        if (dynamicPage) {
-                            Modifier.hazeEffect(
+                        when {
+                            cinemaPage -> Modifier.background(
+                                Brush.verticalGradient(
+                                    0f to Color.Transparent,
+                                    0.28f to Color(0xAA05070B),
+                                    1f to Color(0xF205070B),
+                                ),
+                            )
+                            dynamicPage -> Modifier.hazeEffect(
                                 state = settingsHazeState,
                                 style = DynamicTransportHazeStyle,
                             )
-                        } else {
-                            Modifier.background(Color.Black.copy(alpha = 0.22f))
+                            else -> Modifier.background(Color.Black.copy(alpha = 0.22f))
                         },
                     )
                     .clickable(
@@ -2460,10 +2528,21 @@ internal fun LandscapePlayerBody(
                         indication = null,
                         onClick = { revealControls() },
                     )
-                    .padding(horizontal = 14.dp)
                     .padding(
-                        top = if (dynamicPage) 4.dp else 8.dp,
-                        bottom = (if (dynamicPage) 2.dp else 8.dp) + navBottom,
+                        start = if (cinemaPage) 12.dp else 14.dp,
+                        end = if (cinemaPage) 12.dp else 14.dp,
+                    )
+                    .padding(
+                        top = when {
+                            cinemaPage -> 6.dp
+                            dynamicPage -> 4.dp
+                            else -> 8.dp
+                        },
+                        bottom = when {
+                            cinemaPage -> 6.dp
+                            dynamicPage -> 2.dp + navBottom
+                            else -> 8.dp + navBottom
+                        },
                     ),
             ) {
                 PlayerTransport(
@@ -2522,7 +2601,7 @@ internal fun LandscapePlayerBody(
                     portraitSlim = false,
                     landscapeDense = true,
                     onLightSurface = dynamicPage,
-                    onOpenScore = if (dynamicPage) {
+                    onOpenScore = if (dynamicPage || cinemaPage) {
                         null
                     } else {
                         { if (!controlsLocked) openScore() }

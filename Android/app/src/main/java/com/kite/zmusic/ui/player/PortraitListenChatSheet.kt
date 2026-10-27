@@ -149,6 +149,7 @@ import com.kite.zmusic.listen.listenChatVisibleBody
 import com.kite.zmusic.listen.parseListenChatPack
 import com.kite.zmusic.listen.parseListenChatText
 import com.kite.zmusic.ui.common.UrlImage
+import com.kite.zmusic.ui.user.rememberUserAvatarTap
 import com.kite.zmusic.ui.easter.MjEasterEgg
 import com.kite.zmusic.ui.icons.ZIcons
 import com.kite.zmusic.ui.main.MainPalette
@@ -1200,19 +1201,23 @@ private fun ChatAvatar(
     msg: ListenChatMsg,
     onOpenUser: (Long, String, String?) -> Unit,
 ) {
-    val uid = msg.ncmUserId()
+    val uid = msg.ncmUserId() ?: 0L
+    val avatarTap = rememberUserAvatarTap(
+        userId = uid,
+        name = msg.nickname,
+        avatarUrl = msg.avatarUrl.ifBlank { null },
+        onOpenUser = onOpenUser,
+    )
     Box(
         Modifier
             .size(32.dp)
+            .then(avatarTap.modifier)
             .clip(CircleShape)
             .background(MainPalette.Placeholder)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
-                onClick = {
-                    val id = uid ?: return@clickable
-                    onOpenUser(id, msg.nickname, msg.avatarUrl.ifBlank { null })
-                },
+                onClick = avatarTap.open,
             ),
         contentAlignment = Alignment.Center,
     ) {

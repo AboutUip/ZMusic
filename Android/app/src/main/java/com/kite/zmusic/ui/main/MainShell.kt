@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.os.Build
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -127,6 +128,10 @@ import com.kite.zmusic.ui.catalog.PlaylistManageBridge
 import com.kite.zmusic.ui.library.SpaceDarkBarsProgress
 import com.kite.zmusic.ui.library.spaceChromeLeave
 import com.kite.zmusic.ui.mv.MvPlayerScreen
+import com.kite.zmusic.ui.user.LocalUserAvatarHandoff
+import com.kite.zmusic.ui.user.UserAvatarFlightDriver
+import com.kite.zmusic.ui.user.UserAvatarFlightOverlay
+import com.kite.zmusic.ui.user.UserAvatarHandoff
 import com.kite.zmusic.data.PlaybackChromeMode
 import com.kite.zmusic.ui.player.MiniPlayerBar
 import com.kite.zmusic.ui.player.PlaybackIsland
@@ -187,6 +192,13 @@ fun MainShell(
     }.collectAsStateWithLifecycle(playback.ui.value.playWhenReady)
     var showFullPlayer by rememberSaveable { mutableStateOf(false) }
     var overlayStack by remember { mutableStateOf<List<MainOverlay>>(emptyList()) }
+    var playerOverlayLift by remember { mutableStateOf(false) }
+    val userAvatarHandoff = remember { UserAvatarHandoff() }
+    LaunchedEffect(playerOverlayLift, overlayStack.isEmpty(), userAvatarHandoff.active) {
+        if (!playerOverlayLift || overlayStack.isNotEmpty() || userAvatarHandoff.active) return@LaunchedEffect
+        delay(360)
+        if (overlayStack.isEmpty() && !userAvatarHandoff.active) playerOverlayLift = false
+    }
     val playlistManage = remember { PlaylistManageBridge() }
     var userSpaceProgress by remember { mutableFloatStateOf(0f) }
     val overlay = overlayStack.lastOrNull()
@@ -995,6 +1007,41 @@ fun MainShell(
     val chromeInset =
         if (freezeChromePad && dockInsetHold.value > 0.dp) dockInsetHold.value else liveChromeInset
 
+    @Composable
+    fun ShellOverlays(
+        modifier: Modifier = Modifier,
+        flightKey: String? = null,
+        flightProgress: Float = 1f,
+        backEnabled: Boolean = true,
+    ) {
+        CatalogOverlayHost(
+            overlayStack = overlayStack,
+            searchInStack = overlayStack.any { it is MainOverlay.Search },
+            sessionRepository = sessionRepository,
+            contentBottomInset = chromeInset,
+            onBack = { popOverlay() },
+            onPlayTracks = { list, idx, plId, plTitle ->
+                playTracksWithNotificationPermission(list, idx, plId, plTitle)
+            },
+            onOpenPlaylist = { id, title, cover ->
+                pushOverlay(MainOverlay.Playlist(id, title, cover))
+            },
+            onPushOverlay = { pushOverlay(it) },
+            onHint = ::hint,
+            onLogout = onLogout,
+            onPlaySong = { songId -> playLinkedSong(songId) },
+            playingTrackId = playingTrackId,
+            playingSourceId = playingSourceId,
+            isPlaying = playWhenReady,
+            manageBridge = playlistManage,
+            includeMv = false,
+            flightKey = flightKey,
+            flightProgress = flightProgress,
+            backEnabled = backEnabled,
+            modifier = modifier,
+        )
+    }
+
     val glassMode = LocalChromeGlassStyle.current.mode
     val itemChrome = if (wallpaperFrame != null) wallpaper.itemChrome else ChromeGlassMode.Solid
     val needLiquid = glassMode == ChromeGlassMode.Liquid || itemChrome == ChromeGlassMode.Liquid
@@ -1028,7 +1075,10 @@ fun MainShell(
         else -> MainLightSystemBars()
     }
 
-    CompositionLocalProvider(LocalPlayerExpand provides expand) {
+    CompositionLocalProvider(
+        LocalPlayerExpand provides expand,
+        LocalUserAvatarHandoff provides userAvatarHandoff,
+    ) {
     Box(
         modifier
             .fillMaxSize()
@@ -1459,29 +1509,9 @@ fun MainShell(
                 }
             }
 
-            CatalogOverlayHost(
-                overlayStack = overlayStack,
-                searchInStack = overlayStack.any { it is MainOverlay.Search },
-                sessionRepository = sessionRepository,
-                contentBottomInset = chromeInset,
-                onBack = { popOverlay() },
-                onPlayTracks = { list, idx, plId, plTitle ->
-                    playTracksWithNotificationPermission(list, idx, plId, plTitle)
-                },
-                onOpenPlaylist = { id, title, cover ->
-                    pushOverlay(MainOverlay.Playlist(id, title, cover))
-                },
-                onPushOverlay = { pushOverlay(it) },
-                onHint = ::hint,
-                onLogout = onLogout,
-                onPlaySong = { songId -> playLinkedSong(songId) },
-                playingTrackId = playingTrackId,
-                playingSourceId = playingSourceId,
-                isPlaying = playWhenReady,
-                manageBridge = playlistManage,
-                includeMv = false,
-                modifier = Modifier.fillMaxSize(),
-            )
+            if (!playerOverlayLift) {
+                ShellOverlays()
+            }
         }
 
         } // weight 内容格
@@ -1566,8 +1596,17 @@ fun MainShell(
                             closeFullPlayer()
                         },
                         onOpenUser = { id, name, cover ->
+                            // 评论头像进主页：主页盖在播放页上滑入，头像单独飞。
+                            // 不要同时 closeFullPlayer，收起和横滑会断成两段。
+                            val before = overlayStack.size
                             pushOverlay(MainOverlay.User(id, name, cover))
-                            closeFullPlayer()
+                            val opened = overlayStack.lastOrNull() as? MainOverlay.User
+                            val openedThis = opened?.id == id && overlayStack.size > before
+                            if (!openedThis || !expand.mounted) {
+                                userAvatarHandoff.abandon()
+                            } else {
+                                playerOverlayLift = true
+                            }
                         },
                     )
                 }
@@ -1577,6 +1616,46 @@ fun MainShell(
                 )
             }
         }
+
+        val flightUserId = userAvatarHandoff.userId
+        val flightOnStack = flightUserId > 0L && overlayStack.any {
+            it is MainOverlay.User && it.id == flightUserId
+        }
+        userAvatarHandoff.present = userAvatarHandoff.active && flightOnStack
+        val drivingFlight = playerOverlayLift &&
+            userAvatarHandoff.active &&
+            userAvatarHandoff.origin != null &&
+            (overlay as? MainOverlay.User)?.id == flightUserId
+        if (playerOverlayLift) {
+            ShellOverlays(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .zIndex(145f),
+                flightKey = if (userAvatarHandoff.active && userAvatarHandoff.origin != null) {
+                    "user-$flightUserId"
+                } else {
+                    null
+                },
+                flightProgress = userAvatarHandoff.progress,
+                backEnabled = !drivingFlight,
+            )
+        }
+        UserAvatarFlightDriver(
+            handoff = userAvatarHandoff,
+            onExit = {
+                popOverlay()
+                playerOverlayLift = false
+            },
+        )
+        BackHandler(enabled = drivingFlight) {
+            userAvatarHandoff.requestExit()
+        }
+        UserAvatarFlightOverlay(
+            handoff = userAvatarHandoff,
+            modifier = Modifier
+                .fillMaxSize()
+                .zIndex(160f),
+        )
     }
     }
 }
@@ -1851,7 +1930,6 @@ private fun FullPlayerSlot(
         },
         onOpenUser = { id, name, cover ->
             onOpenUser(id, name, cover)
-            onDismiss()
         },
     )
     }

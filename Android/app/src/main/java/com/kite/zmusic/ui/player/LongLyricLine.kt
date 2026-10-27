@@ -116,12 +116,22 @@ internal fun LongLyricText(
     val pos = rememberSmoothedLyricPositionMs(positionMs, tracking)
     val karaokeColor = unplayedColor?.takeIf { words.isNotEmpty() }
     val wordSync = if (karaokeColor != null) LocalLyricSweepSync.current else null
-    val sungAt = if (wordSync != null) lyricSweepClockMs(pos, wordSync.leadMs) else pos
+    val scrolledWords = if (wordSync != null && wordSync.leadMs > 0L && words.isNotEmpty()) {
+        words.mapIndexed { index, word ->
+            if (index != words.lastIndex) {
+                word
+            } else {
+                word.copy(
+                    durationMs = lyricLastWordRenderDurationMs(word.durationMs, wordSync.leadMs),
+                )
+            }
+        }
+    } else {
+        words
+    }
     HorizontalLyricViewport(
         motion = if (karaokeColor != null) {
-            LongLyricMotion.Karaoke(
-                longLyricSungFraction(words, sungAt, wordSync?.lineEndMs ?: Long.MAX_VALUE),
-            )
+            LongLyricMotion.Karaoke(longLyricSungFraction(scrolledWords, pos))
         } else {
             LongLyricMotion.Timed(longLyricProgress(pos, lineStartMs, lineSpanMs))
         },
@@ -140,6 +150,7 @@ internal fun LongLyricText(
                             unplayedColor = idleColor,
                             style = style,
                             sweep = sweep,
+                            isLastWord = index == words.lastIndex,
                         )
                     }
                 }

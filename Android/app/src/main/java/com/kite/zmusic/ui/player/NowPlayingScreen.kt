@@ -414,7 +414,7 @@ fun NowPlayingScreen(
     }
     // Animatable：连点开关会取消上一跳，从当前强度反向；时长按剩余路程缩放，打断可预测
     val rainOn = PluginLookPresent.atmosphereRain(displayPrefs.rainNightEnabled) &&
-        !(isLandscape && displayPrefs.landscapePageType == LandscapePlayerPageType.Dynamic)
+        !(isLandscape && displayPrefs.landscapePageType.displayed() != LandscapePlayerPageType.Focus)
     val rainProgress = remember {
         Animatable(if (rainOn) 1f else 0f)
     }
@@ -1235,9 +1235,12 @@ fun NowPlayingScreen(
         }
     }
     val landscapeCustomBg = if (isLandscape) {
-        PluginLookPresent.playerBackground() ?: displayPrefs.resolvedCustomBackground(
-            dynamic = displayPrefs.landscapePageType == LandscapePlayerPageType.Dynamic,
-        )
+        PluginLookPresent.playerBackground() ?: when (displayPrefs.landscapePageType.displayed()) {
+            LandscapePlayerPageType.Focus -> displayPrefs.resolvedCustomBackground()
+            LandscapePlayerPageType.Dynamic -> displayPrefs.resolvedCustomBackground(dynamic = true)
+            // 影院页自带封面铺底与光门，不叠用户背景，避免破坏舞台纵深。
+            LandscapePlayerPageType.Cinema -> null
+        }
     } else {
         null
     }

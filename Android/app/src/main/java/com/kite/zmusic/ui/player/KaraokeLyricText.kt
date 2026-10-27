@@ -30,12 +30,11 @@ import com.kite.zmusic.data.LyricWord
 import kotlin.math.abs
 
 /**
- * 按字、按字宽跟切句用同一提前量。暂停且进度没跳走时留着上次的提前量，避免填色被拉回。
- * 拖动、跳进度时改跟真实位置。
+ * 只有当前句最后一个字会减去 [leadMs]。暂停且进度没跳走时留着这个长度，避免末字被拉长。
+ * 拖动、跳进度时末字改回原来的时长。
  */
 internal data class LyricSweepSync(
     val leadMs: Long = 0L,
-    val lineEndMs: Long = Long.MAX_VALUE,
 )
 
 internal val LocalLyricSweepSync = compositionLocalOf { LyricSweepSync() }
@@ -50,14 +49,12 @@ internal fun rememberLyricSweepSync(
     positionMs: Long,
     clockRunning: Boolean,
 ): LyricSweepSync {
-    val lineEndMs = lyricLineEndMs(lines, displayedIndex, trackDurationMs)
     val live = if (clockRunning && displayedIndex in lines.indices) {
         LyricSweepSync(
             leadMs = lyricSweepLeadMs(lines, displayedIndex, trackDurationMs),
-            lineEndMs = lineEndMs,
         )
     } else {
-        LyricSweepSync(leadMs = 0L, lineEndMs = lineEndMs)
+        LyricSweepSync(leadMs = 0L)
     }
     var latched by remember { mutableStateOf(LyricSweepSync()) }
     var latchedIndex by remember { mutableIntStateOf(Int.MIN_VALUE) }
@@ -80,7 +77,7 @@ internal fun rememberLyricSweepSync(
 /**
  * 仅用于当前播放行。
  * [sweep] 为 false 时一个字整颗变色；为 true 时高亮按这个字的宽度从左往右扫过。
- * 两种都跟切句提前量对齐，末字在句子被切走时填完。
+ * 两种都按字面时间填。只有最后一个字的渲染时长减去切句提前量。
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -118,6 +115,7 @@ internal fun KaraokeLyricText(
                     style = style,
                     sweep = sweep,
                     overflow = overflow,
+                    isLastWord = index == words.lastIndex,
                 )
             }
         }
@@ -133,9 +131,14 @@ internal fun KaraokeWordText(
     style: TextStyle,
     sweep: Boolean,
     overflow: TextOverflow = TextOverflow.Clip,
+    isLastWord: Boolean = false,
 ) {
     val sync = LocalLyricSweepSync.current
-    val progress = lyricSweepProgress(word, positionMs, sync.leadMs, sync.lineEndMs)
+    val progress = lyricSweepProgress(
+        word,
+        positionMs,
+        if (isLastWord) sync.leadMs else 0L,
+    )
     if (!sweep) {
         val color = wordColor(progress, playingColor, unplayedColor)
         KaraokeWordLabel(word.text, color, style, overflow)

@@ -42,6 +42,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalContext
@@ -341,6 +344,11 @@ private fun UserRoomHeader(
         animationSpec = tween(420, easing = FastOutSlowInEasing),
         label = "user-room-appear",
     )
+    val handoff = LocalUserAvatarHandoff.current
+    val avatarFlying = handoff != null &&
+        handoff.active &&
+        handoff.userId == ui.id &&
+        handoff.progress < UserAvatarFlightSettle
     val banner = ui.backgroundUrl?.takeIf { it.isNotBlank() } ?: ui.avatarUrl
     Column(Modifier.graphicsLayer { alpha = appear }) {
         Box(
@@ -376,6 +384,21 @@ private fun UserRoomHeader(
                 Box(
                     Modifier
                         .size(72.dp)
+                        .onGloballyPositioned { coords ->
+                            if (!coords.isAttached || handoff == null || !handoff.active || handoff.userId != ui.id) {
+                                return@onGloballyPositioned
+                            }
+                            val topLeft = coords.positionInWindow()
+                            val width = coords.size.width.toFloat()
+                            val height = coords.size.height.toFloat()
+                            handoff.destination = Rect(
+                                topLeft.x,
+                                topLeft.y,
+                                topLeft.x + width,
+                                topLeft.y + height,
+                            )
+                        }
+                        .graphicsLayer { alpha = if (avatarFlying) 0f else 1f }
                         .border(2.dp, Color.White.copy(alpha = 0.92f), CircleShape)
                         .padding(2.dp)
                         .clip(CircleShape)
