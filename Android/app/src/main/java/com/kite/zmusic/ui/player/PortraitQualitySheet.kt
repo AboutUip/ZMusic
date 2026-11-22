@@ -43,10 +43,10 @@ private val QualityPanelShape = RoundedCornerShape(topStart = 22.dp, topEnd = 22
 fun PortraitQualitySheet(
     selected: AudioQuality,
     onSelect: (AudioQuality) -> Unit,
+    modifier: Modifier = Modifier,
     hazeState: HazeState? = null,
     onDragHandleVertical: ((dragAmountPx: Float) -> Unit)? = null,
     onDragHandleEnd: (() -> Unit)? = null,
-    modifier: Modifier = Modifier,
 ) {
     Box(
         modifier

@@ -72,11 +72,11 @@ fun MiniPlayerBar(
     onOpenFull: () -> Unit,
     onTogglePlay: () -> Unit,
     backdrop: Backdrop,
+    modifier: Modifier = Modifier,
     loadPending: Boolean = false,
     quickSkip: MiniQuickSkipPrefs = MiniQuickSkipPrefs(),
     onSkipNext: () -> Unit = {},
     onSkipPrev: () -> Unit = {},
-    modifier: Modifier = Modifier,
 ) {
     val shape = RoundedCornerShape(24.dp)
     val noopDrag = rememberDraggableState { }

@@ -372,28 +372,6 @@ internal fun Modifier.mainLiquidGlass(
 }
 
 /**
- * 个人页资料卡：28dp 圆角，lens 高度低于圆角；白膜略高于 Dock，保证字可读。
- */
-internal fun Modifier.profileLiquidGlass(
-    backdrop: Backdrop,
-    shape: Shape,
-): Modifier = composed {
-    chromeGlassSurface(
-        backdrop = backdrop,
-        shape = shape,
-        style = LocalChromeGlassStyle.current,
-        haze = LocalChromeHaze.current,
-        liquidBlur = 2.4.dp,
-        liquidLensHeight = 8.dp,
-        liquidLensAmount = 16.dp,
-        highlightWidth = 0.55.dp,
-        highlightAlpha = 0.40f,
-        surface = MainPalette.glassFill(0.32f),
-        depthEffect = true,
-    )
-}
-
-/**
  * 确认弹窗卡片：32dp 圆角，lens 高度低于圆角；略提高白膜保证字可读。
  */
 internal fun Modifier.dialogLiquidGlass(

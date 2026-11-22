@@ -10,7 +10,6 @@ import com.kite.zmusic.data.AudioQualityStore
 import com.kite.zmusic.data.LyricOverlayStore
 import com.kite.zmusic.data.LyricRenderStore
 import com.kite.zmusic.data.PersistentPlaybackStore
-import com.kite.zmusic.data.PersonalFmModeStore
 import com.kite.zmusic.data.ChromeGlassStore
 import com.kite.zmusic.i18n.I18n
 import com.kite.zmusic.data.HomeFeedRepository
@@ -20,6 +19,7 @@ import com.kite.zmusic.data.NcmUserClient
 import com.kite.zmusic.data.PlaylistCollectionRepository
 import com.kite.zmusic.data.PlaylistEditor
 import com.kite.zmusic.data.PlaylistTracksCache
+import com.kite.zmusic.data.RecentPlayStore
 import com.kite.zmusic.data.SearchHistoryRepository
 import com.kite.zmusic.data.SongWikiCache
 import com.kite.zmusic.data.SessionRepository
@@ -69,6 +69,11 @@ class ZMusicApplication : Application() {
     val privacyStore get() = container.privacyStore
     val predictiveBackStore get() = container.predictiveBackStore
     val landscapeModeStore get() = container.landscapeModeStore
+    val appModeStore get() = container.appModeStore
+    val podcastPlayMemory get() = container.podcastPlayMemory
+    val podcastClient get() = container.podcastClient
+    val podcastSessionCache get() = container.podcastSessionCache
+    val modePlayback get() = container.modePlayback
     val ignoreStatusBarStore get() = container.ignoreStatusBarStore
     val playbackChromeStore get() = container.playbackChromeStore
     val splashAccelStore get() = container.splashAccelStore
@@ -92,6 +97,7 @@ class ZMusicApplication : Application() {
     val albumTracksCache: AlbumTracksCache get() = container.albumTracksCache
     internal val songWikiCache: SongWikiCache get() = container.songWikiCache
     val searchHistoryRepository: SearchHistoryRepository get() = container.searchHistoryRepository
+    val recentPlayStore: RecentPlayStore get() = container.recentPlayStore
     val playlistCollectionRepository: PlaylistCollectionRepository
         get() = container.playlistCollectionRepository
     val albumCollectionRepository: AlbumCollectionRepository get() = container.albumCollectionRepository

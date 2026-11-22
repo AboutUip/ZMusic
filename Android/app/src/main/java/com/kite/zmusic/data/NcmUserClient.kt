@@ -984,6 +984,23 @@ class NcmUserClient(
         get("/comment/music", q)
     }
 
+    /** MV 评论。`/comment/mv`，分页用 offset。 */
+    suspend fun commentMv(
+        mvId: Long,
+        cookie: String,
+        limit: Int = 20,
+        offset: Int = 0,
+    ): JSONObject = withContext(Dispatchers.IO) {
+        val q = linkedMapOf(
+            "id" to mvId.toString(),
+            "limit" to limit.toString(),
+            "offset" to offset.toString(),
+            "timestamp" to ts(),
+        )
+        if (cookie.isNotBlank()) q["cookie"] = cookie
+        get("/comment/mv", q)
+    }
+
     /** 楼层回复：[parentCommentId] 为一级评论 id。 */
     suspend fun commentFloor(
         songId: Long,

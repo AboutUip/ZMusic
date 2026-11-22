@@ -42,12 +42,14 @@ class HomeStageTest {
     }
 
     @Test
-    fun rightwardDragOpensAndAnOpenPageTracksEitherWay() {
+    fun rightwardDragOpensOnlyWhenTheNavCannotGoBack() {
         assertNull(homeStageClaimsDrag(0f, 4f, 2f, 12f))
         assertEquals(false, homeStageClaimsDrag(0f, 4f, 40f, 12f))
-        assertEquals(false, homeStageClaimsDrag(0f, -40f, 4f, 12f))
-        assertEquals(true, homeStageClaimsDrag(0f, 40f, 6f, 12f))
-        assertEquals(true, homeStageClaimsDrag(0.4f, -30f, 4f, 12f))
+        assertEquals(false, homeStageClaimsDrag(0f, -40f, 4f, 12f, navCanScrollBackward = false))
+        assertEquals(true, homeStageClaimsDrag(0f, 40f, 6f, 12f, navCanScrollBackward = false))
+        assertEquals(false, homeStageClaimsDrag(0f, 40f, 6f, 12f, navCanScrollBackward = true))
+        assertEquals(false, homeStageClaimsDrag(0f, -40f, 4f, 12f, navCanScrollBackward = true))
+        assertEquals(true, homeStageClaimsDrag(0.4f, -30f, 4f, 12f, navCanScrollBackward = true))
     }
 
     @Test
@@ -58,6 +60,14 @@ class HomeStageTest {
         assertEquals(true, homeStageYieldsToHorizontalChild(0f, onHorizontalChild = true))
         assertEquals(false, homeStageYieldsToHorizontalChild(0f, onHorizontalChild = false))
         assertEquals(false, homeStageYieldsToHorizontalChild(0.4f, onHorizontalChild = true))
+    }
+
+    @Test
+    fun staleCarouselClaimDoesNotOwnTheNextPress() {
+        assertEquals(true, homeStageOwnsHorizontalPointer(3L, 100L, 3L, 100L))
+        assertEquals(false, homeStageOwnsHorizontalPointer(3L, 100L, 3L, 240L))
+        assertEquals(false, homeStageOwnsHorizontalPointer(3L, 100L, 4L, 100L))
+        assertEquals(false, homeStageOwnsHorizontalPointer(null, 100L, 3L, 100L))
     }
 
     @Test

@@ -163,7 +163,7 @@ class LyricRepository(
         if (original.isEmpty()) {
             return fromDisk ?: LyricPack.Empty
         }
-        return finishOpen(songId, original, bundle?.translated.orEmpty(), "qq")
+        return finishOpen(songId, original, bundle?.translated.orEmpty())
     }
 
     private suspend fun loadKuwo(songId: Long, track: TrackRow?, fromDisk: LyricPack?): LyricPack {
@@ -177,7 +177,7 @@ class LyricRepository(
         if (original.isEmpty()) {
             return fromDisk ?: LyricPack.Empty
         }
-        return finishOpen(songId, original, bundle?.translated.orEmpty(), "kuwo")
+        return finishOpen(songId, original, bundle?.translated.orEmpty())
     }
 
     private suspend fun loadKugou(songId: Long, track: TrackRow?, fromDisk: LyricPack?): LyricPack {
@@ -191,14 +191,13 @@ class LyricRepository(
         if (original.isEmpty()) {
             return fromDisk ?: LyricPack.Empty
         }
-        return finishOpen(songId, original, bundle?.translated.orEmpty(), "kugou")
+        return finishOpen(songId, original, bundle?.translated.orEmpty())
     }
 
     private suspend fun finishOpen(
         songId: Long,
         original: List<LrcLine>,
         translated: List<LrcLine>,
-        label: String,
     ): LyricPack {
         val wordOriginal = original.filter { it.words.isNotEmpty() }
         val wordTranslated = translated.filter { it.words.isNotEmpty() }

@@ -27,6 +27,16 @@ internal object NcmShare {
         return "https://music.163.com/song?id=$songId"
     }
 
+    fun programPageUrl(programId: Long): String? {
+        if (programId <= 0L) return null
+        return "https://music.163.com/program?id=$programId"
+    }
+
+    fun copyProgramLink(context: Context, programId: Long): Boolean {
+        val url = programPageUrl(programId) ?: return false
+        return copyUrl(context, url)
+    }
+
     fun copyLink(context: Context, track: TrackRow): Boolean {
         val url = songPageUrl(track.id) ?: return false
         return copyUrl(context, url)

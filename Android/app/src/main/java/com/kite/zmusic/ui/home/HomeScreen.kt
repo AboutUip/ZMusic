@@ -59,7 +59,6 @@ import com.kite.zmusic.data.HomeBanner
 import com.kite.zmusic.data.NcmHomeParse
 import com.kite.zmusic.data.RecommendMvCard
 import com.kite.zmusic.data.RecommendPlaylistCard
-import com.kite.zmusic.data.SessionRepository
 import com.kite.zmusic.data.TrackRow
 import com.kite.zmusic.ZMusicApplication
 import com.kite.zmusic.ui.main.MainOverlay
@@ -86,7 +85,6 @@ import com.kite.zmusic.i18n.t
 
 @Composable
 fun HomeScreen(
-    sessionRepository: SessionRepository,
     contentBottomInset: Dp,
     onOpenOverlay: (MainOverlay) -> Unit,
     onPlayTracks: (List<TrackRow>, Int, Long?, String?) -> Unit,
@@ -151,14 +149,13 @@ fun HomeScreen(
             onPlayTracks = onPlayTracks,
             onBanner = onBanner,
             onScanCommunity = communityQr.openScanner,
-            modifier = modifier,
+            modifier = modifier.fillMaxSize(),
         )
         return
     }
 
-    HomeStageDrawer(modifier) {
     Box(
-        Modifier
+        modifier
             .fillMaxSize()
             .background(MainPalette.Page),
     ) {
@@ -356,12 +353,11 @@ fun HomeScreen(
                 }
             }
         }
-        }
     }
 }
 
 @Composable
-private fun HomeRotationControl(
+internal fun HomeRotationControl(
     landscape: Boolean,
     modifier: Modifier = Modifier,
 ) {

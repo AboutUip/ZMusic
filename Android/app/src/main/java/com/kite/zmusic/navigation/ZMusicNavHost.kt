@@ -151,7 +151,6 @@ fun ZMusicNavHost(modifier: Modifier = Modifier) {
                         launchSingleTop = true
                     }
                 },
-                onNavigateBack = { navController.popBackStack() },
             )
         }
     }

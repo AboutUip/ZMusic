@@ -66,6 +66,16 @@ class LyricRenderStore(context: Context) {
     )
     val longLine: StateFlow<LongLyricRender> = _longLine.asStateFlow()
 
+    private val _enterMotion = MutableStateFlow(
+        LyricMotion.fromStored(prefs.getString(KEY_ENTER_MOTION, null)),
+    )
+    val enterMotion: StateFlow<LyricMotion> = _enterMotion.asStateFlow()
+
+    private val _exitMotion = MutableStateFlow(
+        LyricMotion.fromStored(prefs.getString(KEY_EXIT_MOTION, null)),
+    )
+    val exitMotion: StateFlow<LyricMotion> = _exitMotion.asStateFlow()
+
     fun setWordRender(mode: LyricWordRender) {
         if (mode == _wordRender.value) return
         prefs.edit()
@@ -81,10 +91,24 @@ class LyricRenderStore(context: Context) {
         _longLine.value = mode
     }
 
+    fun setEnterMotion(mode: LyricMotion) {
+        if (mode == _enterMotion.value) return
+        prefs.edit().putString(KEY_ENTER_MOTION, LyricMotion.stored(mode)).apply()
+        _enterMotion.value = mode
+    }
+
+    fun setExitMotion(mode: LyricMotion) {
+        if (mode == _exitMotion.value) return
+        prefs.edit().putString(KEY_EXIT_MOTION, LyricMotion.stored(mode)).apply()
+        _exitMotion.value = mode
+    }
+
     companion object {
         private const val PREFS = "zmusic_lyric_render"
         private const val KEY_WORD_BY_WORD = "word_by_word"
         private const val KEY_WORD_RENDER = "word_render"
         private const val KEY_LONG_LINE = "long_line"
+        private const val KEY_ENTER_MOTION = "enter_motion"
+        private const val KEY_EXIT_MOTION = "exit_motion"
     }
 }

@@ -287,6 +287,7 @@
   "暂时还没有记录。": "Er zijn voorlopig nog geen gegevens opgeslagen.",
   "更新日志": "Update-logboek",
   "服务器": "server",
+  "音乐服务器": "Muziekserver",
   "服务性质": "Aard van de dienst",
   "服务条款": "Servicevoorwaarden",
   "未播放歌词": "Geen liedtekst afgespeeld",
@@ -1913,5 +1914,14 @@
   "界面显示为荷兰语": "Het interface wordt weergegeven in het Nederlands.",
   "界面显示为波兰语": "Het interface wordt weergegeven in het Pools.",
   "界面显示为捷克语": "Het interface wordt weergegeven in het Tsjechisch.",
-  "界面显示为土耳其语": "Het interface wordt weergegeven in het Turks."
+  "界面显示为土耳其语": "Het interface wordt weergegeven in het Turks.",
+  "电影": "Film",
+  "专注黑胶、动态景深或电影字幕 · 滑动或点选": "Focus op vinyl, dynamische diepte of filmondertitels · schuif of tik",
+  "3D 点阵": "3D-puntvormen",
+  "点阵立方体、圆柱和棱锥散落在镜头前后，随运镜产生纵深": "Kubussen, cilinders en piramides van punten rond de camera geven diepte aan camerabewegingen",
+  "随节拍律动": "Meebewegen op de beat",
+  "背景、点阵和高亮字跟随低频与高频轻轻呼吸": "Achtergrond, punten en het gemarkeerde woord ademen mee met lage en hoge tonen",
+  "底部预告歌词": "Komende regels",
+  "画面底部用小字预告接下来两句": "Toont de volgende twee regels klein onderaan",
+  "歌词摆在三维空间里，换句时镜头推到下一句前面 · 背景沿用专注模式的自定义背景 · 点击屏幕呼出控制栏": "De songtekst staat in een 3D-ruimte en de camera schuift naar de volgende regel · Gebruikt de eigen achtergrond van ‘Geconcentreerd’ · Tik op het scherm voor de bediening"
 }

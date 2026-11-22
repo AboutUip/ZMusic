@@ -37,7 +37,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
@@ -63,7 +62,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kite.zmusic.data.LrcLine
 import com.kite.zmusic.data.LyricRoleStyle
-import com.kite.zmusic.data.PlayerDisplayPrefs
 import com.kite.zmusic.ui.icons.ZIconSize
 import com.kite.zmusic.ui.icons.ZIcons
 import dev.chrisbanes.haze.HazeState

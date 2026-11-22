@@ -113,6 +113,7 @@ fun PortraitMoreSheet(
     onClose: () -> Unit,
     displayPrefs: PlayerDisplayPrefs,
     onDisplayPrefsChange: (PlayerDisplayPrefs) -> Unit,
+    modifier: Modifier = Modifier,
     hazeState: HazeState? = null,
     excludePlaylistId: Long = 0L,
     visible: Boolean = true,
@@ -120,7 +121,6 @@ fun PortraitMoreSheet(
     onDragHandleVertical: (Float) -> Unit,
     onDragHandleEnd: () -> Unit,
     onCoverMinFrac: (Float?) -> Unit,
-    modifier: Modifier = Modifier,
 ) {
     var page by remember { mutableStateOf(MorePage.Root) }
     var heldNested by remember { mutableStateOf(MorePage.AddToPlaylist) }

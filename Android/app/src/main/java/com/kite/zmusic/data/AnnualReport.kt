@@ -175,15 +175,6 @@ internal object AnnualReportLogic {
 
     fun formatCount(n: Long): String = com.kite.zmusic.i18n.I18n.formatCompactCount(n)
 
-    private fun trimDecimal(value: Double): String {
-        val scaled = kotlin.math.round(value * 10.0) / 10.0
-        return if (scaled == scaled.toLong().toDouble()) {
-            scaled.toLong().toString()
-        } else {
-            val tenths = kotlin.math.round(value * 10.0).toLong()
-            "${tenths / 10}.${tenths % 10}"
-        }
-    }
 
     fun peakHourLabel(hours: List<AnnualHourSlot>): String? {
         val peak = hours.maxByOrNull { it.playCount } ?: return null

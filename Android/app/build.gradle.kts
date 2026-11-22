@@ -83,8 +83,8 @@ android {
         applicationId = "com.kite.zmusic"
         minSdk = 29
         targetSdk = 36
-        versionCode = 20
-        versionName = "1.4.3"
+        versionCode = 21
+        versionName = "1.4.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -165,6 +165,8 @@ android {
     }
     sourceSets.getByName("main").assets.srcDir(layout.buildDirectory.dir("generated/pluginProbe"))
     sourceSets.getByName("test").java.srcDir("src/testShared/java")
+    sourceSets.getByName("test").java.srcDir("src/sharedTest/java")
+    sourceSets.getByName("androidTest").java.srcDir("src/sharedTest/java")
     testOptions {
         unitTests.isReturnDefaultValues = true
         animationsDisabled = true

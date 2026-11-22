@@ -69,6 +69,8 @@ import com.kite.zmusic.ui.catalog.isPlaybackCurrent
 import com.kite.zmusic.ui.catalog.launchTrackDownload
 import com.kite.zmusic.ui.chrome.chromePage
 import com.kite.zmusic.ui.common.GlassAlertDialog
+import com.kite.zmusic.ui.common.LocalImagePreview
+import com.kite.zmusic.ui.common.openImagePreview
 import com.kite.zmusic.ui.common.TwoPanePagerState
 import com.kite.zmusic.ui.common.TwoPaneSwipe
 import com.kite.zmusic.ui.common.UrlImage
@@ -350,6 +352,7 @@ private fun UserRoomHeader(
         handoff.userId == ui.id &&
         handoff.progress < UserAvatarFlightSettle
     val banner = ui.backgroundUrl?.takeIf { it.isNotBlank() } ?: ui.avatarUrl
+    val preview = LocalImagePreview.current
     Column(Modifier.graphicsLayer { alpha = appear }) {
         Box(
             Modifier
@@ -360,8 +363,15 @@ private fun UserRoomHeader(
         ) {
             UrlImage(
                 url = banner,
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
+                contentDescription = t("背景"),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clickable(
+                        enabled = !banner.isNullOrBlank(),
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = { openImagePreview(preview, banner) },
+                    ),
                 contentScale = ContentScale.Crop,
             )
             Box(
@@ -402,7 +412,13 @@ private fun UserRoomHeader(
                         .border(2.dp, Color.White.copy(alpha = 0.92f), CircleShape)
                         .padding(2.dp)
                         .clip(CircleShape)
-                        .background(MainPalette.Placeholder),
+                        .background(MainPalette.Placeholder)
+                        .clickable(
+                            enabled = !ui.avatarUrl.isNullOrBlank(),
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = { openImagePreview(preview, ui.avatarUrl) },
+                        ),
                 ) {
                     UrlImage(
                         url = ui.avatarUrl,

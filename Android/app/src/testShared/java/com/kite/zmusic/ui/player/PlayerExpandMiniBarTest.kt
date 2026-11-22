@@ -165,7 +165,6 @@ class PlayerExpandMiniBarTest {
         val cover = Rect(48f, 1708f, 96f, 1756f)
         val title = Rect(110f, 1712f, 700f, 1740f)
         val play = Rect(960f, 1716f, 1020f, 1756f)
-        val progress = Rect(48f, 1760f, 1032f, 1768f)
         val vinyl = Rect(200f, 280f, 880f, 960f)
         val fullPlay = Rect(480f, 1400f, 600f, 1520f)
         val fullTitle = Rect(80f, 1000f, 1000f, 1080f)

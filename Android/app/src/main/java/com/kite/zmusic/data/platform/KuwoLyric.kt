@@ -112,8 +112,8 @@ internal object KuwoLyric {
         for (match in wordRegex.findAll(body)) {
             val left = match.groupValues[1].toLongOrNull() ?: continue
             val right = match.groupValues[2].toLongOrNull() ?: continue
-            var start = abs(left + right) / (div * 2)
-            var end = abs(left - right) / (div2 * 2) + start
+            val start = abs(left + right) / (div * 2)
+            val end = abs(left - right) / (div2 * 2) + start
             val earlier = prev
             if (earlier != null && start < earlier.end) {
                 earlier.end = start

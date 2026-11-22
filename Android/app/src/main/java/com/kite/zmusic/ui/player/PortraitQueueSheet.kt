@@ -56,6 +56,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
@@ -96,6 +97,7 @@ import kotlinx.coroutines.launch
 
 internal val QueueReorderSlide = tween<Float>(durationMillis = 180, easing = FastOutSlowInEasing)
 internal val QueueReorderDrop = tween<Float>(durationMillis = 220, easing = FastOutSlowInEasing)
+internal val QueueReorderFade = tween<Float>(durationMillis = 200, easing = FastOutSlowInEasing)
 
 private val QueueLabel get() = MainPalette.Ink
 private val QueueAccent get() = MainPalette.Accent
@@ -146,6 +148,7 @@ fun PortraitQueueSheet(
     tracks: List<TrackRow>,
     currentIndex: Int,
     onPlayIndex: (Int) -> Unit,
+    modifier: Modifier = Modifier,
     onMoveQueue: (from: Int, to: Int) -> Unit = { _, _ -> },
     isPlaying: Boolean = false,
     /** 每次打开递增：滚到当前播放行 */
@@ -155,7 +158,6 @@ fun PortraitQueueSheet(
     onApproachEnd: (lastVisibleIndex: Int) -> Unit = {},
     panelShape: RoundedCornerShape = QueuePanelShape,
     hazeState: HazeState? = null,
-    modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
     val context = LocalContext.current
@@ -196,6 +198,8 @@ fun PortraitQueueSheet(
     var swallowClick by remember { mutableStateOf(false) }
     var dragSettling by remember { mutableStateOf(false) }
     var settle by remember { mutableStateOf<QueueDragSettle?>(null) }
+    // 抬手进度:0=静止外观,1=拖起外观。底色按它插值,按下/松手都有颜色过渡
+    val liftAnim = remember { Animatable(0f) }
     val dragging = dragFrom >= 0
     val held = settle?.takeUnless { tracks.getOrNull(it.to)?.id == it.id }
     val previewFrom = if (dragging) dragFrom else held?.from ?: -1
@@ -226,6 +230,10 @@ fun PortraitQueueSheet(
         dragEdge = 0
         settle = null
         swallowClick = true
+        // 按下:拖起底色渐入
+        dragScope.launch {
+            liftAnim.animateTo(1f, QueueReorderFade)
+        }
         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
     }
 
@@ -255,6 +263,8 @@ fun PortraitQueueSheet(
         if (from < 0 || dragSettling) return
         dragSettling = true
         dragEdge = 0
+        // 松手:拖起底色立即开始渐回,和落位滑动同时进行
+        dragScope.launch { liftAnim.animateTo(0f, QueueReorderFade) }
         val movingId = tracks.getOrNull(from)?.id?.takeIf { from != to && to in tracks.indices }
         val dest = if (movingId != null) to else from
         dragScope.launch {
@@ -279,6 +289,8 @@ fun PortraitQueueSheet(
         if (from < 0 || dragSettling) return
         dragSettling = true
         dragEdge = 0
+        // 松手:拖起底色立即开始渐回
+        dragScope.launch { liftAnim.animateTo(0f, QueueReorderFade) }
         dragScope.launch {
             try {
                 glideFingerTo(from)
@@ -584,16 +596,28 @@ fun PortraitQueueSheet(
                     }
                     val floatIndex = if (dragging) dragFrom else held?.from ?: -1
                     val dragged = tracks.getOrNull(floatIndex)
-                    if (dragged != null) {
+                    // 拖起行底色随抬手进度渐变:按下渐入、松手渐回,与列表行同一套色,无硬切
+                    var floatTrack by remember { mutableStateOf<TrackRow?>(null) }
+                    LaunchedEffect(dragged) {
+                        if (dragged != null) {
+                            floatTrack = dragged
+                        } else if (floatTrack != null) {
+                            // 落位后等底色渐回静止色再撤浮层,避免色块断崖
+                            liftAnim.animateTo(0f, QueueReorderFade)
+                            floatTrack = null
+                        }
+                    }
+                    val floated = dragged ?: floatTrack
+                    if (floated != null) {
                         PortraitQueueTrackRow(
                             index = (if (dragging) dragTo else held?.to ?: dragTo) + 1,
-                            track = dragged,
-                            current = floatIndex == safeIndex,
+                            track = floated,
+                            current = tracks.getOrNull(safeIndex)?.id == floated.id,
                             playing = isPlaying,
                             showDragHandle = true,
                             dragEnabled = false,
                             clicksEnabled = false,
-                            lifted = true,
+                            lift = liftAnim.value,
                             modifier = Modifier
                                 .offset {
                                     IntOffset(0, (dragFingerY - dragGrabY).roundToInt())
@@ -689,24 +713,23 @@ private fun PortraitQueueTrackRow(
     dragEnabled: Boolean = true,
     clicksEnabled: Boolean = true,
     lifted: Boolean = false,
+    lift: Float = if (lifted) 1f else 0f,
     onDragStart: () -> Unit = {},
     onDrag: (Offset) -> Unit = {},
     onDragEnd: () -> Unit = {},
     onDragCancel: () -> Unit = {},
 ) {
     val rowClick = remember { MutableInteractionSource() }
+    // 抬手进度插值底色:静止=透明(当前曲为淡强调,仅内容区),拖起=轻高亮(整行),全程渐变无硬切
+    val liftNow = lift.coerceIn(0f, 1f)
+    val restBg = if (current) MainPalette.Accent.copy(alpha = 0.08f) else Color.Transparent
+    val liftBg = lerp(Color.Transparent, MainPalette.Card, liftNow)
+    val innerBg = lerp(restBg, Color.Transparent, liftNow)
     Row(
         modifier
             .fillMaxWidth()
-            .then(
-                if (lifted) {
-                    Modifier
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(MainPalette.Surface)
-                } else {
-                    Modifier
-                },
-            )
+            .clip(RoundedCornerShape(10.dp))
+            .background(liftBg)
             .padding(vertical = 4.dp, horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -714,9 +737,7 @@ private fun PortraitQueueTrackRow(
             Modifier
                 .weight(1f)
                 .clip(RoundedCornerShape(10.dp))
-                .background(
-                    if (!lifted && current) MainPalette.Accent.copy(alpha = 0.08f) else Color.Transparent,
-                )
+                .background(innerBg)
                 .then(
                     if (clicksEnabled) {
                         Modifier.clickable(

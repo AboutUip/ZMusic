@@ -392,7 +392,7 @@ internal class PluginAndroidCatalog(
             playParsed(a) { user.songDetail(ids, cookie()) }
         }
         map.reg("lyric.load") { a -> lyric(a) }
-        map.reg("fm.start") { a ->
+        map.reg("fm.start") { _ ->
             needLogin() ?: run {
                 playback.startPersonalFm()
                 ok(mapOf("started" to true))

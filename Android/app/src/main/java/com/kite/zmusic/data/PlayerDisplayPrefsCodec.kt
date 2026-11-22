@@ -64,6 +64,8 @@ object PlayerDisplayPrefsCodec {
         if (p.keepScreenOn) flags = flags or (1 shl 9)
         // 缺省位为 0：旧二维码没有这一位，导入后仍显示黑胶外层
         if (!p.vinylOuterEnabled) flags = flags or (1 shl 10)
+        // 缺省位为 0：旧二维码没有这一位，导入后仍显示黑胶
+        if (!p.landscapeVinylVisible) flags = flags or (1 shl 11)
         out.writeInt(flags)
 
         out.writeFloat(p.fontScale)
@@ -129,12 +131,12 @@ object PlayerDisplayPrefsCodec {
         val titleOffsetYDp = input.readFloat()
         val vinylGestureDamping = input.readFloat()
 
-        val lyricPlayingStyle = readLyricRole(input, LyricRoleStyle.PlayingDefault)
-        val lyricPlayedStyle = readLyricRole(input, LyricRoleStyle.PlayedDefault)
-        val lyricUnplayedStyle = readLyricRole(input, LyricRoleStyle.UnplayedDefault)
-        val titleNameStyle = readTitleLine(input, TitleLineStyle.NameDefault)
-        val titleArtistStyle = readTitleLine(input, TitleLineStyle.ArtistDefault)
-        val titleSourceStyle = readTitleLine(input, TitleLineStyle.SourceDefault)
+        val lyricPlayingStyle = readLyricRole(input)
+        val lyricPlayedStyle = readLyricRole(input)
+        val lyricUnplayedStyle = readLyricRole(input)
+        val titleNameStyle = readTitleLine(input)
+        val titleArtistStyle = readTitleLine(input)
+        val titleSourceStyle = readTitleLine(input)
 
         return PlayerDisplayPrefs(
             rainNightEnabled = flag(0),
@@ -152,6 +154,7 @@ object PlayerDisplayPrefsCodec {
             vinylSizeScale = vinylSizeScale,
             vinylOuterScale = vinylOuterScale,
             vinylOuterEnabled = !flag(10),
+            landscapeVinylVisible = !flag(11),
             vinylCenterRadiusFrac = vinylCenterRadiusFrac,
             vinylColorStyle = vinylColorStyle,
             vinylCustomBaseArgb = vinylCustomBaseArgb,
@@ -193,7 +196,7 @@ object PlayerDisplayPrefsCodec {
         out.writeFloat(style.sanitizedFontScale())
     }
 
-    private fun readLyricRole(input: DataInputStream, fallback: LyricRoleStyle): LyricRoleStyle {
+    private fun readLyricRole(input: DataInputStream): LyricRoleStyle {
         val bits = input.readUnsignedByte()
         val slot = LyricColorSlot.fromOrdinal(input.readUnsignedByte())
         return LyricRoleStyle(
@@ -214,7 +217,7 @@ object PlayerDisplayPrefsCodec {
         out.writeFloat(style.sanitizedFontScale())
     }
 
-    private fun readTitleLine(input: DataInputStream, fallback: TitleLineStyle): TitleLineStyle {
+    private fun readTitleLine(input: DataInputStream): TitleLineStyle {
         return TitleLineStyle(
             colorSlot = TitleColorSlot.fromOrdinal(input.readUnsignedByte()),
             preset0Argb = input.readInt(),
@@ -263,6 +266,7 @@ fun lerpPlayerDisplayPrefs(
         vinylSizeScale = lf(from.vinylSizeScale, to.vinylSizeScale),
         vinylOuterScale = lf(from.vinylOuterScale, to.vinylOuterScale),
         vinylOuterEnabled = pick(from.vinylOuterEnabled, to.vinylOuterEnabled),
+        landscapeVinylVisible = pick(from.landscapeVinylVisible, to.landscapeVinylVisible),
         vinylCenterRadiusFrac = lf(from.vinylCenterRadiusFrac, to.vinylCenterRadiusFrac),
         vinylColorStyle = pick(from.vinylColorStyle, to.vinylColorStyle),
         vinylCustomBaseArgb = lerpArgb(from.vinylCustomBaseArgb, to.vinylCustomBaseArgb, u),
@@ -351,6 +355,9 @@ fun lerpPlayerDisplayPrefs(
         cinemaCameraMotion = lf(from.cinemaCameraMotion, to.cinemaCameraMotion),
         cinemaLyricDepth = pick(from.cinemaLyricDepth, to.cinemaLyricDepth),
         cinemaSpectrumLighting = pick(from.cinemaSpectrumLighting, to.cinemaSpectrumLighting),
+        movieDotShapes = pick(from.movieDotShapes, to.movieDotShapes),
+        movieSpectrumPulse = pick(from.movieSpectrumPulse, to.movieSpectrumPulse),
+        movieUpcomingLines = pick(from.movieUpcomingLines, to.movieUpcomingLines),
     )
 }
 

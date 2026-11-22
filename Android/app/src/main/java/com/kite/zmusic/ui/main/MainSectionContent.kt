@@ -39,16 +39,15 @@ fun MainSectionContent(
     destination: MainDestination,
     isLandscape: Boolean,
     sessionRepository: SessionRepository,
+    modifier: Modifier = Modifier,
     onPlayTracks: (List<TrackRow>, Int, Long?, String?) -> Unit = { _, _, _, _ -> },
     onOpenOverlay: (MainOverlay) -> Unit = {},
-    onOpenProfile: () -> Unit = {},
     onStartFm: () -> Unit = {},
     onStartIntelligence: () -> Unit = {},
     onPlaySong: (Long) -> Unit = {},
     onHint: (String) -> Unit = {},
     contentBottomInset: Dp = 0.dp,
     onUserSpaceProgress: (Float) -> Unit = {},
-    modifier: Modifier = Modifier,
 ) {
     val app = LocalContext.current.applicationContext as ZMusicApplication
     val net by app.networkMode.state.collectAsStateWithLifecycle()
@@ -70,7 +69,6 @@ fun MainSectionContent(
     when (destination) {
         MainDestination.Home -> {
             HomeScreen(
-                sessionRepository = sessionRepository,
                 contentBottomInset = contentBottomInset,
                 onOpenOverlay = onOpenOverlay,
                 onPlayTracks = onPlayTracks,

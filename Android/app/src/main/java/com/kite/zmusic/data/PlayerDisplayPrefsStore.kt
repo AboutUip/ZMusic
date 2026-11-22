@@ -15,6 +15,8 @@ enum class LandscapePlayerPageType {
      * 舞台实现仍留在 LandscapeCinemaStage，恢复时把本项加回 [selectable]。
      */
     Cinema,
+    /** 电影字幕：虚化封面运镜 + 每句换机位的大字歌词。按序号存盘，只能追加在末尾。 */
+    Movie,
     ;
 
     /** 当前展示用的模式。影院临时丢弃，不改已写入的偏好。 */
@@ -22,7 +24,7 @@ enum class LandscapePlayerPageType {
 
     companion object {
         /** 设置里可切换的横屏模式。影院临时丢弃，不在此列。 */
-        val selectable: List<LandscapePlayerPageType> = listOf(Focus, Dynamic)
+        val selectable: List<LandscapePlayerPageType> = listOf(Focus, Dynamic, Movie)
 
         fun fromOrdinal(v: Int): LandscapePlayerPageType =
             entries.getOrElse(v) { Focus }
@@ -44,6 +46,20 @@ enum class TitleAlignMode {
     companion object {
         fun fromOrdinal(v: Int): TitleAlignMode =
             entries.getOrElse(v) { VINYL }
+    }
+}
+
+/** 竖屏歌手相对歌名的位置。仅在「显示歌手」打开后生效。 */
+enum class PortraitArtistPlacement {
+    /** 歌名正下方 */
+    Below,
+    /** 追加到歌名末尾，中间用 · 隔开 */
+    Append,
+    ;
+
+    companion object {
+        fun fromOrdinal(v: Int): PortraitArtistPlacement =
+            entries.getOrElse(v) { Below }
     }
 }
 
@@ -369,7 +385,7 @@ data class TitleLineStyle(
         /** 内置不可改默认色（与历史硬编码一致）。 */
         val DEFAULT_NAME_ARGB: Int = 0xFFF5F7FA.toInt()
         val DEFAULT_ARTIST_ARGB: Int = 0xB86FD4D4.toInt()
-        val DEFAULT_SOURCE_ARGB: Int = 0x667A8899.toInt()
+        val DEFAULT_SOURCE_ARGB: Int = 0x667A8899
 
         const val BASE_NAME_SP = 16f
         const val BASE_ARTIST_SP = 9.5f
@@ -466,6 +482,11 @@ data class PlayerDisplayPrefs(
      * 关闭后只保留圆形封面，外圈半径、中心半径、颜色与完整封面不可用。
      */
     val vinylOuterEnabled: Boolean = true,
+    /**
+     * 横屏专注页是否显示黑胶。关闭后只隐藏盘面和黑胶动画，
+     * 左栏占位、歌词和曲谱位置都不变。
+     */
+    val landscapeVinylVisible: Boolean = true,
     /**
      * 中心黑胶半径：相对「整体大小 = 100%」时的基准盘比例；
      * 与 [vinylOuterScale] 解耦。完整封面开启时忽略。
@@ -616,6 +637,13 @@ data class PlayerDisplayPrefs(
     /** 预览「待播放」字号（sp） */
     val portraitPreviewLyricUpcomingFontSp: Float = PREVIEW_LYRIC_UPCOMING_FONT_DEFAULT,
     /**
+     * 竖屏播放页标题处显示歌手。默认关闭。
+     * 打开后可点歌手名进入对应歌手页。
+     */
+    val portraitArtistVisible: Boolean = false,
+    /** 歌手显示位置：歌名下方，或接到歌名末尾。 */
+    val portraitArtistPlacement: PortraitArtistPlacement = PortraitArtistPlacement.Below,
+    /**
      * 横屏弹幕陪伴：从高赞评论拉单向弹幕。
      * 关闭后密度 / 区域 / 流速仍保留，仅不可编辑。
      */
@@ -655,6 +683,12 @@ data class PlayerDisplayPrefs(
     val cinemaLyricDepth: Boolean = true,
     /** 影院页频谱灯光：舞台光与封面光门跟随低频 / 中频 / 高频呼吸。 */
     val cinemaSpectrumLighting: Boolean = true,
+    /** 电影页漂浮的点阵立方体 / 圆柱 / 棱锥。 */
+    val movieDotShapes: Boolean = true,
+    /** 电影页背景推拉、点阵与高亮字跟随低频和高频呼吸。 */
+    val movieSpectrumPulse: Boolean = true,
+    /** 电影页底部小字预告接下来两句。 */
+    val movieUpcomingLines: Boolean = true,
 ) {
     fun activeCustomPreset(): VinylCustomPreset =
         vinylCustomPresets.getOrElse(vinylCustomPresetIndex.coerceIn(0, VINYL_CUSTOM_PRESET_COUNT - 1)) {
@@ -1176,6 +1210,7 @@ class PlayerDisplayPrefsStore(
             ),
             vinylOuterScale = prefs.safeFloat(KEY_VINYL_OUTER_SCALE, 1f),
             vinylOuterEnabled = prefs.safeBoolean(KEY_VINYL_OUTER_ENABLED, true),
+            landscapeVinylVisible = prefs.safeBoolean(KEY_LANDSCAPE_VINYL_VISIBLE, true),
             vinylCenterRadiusFrac = prefs.safeFloat(KEY_VINYL_CENTER_RADIUS, 0.20f),
             vinylColorStyle = VinylColorStyle.fromOrdinal(prefs.safeInt(KEY_VINYL_COLOR, 0)),
             vinylCustomBaseArgb = active.baseArgb,
@@ -1313,6 +1348,13 @@ class PlayerDisplayPrefsStore(
                 KEY_PORTRAIT_PREVIEW_LYRIC_UPCOMING_FONT,
                 PlayerDisplayPrefs.PREVIEW_LYRIC_UPCOMING_FONT_DEFAULT,
             ),
+            portraitArtistVisible = prefs.safeBoolean(KEY_PORTRAIT_ARTIST_VISIBLE, false),
+            portraitArtistPlacement = PortraitArtistPlacement.fromOrdinal(
+                prefs.safeInt(
+                    KEY_PORTRAIT_ARTIST_PLACEMENT,
+                    PortraitArtistPlacement.Below.ordinal,
+                ),
+            ),
             danmakuCompanionEnabled = prefs.safeBoolean(KEY_DANMAKU_ENABLED, false),
             danmakuDensity = prefs.safeInt(
                 KEY_DANMAKU_DENSITY,
@@ -1354,6 +1396,9 @@ class PlayerDisplayPrefsStore(
             ),
             cinemaLyricDepth = prefs.safeBoolean(KEY_CINEMA_LYRIC_DEPTH, true),
             cinemaSpectrumLighting = prefs.safeBoolean(KEY_CINEMA_SPECTRUM_LIGHTING, true),
+            movieDotShapes = prefs.safeBoolean(KEY_MOVIE_DOT_SHAPES, true),
+            movieSpectrumPulse = prefs.safeBoolean(KEY_MOVIE_SPECTRUM_PULSE, true),
+            movieUpcomingLines = prefs.safeBoolean(KEY_MOVIE_UPCOMING_LINES, true),
         )
     }
 
@@ -1377,6 +1422,7 @@ class PlayerDisplayPrefsStore(
                 .putFloat(KEY_VINYL_SIZE_SCALE, v.vinylSizeScale)
                 .putFloat(KEY_VINYL_OUTER_SCALE, v.vinylOuterScale)
                 .putBoolean(KEY_VINYL_OUTER_ENABLED, v.vinylOuterEnabled)
+                .putBoolean(KEY_LANDSCAPE_VINYL_VISIBLE, v.landscapeVinylVisible)
                 .putFloat(KEY_VINYL_CENTER_RADIUS, v.vinylCenterRadiusFrac)
                 .putInt(KEY_VINYL_COLOR, v.vinylColorStyle.ordinal)
                 .putInt(KEY_VINYL_CUSTOM_BASE, v.vinylCustomBaseArgb)
@@ -1457,6 +1503,8 @@ class PlayerDisplayPrefsStore(
                     KEY_PORTRAIT_PREVIEW_LYRIC_UPCOMING_FONT,
                     v.portraitPreviewLyricUpcomingFontSp,
                 )
+                .putBoolean(KEY_PORTRAIT_ARTIST_VISIBLE, v.portraitArtistVisible)
+                .putInt(KEY_PORTRAIT_ARTIST_PLACEMENT, v.portraitArtistPlacement.ordinal)
                 .putBoolean(KEY_DANMAKU_ENABLED, v.danmakuCompanionEnabled)
                 .putInt(KEY_DANMAKU_DENSITY, v.danmakuDensity)
                 .putInt(KEY_DANMAKU_REGION, v.danmakuRegion.ordinal)
@@ -1481,6 +1529,9 @@ class PlayerDisplayPrefsStore(
                 .putFloat(KEY_CINEMA_CAMERA_MOTION, v.cinemaCameraMotion)
                 .putBoolean(KEY_CINEMA_LYRIC_DEPTH, v.cinemaLyricDepth)
                 .putBoolean(KEY_CINEMA_SPECTRUM_LIGHTING, v.cinemaSpectrumLighting)
+                .putBoolean(KEY_MOVIE_DOT_SHAPES, v.movieDotShapes)
+                .putBoolean(KEY_MOVIE_SPECTRUM_PULSE, v.movieSpectrumPulse)
+                .putBoolean(KEY_MOVIE_UPCOMING_LINES, v.movieUpcomingLines)
                 .apply()
         }
     }
@@ -1526,6 +1577,7 @@ class PlayerDisplayPrefsStore(
         private const val KEY_VINYL_RADIUS_SCALE_LEGACY = "vinyl_radius_scale"
         private const val KEY_VINYL_OUTER_SCALE = "vinyl_outer_scale"
         private const val KEY_VINYL_OUTER_ENABLED = "vinyl_outer_enabled"
+        private const val KEY_LANDSCAPE_VINYL_VISIBLE = "landscape_vinyl_visible"
         private const val KEY_VINYL_CENTER_RADIUS = "vinyl_center_radius_frac"
         private const val KEY_VINYL_COLOR = "vinyl_color_style"
         private const val KEY_VINYL_CUSTOM_BASE = "vinyl_custom_base_argb"
@@ -1589,6 +1641,8 @@ class PlayerDisplayPrefsStore(
             "portrait_preview_lyric_playing_font_sp"
         private const val KEY_PORTRAIT_PREVIEW_LYRIC_UPCOMING_FONT =
             "portrait_preview_lyric_upcoming_font_sp"
+        private const val KEY_PORTRAIT_ARTIST_VISIBLE = "portrait_artist_visible"
+        private const val KEY_PORTRAIT_ARTIST_PLACEMENT = "portrait_artist_placement"
         private const val KEY_DANMAKU_ENABLED = "danmaku_companion_enabled"
         private const val KEY_DANMAKU_DENSITY = "danmaku_density"
         private const val KEY_DANMAKU_REGION = "danmaku_region"
@@ -1605,6 +1659,9 @@ class PlayerDisplayPrefsStore(
         private const val KEY_CINEMA_CAMERA_MOTION = "cinema_camera_motion"
         private const val KEY_CINEMA_LYRIC_DEPTH = "cinema_lyric_depth"
         private const val KEY_CINEMA_SPECTRUM_LIGHTING = "cinema_spectrum_lighting"
+        private const val KEY_MOVIE_DOT_SHAPES = "movie_dot_shapes"
+        private const val KEY_MOVIE_SPECTRUM_PULSE = "movie_spectrum_pulse"
+        private const val KEY_MOVIE_UPCOMING_LINES = "movie_upcoming_lines"
     }
 }
 

@@ -14,60 +14,6 @@ internal interface PluginSurfaceHost {
     fun toJs(ctx: QuickJSContext, value: Any?): Any?
 }
 
-internal object PluginSurfaceSync {
-    val ALL: List<String> = listOf(
-        "player.volume",
-        "player.setVolume",
-        "player.rate",
-        "player.setRate",
-        "player.mode",
-        "player.setMode",
-        "player.cycleMode",
-        "player.playAt",
-        "player.clear",
-        "player.open",
-        "player.sleep",
-        "player.sleepStart",
-        "player.sleepCancel",
-        "lyric.get",
-        "lyric.line",
-        "app.locale",
-        "app.dark",
-        "app.online",
-        "app.foreground",
-        "app.platform",
-        "app.openUrl",
-        "app.toast",
-        "app.haptic",
-        "app.screen",
-        "app.keepAwake",
-        "app.network",
-        "app.battery",
-        "app.orientation",
-        "nav.player",
-        "nav.search",
-        "nav.settings",
-        "nav.charts",
-        "nav.fm",
-        "nav.daily",
-        "nav.cloud",
-        "nav.workshop",
-        "nav.playlist",
-        "nav.album",
-        "nav.artist",
-        "nav.mv",
-        "nav.user",
-        "nav.back",
-        "nav.home",
-        "user.get",
-    )
-
-    init {
-        check(ALL.distinct().size == ALL.size)
-        val added = ALL.size + PluginCatalogOps.ALL.size
-        check(added >= 118) { "plugin api growth $added < 118" }
-    }
-}
 
 internal object PluginSurface {
     private val FALSE = java.lang.Boolean.FALSE

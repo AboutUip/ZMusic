@@ -21,7 +21,6 @@ import com.kite.zmusic.data.LyricRepository
 import com.kite.zmusic.data.NcmUserClient
 import com.kite.zmusic.data.SessionRepository
 import com.kite.zmusic.data.TrackRow
-import com.kite.zmusic.data.platform.MusicPlatform
 import com.kite.zmusic.data.platform.MusicPlatformStore
 import com.kite.zmusic.data.platform.OpenMusicCatalog
 import com.kite.zmusic.data.platform.QishuiCatalog
@@ -260,13 +259,12 @@ class PlaybackBridge(
     fun startIntelligence(
         songId: Long,
         playlistId: Long,
-        playlistTitle: String? = null,
         startSongId: Long = songId,
         onStarted: () -> Unit = {},
     ) {
         musicWillPlay?.invoke()
         runOnCoordinator {
-            it.startIntelligence(songId, playlistId, playlistTitle, startSongId, onStarted)
+            it.startIntelligence(songId, playlistId, startSongId, onStarted)
         }
     }
 
@@ -350,6 +348,35 @@ class PlaybackBridge(
         )
     }
 
+    /** 服务还没起来时用界面上的快照。已在主线程且播放器在，就读真实进度。 */
+    fun captureSnapshot(): PlaybackUiState {
+        val coord = coordinator
+        return if (coord != null && Looper.myLooper() == Looper.getMainLooper()) {
+            coord.exportSnapshot()
+        } else {
+            _ui.value
+        }
+    }
+
+    /** 先把界面换成目标队列，再让播放器从上次的位置接上。空队列就是清空。 */
+    fun adoptSnapshot(state: PlaybackUiState) {
+        if (state.queue.isEmpty() || state.index !in state.queue.indices) {
+            clearQueue()
+            return
+        }
+        val parked = state.copy(
+            isPlaying = false,
+            buffering = false,
+            hasQueue = true,
+            loadPending = coordinator != null,
+            error = null,
+        ).withHydratedPeeks()
+        _ui.value = parked
+        stateStore.save(parked)
+        if (state.playWhenReady) musicWillPlay?.invoke()
+        runOnCoordinator { it.adoptSnapshot(state) }
+    }
+
     fun togglePlayPause() = runOnCoordinator { it.togglePlayPause() }
 
     fun setPlayWhenReady(play: Boolean) = runOnCoordinator { it.setPlayWhenReady(play) }
@@ -368,13 +395,11 @@ class PlaybackBridge(
     fun bindSessionPlayer(player: Player) {
         val bind: () -> Unit = {
             onBindSessionPlayer?.invoke(player)
-            Unit
         }
         if (Looper.myLooper() == Looper.getMainLooper()) bind() else mainHandler.post(bind)
         if (onBindSessionPlayer == null) {
             pending.add {
                 onBindSessionPlayer?.invoke(player)
-                Unit
             }
             ensureController()
         }
@@ -383,7 +408,6 @@ class PlaybackBridge(
     fun restoreMusicSessionPlayer() {
         val bind: () -> Unit = {
             coordinator?.player?.let { onBindSessionPlayer?.invoke(it) }
-            Unit
         }
         if (Looper.myLooper() == Looper.getMainLooper()) bind() else mainHandler.post(bind)
     }

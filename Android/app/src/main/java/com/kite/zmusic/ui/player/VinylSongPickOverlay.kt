@@ -50,7 +50,6 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
@@ -122,6 +121,7 @@ fun VinylSongPickOverlay(
     fullCover: Boolean,
     centerRadiusFrac: Float,
     outerScale: Float,
+    modifier: Modifier = Modifier,
     showOuterPlate: Boolean = true,
     hazeState: HazeState,
     /** 顶栏歌名：与横屏标题信息同一套标题样式 */
@@ -136,7 +136,6 @@ fun VinylSongPickOverlay(
     onStackingFinished: () -> Unit,
     onFanOutFinished: () -> Unit,
     onApproachEnd: (lastVisibleIndex: Int) -> Unit = {},
-    modifier: Modifier = Modifier,
 ) {
     val t = progress.coerceIn(0f, 1f)
     if (t <= 0.001f) return
@@ -197,8 +196,8 @@ private fun VinylSongPickOverlaySession(
     onConfirmExitFinished: () -> Unit,
     onStackingFinished: () -> Unit,
     onFanOutFinished: () -> Unit,
-    onApproachEnd: (lastVisibleIndex: Int) -> Unit = {},
     modifier: Modifier = Modifier,
+    onApproachEnd: (lastVisibleIndex: Int) -> Unit = {},
 ) {
     val t = progress.coerceIn(0f, 1f)
     val fogAlpha = t
@@ -1014,8 +1013,8 @@ private fun PickVinylDisc(
     fullCover: Boolean,
     centerRadiusFrac: Float,
     outerScale: Float,
-    showOuterPlate: Boolean = true,
     modifier: Modifier = Modifier,
+    showOuterPlate: Boolean = true,
 ) {
     if ((lite || !showCover) && showOuterPlate) {
         Box(

@@ -32,6 +32,13 @@ data class PlaybackUiState(
     val translatedLyricLines: List<LrcLine> = emptyList(),
     val wordLyricLines: List<LrcLine> = emptyList(),
     val translatedWordLyricLines: List<LrcLine> = emptyList(),
+    /** [lyricTrackId] 那首已经查过、确认没有歌词（区别于还在加载）。 */
+    val lyricMissing: Boolean = false,
+    /**
+     * 同一首单曲循环、播完回到开头时加一。歌词据此再走一次换歌滚动。
+     * 只活在这一次播放里，不写入续播快照。
+     */
+    val lyricReplayEpoch: Int = 0,
     /** 已弃用展示：Source error 等不再写入，避免挡画面。 */
     val error: String? = null,
     val loadPending: Boolean = false,
@@ -70,6 +77,7 @@ data class PlaybackUiState(
         translatedLyricLines = pack.translated,
         wordLyricLines = pack.wordOriginal,
         translatedWordLyricLines = pack.wordTranslated,
+        lyricMissing = false,
     )
 
     fun clearLyricsFor(trackId: Long): PlaybackUiState = copy(
@@ -78,6 +86,7 @@ data class PlaybackUiState(
         translatedLyricLines = emptyList(),
         wordLyricLines = emptyList(),
         translatedWordLyricLines = emptyList(),
+        lyricMissing = false,
     )
 
     /**

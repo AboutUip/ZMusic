@@ -411,7 +411,7 @@ private suspend fun downloadOneTrack(
         track.coverUrl,
     )
     return try {
-        val folder = app.trackExportRepository.export(
+        app.trackExportRepository.export(
             track,
             cookie,
             options,

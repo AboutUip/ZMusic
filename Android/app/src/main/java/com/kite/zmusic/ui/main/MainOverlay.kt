@@ -5,6 +5,8 @@ sealed class MainOverlay {
     data object Fm : MainOverlay()
     data object Charts : MainOverlay()
     data object CachedSongs : MainOverlay()
+    data object RecentPlay : MainOverlay()
+    data class RecentPlaySearch(val mvs: Boolean = false) : MainOverlay()
     data object CloudDisk : MainOverlay()
     data object CloudDiskSearch : MainOverlay()
     data class CloudMatch(
@@ -84,6 +86,8 @@ sealed class MainOverlay {
         Charts -> "charts"
         AnnualReport -> "annual-report"
         CachedSongs -> "cached-songs"
+        RecentPlay -> "recent-play"
+        is RecentPlaySearch -> if (mvs) "recent-play-search-mv" else "recent-play-search"
         CloudDisk -> "cloud-disk"
         CloudDiskSearch -> "cloud-disk-search"
         is CloudMatch -> "cloud-match-$songId"

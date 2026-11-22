@@ -48,4 +48,44 @@ object SponsorRoster {
 
     internal fun formatYuan(value: Double): String =
         "¥" + String.format(java.util.Locale.US, "%.2f", value)
+
+    internal fun parseYuan(text: String): Double {
+        val plain = text.trim()
+            .removePrefix("¥")
+            .removePrefix("￥")
+            .removeSuffix(t("元"))
+            .replace(",", "")
+            .trim()
+        return plain.toDoubleOrNull() ?: 0.0
+    }
+}
+
+/** 同一名字在全部时间里的打赏合计。金额高的在前。 */
+internal data class SponsorPodiumPlace(
+    val rank: Int,
+    val name: String,
+    val amountLabel: String,
+)
+
+internal fun sponsorPodium(entries: List<SponsorEntry>, limit: Int = 3): List<SponsorPodiumPlace> {
+    if (entries.isEmpty() || limit <= 0) return emptyList()
+    val totals = LinkedHashMap<String, Double>()
+    val display = HashMap<String, String>()
+    for (entry in entries) {
+        val shown = entry.name.trim()
+        if (shown.isEmpty()) continue
+        val key = shown.lowercase()
+        totals[key] = (totals[key] ?: 0.0) + SponsorRoster.parseYuan(entry.amount)
+        if (key !in display) display[key] = shown
+    }
+    return totals.entries
+        .sortedWith(compareByDescending<Map.Entry<String, Double>> { it.value }.thenBy { it.key })
+        .take(limit)
+        .mapIndexed { index, (key, total) ->
+            SponsorPodiumPlace(
+                rank = index + 1,
+                name = display[key].orEmpty(),
+                amountLabel = SponsorRoster.formatYuan(total),
+            )
+        }
 }

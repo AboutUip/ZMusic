@@ -60,8 +60,8 @@ fun FeaturesScreen(
     onOpenOverlay: (MainOverlay) -> Unit,
     onStartFm: () -> Unit,
     onStartIntelligence: () -> Unit,
-    offline: Boolean = false,
     modifier: Modifier = Modifier,
+    offline: Boolean = false,
 ) {
     val context = LocalContext.current
     val app = context.applicationContext as ZMusicApplication
@@ -82,6 +82,15 @@ fun FeaturesScreen(
         }
     }
     val tools = buildList {
+        add(FeatureItem(
+            title = t("最近播放"),
+            subtitle = t("本机听过的歌曲和 MV"),
+            color = Color(0xFF64D2FF),
+            icon = ZIcons.History,
+            availableOffline = true,
+        ) {
+            onOpenOverlay(MainOverlay.RecentPlay)
+        })
         if (netease) {
             add(FeatureItem(t("每日推荐"), t("今天的三十首"), MainPalette.Accent, ZIcons.Daily) {
                 onOpenOverlay(MainOverlay.Daily)

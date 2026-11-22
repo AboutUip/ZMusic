@@ -132,7 +132,8 @@ internal fun PlayerExpandFlightLayer(
                         with(density) { srcH.toDp() },
                     )
                     .graphicsLayer {
-                        alpha = expand.flightAlpha
+                        alpha = expand.flightAlpha *
+                            (if (look.showVinyl || look.squareCover) 1f else 0f)
                         val move = flightCenterTranslation(miniCover, destVinyl, p)
                         val scale = flightUniformScale(miniCover, destVinyl, p)
                         transformOrigin = TransformOrigin(0.5f, 0.5f)

@@ -89,10 +89,10 @@ internal fun PersonalFmModePickerOverlay(
     applying: Boolean,
     onDismiss: () -> Unit,
     onSelect: (PersonalFmModeChoice) -> Unit,
+    modifier: Modifier = Modifier,
     haze: HazeState? = null,
     chromeBackground: Boolean = true,
     onCoveredChange: (Boolean) -> Unit = {},
-    modifier: Modifier = Modifier,
 ) {
     val reveal = remember { Animatable(0f) }
     var running by remember { mutableStateOf(false) }

@@ -81,6 +81,7 @@ class MvPlayback(
     private val sessionRepository: SessionRepository,
     private val playbackBridge: PlaybackBridge,
     private val userClient: NcmUserClient,
+    private val onMvPlayed: (RecommendMvCard) -> Unit = {},
 ) {
     private val appContext = context.applicationContext
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -212,6 +213,7 @@ class MvPlayback(
                 return
             }
         }
+        onMvPlayed(RecommendMvCard(mvId, title.ifBlank { "MV" }, coverUrl, artist, 0L))
         val now = SystemClock.elapsedRealtime()
         itemSetAt = now
         if (fromUser) userSwitchAt = now

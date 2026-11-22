@@ -124,8 +124,8 @@ private val DrillFadeSpec = tween<Float>(durationMillis = 220)
 fun CreativeWorkshopScreen(
     contentBottomInset: Dp,
     onBack: () -> Unit,
-    onPlaySong: ((Long) -> Unit)? = null,
     modifier: Modifier = Modifier,
+    onPlaySong: ((Long) -> Unit)? = null,
 ) {
     val app = LocalContext.current.applicationContext as ZMusicApplication
     val auth by app.workshopAuthStore.session.collectAsStateWithLifecycle()

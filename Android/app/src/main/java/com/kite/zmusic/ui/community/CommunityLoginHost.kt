@@ -55,10 +55,14 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
 import com.kite.zmusic.ZMusicApplication
+import com.kite.zmusic.data.AppMode
 import com.kite.zmusic.data.CommunityLoginConfig
 import com.kite.zmusic.data.CommunityLoginPreview
+import com.kite.zmusic.data.NcmPodcastParse
 import com.kite.zmusic.data.ZMusicListenLink
+import com.kite.zmusic.data.ZMusicProgramLink
 import com.kite.zmusic.data.ZMusicSongLink
+import com.kite.zmusic.data.toTrackRow
 import com.kite.zmusic.ui.common.GlassAlertDialog
 import com.kite.zmusic.ui.common.QrScannerOverlay
 import com.kite.zmusic.ui.common.UrlImage
@@ -66,8 +70,10 @@ import com.kite.zmusic.ui.icons.ZIcons
 import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.notice.showIslandNotice
 import com.kite.zmusic.ui.player.PlayerDisplayQr
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -87,6 +93,14 @@ private data class PendingSongScan(
     val artists: String,
 )
 
+private data class PendingProgramScan(
+    val programId: Long,
+    val title: String,
+    val subtitle: String,
+)
+
+private val qrPlayScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
 class CommunityQrOpener(
     val openScanner: () -> Unit,
     val openLogin: () -> Unit,
@@ -104,6 +118,7 @@ fun rememberCommunityLoginOpener(
     var busy by remember { mutableStateOf(false) }
     var previewJob by remember { mutableStateOf<Job?>(null) }
     var pendingSong by remember { mutableStateOf<PendingSongScan?>(null) }
+    var pendingProgram by remember { mutableStateOf<PendingProgramScan?>(null) }
     var pendingListenId by remember { mutableStateOf<String?>(null) }
     var pendingListenNeedLogin by remember { mutableStateOf(false) }
     var queuedQr by remember { mutableStateOf<String?>(null) }
@@ -112,6 +127,7 @@ fun rememberCommunityLoginOpener(
 
     fun looksLikeKnownQr(raw: String): Boolean =
         ZMusicListenLink.parse(raw) != null ||
+            ZMusicProgramLink.parse(raw) != null ||
             ZMusicSongLink.parse(raw) != null ||
             CommunityLoginConfig.parseQr(raw) != null
 
@@ -143,6 +159,26 @@ fun rememberCommunityLoginOpener(
             } else {
                 pendingListenId = listenId
                 pendingListenNeedLogin = false
+            }
+            return true
+        }
+        val programId = ZMusicProgramLink.parse(raw)
+        if (programId != null) {
+            previewJob?.cancel()
+            phase = CommunityLoginPhase.Hidden
+            pendingProgram = PendingProgramScan(programId, t("这期播客"), "")
+            previewJob = scope.launch {
+                val episode = loadScannedProgram(app, programId)
+                if (!isActive) return@launch
+                if (pendingProgram?.programId != programId) return@launch
+                val showName = episode?.podcastName?.trim().orEmpty().ifBlank {
+                    episode?.djName?.trim().orEmpty()
+                }
+                pendingProgram = PendingProgramScan(
+                    programId = programId,
+                    title = episode?.name?.trim()?.ifBlank { null } ?: t("这期播客"),
+                    subtitle = showName,
+                )
             }
             return true
         }
@@ -416,13 +452,34 @@ fun rememberCommunityLoginOpener(
                 val id = pending.songId
                 pendingSong = null
                 val play = playSong.value
-                if (play != null) {
+                if (app.appModeStore.current() == AppMode.Music && play != null) {
                     play(id)
                 } else {
-                    toast(t("暂时无法播放"))
+                    qrPlayScope.launch { playScannedSong(app, id) }
                 }
             },
             onDismiss = { pendingSong = null },
+        )
+    }
+
+    pendingProgram?.let { pending ->
+        val message = buildString {
+            append("「${pending.title}」")
+            if (pending.subtitle.isNotBlank()) {
+                append("\n")
+                append(pending.subtitle)
+            }
+        }
+        GlassAlertDialog(
+            title = t("播放这期播客？"),
+            message = message,
+            confirmLabel = t("播放"),
+            onConfirm = {
+                val id = pending.programId
+                pendingProgram = null
+                qrPlayScope.launch { playScannedProgram(app, id) }
+            },
+            onDismiss = { pendingProgram = null },
         )
     }
 
@@ -660,4 +717,50 @@ fun HomeCommunityScanButton(onClick: () -> Unit, modifier: Modifier = Modifier) 
             modifier = Modifier.size(22.dp),
         )
     }
+}
+
+private fun alignPlaybackMode(app: ZMusicApplication, mode: AppMode) {
+    if (app.appModeStore.current() == mode) return
+    app.modePlayback.switchTo(mode)
+    app.appModeStore.set(mode)
+}
+
+private suspend fun loadScannedProgram(app: ZMusicApplication, programId: Long) =
+    withContext(Dispatchers.IO) {
+        val cookie = app.sessionRepository.session.value?.cookie.orEmpty()
+        if (cookie.isBlank() || programId <= 0L) return@withContext null
+        runCatching {
+            NcmPodcastParse.episodes(app.podcastClient.djProgramDetail(cookie, programId)).firstOrNull()
+        }.getOrNull()
+    }
+
+private suspend fun playScannedSong(app: ZMusicApplication, songId: Long) {
+    val cookie = app.sessionRepository.session.value?.cookie.orEmpty()
+    val track = withContext(Dispatchers.IO) {
+        runCatching { app.songRepository.trackById(songId, cookie) }.getOrNull()
+    }
+    if (track == null || track.id <= 0L) {
+        app.showIslandNotice(t("暂时无法播放"))
+        return
+    }
+    alignPlaybackMode(app, AppMode.Music)
+    app.playbackBridge.playInsertAfterCurrent(track)
+    app.playbackBridge.requestOpenPlayer()
+}
+
+private suspend fun playScannedProgram(app: ZMusicApplication, programId: Long) {
+    val episode = loadScannedProgram(app, programId)
+    if (episode == null || episode.trackId <= 0L) {
+        app.showIslandNotice(t("暂时无法播放"))
+        return
+    }
+    app.podcastPlayMemory.remember(listOf(episode))
+    alignPlaybackMode(app, AppMode.Podcast)
+    app.playbackBridge.playQueue(
+        listOf(episode.toTrackRow()),
+        0,
+        episode.podcastId.takeIf { it > 0L },
+        episode.podcastName.takeIf { it.isNotBlank() },
+    )
+    app.playbackBridge.requestOpenPlayer()
 }

@@ -140,8 +140,8 @@ internal fun ShareSheet(
 @Composable
 internal fun ShareSheetOverlay(
     state: ShareSheetHostState,
-    hazeState: HazeState? = null,
     modifier: Modifier = Modifier,
+    hazeState: HazeState? = null,
 ) {
     val spec = state.spec
     val visible = state.visible
@@ -215,9 +215,9 @@ internal fun rememberPortraitShareSheetHeight(): Dp {
 @Composable
 internal fun PortraitShareSheet(
     onPick: (NcmShareTarget) -> Unit,
+    modifier: Modifier = Modifier,
     hazeState: HazeState? = null,
     imageShare: Boolean = true,
-    modifier: Modifier = Modifier,
 ) {
     Box(
         modifier

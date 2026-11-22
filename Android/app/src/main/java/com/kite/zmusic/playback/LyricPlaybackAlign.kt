@@ -48,4 +48,31 @@ object LyricPlaybackAlign {
         }
         return lyricPositionMs
     }
+
+    /**
+     * 单曲循环把同一首从后段拉回开头。拖动进度条不走这里：界面进度会先写成落点，
+     * 随后的播放器回报前后已经一样，不会被当成播完重播。
+     */
+    fun sameTrackLooped(
+        repeatOne: Boolean,
+        previousMs: Long,
+        nextMs: Long,
+        durationMs: Long,
+    ): Boolean {
+        if (!repeatOne) return false
+        if (nextMs < 0L || previousMs <= nextMs) return false
+        if (nextMs > LOOP_RESTART_MAX_MS) return false
+        if (previousMs - nextMs < LOOP_RESTART_MIN_JUMP_MS) return false
+        if (durationMs > 0L) {
+            val tailStartsAt = durationMs - maxOf(LOOP_TAIL_MS, durationMs / 4)
+            if (previousMs < tailStartsAt) return false
+        } else if (previousMs < LOOP_TAIL_MS) {
+            return false
+        }
+        return true
+    }
+
+    private const val LOOP_RESTART_MAX_MS = 1_500L
+    private const val LOOP_RESTART_MIN_JUMP_MS = 800L
+    private const val LOOP_TAIL_MS = 4_000L
 }

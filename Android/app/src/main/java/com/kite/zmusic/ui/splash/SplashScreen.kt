@@ -104,10 +104,10 @@ private data class Pose(
 fun SplashScreen(
     checkReady: suspend () -> Boolean,
     onFinished: (connected: Boolean) -> Unit,
+    modifier: Modifier = Modifier,
     pluginWaitNames: StateFlow<List<String>>? = null,
     pluginReady: () -> Boolean = { true },
     accelerate: Boolean = false,
-    modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     val reduceMotion = remember {

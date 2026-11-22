@@ -48,8 +48,8 @@ private val ChipShape = RoundedCornerShape(12.dp)
 internal fun WordLyricSettingsPage(
     mode: LyricWordRender,
     onModeChange: (LyricWordRender) -> Unit,
-    contentBottomInset: Dp = 0.dp,
     modifier: Modifier = Modifier,
+    contentBottomInset: Dp = 0.dp,
 ) {
     Column(
         modifier

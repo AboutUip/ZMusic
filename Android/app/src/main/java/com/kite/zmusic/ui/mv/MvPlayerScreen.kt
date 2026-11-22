@@ -7,16 +7,26 @@ import android.widget.FrameLayout
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
 import androidx.annotation.OptIn
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -49,6 +59,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -63,6 +74,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -73,8 +85,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
@@ -82,7 +98,10 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.PlatformTextStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -95,9 +114,14 @@ import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.AspectRatioFrameLayout
+import com.kite.zmusic.ZMusicApplication
 import com.kite.zmusic.data.MvArtist
+import com.kite.zmusic.data.NcmCommentParse
 import com.kite.zmusic.data.NcmHomeParse
+import com.kite.zmusic.data.NcmMvParse
+import com.kite.zmusic.data.NcmUserClient
 import com.kite.zmusic.data.RecommendMvCard
+import com.kite.zmusic.data.SongComment
 import com.kite.zmusic.playback.MvPlayback
 import com.kite.zmusic.playback.MvUiState
 import com.kite.zmusic.playback.PlaybackMode
@@ -193,6 +217,82 @@ fun MvPlayerScreen(
         playback.play(card.id, card.name, card.coverUrl, card.artist, fromSkip = true)
         onOpenMv(card.toOverlay())
     }
+    val app = LocalContext.current.applicationContext as ZMusicApplication
+    val mvId = ui.mvId.takeIf { it > 0L } ?: overlay.id
+    val leadArtist = ui.artists.firstOrNull { it.id > 0L }
+    // 侧栏跟作者走，不跟当前 MV。同一作者点进去只拿掉被点的那条，不重新拉取。
+    var authorMvs by remember { mutableStateOf<List<RecommendMvCard>>(emptyList()) }
+    var authorLoading by remember { mutableStateOf(false) }
+    var authorForArtist by remember { mutableLongStateOf(0L) }
+    var authorReady by remember { mutableStateOf(false) }
+    var authorHidden by remember { mutableStateOf(emptySet<Long>()) }
+    val playingNow by rememberUpdatedState(mvId)
+    val artistNow by rememberUpdatedState(leadArtist?.id)
+    var comments by remember(mvId) { mutableStateOf<List<SongComment>>(emptyList()) }
+    var commentsHasMore by remember(mvId) { mutableStateOf(false) }
+    var commentsLoading by remember(mvId) { mutableStateOf(true) }
+    var commentsLoadingMore by remember(mvId) { mutableStateOf(false) }
+    var commentError by remember(mvId) { mutableStateOf<String?>(null) }
+    var commentOffset by remember(mvId) { mutableIntStateOf(0) }
+    var commentPageTick by remember(mvId) { mutableIntStateOf(0) }
+    var showAllComments by remember(mvId) { mutableStateOf(false) }
+    LaunchedEffect(leadArtist?.id) {
+        val artistId = leadArtist?.id ?: return@LaunchedEffect
+        if (artistId == authorForArtist && authorReady) return@LaunchedEffect
+        val artistChanged = authorForArtist != 0L && authorForArtist != artistId
+        if (artistChanged) {
+            authorMvs = emptyList()
+            authorHidden = emptySet()
+            authorReady = false
+        }
+        authorForArtist = artistId
+        authorHidden = authorHidden + playingNow
+        if (authorMvs.isEmpty()) authorLoading = true
+        val cookie = app.sessionRepository.session.value?.cookie.orEmpty()
+        val loaded = runCatching {
+            loadAuthorMvs(app.ncmUserClient, artistId, cookie, currentMvId = playingNow)
+        }.getOrDefault(emptyList())
+        if (artistNow != artistId) return@LaunchedEffect
+        if (!authorReady) {
+            val hide = authorHidden + playingNow
+            authorHidden = hide
+            authorMvs = loaded.filter { it.id !in hide }
+            authorReady = true
+        }
+        authorLoading = false
+    }
+    LaunchedEffect(mvId) {
+        if (mvId <= 0L) {
+            commentsLoading = false
+            return@LaunchedEffect
+        }
+        commentsLoading = true
+        commentError = null
+        val cookie = app.sessionRepository.session.value?.cookie.orEmpty()
+        runCatching { fetchMvCommentPage(app.ncmUserClient, mvId, cookie, 0, includeHot = true) }
+            .onSuccess { page ->
+                comments = page.comments
+                commentsHasMore = page.hasMore
+                commentOffset = MvCommentPageSize
+            }
+            .onFailure { commentError = it.message?.ifBlank { null } ?: t("评论加载失败") }
+        commentsLoading = false
+    }
+    LaunchedEffect(mvId, commentPageTick) {
+        if (commentPageTick <= 0 || mvId <= 0L || !commentsHasMore) return@LaunchedEffect
+        commentsLoadingMore = true
+        val cookie = app.sessionRepository.session.value?.cookie.orEmpty()
+        val offset = commentOffset
+        runCatching { fetchMvCommentPage(app.ncmUserClient, mvId, cookie, offset, includeHot = false) }
+            .onSuccess { page ->
+                val seen = comments.mapTo(HashSet()) { it.commentId }
+                val fresh = page.comments.filter { seen.add(it.commentId) }
+                comments = comments + fresh
+                commentsHasMore = page.hasMore && fresh.isNotEmpty()
+                commentOffset = offset + MvCommentPageSize
+            }
+        commentsLoadingMore = false
+    }
     LaunchedEffect(overlay.id) {
         val st = playback.ui.value
         if (st.mvId == overlay.id && st.active) return@LaunchedEffect
@@ -237,7 +337,12 @@ fun MvPlayerScreen(
     val handleBack = {
         if (tempLandscape) leaveTempLandscape() else onBack()
     }
-    val backUi = rememberPredictiveBackUi(enabled = !tempLandscape, onBack = onBack)
+    val backUi = rememberPredictiveBackUi(
+        enabled = !tempLandscape && (!showAllComments || landscape),
+        onBack = {
+            if (!landscape && showAllComments) showAllComments = false else onBack()
+        },
+    )
     BackHandler(enabled = tempLandscape, onBack = { leaveTempLandscape() })
     val rootMod = modifier.predictiveBackLayer(backUi, PredictiveBackAxis.Vertical)
 
@@ -310,10 +415,14 @@ fun MvPlayerScreen(
             },
             onSpeed = { speedSheet = true },
             onOpenMv = { mv ->
+                authorHidden = authorHidden + mv.id
+                authorMvs = authorMvs.filter { it.id != mv.id }
                 playback.play(mv.id, mv.title, mv.coverUrl, mv.artist, fromSkip = true)
                 onOpenMv(mv)
             },
-            onLoadMore = { playback.loadMoreRelated() },
+            authorMvs = authorMvs,
+            authorLoading = authorLoading,
+            authorTitle = leadArtist?.name?.let { t("%s 的 MV", it) } ?: t("作者的 MV"),
             onArtist = onOpenArtist,
             modifier = rootMod,
         )
@@ -338,7 +447,9 @@ fun MvPlayerScreen(
                 metaLine = metaLine,
                 sitOnNav = false,
                 onVideoMeta = false,
-                onBack = onBack,
+                onBack = {
+                    if (showAllComments) showAllComments = false else onBack()
+                },
                 rotation = rotation,
                 onSeekStart = seekStart,
                 onSeek = seekChange,
@@ -351,12 +462,22 @@ fun MvPlayerScreen(
                     .clipToBounds()
                     .background(Color.Black),
             )
-            RelatedMvColumn(
-                items = ui.related,
-                hasMore = ui.relatedHasMore,
-                loadingMore = ui.relatedLoading,
-                onLoadMore = { playback.loadMoreRelated() },
-                onOpen = openRelated,
+            MvPortraitColumn(
+                related = ui.related,
+                relatedHasMore = ui.relatedHasMore,
+                relatedLoading = ui.relatedLoading,
+                onLoadMoreRelated = { playback.loadMoreRelated() },
+                onOpenRelated = openRelated,
+                comments = comments,
+                commentsHasMore = commentsHasMore,
+                commentsLoading = commentsLoading,
+                commentsLoadingMore = commentsLoadingMore,
+                commentError = commentError,
+                showAllComments = showAllComments,
+                onShowAllComments = { showAllComments = true },
+                onExitComments = { showAllComments = false },
+                mvId = mvId,
+                onLoadMoreComments = { if (!commentsLoadingMore && commentsHasMore) commentPageTick += 1 },
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
@@ -420,7 +541,9 @@ private fun LandscapeMvScene(
     onToggleSplit: () -> Unit,
     onSpeed: () -> Unit,
     onOpenMv: (MainOverlay.Mv) -> Unit,
-    onLoadMore: () -> Unit,
+    authorMvs: List<RecommendMvCard>,
+    authorLoading: Boolean,
+    authorTitle: String,
     onArtist: (MvArtist) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -559,17 +682,36 @@ private fun LandscapeMvScene(
                             Color.White.copy(alpha = 0.46f),
                         ),
                 ) {
-                    RelatedMvColumn(
-                        items = ui.related,
-                        hasMore = ui.relatedHasMore,
-                        loadingMore = ui.relatedLoading,
-                        onLoadMore = onLoadMore,
-                        onOpen = { onOpenMv(it.toOverlay()) },
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .statusBarsPadding()
-                            .navigationBarsPadding(),
-                    )
+                    if (authorLoading && authorMvs.isEmpty()) {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(
+                                color = MainPalette.Accent,
+                                strokeWidth = 2.dp,
+                                modifier = Modifier.size(22.dp),
+                            )
+                        }
+                    } else {
+                        RelatedMvColumn(
+                            items = authorMvs,
+                            hasMore = false,
+                            loadingMore = false,
+                            onLoadMore = {},
+                            onOpen = { onOpenMv(it.toOverlay()) },
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .statusBarsPadding()
+                                .navigationBarsPadding(),
+                            header = {
+                                Text(
+                                    text = if (authorMvs.isEmpty()) t("还没有其他 MV") else authorTitle,
+                                    color = MainPalette.Ink,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
+                                )
+                            },
+                        )
+                    }
                 }
             }
         }
@@ -735,7 +877,7 @@ private fun MvLandBottom(
             MvPlainIcon(onClick = onRelated) {
                 Icon(
                     imageVector = if (relatedOpen) ZIcons.Close else ZIcons.RelatedMv,
-                    contentDescription = if (relatedOpen) t("收起相关 MV") else t("相关 MV"),
+                    contentDescription = if (relatedOpen) t("收起作者 MV") else t("作者的 MV"),
                     tint = Color.White,
                     modifier = Modifier.size(22.dp),
                 )
@@ -789,6 +931,556 @@ private fun LandArtistCapsules(
     }
 }
 
+private const val MvCommentPageSize = 20
+private const val MvCommentPreviewCount = 4
+private val MvCommentTitleHeight = 40.dp
+private val MvCommentRowHeight = 52.dp
+private val MvCommentPreviewBlock = MvCommentTitleHeight + MvCommentRowHeight * MvCommentPreviewCount
+private val MvCommentLine = TextStyle(platformStyle = PlatformTextStyle(includeFontPadding = false))
+
+@Composable
+private fun MvPortraitColumn(
+    related: List<RecommendMvCard>,
+    relatedHasMore: Boolean,
+    relatedLoading: Boolean,
+    onLoadMoreRelated: () -> Unit,
+    onOpenRelated: (RecommendMvCard) -> Unit,
+    comments: List<SongComment>,
+    commentsHasMore: Boolean,
+    commentsLoading: Boolean,
+    commentsLoadingMore: Boolean,
+    commentError: String?,
+    showAllComments: Boolean,
+    onShowAllComments: () -> Unit,
+    onExitComments: () -> Unit,
+    onLoadMoreComments: () -> Unit,
+    mvId: Long,
+    modifier: Modifier = Modifier,
+    header: @Composable () -> Unit,
+) {
+    val relatedListState = rememberLazyListState()
+    val commentListState = rememberLazyListState()
+    // 评论未打开时，评论预览和相关 MV 是同一条列表，一起被带走。
+    val feedState = rememberLazyListState()
+    val density = LocalDensity.current
+    val previewPx = with(density) { MvCommentPreviewBlock.roundToPx() }
+    var fullPx by remember { mutableIntStateOf(0) }
+    val commentExpand = remember(mvId) { Animatable(if (showAllComments) 1f else 0f) }
+    var restoreTick by remember(mvId) { mutableIntStateOf(0) }
+    // 评论区单独占一个返回节点，手势先把高度收回来，再交给播放页。
+    val commentBack = rememberPredictiveBackUi(
+        enabled = showAllComments,
+        onGestureCancel = { restoreTick += 1 },
+        onBack = onExitComments,
+    )
+    LaunchedEffect(showAllComments, mvId) {
+        commentExpand.animateTo(
+            if (showAllComments) 1f else 0f,
+            tween(360, easing = MvEase),
+        )
+    }
+    LaunchedEffect(commentBack.progress) {
+        if (showAllComments && commentBack.progress > 0f) {
+            commentExpand.snapTo((1f - commentBack.progress).coerceIn(0f, 1f))
+        }
+    }
+    LaunchedEffect(restoreTick) {
+        if (restoreTick > 0 && showAllComments) {
+            commentExpand.animateTo(1f, tween(220, easing = MvEase))
+        }
+    }
+    val expand = commentExpand.value
+    val commentsClosed = !showAllComments && expand <= 0.001f
+    val feedNearEnd by remember {
+        derivedStateOf {
+            val last = feedState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            val total = feedState.layoutInfo.totalItemsCount
+            total > 0 && last >= total - 3
+        }
+    }
+    val commentNearEnd by remember {
+        derivedStateOf {
+            val last = commentListState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            val total = commentListState.layoutInfo.totalItemsCount
+            total > 0 && last >= total - 3
+        }
+    }
+    LaunchedEffect(mvId) {
+        relatedListState.scrollToItem(0)
+        commentListState.scrollToItem(0)
+        feedState.scrollToItem(0)
+    }
+    LaunchedEffect(showAllComments) {
+        if (showAllComments) feedState.scrollToItem(0)
+    }
+    LaunchedEffect(feedNearEnd, showAllComments, related.size, relatedHasMore, relatedLoading, expand) {
+        if (!showAllComments && expand < 0.05f && feedNearEnd && relatedHasMore && related.isNotEmpty() && !relatedLoading) {
+            onLoadMoreRelated()
+        }
+    }
+    LaunchedEffect(relatedHasMore, related.size, relatedLoading, showAllComments) {
+        if (!showAllComments && relatedHasMore && !relatedLoading && related.isNotEmpty() && related.size < 8) {
+            onLoadMoreRelated()
+        }
+    }
+    LaunchedEffect(commentNearEnd, showAllComments, comments.size, commentsHasMore, commentsLoadingMore) {
+        if (showAllComments && commentNearEnd && commentsHasMore && comments.isNotEmpty() && !commentsLoadingMore) {
+            onLoadMoreComments()
+        }
+    }
+    val revealAll = showAllComments || expand > 0.001f
+    val endPx = fullPx.takeIf { it > 0 } ?: previewPx
+    val startPx = previewPx.coerceAtMost(endPx)
+    val heightPx = startPx + (endPx - startPx) * expand
+    Column(modifier.clipToBounds()) {
+        header()
+        Box(
+            Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .clipToBounds()
+                .onSizeChanged { fullPx = it.height },
+        ) {
+            if (commentsClosed) {
+                LazyColumn(
+                    state = feedState,
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(bottom = 16.dp),
+                ) {
+                    item(key = "comment-preview") {
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .background(MainPalette.Page),
+                        ) {
+                            MvCommentTitle(
+                                expanded = false,
+                                onShowAll = onShowAllComments,
+                                onExit = onExitComments,
+                            )
+                            MvCommentPreview(
+                                comments = comments,
+                                loading = comments.isEmpty() && commentsLoading,
+                                error = commentError,
+                            )
+                        }
+                    }
+                    items(related, key = { "m${it.id}" }) { card ->
+                        RelatedRow(card, onOpen = { onOpenRelated(card) })
+                    }
+                    if (relatedLoading) {
+                        item(key = "related-more") { MvListSpinner() }
+                    }
+                }
+            } else if (expand < 0.995f) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .padding(top = with(density) { heightPx.toDp() })
+                        .clipToBounds(),
+                ) {
+                    LazyColumn(
+                        state = relatedListState,
+                        modifier = Modifier.fillMaxSize(),
+                        userScrollEnabled = false,
+                        contentPadding = PaddingValues(bottom = 16.dp),
+                    ) {
+                        items(related, key = { "m${it.id}" }) { card ->
+                            RelatedRow(card, onOpen = { onOpenRelated(card) })
+                        }
+                        if (relatedLoading) {
+                            item(key = "related-more") { MvListSpinner() }
+                        }
+                    }
+                }
+            }
+            if (!commentsClosed) Column(
+                Modifier
+                    .align(Alignment.TopStart)
+                    .fillMaxWidth()
+                    .height(with(density) { heightPx.coerceAtLeast(1f).toDp() })
+                    .clipToBounds()
+                    .background(MainPalette.Page),
+            ) {
+                MvCommentTitle(
+                    expanded = showAllComments,
+                    onShowAll = onShowAllComments,
+                    onExit = onExitComments,
+                )
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .clipToBounds(),
+                ) {
+                    if (revealAll && comments.isNotEmpty()) {
+                        MvCommentFull(
+                            comments = comments,
+                            loadingMore = commentsLoadingMore,
+                            listState = commentListState,
+                            scrollable = showAllComments && expand > 0.98f && commentBack.progress == 0f,
+                        )
+                    } else {
+                        MvCommentPreview(
+                            comments = comments,
+                            loading = comments.isEmpty() && commentsLoading,
+                            error = commentError,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MvListSpinner() {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .padding(12.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        CircularProgressIndicator(
+            color = MainPalette.Accent,
+            strokeWidth = 2.dp,
+            modifier = Modifier.size(18.dp),
+        )
+    }
+}
+
+@Composable
+private fun MvCommentTitle(
+    expanded: Boolean,
+    onShowAll: () -> Unit,
+    onExit: () -> Unit,
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .height(MvCommentTitleHeight)
+            .padding(horizontal = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        AnimatedContent(
+            targetState = expanded,
+            modifier = Modifier.weight(1f),
+            contentAlignment = Alignment.CenterStart,
+            transitionSpec = {
+                (fadeIn(tween(180, easing = MvEase)) +
+                    slideInHorizontally(tween(260, easing = MvEase)) { -it / 4 })
+                    .togetherWith(
+                        fadeOut(tween(140)) +
+                            slideOutHorizontally(tween(220, easing = MvEase)) { -it / 5 },
+                    )
+            },
+            label = "mvCommentTitle",
+        ) { open ->
+            if (open) {
+                Row(
+                    Modifier.clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onExit,
+                    ),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        imageVector = ZIcons.ChevronLeft,
+                        contentDescription = null,
+                        tint = MainPalette.Ink,
+                        modifier = Modifier.size(20.dp),
+                    )
+                    Text(
+                        text = t("退出评论"),
+                        color = MainPalette.Ink,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            } else {
+                Text(
+                    text = t("评论"),
+                    color = MainPalette.Ink,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+        }
+        AnimatedVisibility(
+            visible = !expanded,
+            enter = fadeIn(tween(180, easing = MvEase)),
+            exit = fadeOut(tween(120)),
+        ) {
+            Text(
+                text = t("全部评论"),
+                color = MainPalette.Accent,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onShowAll,
+                    )
+                    .padding(vertical = 8.dp, horizontal = 2.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun MvCommentPreview(
+    comments: List<SongComment>,
+    loading: Boolean,
+    error: String?,
+) {
+    when {
+        loading -> MvCommentPlaceholders()
+        error != null && comments.isEmpty() -> MvCommentNote(error)
+        comments.isEmpty() -> MvCommentNote(t("还没有评论"))
+        else -> Column {
+            repeat(MvCommentPreviewCount) { index ->
+                val comment = comments.getOrNull(index)
+                if (comment != null) MvCommentRow(comment) else Spacer(Modifier.height(MvCommentRowHeight))
+            }
+        }
+    }
+}
+
+@Composable
+private fun MvCommentFull(
+    comments: List<SongComment>,
+    loadingMore: Boolean,
+    listState: LazyListState,
+    scrollable: Boolean,
+) {
+    LazyColumn(
+        state = listState,
+        modifier = Modifier.fillMaxSize(),
+        userScrollEnabled = scrollable,
+        contentPadding = PaddingValues(bottom = 16.dp),
+    ) {
+        items(comments, key = { "c${it.commentId}" }) { comment ->
+            MvCommentRow(comment)
+        }
+        if (loadingMore) {
+            item(key = "comment-more") {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(MvCommentRowHeight),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CircularProgressIndicator(
+                        color = MainPalette.Accent,
+                        strokeWidth = 2.dp,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MvCommentNote(text: String) {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height(MvCommentPreviewBlock - MvCommentTitleHeight),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = text,
+            color = MainPalette.Secondary,
+            fontSize = 13.sp,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(horizontal = 12.dp),
+        )
+    }
+}
+
+@Composable
+private fun MvCommentPlaceholders() {
+    val transition = rememberInfiniteTransition(label = "mvCommentShimmer")
+    val progress by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1300, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "mvCommentShimmerShift",
+    )
+    Column(Modifier.mvDiagonalShimmer(progress)) {
+        repeat(MvCommentPreviewCount) { index ->
+            MvCommentPlaceholderRow(index)
+        }
+    }
+}
+
+private fun Modifier.mvDiagonalShimmer(progress: Float): Modifier =
+    graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+        .drawWithContent {
+            drawContent()
+            val span = size.width + size.height
+            if (span <= 0f) return@drawWithContent
+            val head = -span + span * 2f * progress
+            drawRect(
+                brush = Brush.linearGradient(
+                    colorStops = arrayOf(
+                        0.38f to Color.Transparent,
+                        0.5f to Color.White.copy(alpha = 0.5f),
+                        0.62f to Color.Transparent,
+                    ),
+                    start = Offset(head, 0f),
+                    end = Offset(head + size.height, size.height),
+                ),
+                blendMode = BlendMode.SrcAtop,
+            )
+        }
+
+@Composable
+private fun MvCommentPlaceholderRow(index: Int) {
+    val body = when (index % 4) {
+        0 -> 0.92f
+        1 -> 0.64f
+        2 -> 0.8f
+        else -> 0.5f
+    }
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .height(MvCommentRowHeight)
+            .padding(horizontal = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier
+                .size(32.dp)
+                .clip(CircleShape)
+                .background(MainPalette.Placeholder),
+        )
+        Column(
+            Modifier
+                .padding(start = 10.dp)
+                .weight(1f),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Box(
+                Modifier
+                    .width(72.dp)
+                    .height(10.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(MainPalette.Placeholder),
+            )
+            Box(
+                Modifier
+                    .fillMaxWidth(body)
+                    .height(10.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(MainPalette.Placeholder),
+            )
+        }
+    }
+}
+
+@Composable
+private fun MvCommentRow(comment: SongComment) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .height(MvCommentRowHeight)
+            .padding(horizontal = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        UrlImage(
+            url = comment.avatarUrl,
+            contentDescription = comment.nickname,
+            modifier = Modifier
+                .size(32.dp)
+                .clip(CircleShape)
+                .background(MainPalette.Placeholder),
+            contentScale = ContentScale.Crop,
+        )
+        Column(
+            Modifier
+                .padding(start = 10.dp)
+                .weight(1f),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = comment.nickname,
+                    color = MainPalette.Ink.copy(alpha = 0.92f),
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MvCommentLine,
+                    modifier = Modifier.weight(1f),
+                )
+                if (comment.timeLabel.isNotBlank()) {
+                    Text(
+                        text = comment.timeLabel,
+                        color = MainPalette.Secondary.copy(alpha = 0.75f),
+                        fontSize = 11.sp,
+                        maxLines = 1,
+                        style = MvCommentLine,
+                        modifier = Modifier.padding(start = 8.dp),
+                    )
+                }
+            }
+            Text(
+                text = comment.content.ifBlank { " " },
+                color = MainPalette.Ink.copy(alpha = 0.88f),
+                fontSize = 14.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = MvCommentLine,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+    }
+}
+
+private suspend fun fetchMvCommentPage(
+    client: NcmUserClient,
+    mvId: Long,
+    cookie: String,
+    offset: Int,
+    includeHot: Boolean,
+) = NcmCommentParse.pageFromCommentMusic(
+    client.commentMv(mvId, cookie, limit = MvCommentPageSize, offset = offset),
+    includeHotFirst = includeHot,
+)
+
+private suspend fun loadAuthorMvs(
+    client: NcmUserClient,
+    artistId: Long,
+    cookie: String,
+    currentMvId: Long,
+): List<RecommendMvCard> {
+    val pageSize = 50
+    val all = ArrayList<RecommendMvCard>()
+    var offset = 0
+    var page = 0
+    while (page < 6) {
+        val json = client.artistMv(artistId, cookie, pageSize, offset)
+        val raw = NcmMvParse.similar(json)
+        all += raw
+        if (!NcmMvParse.hasMore(json, raw.size, pageSize) || raw.isEmpty()) break
+        offset += pageSize
+        page += 1
+    }
+    return all
+        .filter { it.id != currentMvId }
+        .distinctBy { it.id }
+        .sortedByDescending { it.playCount }
+}
+
 @Composable
 private fun RelatedMvColumn(
     items: List<RecommendMvCard>,
@@ -826,10 +1518,18 @@ private fun RelatedMvColumn(
             item(key = "info") { header() }
         }
         items(items, key = { it.id }) { card ->
-            RelatedRow(
-                card = card,
-                onOpen = { onOpen(card) },
-            )
+            Box(
+                Modifier.animateItem(
+                    fadeInSpec = tween(180, easing = FastOutSlowInEasing),
+                    placementSpec = tween<IntOffset>(280, easing = FastOutSlowInEasing),
+                    fadeOutSpec = tween(160, easing = FastOutSlowInEasing),
+                ),
+            ) {
+                RelatedRow(
+                    card = card,
+                    onOpen = { onOpen(card) },
+                )
+            }
         }
         if (loadingMore) {
             item(key = "more") {
@@ -984,7 +1684,6 @@ private fun MvVideoStage(
                     pos = pos,
                     duration = duration,
                     ui = ui,
-                    seeking = seeking,
                     liquid = liquid,
                     backdrop = backdrop,
                     onSeekStart = onSeekStart,
@@ -1328,7 +2027,6 @@ private fun MvBottomChrome(
     pos: Long,
     duration: Long,
     ui: MvUiState,
-    seeking: Boolean,
     liquid: Boolean,
     backdrop: LayerBackdrop,
     onSeekStart: () -> Unit,
@@ -1649,12 +2347,11 @@ private fun Modifier.mvGestures(
     val doubleTap = rememberUpdatedState(onDoubleTap)
     val boost = rememberUpdatedState(onBoost)
     pointerInput(Unit) {
-        val longMs = viewConfiguration.longPressTimeoutMillis.toLong()
-        val doubleMs = viewConfiguration.doubleTapTimeoutMillis.toLong()
+        val longMs = viewConfiguration.longPressTimeoutMillis
+        val doubleMs = viewConfiguration.doubleTapTimeoutMillis
         awaitEachGesture {
-            val down = awaitFirstDown()
+            awaitFirstDown()
             val width = size.width.toFloat().coerceAtLeast(1f)
-            val fraction = down.position.x / width
             val held = withTimeoutOrNull(longMs) { waitForUpOrCancellation() }
             if (held == null) {
                 boost.value(true)

@@ -78,13 +78,13 @@ internal fun LandscapeDanmakuOverlay(
     playing: Boolean,
     /** false：停发；屏上已有弹幕飞完后再 [onFullyIdle] */
     enabled: Boolean,
+    modifier: Modifier = Modifier,
     /**
      * 被上层界面遮挡（如黑胶扑克选歌）：停发新弹幕，已有弹幕继续飞、由上层盖住。
      */
     obscured: Boolean = false,
     hazeState: HazeState?,
     onFullyIdle: () -> Unit = {},
-    modifier: Modifier = Modifier,
 ) {
     // playing = playWhenReady：暂停时停发新弹幕，场上的继续飞完；切歌 loadPending 期间仍可发
     val context = LocalContext.current

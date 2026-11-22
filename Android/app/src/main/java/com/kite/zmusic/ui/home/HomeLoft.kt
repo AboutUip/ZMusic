@@ -10,13 +10,8 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -24,7 +19,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.shadow
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshState
 import androidx.compose.runtime.Composable
@@ -279,6 +273,21 @@ internal fun homeLoftChromeReveal(open: Boolean, reveal: Float): Float {
 
 /** 底部导航只跟「二楼是否打开」走。close() 一置 open=false 就解锁，不等圆缩完。 */
 internal fun homeLoftLocksNavigation(open: Boolean): Boolean = open
+
+/**
+ * 主页下拉是否交给二楼。
+ * 退出 MV 播放页后视频仍在播，迷你条接着放。[mvPlaying] 不能单独卸下手势。
+ * 只有别的页面盖住主页，或全屏播放器还占着，才不接。
+ */
+internal fun homeLoftArmed(
+    onHome: Boolean,
+    overlayOpen: Boolean,
+    playerHeld: Boolean,
+    mvPlaying: Boolean,
+): Boolean {
+    if (overlayOpen && mvPlaying) return false
+    return onHome && !overlayOpen && !playerHeld
+}
 
 /** 没过二楼线时一楼不动。展开由圆覆盖动画接管，不跟手指。 */
 internal fun homeSheetOffset(adjustedPx: Float, loftPx: Float): Float = 0f

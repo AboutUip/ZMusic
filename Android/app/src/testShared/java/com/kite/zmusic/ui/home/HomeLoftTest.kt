@@ -81,6 +81,30 @@ class HomeLoftTest {
     }
 
     @Test
+    fun leavingTheMvPlayerStillArmsTheHomePull() {
+        assertEquals(
+            true,
+            homeLoftArmed(onHome = true, overlayOpen = false, playerHeld = false, mvPlaying = true),
+        )
+        assertEquals(
+            true,
+            homeLoftArmed(onHome = true, overlayOpen = false, playerHeld = false, mvPlaying = false),
+        )
+        assertEquals(
+            false,
+            homeLoftArmed(onHome = true, overlayOpen = true, playerHeld = false, mvPlaying = true),
+        )
+        assertEquals(
+            false,
+            homeLoftArmed(onHome = true, overlayOpen = false, playerHeld = true, mvPlaying = false),
+        )
+        assertEquals(
+            false,
+            homeLoftArmed(onHome = false, overlayOpen = false, playerHeld = false, mvPlaying = false),
+        )
+    }
+
+    @Test
     fun navigationUnlocksAsSoonAsTheLoftStartsClosing() {
         assertEquals(true, homeLoftLocksNavigation(open = true))
         assertEquals(false, homeLoftLocksNavigation(open = false))

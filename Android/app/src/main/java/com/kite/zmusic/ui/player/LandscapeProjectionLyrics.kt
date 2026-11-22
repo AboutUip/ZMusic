@@ -2,14 +2,10 @@
 
 package com.kite.zmusic.ui.player
 
-import androidx.activity.compose.BackHandler
-import androidx.activity.compose.LocalActivity
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector1D
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
@@ -24,7 +20,6 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.CubicBezierEasing
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -33,7 +28,6 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.ScrollableDefaults
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
@@ -44,29 +38,17 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.calculateEndPadding
-import androidx.compose.foundation.layout.calculateStartPadding
-import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
@@ -74,40 +56,29 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.runtime.derivedStateOf
-import androidx.compose.runtime.mutableStateSetOf
 import androidx.compose.runtime.snapshotFlow
-import androidx.compose.runtime.snapshots.SnapshotStateSet
 import kotlinx.coroutines.flow.distinctUntilChanged
-import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameMillis
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.zIndex
-import androidx.compose.ui.composed
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.input.pointer.pointerInput
@@ -115,24 +86,18 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shadow
-import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -145,54 +110,62 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.kite.zmusic.ZMusicApplication
 import com.kite.zmusic.data.LongLyricRender
 import com.kite.zmusic.data.LrcLine
-import com.kite.zmusic.data.LrcParser
+import com.kite.zmusic.data.LyricMotion
 import com.kite.zmusic.data.LyricRoleStyle
 import com.kite.zmusic.data.karaokeWords
 import com.kite.zmusic.data.orderedLyricPair
-import com.kite.zmusic.data.NcmJson
-import com.kite.zmusic.data.NcmLibraryParse
 import com.kite.zmusic.data.PlayerDisplayPrefs
-import com.kite.zmusic.data.PlayerDisplayPrefsStore
-import com.kite.zmusic.data.PlaylistTrackLoader
 import com.kite.zmusic.data.TitleAlignMode
 import com.kite.zmusic.data.TitleLineStyle
 import com.kite.zmusic.data.TrackRow
-import com.kite.zmusic.data.VinylColorStyle
-import com.kite.zmusic.playback.AudioSpectrumBands
 import com.kite.zmusic.playback.PlaybackNotice
-import com.kite.zmusic.playback.PlaybackUiState
-import com.kite.zmusic.playback.PlaybackMode
-import com.kite.zmusic.playback.mergePlaylistQueue
-import com.kite.zmusic.ui.common.UrlImage
-import com.kite.zmusic.ui.notice.showIslandNotice
 import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.HazeStyle
-import dev.chrisbanes.haze.HazeTint
 import dev.chrisbanes.haze.hazeEffect
-import dev.chrisbanes.haze.hazeSource
-import dev.chrisbanes.haze.rememberHazeState
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
-import kotlinx.coroutines.yield
 import kotlin.math.abs
-import kotlin.math.cos
 import kotlin.math.roundToInt
-import kotlin.math.sin
 import androidx.compose.ui.unit.lerp as lerpDp
 import com.kite.zmusic.i18n.t
 
 
+/** 占位放在播放行：与歌词同一块视口，换歌时跟着一起滚。 */
+@Composable
+private fun LandscapeNoLyrics(
+    bandHeight: Dp,
+    modifier: Modifier = Modifier,
+    rollShift: () -> Float = NoLyricRoll,
+) {
+    Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(bandHeight)
+                .lyricRollShift(rollShift),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = t("暂无歌词"),
+                style = TextStyle(
+                    color = LyricDim.copy(alpha = 0.5f),
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 14.sp,
+                    letterSpacing = 1.2.sp,
+                    textAlign = TextAlign.Center,
+                ),
+            )
+        }
+    }
+}
+
 @Composable
 internal fun LandscapeProjectionLyrics(
     lines: List<LrcLine>,
+    modifier: Modifier = Modifier,
     companions: List<LrcLine?> = emptyList(),
     originalOnTop: Boolean = true,
     showCompanionOnOthers: Boolean = true,
@@ -229,21 +202,27 @@ internal fun LandscapeProjectionLyrics(
     scrollFrozen: Boolean = false,
     /** 为 false 时逐字钉在 [positionMs]，不按墙钟往前唱（暂停 / 缓冲 / 拖动 / 冻结）。 */
     clockRunning: Boolean = false,
-    modifier: Modifier = Modifier,
+    /** 拖动播放进度条。算滚动：出现用凝聚，松手后再消散已播放。 */
+    sliderDragging: Boolean = false,
+    /** 换歌滚动的平移量（视口高为单位），见 [LyricRollSwap]。 */
+    rollShift: () -> Float = NoLyricRoll,
 ) {
+    val played = playedCount.coerceIn(
+        PlayerDisplayPrefs.LYRIC_AROUND_MIN,
+        PlayerDisplayPrefs.LYRIC_AROUND_MAX,
+    )
+    val upcoming = upcomingCount.coerceIn(
+        PlayerDisplayPrefs.LYRIC_AROUND_MIN,
+        PlayerDisplayPrefs.LYRIC_AROUND_MAX,
+    )
+    // 槽高取各角色字号下的最大行高，保证滚动居中稳定
+    val slotHeight = lyricSlotHeight(playingStyle, playedStyle, unplayedStyle, lineSpacingDp)
     if (lines.isEmpty()) {
-        Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text(
-                text = t("暂无歌词"),
-                style = TextStyle(
-                    color = LyricDim.copy(alpha = 0.5f),
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 14.sp,
-                    letterSpacing = 1.2.sp,
-                    textAlign = TextAlign.Center,
-                ),
-            )
-        }
+        LandscapeNoLyrics(
+            bandHeight = slotHeight * (played + upcoming + 1),
+            modifier = modifier,
+            rollShift = rollShift,
+        )
         return
     }
     val lyricClock = rememberSmoothedLyricPositionMs(positionMs, clockRunning)
@@ -258,18 +237,6 @@ internal fun LandscapeProjectionLyrics(
     val playFs = playingStyle.sanitizedFontScale()
     val playedFs = playedStyle.sanitizedFontScale()
     val unplayedFs = unplayedStyle.sanitizedFontScale()
-    val linePad = lineSpacingDp
-        .coerceIn(PlayerDisplayPrefs.LINE_SPACING_MIN, PlayerDisplayPrefs.LINE_SPACING_MAX)
-        .dp
-    val played = playedCount.coerceIn(
-        PlayerDisplayPrefs.LYRIC_AROUND_MIN,
-        PlayerDisplayPrefs.LYRIC_AROUND_MAX,
-    )
-    val upcoming = upcomingCount.coerceIn(
-        PlayerDisplayPrefs.LYRIC_AROUND_MIN,
-        PlayerDisplayPrefs.LYRIC_AROUND_MAX,
-    )
-    val visibleCount = played + 1 + upcoming
     val animMs = timing.durationMs
 
     val dynamicT = remember { Animatable(if (dynamicLyrics) 1f else 0f) }
@@ -351,15 +318,15 @@ internal fun LandscapeProjectionLyrics(
     val visualPlayFocus =
         if (selectMode && selectFrozenFocus >= 0) selectFrozenFocus else playFocus
 
-    // 槽高取各角色字号下的最大行高，保证滚动居中稳定
-    val slotHeight = maxOf(38f * playFs, 26f * playedFs, 26f * unplayedFs).dp + linePad * 2
     val anyCompanion = companions.any { it != null }
     val playingDual = anyCompanion
     val othersDual = anyCompanion && showCompanionOnOthers
     val transExtra = (20f * playFs).dp + 4.dp
     val playSlotHeight = if (playingDual) slotHeight + transExtra else slotHeight
     val sideSlotHeight = if (othersDual) playSlotHeight else slotHeight
-    val bandHeight = sideSlotHeight * (visibleCount - 1).coerceAtLeast(0) + playSlotHeight
+    val particleExit = rememberLyricExitMotion() == LyricMotion.Scatter
+    val particleFollow = particleExit && !browsing && !dragSession && !sliderDragging && !selectMode
+    val bandHeight = sideSlotHeight * (played + upcoming).coerceAtLeast(0) + playSlotHeight
     val haloBleed = 96.dp
     // 上下垫白，使任意一行（含仅 1～2 行）都能滚到视口绝对垂直中心
     val slotHeightPx = with(density) { playSlotHeight.roundToPx() }
@@ -370,6 +337,43 @@ internal fun LandscapeProjectionLyrics(
     val browseCenterIndex by remember {
         derivedStateOf { listState.browseCenterLyricIndex(playFocus) }
     }
+    var lyricSeekTarget by remember { mutableIntStateOf(-1) }
+    var lyricSeekTick by remember { mutableIntStateOf(0) }
+    var lyricSeekIndices by remember { mutableStateOf(IntArray(0)) }
+    val particleVisibleKey by remember {
+        derivedStateOf {
+            val items = listState.layoutInfo.visibleItemsInfo
+            (items.firstOrNull()?.index ?: -1) * 10000 + (items.lastOrNull()?.index ?: -1)
+        }
+    }
+    val particleVisibleIndices = remember(particleVisibleKey) {
+        listState.layoutInfo.visibleItemsInfo.map { it.index }.toIntArray()
+    }
+    val viewportSettled by remember {
+        derivedStateOf { !sliderDragging && !dragSession && !listState.isScrollInProgress }
+    }
+    val particleCore by remember { derivedStateOf { listState.fullyVisibleLyricSpan() } }
+    val particleCursor = rememberLyricParticleTokens(
+        enabled = particleExit,
+        playFocus = visualPlayFocus,
+        browsing = browsing,
+        dragSession = dragSession,
+        sliderDragging = sliderDragging,
+        browseCenter = browseCenterIndex,
+        selectFrozen = selectMode,
+        lineCount = lines.size,
+        songKey = lyricParticleSongKey(lines),
+        window = played + upcoming,
+        upcomingLines = upcoming,
+        seekTarget = lyricSeekTarget,
+        seekTick = lyricSeekTick,
+        visibleIndices = particleVisibleIndices,
+        visibleKey = particleVisibleKey,
+        viewportSettled = viewportSettled,
+        coreFirst = particleCore.first,
+        coreLast = particleCore.last,
+    )
+    val particleTokens = particleCursor.tokens
 
     val span = lyricLineSpanMs(lines, playFocus, trackDurationMs)
     val enableHalo = live && span >= 320L
@@ -531,6 +535,11 @@ internal fun LandscapeProjectionLyrics(
             return
         }
         val line = lines.getOrNull(center) ?: return
+        if (particleExit) {
+            lyricSeekIndices = listState.layoutInfo.visibleItemsInfo.map { it.index }.toIntArray()
+            lyricSeekTarget = center
+            lyricSeekTick++
+        }
         browsing = false
         dragSession = false
         scope.launch { scrollToCenteredIndex(center, animated = true) }
@@ -569,10 +578,13 @@ internal fun LandscapeProjectionLyrics(
             }
     }
 
-    LaunchedEffect(playFocus, browsing, lines.size, centerPadPx, selectMode, scrollFrozen) {
+    LaunchedEffect(playFocus, browsing, lines.size, centerPadPx, selectMode, scrollFrozen, sliderDragging) {
         if (scrollFrozen) return@LaunchedEffect
         if (!browsing && !selectMode && !resumeSettling) {
-            scrollToPlayFocus(animated = true, followDurationMs = animMs)
+            scrollToPlayFocus(
+                animated = !sliderDragging,
+                followDurationMs = if (sliderDragging) null else animMs,
+            )
         }
     }
 
@@ -706,7 +718,7 @@ internal fun LandscapeProjectionLyrics(
                         .fillMaxSize()
                         .graphicsLayer {
                             clip = false
-                            alpha = 1f - selectT
+                            alpha = (1f - selectT) * (1f - abs(rollShift()).coerceAtMost(1f))
                         }
                         .drawBehind {
                             val bleedPx = haloBleed.toPx() * (1f - selectT)
@@ -920,7 +932,16 @@ internal fun LandscapeProjectionLyrics(
                         state = listState,
                         modifier = Modifier
                             .fillMaxSize()
-                            .clip(RectangleShape),
+                            .clip(RectangleShape)
+                            .lyricRollShift(rollShift)
+                            .lyricConcealPast(
+                                particleFollow && !particleCursor.showingLeadIn &&
+                                    particleCursor.scatterQueue.isEmpty() &&
+                                    particleCursor.tokens.none { (line, token) ->
+                                        token > 0 && particleCursor.settled[line] != token
+                                    },
+                                slotHeightPx.toFloat(),
+                            ),
                         contentPadding = PaddingValues(vertical = centerPad),
                         horizontalAlignment = Alignment.CenterHorizontally,
                         // 浏览 / 选句可滚；首滑由父级 pointerInput 抢跟滚
@@ -932,7 +953,8 @@ internal fun LandscapeProjectionLyrics(
                         ) { index, line ->
                             // 选句锁定打开时的播放行，避免播放推进换行入场；回滚仍跟实时 playFocus
                             val inSelect = selectT > 0.001f
-                            val isPlayingLine = index == visualPlayFocus
+                            val isFocusSlot = index == visualPlayFocus
+                            val isPlayingLine = isFocusSlot && particleCursor.playingStyleReady
                             val isBrowseCenter =
                                 !inSelect &&
                                     (browsing || dragSession) &&
@@ -940,8 +962,8 @@ internal fun LandscapeProjectionLyrics(
                                     index == browseCenterIndex &&
                                     !isPlayingLine
                             val selected = inSelect && index in selectedIndices
-                            val dualRow = isPlayingLine && playingDual ||
-                                !isPlayingLine && othersDual
+                            val dualRow = isFocusSlot && playingDual ||
+                                !isFocusSlot && othersDual
                             val baseRowHeight = if (dualRow) playSlotHeight else sideSlotHeight
                             val rowHeight = if (geom != null) {
                                 lerpDp(baseRowHeight, geom.cellHeight, selectT)
@@ -953,6 +975,41 @@ internal fun LandscapeProjectionLyrics(
                                 showCompanionOnOthers -> companions.getOrNull(index)
                                 else -> null
                             }
+                            val linePlayed = animActive >= 0 && index < animActive
+                            val particleToken = if (selectT > 0.15f) 0 else particleTokens[index] ?: 0
+                            val browseFx = particleExit && particleCursor.browseFx && !inSelect
+                            val particleScatter = particleToken > 0
+                            val samplePlaying = (particleScatter && !browseFx) || isPlayingLine
+                            val particlePlayed = linePlayed || (particleScatter && !browseFx)
+                            val particleStyle = if (samplePlaying) {
+                                playingStyle
+                            } else if (particlePlayed) {
+                                playedStyle
+                            } else {
+                                unplayedStyle
+                            }
+                            val particleRole = if (samplePlaying) {
+                                LyricStyleRole.Playing
+                            } else if (particlePlayed) {
+                                LyricStyleRole.Played
+                            } else {
+                                LyricStyleRole.Unplayed
+                            }
+                            val particleFs = if (samplePlaying) {
+                                playFs
+                            } else if (particlePlayed) {
+                                playedFs
+                            } else {
+                                unplayedFs
+                            }
+                            val sampleTranslation = if (samplePlaying) {
+                                companions.getOrNull(index)
+                            } else {
+                                companion
+                            }
+                            val samplePair = orderedLyricPair(line, sampleTranslation, originalOnTop)
+                            @Composable
+                            fun ScrollLine() {
                             LandscapeScrollLyricLine(
                                 text = line.text,
                                 companion = companion,
@@ -962,7 +1019,7 @@ internal fun LandscapeProjectionLyrics(
                                 isBrowseCenter = isBrowseCenter,
                                 live = live && isPlayingLine && selectT < 0.98f,
                                 // 选句中仍保留已播放判定，斜体随 selectT 过渡，禁止进/出瞬间掐掉
-                                played = animActive >= 0 && index < animActive,
+                                played = linePlayed,
                                 distanceFromPlay = if (inSelect) {
                                     1
                                 } else {
@@ -1007,6 +1064,90 @@ internal fun LandscapeProjectionLyrics(
                                     }
                                 },
                             )
+                            }
+                            val lyricScroll = browsing || dragSession
+                            val gathering = particleToken < 0 && index !in particleCursor.gathered
+                            val scattering = particleToken > 0 && particleCursor.settled[index] != particleToken
+                            val pendingGather = particleExit && !gathering && !scattering &&
+                                index !in particleCursor.gathered &&
+                                (browseFx || (lyricScroll && index != visualPlayFocus))
+                            val seekHold = !lyricScroll && lyricSeekTarget >= 0 && index < lyricSeekTarget &&
+                                lyricSeekIndices.any { it == index } &&
+                                particleToken <= 0 && !scattering
+                            val keptText = !browseFx &&
+                                particleCursor.surface != LyricSeekSurface.Scattered &&
+                                (index >= particleCursor.textFloor || isFocusSlot) &&
+                                particleToken <= 0 &&
+                                !gathering
+                            val finishedLine = particleExit && !lyricScroll && !browseFx && linePlayed &&
+                                !isFocusSlot && !inSelect && !scattering && !seekHold && !keptText
+                            when {
+                                particleCursor.surface == LyricSeekSurface.Scattered -> {
+                                    Box(Modifier.fillMaxWidth().height(rowHeight))
+                                }
+                                keptText -> ScrollLine()
+                                gathering -> {
+                                    key(particleToken) {
+                                        LyricParticleSlot(
+                                            token = particleToken,
+                                            primary = samplePair.first.text,
+                                            secondary = samplePair.second?.text,
+                                            color = particleStyle.resolvedColorFor(particleRole),
+                                            fontSizeSp = (if (particlePlayed) 15f else 16.5f) * particleFs,
+                                            lineHeightSp = 26f * particleFs,
+                                            fontWeight = particleStyle.resolvedFontWeight(particleRole),
+                                            fontStyle = particleStyle.resolvedFontStyle(),
+                                            letterSpacingSp = 0.35f,
+                                            secondaryScale = 0.88f,
+                                            horizontalPadding = 10.dp,
+                                            gatherDuration = when {
+                                                browseFx -> LyricBrowseGatherMs
+                                                particleCursor.seekGather -> 340L
+                                                else -> 600L
+                                            },
+                                            onGatherSettled = { particleCursor.finishGather(index) },
+                                            modifier = Modifier.fillMaxWidth().height(rowHeight).zIndex(1f),
+                                        ) {
+                                            ScrollLine()
+                                        }
+                                    }
+                                }
+                                pendingGather -> {
+                                    Box(Modifier.fillMaxWidth().height(rowHeight))
+                                }
+                                scattering -> {
+                                    key(particleToken) {
+                                        LyricParticleSlot(
+                                            token = particleToken,
+                                            primary = samplePair.first.text,
+                                            secondary = samplePair.second?.text,
+                                            color = particleStyle.resolvedColorFor(particleRole),
+                                            fontSizeSp = if (isPlayingLine) {
+                                                26f * playFs
+                                            } else {
+                                                (if (particlePlayed) 15f else 16.5f) * particleFs
+                                            },
+                                            lineHeightSp = if (isPlayingLine) 38f * playFs else 26f * particleFs,
+                                            fontWeight = particleStyle.resolvedFontWeight(particleRole),
+                                            fontStyle = particleStyle.resolvedFontStyle(),
+                                            letterSpacingSp = if (isPlayingLine) 0.5f else 0.35f,
+                                            secondaryScale = if (isPlayingLine) 0.7f else 0.88f,
+                                            horizontalPadding = if (isPlayingLine) 14.dp else 10.dp,
+                                            scatterDuration = if (browseFx) LyricBrowseScatterMs else 920L,
+                                            modifier = Modifier.fillMaxWidth().height(rowHeight).zIndex(1f),
+                                        ) {
+                                            ScrollLine()
+                                        }
+                                    }
+                                }
+                                browseFx || seekHold || lyricScroll -> ScrollLine()
+                                finishedLine -> {
+                                    Box(Modifier.graphicsLayer { alpha = 0f }) {
+                                        ScrollLine()
+                                    }
+                                }
+                                else -> ScrollLine()
+                            }
                         }
                     }
                 }
@@ -1572,6 +1713,7 @@ private fun LandscapeDualPlainText(
 @Composable
 internal fun LandscapeAlignedSongMeta(
     track: TrackRow,
+    modifier: Modifier = Modifier,
     onArtistClick: (() -> Unit)? = null,
     onRevealControls: () -> Unit,
     titleAlign: TitleAlignMode,
@@ -1588,7 +1730,6 @@ internal fun LandscapeAlignedSongMeta(
     titleMaxWidth: Dp,
     contentAlpha: Float = 1f,
     onMetaVisualBoundsInRoot: ((Rect) -> Unit)? = null,
-    modifier: Modifier = Modifier,
 ) {
     val density = LocalDensity.current
     val artistIx = remember { MutableInteractionSource() }
@@ -1710,9 +1851,9 @@ internal fun AlignedMetaLine(
     targetXForWidth: (Float) -> Float,
     style: TextStyle,
     maxLines: Int,
+    modifier: Modifier = Modifier,
     onVisualBoundsInRoot: ((Rect) -> Unit)? = null,
     expandSlot: PlayerExpandSlot? = null,
-    modifier: Modifier = Modifier,
 ) {
     var widthPx by remember { mutableFloatStateOf(0f) }
     val x = remember { Animatable(0f) }

@@ -287,6 +287,7 @@
   "暂时还没有记录。": "Il n’y a pas encore d’enregistrement pour le moment.",
   "更新日志": "Journal des mises à jour",
   "服务器": "serveur",
+  "音乐服务器": "Serveur musical",
   "服务性质": "Nature du service",
   "服务条款": "Conditions d'utilisation",
   "未播放歌词": "Paroles non diffusées",
@@ -1913,5 +1914,14 @@
   "界面显示为荷兰语": "L’interface est affichée en néerlandais.",
   "界面显示为波兰语": "L’interface est affichée en polonais.",
   "界面显示为捷克语": "L’interface est affichée en tchèque.",
-  "界面显示为土耳其语": "L’interface est affichée en turc."
+  "界面显示为土耳其语": "L’interface est affichée en turc.",
+  "电影": "Film",
+  "专注黑胶、动态景深或电影字幕 · 滑动或点选": "Vinyle, profondeur dynamique ou sous-titres de film · faire glisser ou toucher",
+  "3D 点阵": "Formes 3D en points",
+  "点阵立方体、圆柱和棱锥散落在镜头前后，随运镜产生纵深": "Cubes, cylindres et pyramides en points dispersés autour de la caméra, pour de la profondeur pendant ses mouvements",
+  "随节拍律动": "Pulser au rythme",
+  "背景、点阵和高亮字跟随低频与高频轻轻呼吸": "Le fond, les points et le mot en surbrillance respirent avec les basses et les aigus",
+  "底部预告歌词": "Paroles à venir",
+  "画面底部用小字预告接下来两句": "Affiche les deux lignes suivantes en petit en bas de l'écran",
+  "歌词摆在三维空间里，换句时镜头推到下一句前面 · 背景沿用专注模式的自定义背景 · 点击屏幕呼出控制栏": "Les paroles sont placées dans un espace 3D et la caméra glisse vers la ligne suivante · Utilise le fond personnalisé de « Se concentrer » · Touchez l'écran pour afficher les commandes"
 }

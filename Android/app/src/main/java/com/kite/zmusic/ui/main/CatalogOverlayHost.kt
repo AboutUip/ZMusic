@@ -11,6 +11,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -50,6 +52,8 @@ import com.kite.zmusic.ui.chrome.chromePage
 import com.kite.zmusic.ui.common.predictiveBackLayer
 import com.kite.zmusic.ui.common.rememberPredictiveBackUi
 import com.kite.zmusic.ui.library.LibraryCollectionAllScreen
+import com.kite.zmusic.ui.recent.RecentPlayScreen
+import com.kite.zmusic.ui.recent.RecentPlaySearchScreen
 import com.kite.zmusic.ui.library.LikedArtistsScreen
 import com.kite.zmusic.ui.library.LikedArtistsSearchScreen
 import com.kite.zmusic.ui.library.ProfileEditScreen
@@ -76,6 +80,7 @@ fun CatalogOverlayHost(
     onBack: () -> Unit,
     onPlayTracks: (List<TrackRow>, Int, Long?, String?) -> Unit,
     onOpenPlaylist: (Long, String, String?) -> Unit,
+    modifier: Modifier = Modifier,
     onPushOverlay: (MainOverlay) -> Unit = {},
     onHint: (String) -> Unit = {},
     onLogout: () -> Unit = {},
@@ -93,7 +98,6 @@ fun CatalogOverlayHost(
     flightKey: String? = null,
     flightProgress: Float = 1f,
     backEnabled: Boolean = true,
-    modifier: Modifier = Modifier,
 ) {
     val app = LocalContext.current.applicationContext as ZMusicApplication
     val searchVm: SearchViewModel = viewModel(
@@ -180,7 +184,15 @@ fun CatalogOverlayHost(
                         else -> exit
                     },
                 ) {
-                    Box(Modifier.fillMaxSize()) {
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = {},
+                            ),
+                    ) {
                         ChromeWallpaperBackdrop()
                         CatalogOverlayPage(
                             overlay = item,
@@ -268,7 +280,6 @@ private fun CatalogOverlayPage(
                             onHint(t("暂时无法打开这位用户"))
                         }
                     },
-                    onHint = onHint,
                 )
             }
         }
@@ -511,6 +522,49 @@ private fun CatalogOverlayPage(
                 instance = overlay.instance,
                 contentBottomInset = contentBottomInset,
                 onBack = onBack,
+            )
+        }
+        MainOverlay.RecentPlay -> {
+            RecentPlayScreen(
+                contentBottomInset = contentBottomInset,
+                onBack = onBack,
+                onPlayTracks = onPlayTracks,
+                onOpenMv = { mv ->
+                    onPushOverlay(
+                        MainOverlay.Mv(
+                            id = mv.id,
+                            title = mv.name,
+                            coverUrl = mv.coverUrl,
+                            artist = mv.artist,
+                        ),
+                    )
+                },
+                playingTrackId = playingTrackId,
+                isPlaying = isPlaying,
+                onSearch = { searchingMvs ->
+                    onPushOverlay(MainOverlay.RecentPlaySearch(mvs = searchingMvs))
+                },
+            )
+        }
+        is MainOverlay.RecentPlaySearch -> {
+            RecentPlaySearchScreen(
+                mvs = overlay.mvs,
+                contentBottomInset = contentBottomInset,
+                isTop = isTop,
+                onBack = onBack,
+                onPlayTracks = onPlayTracks,
+                onOpenMv = { mv ->
+                    onPushOverlay(
+                        MainOverlay.Mv(
+                            id = mv.id,
+                            title = mv.name,
+                            coverUrl = mv.coverUrl,
+                            artist = mv.artist,
+                        ),
+                    )
+                },
+                playingTrackId = playingTrackId,
+                isPlaying = isPlaying,
             )
         }
         MainOverlay.AnnualReport -> {

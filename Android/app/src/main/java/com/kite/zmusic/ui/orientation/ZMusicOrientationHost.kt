@@ -2,6 +2,7 @@ package com.kite.zmusic.ui.orientation
 
 import android.app.Activity
 import android.content.res.Configuration
+import androidx.activity.compose.LocalActivity
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
@@ -48,6 +49,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.kite.zmusic.R
+import com.kite.zmusic.data.OrientationLock
 import com.kite.zmusic.ui.main.MainLightSystemBars
 import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.notice.IslandNoticeRoot
@@ -69,25 +71,30 @@ fun ZMusicOrientationHost(
     content: @Composable () -> Unit,
 ) {
     val context = LocalContext.current
-    val activity = context as? Activity
+    val activity = LocalActivity.current ?: context as? Activity
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     val ignoreStatusBar = rememberIgnoreStatusBar()
     val rotationLock = rememberSessionRotationLock()
     val systemAutoRotate = rememberSystemAutoRotateEnabled()
     val landscapeModeEnabled = rememberLandscapeModeEnabled()
+    val orientationLock = rememberOrientationLock()
     var prevSystemAutoRotate by remember { mutableStateOf<Boolean?>(null) }
-    LaunchedEffect(systemAutoRotate) {
+    LaunchedEffect(systemAutoRotate, orientationLock) {
         val was = prevSystemAutoRotate
         prevSystemAutoRotate = systemAutoRotate
-        if (was == false && systemAutoRotate) {
+        if (was == false && systemAutoRotate && orientationLock == OrientationLock.Auto) {
             rotationLock.setLocked(activity, false)
         }
     }
-    LaunchedEffect(landscapeModeEnabled) {
-        if (!landscapeModeEnabled) {
+    LaunchedEffect(landscapeModeEnabled, orientationLock) {
+        if (!landscapeModeEnabled && orientationLock == OrientationLock.Auto) {
             rotationLock.setLocked(activity, false)
         }
+    }
+    LaunchedEffect(activity, orientationLock) {
+        val act = activity ?: return@LaunchedEffect
+        OrientationLockApplier.apply(act, orientationLock)
     }
 
     DisposableEffect(activity, isLandscape, ignoreStatusBar) {

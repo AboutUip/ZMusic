@@ -40,7 +40,6 @@ import com.kite.zmusic.plugin.PluginLookPresent
 import com.kite.zmusic.ui.common.UrlImageCache
 import java.io.File
 import java.io.FileOutputStream
-import java.util.Locale
 import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min

@@ -420,10 +420,10 @@ fun LikedArtistsSearchScreen(
     contentBottomInset: Dp,
     onBack: () -> Unit,
     onOpenArtist: (Long, String, String?) -> Unit,
+    modifier: Modifier = Modifier,
     onOpenUser: (Long, String, String?) -> Unit = { _, _, _ -> },
     searchUsers: Boolean = false,
     isTop: Boolean = true,
-    modifier: Modifier = Modifier,
 ) {
     val vm = rememberLikedArtistsViewModel(sessionRepository)
     LaunchedEffect(searchUsers) {
@@ -698,9 +698,9 @@ private fun LikedArtistSearchField(
     onSearch: () -> Unit,
     onClear: () -> Unit,
     focusRequester: FocusRequester,
+    modifier: Modifier = Modifier,
     canFocus: Boolean = true,
     placeholder: String = t("搜索收藏的歌手"),
-    modifier: Modifier = Modifier,
 ) {
     Row(
         modifier

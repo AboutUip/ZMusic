@@ -53,7 +53,6 @@ internal class LoginQrExternal(
 fun LoginScreen(
     sessionRepository: SessionRepository,
     onLoggedIn: () -> Unit,
-    onNavigateBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val app = LocalContext.current.applicationContext as ZMusicApplication
@@ -113,7 +112,6 @@ fun LoginScreen(
                 onMethod = { method = it },
                 onQrVisible = { qrVisible = it },
                 onLoggedIn = onLoggedIn,
-                onNavigateBack = onNavigateBack,
                 onOpenRegister = { registerOpen = true; registerVm.reset() },
                 registerOpen = registerOpen,
                 registerVm = registerVm,
@@ -136,7 +134,6 @@ fun LoginScreen(
                 onMethod = { method = it },
                 onQrVisible = { qrVisible = it },
                 onLoggedIn = onLoggedIn,
-                onNavigateBack = onNavigateBack,
                 onOpenRegister = { registerOpen = true; registerVm.reset() },
                 resumeSms = resumeSms,
                 onResumeSmsConsumed = { resumeSms = false },

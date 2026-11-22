@@ -4,86 +4,16 @@ package com.kite.zmusic.ui.player
 
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.AnimationVector1D
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.CubicBezierEasing
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.gestures.animateScrollBy
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.ScrollableDefaults
-import androidx.compose.foundation.gestures.scrollBy
-import androidx.compose.foundation.gestures.waitForUpOrCancellation
-import androidx.compose.ui.input.pointer.util.VelocityTracker
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxScope
-import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.WindowInsetsSides
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.calculateEndPadding
-import androidx.compose.foundation.layout.calculateStartPadding
-import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.only
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.layout.wrapContentHeight
-import androidx.compose.foundation.layout.wrapContentWidth
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.mutableStateSetOf
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.snapshots.SnapshotStateSet
-import kotlinx.coroutines.flow.distinctUntilChanged
-import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -92,105 +22,46 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.withFrameMillis
-import androidx.compose.runtime.withFrameNanos
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.zIndex
-import androidx.compose.ui.composed
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.PointerInputChange
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.RectangleShape
-import androidx.compose.ui.graphics.Shadow
-import androidx.compose.ui.graphics.TransformOrigin
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.lerp
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.boundsInRoot
-import androidx.compose.ui.layout.layout
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInRoot
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontStyle
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.compose.ui.util.lerp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kite.zmusic.ZMusicApplication
 import com.kite.zmusic.ui.community.rememberCommunityLoginOpener
-import com.kite.zmusic.data.AudioQuality
-import com.kite.zmusic.data.LrcLine
 import com.kite.zmusic.data.LyricRoleStyle
-import com.kite.zmusic.data.PlayerBackgroundPreset
 import com.kite.zmusic.data.PlayerDisplayPrefs
 import com.kite.zmusic.data.PlayerDisplayPrefsStore
 import com.kite.zmusic.data.LandscapePlayerPageType
 import com.kite.zmusic.data.PlaylistTrackLoader
-import com.kite.zmusic.data.TitleAlignMode
-import com.kite.zmusic.data.TitleLineStyle
-import com.kite.zmusic.data.TrackRow
-import com.kite.zmusic.data.VinylColorStyle
+import com.kite.zmusic.data.TrackArtist
 import com.kite.zmusic.plugin.PluginLookPresent
-import com.kite.zmusic.playback.PlaybackNotice
 import com.kite.zmusic.playback.PlaybackUiState
-import com.kite.zmusic.playback.PlaybackMode
-import com.kite.zmusic.playback.mergePlaylistQueue
-import com.kite.zmusic.ui.common.UrlImage
 import com.kite.zmusic.ui.common.dismissSoftwareImeIfAwake
 import com.kite.zmusic.ui.common.hideSoftwareIme
 import com.kite.zmusic.ui.common.isSoftwareImeVisible
 import com.kite.zmusic.ui.common.rememberNetworkOnline
 import com.kite.zmusic.ui.notice.showIslandNotice
-import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.HazeStyle
-import dev.chrisbanes.haze.HazeTint
-import dev.chrisbanes.haze.hazeEffect
-import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.coroutineScope
+import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.yield
 import kotlin.math.abs
-import kotlin.math.cos
-import kotlin.math.roundToInt
-import kotlin.math.sin
-import androidx.compose.ui.unit.lerp as lerpDp
 import com.kite.zmusic.i18n.t
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -204,11 +75,12 @@ fun NowPlayingScreen(
     onSkipNext: () -> Unit,
     onSkipPrev: () -> Unit,
     onCyclePlaybackMode: () -> Unit,
-    onOpenSourcePlaylist: (() -> Unit)? = null,
+    modifier: Modifier = Modifier,
     onPlayInsertSong: (Long) -> Unit = {},
     onOpenPlaylist: (Long, String, String?) -> Unit = { _, _, _ -> },
     onOpenAlbum: (Long, String, String?) -> Unit = { _, _, _ -> },
     onOpenArtist: (() -> Unit)? = null,
+    onOpenPortraitArtist: (TrackArtist) -> Unit = {},
     onOpenUser: (Long, String, String?) -> Unit = { _, _, _ -> },
     onPlayQueueIndex: (Int) -> Unit = {},
     onMoveQueue: (from: Int, to: Int) -> Unit = { _, _ -> },
@@ -216,7 +88,6 @@ fun NowPlayingScreen(
     onHoldAutoAdvanceChange: (Boolean) -> Unit = {},
     /** 横屏额外左侧 inset（本页已无 Dock，通常为 0） */
     landscapeStartInset: Dp = 0.dp,
-    modifier: Modifier = Modifier,
 ) {
     val track = state.currentTrack ?: return
     var portraitLyricsOpen by rememberSaveable { mutableStateOf(false) }
@@ -377,10 +248,27 @@ fun NowPlayingScreen(
         likedRepo.submitLike(likedTrack, next, session.cookie)
     }
 
+    var lyricSeekHoldMs by remember { mutableLongStateOf(-1L) }
+    var lyricSeekFromMs by remember { mutableLongStateOf(-1L) }
+    val lyricClockNow by rememberUpdatedState(state.lyricClockMs())
+    // 歌词页切歌不收起：歌词在页内整屏滚成新歌
     LaunchedEffect(track.id) {
-        portraitLyricsOpen = false
         portraitPosterOpen = false
         sliderDragging = false
+        lyricSeekHoldMs = -1L
+    }
+    // 松手后播放器要过一两帧才报出新位置，歌词先停在落点，免得回闪到旧句。
+    LaunchedEffect(lyricSeekHoldMs) {
+        val target = lyricSeekHoldMs
+        if (target < 0L) return@LaunchedEffect
+        val from = lyricSeekFromMs
+        withTimeoutOrNull(2_500L) {
+            snapshotFlow { lyricClockNow }.first { pos ->
+                pos in (target - 250L)..(target + 1_200L) &&
+                    (abs(pos - from) > 250L || abs(target - from) <= 250L)
+            }
+        }
+        lyricSeekHoldMs = -1L
     }
 
     val seekClock = rememberSeekDisplayClock(
@@ -394,10 +282,11 @@ fun NowPlayingScreen(
     val duration = seekClock.durationMs
     val seekDisplayPos = seekClock.positionMs
     val displayPos = if (sliderDragging) sliderValue.toLong() else seekDisplayPos
-    val lyricPos = if (sliderDragging && (state.lyricTrackId <= 0L || state.lyricTrackId == track.id)) {
-        sliderValue.toLong()
-    } else {
-        state.lyricClockMs()
+    val lyricOnTrack = state.lyricTrackId <= 0L || state.lyricTrackId == track.id
+    val lyricPos = when {
+        sliderDragging && lyricOnTrack -> sliderValue.toLong()
+        lyricSeekHoldMs >= 0L && lyricOnTrack -> lyricSeekHoldMs
+        else -> state.lyricClockMs()
     }
     // 歌词选择抽到小函数：避免在超大 Composable 里混用 List/Boolean 的 remember key（ART VerifyError）
     val lyricBundle = rememberDisplayLyrics(
@@ -407,7 +296,6 @@ fun NowPlayingScreen(
     val lyricLines = lyricBundle.lines
     val lyricCompanions = lyricBundle.companions
 
-    val openSourcePlaylist = onOpenSourcePlaylist
     // 下滑退出阈值：交给竖/横屏 body 的空白手势识别
     val dismissSwipeThresholdPx = with(LocalDensity.current) {
         (if (isLandscape) 120.dp else 112.dp).toPx()
@@ -680,6 +568,11 @@ fun NowPlayingScreen(
         portraitShareOpen = false
         portraitListenOpen = false
         portraitWikiOpen = false
+    }
+    LaunchedEffect(state.lyricReplayEpoch) {
+        // 同一首回到开头不是换歌：只收起选句，评论和其它面板留着
+        portraitLyricSelectOpen = false
+        portraitLyricSelectSelected.clear()
     }
     // 退出歌词页后清零：否则 token 残留会在下次进入时触发从头动画滚
     LaunchedEffect(portraitLyricsOpen) {
@@ -1240,6 +1133,8 @@ fun NowPlayingScreen(
             LandscapePlayerPageType.Dynamic -> displayPrefs.resolvedCustomBackground(dynamic = true)
             // 影院页自带封面铺底与光门，不叠用户背景，避免破坏舞台纵深。
             LandscapePlayerPageType.Cinema -> null
+            // 电影页和专注共用一套自定义背景，由舞台自己按镜头运动铺。
+            LandscapePlayerPageType.Movie -> displayPrefs.resolvedCustomBackground()
         }
     } else {
         null
@@ -1273,7 +1168,15 @@ fun NowPlayingScreen(
         duration = duration,
         sliderDragging = sliderDragging,
         sliderValue = sliderValue,
-        onSliderDraggingChange = { sliderDragging = it },
+        onSliderDraggingChange = { dragging ->
+            if (dragging) {
+                lyricSeekHoldMs = -1L
+            } else if (sliderDragging) {
+                lyricSeekFromMs = state.lyricClockMs()
+                lyricSeekHoldMs = sliderValue.toLong().coerceAtLeast(0L)
+            }
+            sliderDragging = dragging
+        },
         onSliderValueChange = { sliderValue = it },
         onTogglePlay = onTogglePlay,
         onSkipNext = onSkipNext,
@@ -1282,6 +1185,7 @@ fun NowPlayingScreen(
         onSeek = onSeek,
         onDismiss = onDismiss,
         onOpenArtist = onOpenArtist,
+        onOpenPortraitArtist = onOpenPortraitArtist,
         onOpenUser = onOpenUser,
         onPlayInsertSong = onPlayInsertSong,
         onOpenPlaylist = onOpenPlaylist,

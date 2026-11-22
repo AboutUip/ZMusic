@@ -30,7 +30,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.union
@@ -79,12 +78,14 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kite.zmusic.ZMusicApplication
+import com.kite.zmusic.data.AppMode
 import com.kite.zmusic.data.ChromeGlassMode
 import com.kite.zmusic.data.ChromeWallpaperState
 import com.kite.zmusic.data.NetworkCommand
 import com.kite.zmusic.data.NetworkPhase
 import com.kite.zmusic.data.NetworkPhaseLogic
 import com.kite.zmusic.data.SessionRepository
+import com.kite.zmusic.data.TrackArtist
 import com.kite.zmusic.data.TrackRow
 import com.kite.zmusic.playback.MvPlayback
 import com.kite.zmusic.playback.PlaybackViewModel
@@ -106,11 +107,14 @@ import com.kite.zmusic.ui.home.HomeRefreshBridge
 import com.kite.zmusic.ui.home.HomeStagePagerBlock
 import com.kite.zmusic.ui.home.HomeStagePose
 import com.kite.zmusic.ui.home.LocalHomeRefreshBridge
+import com.kite.zmusic.ui.home.LocalHomeStageGate
 import com.kite.zmusic.ui.home.LocalHomeStagePagerBlock
 import com.kite.zmusic.ui.home.LocalHomeStagePose
 import com.kite.zmusic.ui.home.homeStageFollow
+import com.kite.zmusic.ui.home.homeStageHorizontalContent
 import com.kite.zmusic.ui.home.LocalLoftChromeReveal
 import com.kite.zmusic.ui.home.LocalMainFloorLocked
+import com.kite.zmusic.ui.home.homeLoftArmed
 import com.kite.zmusic.ui.home.homeLoftChromeReveal
 import com.kite.zmusic.ui.home.loftHitBlock
 import com.kite.zmusic.ui.home.MainFloorLock
@@ -121,8 +125,6 @@ import com.kite.zmusic.ui.common.hideSoftwareIme
 import com.kite.zmusic.ui.common.isSoftwareImeVisible
 import com.kite.zmusic.ui.common.predictiveBackLayer
 import com.kite.zmusic.ui.common.rememberPredictiveBackUi
-import com.kite.zmusic.ui.main.CatalogOverlayHost
-import com.kite.zmusic.ui.main.MainOverlay
 import com.kite.zmusic.ui.catalog.PlaylistManageBar
 import com.kite.zmusic.ui.catalog.PlaylistManageBridge
 import com.kite.zmusic.ui.library.SpaceDarkBarsProgress
@@ -237,6 +239,8 @@ fun MainShell(
         }
         if (phase == NetworkPhase.Offline &&
             next !is MainOverlay.CachedSongs &&
+            next !is MainOverlay.RecentPlay &&
+            next !is MainOverlay.RecentPlaySearch &&
             next !is MainOverlay.Settings &&
             next !is MainOverlay.CreativeWorkshop &&
             next !is MainOverlay.PluginPage
@@ -254,6 +258,22 @@ fun MainShell(
     }
     fun popOverlay() {
         overlayStack = overlayStack.dropLast(1)
+    }
+    /**
+     * 叠层返回统一出口:飞行进来的用户主页走头像返程(与系统返回同一条
+     * 连贯动画),其余页面普通出栈。左上角返回箭头与系统返回都走这里。
+     */
+    fun popOverlayOrExitUserFlight() {
+        val top = overlayStack.lastOrNull()
+        val flyingUserHome = playerOverlayLift &&
+            userAvatarHandoff.active &&
+            userAvatarHandoff.origin != null &&
+            (top as? MainOverlay.User)?.id == userAvatarHandoff.userId
+        if (flyingUserHome) {
+            userAvatarHandoff.requestExit()
+        } else {
+            popOverlay()
+        }
     }
     LaunchedEffect(pluginDebug) {
         if (!pluginDebug) {
@@ -590,6 +610,8 @@ fun MainShell(
             return@LaunchedEffect
         }
         if (playingTrackId > 0L) {
+            if (app.appModeStore.current() != AppMode.Music) return@LaunchedEffect
+            if (app.podcastPlayMemory.contains(playingTrackId)) return@LaunchedEffect
             playback.consumeOpenPlayerRequest()
             openFullPlayer()
         }
@@ -1019,7 +1041,7 @@ fun MainShell(
             searchInStack = overlayStack.any { it is MainOverlay.Search },
             sessionRepository = sessionRepository,
             contentBottomInset = chromeInset,
-            onBack = { popOverlay() },
+            onBack = { popOverlayOrExitUserFlight() },
             onPlayTracks = { list, idx, plId, plTitle ->
                 playTracksWithNotificationPermission(list, idx, plId, plTitle)
             },
@@ -1057,7 +1079,6 @@ fun MainShell(
                 playTracksWithNotificationPermission(list, idx, plId, plTitle)
             },
             onOpenOverlay = { pushOverlay(it) },
-            onOpenProfile = { goTo(MainDestination.Profile) },
             onStartFm = { startFmWithPermission() },
             onStartIntelligence = { startIntelligenceFromContextWithPermission() },
             onPlaySong = { songId -> playLinkedSong(songId) },
@@ -1150,10 +1171,12 @@ fun MainShell(
         MainLoftHost(
             refreshing = homeRefresh.refreshing,
             onRefresh = { homeRefresh.refresh() },
-            armed = currentDest == MainDestination.Home &&
-                overlay == null &&
-                !playerHeld &&
-                !mvActive,
+            armed = homeLoftArmed(
+                onHome = currentDest == MainDestination.Home,
+                overlayOpen = overlay != null,
+                playerHeld = playerHeld,
+                mvPlaying = mvActive,
+            ),
             indicatorInset = loftIndicatorTop,
             floorLock = floorLock,
             modifier = Modifier.fillMaxSize(),
@@ -1184,6 +1207,7 @@ fun MainShell(
                                         WindowInsets.statusBars.union(WindowInsets.displayCutout),
                                     )
                                     .padding(top = if (landscape) 8.dp else 6.dp)
+                                    .homeStageHorizontalContent()
                                     .graphicsLayer {
                                         alpha = ((1f - leave) * loftChrome).coerceIn(0f, 1f)
                                         translationY = leave * -28f + (1f - loftChrome) * -24.dp.toPx()
@@ -1221,6 +1245,7 @@ fun MainShell(
                         Column(
                             Modifier
                                 .align(Alignment.BottomCenter)
+                                .homeStageHorizontalContent()
                                 .fillMaxWidth()
                                 .padding(
                                     start = if (landscape) 20.dp else FloatingChromeSide,
@@ -1368,6 +1393,18 @@ fun MainShell(
                 }
             },
         ) {
+        val stageGate = LocalHomeStageGate.current
+        val loftLocked = LocalMainFloorLocked.current
+        val pagingBackward = currentPagerPage > 0 ||
+            (!landscape && abs(pagerState.currentPageOffsetFraction) >= 0.02f)
+        SideEffect {
+            val gate = stageGate ?: return@SideEffect
+            gate.floorLocked = loftLocked
+            gate.navCanScrollBackward = loftLocked || playerHeld || overlay != null || pagingBackward
+        }
+        LaunchedEffect(overlay != null, playerHeld) {
+            if (overlay != null || playerHeld) stageGate?.requestClose()
+        }
         Row(Modifier.fillMaxSize()) {
             if (landscape) {
                 val spaceT = spaceChromeLeave(userSpaceProgress)
@@ -1396,10 +1433,12 @@ fun MainShell(
                                     pushOverlay(MainOverlay.Settings)
                                 }
                             },
-                            modifier = Modifier.graphicsLayer {
-                                translationX = -slidePx - (1f - loftChrome) * 24.dp.toPx()
-                                alpha = ((1f - spaceT) * loftChrome).coerceIn(0f, 1f)
-                            },
+                            modifier = Modifier
+                                .graphicsLayer {
+                                    translationX = -slidePx - (1f - loftChrome) * 24.dp.toPx()
+                                    alpha = ((1f - spaceT) * loftChrome).coerceIn(0f, 1f)
+                                }
+                                .homeStageHorizontalContent(),
                         )
                     }
                 }
@@ -1647,8 +1686,14 @@ fun MainShell(
                 playerOverlayLift = false
             },
         )
-        BackHandler(enabled = drivingFlight) {
-            userAvatarHandoff.requestExit()
+        // 返回键按注册顺序取（后注册的先拿到）。播放器里的评论/收起等 BackHandler
+        // 是播放器打开时注册的，比这里晚；常驻注册会被它们先吃掉——用户主页盖在
+        // 播放页上时连按 3 次返回才动（先悄悄关评论、再关播放器，最后落到主页）。
+        // 所以飞行期才注册，让返回先走头像返程，回到评论。
+        if (drivingFlight) {
+            BackHandler {
+                userAvatarHandoff.requestExit()
+            }
         }
         UserAvatarFlightOverlay(
             handoff = userAvatarHandoff,
@@ -1855,6 +1900,38 @@ private fun PagerDestinationPane(
     }
 }
 
+private fun openPlayerArtist(
+    preferred: TrackArtist,
+    track: TrackRow?,
+    app: ZMusicApplication,
+    scope: kotlinx.coroutines.CoroutineScope,
+    onOpenArtist: (Long, String, String?) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val current = track ?: return
+    if (preferred.id > 0L) {
+        onOpenArtist(
+            preferred.id,
+            preferred.name.ifBlank { current.artists },
+            current.coverUrl,
+        )
+        onDismiss()
+        return
+    }
+    scope.launch {
+        val cookie = app.sessionRepository.session.value?.cookie.orEmpty()
+        val found = resolveTrackArtists(current, cookie, app.songRepository)
+        val match = found.firstOrNull { it.name.equals(preferred.name, ignoreCase = true) }
+            ?: found.singleOrNull()
+        if (match == null || match.id <= 0L) {
+            app.islandNoticeCenter.show(t("暂时无法打开这位歌手"), current.coverUrl)
+        } else {
+            onOpenArtist(match.id, match.name, current.coverUrl)
+            onDismiss()
+        }
+    }
+}
+
 @Composable
 private fun FullPlayerSlot(
     playback: PlaybackViewModel,
@@ -1908,12 +1985,6 @@ private fun FullPlayerSlot(
         onPlayInsertSong = onPlayInsertSong,
         onOpenPlaylist = onOpenSourcePlaylist,
         onOpenAlbum = onOpenAlbum,
-        onOpenSourcePlaylist = st.sourcePlaylistId?.let { plId ->
-            {
-                val title = st.sourcePlaylistTitle ?: t("歌单")
-                onOpenSourcePlaylist(plId, title, st.currentTrack?.coverUrl)
-            }
-        },
         onOpenArtist = {
             val track = st.currentTrack ?: return@NowPlayingScreen
             scope.launch {
@@ -1927,6 +1998,9 @@ private fun FullPlayerSlot(
                     onDismiss()
                 }
             }
+        },
+        onOpenPortraitArtist = { preferred ->
+            openPlayerArtist(preferred, st.currentTrack, app, scope, onOpenArtist, onDismiss)
         },
         onOpenUser = { id, name, cover ->
             onOpenUser(id, name, cover)

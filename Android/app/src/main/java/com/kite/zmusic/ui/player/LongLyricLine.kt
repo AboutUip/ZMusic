@@ -21,6 +21,7 @@ import com.kite.zmusic.ZMusicApplication
 import com.kite.zmusic.data.LongLyricAlign
 import com.kite.zmusic.data.LongLyricMotion
 import com.kite.zmusic.data.LongLyricRender
+import com.kite.zmusic.data.LyricMotion
 import com.kite.zmusic.data.LyricWord
 import com.kite.zmusic.data.LyricWordRender
 import com.kite.zmusic.data.longLyricOffsetPx
@@ -35,6 +36,16 @@ internal fun rememberLongLyricRender(): LongLyricRender {
         (context.applicationContext as ZMusicApplication).lyricRenderStore
     }
     val mode by store.longLine.collectAsStateWithLifecycle()
+    return mode
+}
+
+@Composable
+internal fun rememberLyricExitMotion(): LyricMotion {
+    val context = LocalContext.current
+    val store = remember(context) {
+        (context.applicationContext as ZMusicApplication).lyricRenderStore
+    }
+    val mode by store.exitMotion.collectAsStateWithLifecycle()
     return mode
 }
 

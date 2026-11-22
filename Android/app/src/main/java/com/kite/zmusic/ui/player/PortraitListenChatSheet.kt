@@ -117,7 +117,6 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
@@ -181,9 +180,9 @@ internal fun PortraitListenChatSheet(
     sheetFrac: Float,
     onExpandFullscreen: () -> Unit,
     onCollapseToTwoThirds: () -> Unit,
+    modifier: Modifier = Modifier,
     hazeState: HazeState? = null,
     onOpenUser: (Long, String, String?) -> Unit = { _, _, _ -> },
-    modifier: Modifier = Modifier,
 ) {
     val t = openProgress.coerceIn(0f, 1f)
     val expandT = ((sheetFrac - 2f / 3f) / (1f / 3f)).coerceIn(0f, 1f)
@@ -1483,8 +1482,8 @@ internal fun ChatEmojiPanel(
     onAddSticker: () -> Unit,
     onSendSticker: (String) -> Unit,
     onDeleteSticker: (String) -> Unit,
-    deletingStickerId: String? = null,
     modifier: Modifier = Modifier,
+    deletingStickerId: String? = null,
 ) {
     val glyphs = remember(recent) {
         (recent + ChatQuickEmojis).distinct()
@@ -1543,7 +1542,6 @@ internal fun ChatEmojiPanel(
                             val event = awaitPointerEvent(PointerEventPass.Initial)
                             val change = event.changes.firstOrNull { it.id == down.id } ?: break
                             val dx = change.position.x - change.previousPosition.x
-                            val dy = change.position.y - change.previousPosition.y
                             if (!horizontal) {
                                 val moved = abs(change.position.x - down.position.x)
                                 val movedY = abs(change.position.y - down.position.y)

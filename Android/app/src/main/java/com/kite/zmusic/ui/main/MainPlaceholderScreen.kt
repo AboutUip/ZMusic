@@ -1,6 +1,7 @@
 package com.kite.zmusic.ui.main
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -16,11 +17,14 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -35,10 +39,17 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kite.zmusic.R
 import com.kite.zmusic.ZMusicApplication
+import com.kite.zmusic.data.AppMode
 import com.kite.zmusic.data.SessionRepository
 import com.kite.zmusic.data.platform.MusicPlatform
 import com.kite.zmusic.playback.PlaybackViewModel
 import com.kite.zmusic.playback.PlaybackViewModelFactory
+import com.kite.zmusic.ui.home.AppModePanel
+import com.kite.zmusic.ui.home.HomeStageDrawer
+import com.kite.zmusic.ui.home.HomeStageGate
+import com.kite.zmusic.ui.home.LocalHomeStageContentReveal
+import com.kite.zmusic.ui.home.LocalHomeStageGate
+import com.kite.zmusic.ui.podcast.PodcastShell
 import com.kite.zmusic.i18n.t
 
 private enum class MainGate {
@@ -77,9 +88,11 @@ fun MainPlaceholderScreen(
         PlaybackViewModelFactory(app.playbackBridge)
     }
     val playback: PlaybackViewModel = viewModel(factory = playbackFactory)
+    val appMode by app.appModeStore.mode.collectAsStateWithLifecycle()
 
     fun wipeLocalSession() {
         app.playbackBridge.stopForLogout()
+        app.modePlayback.clear()
         app.likedPlaylistRepository.clear()
         app.homeFeedRepository.clear()
         app.playlistTracksCache.clear()
@@ -89,6 +102,7 @@ fun MainPlaceholderScreen(
         app.playlistCollectionRepository.clear()
         app.libraryHomeRepository.clear()
         app.sessionWarmup.invalidate()
+        app.podcastSessionCache.clear()
     }
 
     LaunchedEffect(platform, session?.cookie, qishuiCookie) {
@@ -148,21 +162,68 @@ fun MainPlaceholderScreen(
                         app.libraryHomeRepository.prefetchOnAppReady()
                     }
                 }
+                var playbackAligned by remember { mutableStateOf(false) }
+                if (!playbackAligned) {
+                    app.modePlayback.reconcileColdStart(app.appModeStore.current())
+                    playbackAligned = true
+                }
+                val stageGate = remember { HomeStageGate() }
+                val revealAnim = remember { Animatable(1f) }
+                var reveal by remember { mutableFloatStateOf(1f) }
+                LaunchedEffect(revealAnim) {
+                    snapshotFlow { revealAnim.value }.collect { reveal = it }
+                }
+                var shown by remember { mutableStateOf(appMode) }
+                LaunchedEffect(appMode) {
+                    if (appMode == shown) {
+                        if (revealAnim.value < 0.999f) {
+                            revealAnim.animateTo(1f, tween(180))
+                        }
+                        return@LaunchedEffect
+                    }
+                    revealAnim.animateTo(0f, tween(170))
+                    app.modePlayback.switchTo(appMode)
+                    shown = appMode
+                    revealAnim.snapTo(0f)
+                    revealAnim.animateTo(1f, tween(220))
+                }
                 AnimatedVisibility(
                     visible = true,
                     enter = fadeIn(tween(420)),
                     exit = fadeOut(),
                 ) {
-                    MainShell(
-                        sessionRepository = sessionRepository,
-                        playback = playback,
-                        onLogout = {
-                            wipeLocalSession()
-                            sessionRepository.clear()
-                            onRequireLogin()
-                        },
-                        modifier = Modifier.fillMaxSize(),
-                    )
+                    com.kite.zmusic.ui.common.ImagePreviewHost {
+                        CompositionLocalProvider(
+                            LocalHomeStageGate provides stageGate,
+                            LocalHomeStageContentReveal provides reveal,
+                        ) {
+                            HomeStageDrawer(
+                                modifier = Modifier.fillMaxSize(),
+                                sidebar = { AppModePanel() },
+                            ) {
+                                val logout = {
+                                    wipeLocalSession()
+                                    sessionRepository.clear()
+                                    onRequireLogin()
+                                }
+                                if (shown == AppMode.Podcast) {
+                                    PodcastShell(
+                                        sessionRepository = sessionRepository,
+                                        playback = playback,
+                                        onLogout = logout,
+                                        modifier = Modifier.fillMaxSize(),
+                                    )
+                                } else {
+                                    MainShell(
+                                        sessionRepository = sessionRepository,
+                                        playback = playback,
+                                        onLogout = logout,
+                                        modifier = Modifier.fillMaxSize(),
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }

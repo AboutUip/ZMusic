@@ -1,15 +1,6 @@
 package com.kite.zmusic.ui.catalog
 
-import android.content.res.Configuration
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.MutableTransitionState
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -21,7 +12,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -47,65 +37,44 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableStateSetOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.kite.zmusic.R
 import com.kite.zmusic.ZMusicApplication
 import com.kite.zmusic.plugin.PluginSurfaces
 import com.kite.zmusic.plugin.PluginUiTarget
-import com.kite.zmusic.data.ChartSummary
 import com.kite.zmusic.data.NcmHomeParse
-import com.kite.zmusic.data.SessionRepository
 import com.kite.zmusic.data.TrackRow
 import com.kite.zmusic.data.UserProfileBrief
 import com.kite.zmusic.data.formatAlbumType
 import com.kite.zmusic.data.formatAlbumYear
-import com.kite.zmusic.ui.artist.ArtistAlbumsScreen
-import com.kite.zmusic.ui.artist.ArtistMvsScreen
-import com.kite.zmusic.ui.artist.ArtistScreen
 import com.kite.zmusic.ui.common.GlassAlertDialog
 import com.kite.zmusic.ui.common.PlayingEqualizer
 import com.kite.zmusic.ui.common.SongTitleLine
+import com.kite.zmusic.ui.common.LocalImagePreview
 import com.kite.zmusic.ui.common.UrlImage
+import com.kite.zmusic.ui.common.openImagePreview
 import com.kite.zmusic.ui.common.ZPullRefresh
 import com.kite.zmusic.ui.icons.ZIcons
-import com.kite.zmusic.ui.library.LikedArtistsScreen
-import com.kite.zmusic.ui.library.LikedArtistsSearchScreen
 import com.kite.zmusic.ui.plugin.pluginSurface
-import com.kite.zmusic.ui.main.LandscapeCoverEnter
-import com.kite.zmusic.ui.main.LandscapeCoverExit
 import com.kite.zmusic.ui.chrome.chromePage
 import com.kite.zmusic.ui.main.MainPalette
-import com.kite.zmusic.ui.mv.MvPlayerScreen
-import com.kite.zmusic.ui.search.SearchScreen
-import com.kite.zmusic.ui.search.SearchViewModel
-import com.kite.zmusic.ui.search.SearchViewModelFactory
-import com.kite.zmusic.ui.settings.SettingsScreen
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import com.kite.zmusic.i18n.t
 
-import com.kite.zmusic.ui.main.MainOverlay
 @Composable
 internal fun TrackCollectionScreen(
     state: CatalogListState,
@@ -140,7 +109,6 @@ internal fun TrackCollectionScreen(
     emptyHint: String? = null,
 ) {
     val app = LocalContext.current.applicationContext as ZMusicApplication
-    val scope = rememberCoroutineScope()
     val home by app.libraryHomeRepository.snapshot.collectAsStateWithLifecycle()
     var confirmUncollect by remember { mutableStateOf(false) }
     var confirmRemoveSelected by remember { mutableStateOf(false) }
@@ -495,6 +463,8 @@ private fun CollectionHeader(
         }
     }
     val coverSize = if (state.isAlbum) 120.dp else 104.dp
+    val preview = LocalImagePreview.current
+    val coverUrl = state.coverUrl ?: state.tracks.firstOrNull()?.coverUrl
     Row(
         Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.Top,
@@ -514,10 +484,16 @@ private fun CollectionHeader(
                 ),
         ) {
             UrlImage(
-                url = state.coverUrl
-                    ?: state.tracks.firstOrNull()?.coverUrl,
+                url = coverUrl,
                 contentDescription = state.title,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clickable(
+                        enabled = !coverUrl.isNullOrBlank(),
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = { openImagePreview(preview, coverUrl) },
+                    ),
                 contentScale = ContentScale.Crop,
             )
         }

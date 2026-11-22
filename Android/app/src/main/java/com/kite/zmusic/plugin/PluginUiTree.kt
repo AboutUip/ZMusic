@@ -139,7 +139,7 @@ internal object PluginUiTree {
             when (val copied = PluginJsonable.copy(v)) {
                 PluginJsonCopy.Fail -> return null
                 is PluginJsonCopy.Ok -> {
-                    if (!propOk(type, key, copied.value)) return null
+                    if (!propOk(key, copied.value)) return null
                     props[key] = copied.value
                 }
             }
@@ -158,7 +158,7 @@ internal object PluginUiTree {
             val merged = LinkedHashMap(node.props)
             for ((k, v) in props) {
                 if (k == "type" || k == "id" || k == "children") continue
-                if (!propOk(node.type, k, v)) return null
+                if (!propOk(k, v)) return null
                 merged[k] = v
             }
             val nextChildren = children ?: node.children
@@ -349,7 +349,7 @@ internal object PluginUiTree {
         else -> true
     }
 
-    private fun propOk(type: String, key: String, value: Any?): Boolean {
+    private fun propOk(key: String, value: Any?): Boolean {
         if (key.length > 32) return false
         return when (key) {
             "text", "label", "title", "subtitle", "trailing", "placeholder",

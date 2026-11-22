@@ -103,7 +103,9 @@ class PlaylistCoordinator(
     private val customPlaySource: CustomPlaySourceClient,
     private val audioOutputController: AudioOutputController,
     private val fmModeStore: PersonalFmModeStore,
+    private val onTrackCommitted: (TrackRow) -> Unit = {},
     private val onClearAndStopService: (() -> Unit)? = null,
+    private val isPodcastTrack: (Long) -> Boolean = { false },
 ) {
     private val scope = CoroutineScope(
         SupervisorJob() + Dispatchers.Main.immediate + CoroutineExceptionHandler { _, e ->
@@ -212,6 +214,8 @@ class PlaylistCoordinator(
     private var retryIndex = -1
     /** 随机模式预选下一首，保证预览封面与真实切歌一致 */
     private var preparedShuffleNext: Int? = null
+    /** 播客下一期已经挂进播放器、正在缓冲的曲目 id。0 表示没有。 */
+    private var preloadedPodcastNextId: Long = 0L
     /** 随机模式真实播放历史（队列下标），用于上一首回退 */
     private val shuffleHistory = ArrayDeque<Int>()
     /**
@@ -250,6 +254,7 @@ class PlaylistCoordinator(
                     val d = exoPlayer.duration
                     val pos = exoPlayer.currentPosition.coerceAtLeast(0L)
                     val playingId = LyricPlaybackAlign.playingTrackId(mediaId)
+                    val dur = if (d > 0 && d != C.TIME_UNSET) d else _ui.value.durationMs
                     _ui.update {
                         val lyricPos = if (it.lyricTrackId == playingId || it.lyricTrackId <= 0L) {
                             pos
@@ -261,6 +266,7 @@ class PlaylistCoordinator(
                             loadPending = false,
                             positionMs = pos,
                             lyricPositionMs = lyricPos,
+                            lyricReplayEpoch = loopEpoch(it, pos, dur),
                             durationMs = if (d > 0 && d != C.TIME_UNSET) d else it.durationMs,
                         )
                     }
@@ -277,7 +283,24 @@ class PlaylistCoordinator(
         }
 
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT) {
+                publishPlaybackClock(exoPlayer.currentPosition.coerceAtLeast(0L))
+            }
             alignLyricsToPlayer()
+            if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) {
+                adoptPlayingPodcastItem(mediaItem)
+            }
+        }
+
+        override fun onPositionDiscontinuity(
+            oldPosition: Player.PositionInfo,
+            newPosition: Player.PositionInfo,
+            reason: Int,
+        ) {
+            // 单曲循环由播放器自己把同一条拉回开头，不会换 mediaId，歌词要靠这次回绕再滚一屏
+            if (reason != Player.DISCONTINUITY_REASON_AUTO_TRANSITION) return
+            if (oldPosition.mediaItemIndex != newPosition.mediaItemIndex) return
+            publishPlaybackClock(newPosition.positionMs.coerceAtLeast(0L))
         }
 
         override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -628,7 +651,6 @@ class PlaylistCoordinator(
     fun startIntelligence(
         songId: Long,
         playlistId: Long,
-        playlistTitle: String? = null,
         startSongId: Long = songId,
         onStarted: () -> Unit = {},
     ) {
@@ -678,7 +700,6 @@ class PlaylistCoordinator(
             startIntelligence(
                 songId = seed,
                 playlistId = liked.playlistId,
-                playlistTitle = liked.title.ifBlank { t("心动模式") },
                 onStarted = onStarted,
             )
         }
@@ -821,6 +842,77 @@ class PlaylistCoordinator(
         onClearAndStopService?.invoke()
     }
 
+    /** 切模式前抄一份现场进度，位置跟播放器走，不拿可能滞后的界面进度。 */
+    fun exportSnapshot(): PlaybackUiState {
+        val livePos = if (exoPlayer.mediaItemCount > 0) {
+            exoPlayer.currentPosition.coerceAtLeast(0L)
+        } else {
+            _ui.value.positionMs
+        }
+        val play = if (exoPlayer.mediaItemCount > 0) {
+            exoPlayer.playWhenReady
+        } else {
+            _ui.value.playWhenReady
+        }
+        return _ui.value.copy(positionMs = livePos, playWhenReady = play)
+    }
+
+    /**
+     * 装回某一模式自己的队列。会停掉当前这一首，再从上次的位置继续或暂停。
+     * 空队列交给 [clearQueue]。
+     */
+    fun adoptSnapshot(state: PlaybackUiState) {
+        if (state.queue.isEmpty() || state.index !in state.queue.indices) {
+            clearQueue()
+            return
+        }
+        cancelLoads()
+        urlCache.clear()
+        unplayableUntil.clear()
+        preparedShuffleNext = null
+        shuffleHistory.clear()
+        pendingAdvanceAfterHold = false
+        retryCount = 0
+        retryIndex = -1
+        holdAutoAdvance = false
+        fmHydrateJob?.cancel()
+        fmHydrateJob = null
+        pendingFmAdvance = false
+        playbackMode = state.playbackMode
+        fmActive = state.fmActive
+        intelligenceActive = state.intelligenceActive
+        fmKickExtra = radioActive
+        if (radioActive && playbackMode == PlaybackMode.SHUFFLE) {
+            playbackMode = PlaybackMode.ORDER
+        }
+        val idx = state.index.coerceIn(0, state.queue.lastIndex)
+        _ui.value = state.copy(
+            index = idx,
+            isPlaying = false,
+            buffering = false,
+            playbackMode = playbackMode,
+            fmActive = fmActive,
+            intelligenceActive = intelligenceActive,
+            hasQueue = true,
+            error = null,
+            loadPending = true,
+            lyricLines = emptyList(),
+            translatedLyricLines = emptyList(),
+            wordLyricLines = emptyList(),
+            translatedWordLyricLines = emptyList(),
+            lyricTrackId = 0L,
+            peekNextTrack = null,
+            peekPrevTrack = null,
+        ).withHydratedPeeks()
+        persistSnapshot()
+        loadAndPlayIndex(
+            idx,
+            resumeAtMs = state.positionMs.coerceAtLeast(0L),
+            resumePlayWhenReady = state.playWhenReady,
+        )
+        if (radioActive) ensureRadioLookahead()
+    }
+
     fun setPlayWhenReady(play: Boolean) {
         if (play) {
             if (exoPlayer.mediaItemCount == 0) {
@@ -880,7 +972,7 @@ class PlaylistCoordinator(
             )
             return
         }
-        var cur = ui.index
+        val cur = ui.index
         val queue = ui.queue.toMutableList()
         val insertAt = (cur + 1).coerceAtMost(queue.size)
         queue.add(insertAt, track)
@@ -978,7 +1070,9 @@ class PlaylistCoordinator(
         if (!_ui.value.hasQueue || i < 0) return
         val ni = nextPlayableIndex(i, wrap = !radioActive)
         if (ni != null) {
-            loadAndPlayIndex(ni, recordShuffleHistory = true)
+            if (!playPreloadedPodcastNext(ni)) {
+                loadAndPlayIndex(ni, recordShuffleHistory = true)
+            }
             if (radioActive) ensureRadioLookahead()
             return
         }
@@ -1098,6 +1192,39 @@ class PlaylistCoordinator(
         }
     }
 
+    /** 同一首从后段回到开头时，把重播代际和进度写在同一次更新里，歌词才能定住结尾再滚。 */
+    private fun loopEpoch(state: PlaybackUiState, nextMs: Long, durationMs: Long): Int {
+        val loop = LyricPlaybackAlign.sameTrackLooped(
+            repeatOne = playbackMode == PlaybackMode.REPEAT_ONE,
+            previousMs = state.positionMs,
+            nextMs = nextMs,
+            durationMs = durationMs,
+        )
+        return if (loop) state.lyricReplayEpoch + 1 else state.lyricReplayEpoch
+    }
+
+    private fun publishPlaybackClock(positionMs: Long) {
+        val pos = positionMs.coerceAtLeast(0L)
+        val playingId = LyricPlaybackAlign.playingTrackId(exoPlayer.currentMediaItem?.mediaId)
+        val reported = exoPlayer.duration
+        val durationMs = if (reported > 0L && reported != C.TIME_UNSET) {
+            reported
+        } else {
+            _ui.value.durationMs
+        }
+        _ui.update { cur ->
+            val epoch = loopEpoch(cur, pos, if (durationMs > 0L) durationMs else cur.durationMs)
+            val lyricFollows = cur.lyricTrackId == playingId ||
+                cur.lyricTrackId <= 0L ||
+                cur.lyricTrackId == cur.currentTrack?.id
+            if (lyricFollows) {
+                cur.copy(positionMs = pos, lyricPositionMs = pos, lyricReplayEpoch = epoch)
+            } else {
+                cur.copy(positionMs = pos, lyricReplayEpoch = epoch)
+            }
+        }
+    }
+
     private fun startTicker() {
         tickerJob?.cancel()
         tickerJob = scope.launch {
@@ -1141,14 +1268,7 @@ class PlaylistCoordinator(
                     playerPositionMs = exoPlayer.currentPosition,
                     uiPositionMs = ui.positionMs,
                 ) ?: continue
-                val playingId = LyricPlaybackAlign.playingTrackId(exoPlayer.currentMediaItem?.mediaId)
-                _ui.update {
-                    if (it.lyricTrackId == playingId || it.lyricTrackId <= 0L || it.lyricTrackId == it.currentTrack?.id) {
-                        it.copy(positionMs = pos, lyricPositionMs = pos)
-                    } else {
-                        it.copy(positionMs = pos)
-                    }
-                }
+                publishPlaybackClock(pos)
                 val dur = when {
                     exoPlayer.duration > 0L && exoPlayer.duration != C.TIME_UNSET ->
                         exoPlayer.duration
@@ -1259,12 +1379,15 @@ class PlaylistCoordinator(
             PlaybackMode.REPEAT_ONE -> {
                 exoPlayer.seekTo(0L)
                 exoPlayer.play()
+                publishPlaybackClock(0L)
             }
             PlaybackMode.ORDER, PlaybackMode.SHUFFLE -> {
                 val wrapList = playbackMode == PlaybackMode.ORDER && !radioActive
                 val ni = nextPlayableIndex(_ui.value.index, wrap = wrapList)
                 if (ni != null) {
-                    loadAndPlayIndex(ni, recordShuffleHistory = true)
+                    if (!playPreloadedPodcastNext(ni)) {
+                        loadAndPlayIndex(ni, recordShuffleHistory = true)
+                    }
                     if (radioActive) ensureRadioLookahead()
                 } else if (radioActive) {
                     pendingFmAdvance = true
@@ -1445,10 +1568,124 @@ class PlaylistCoordinator(
                         marked = true
                     } else {
                         urlCache[t.id] = CachedUrl(url, System.currentTimeMillis())
+                        attachPodcastNextIfReady(t, url)
                     }
                 }
                 if (!marked) break
                 refreshPeeks()
+            }
+        }
+    }
+
+    /**
+     * 当前在播播客时，把已经解析好的下一期挂到播放器后面，让它提前缓冲。
+     * 只追加一条，不替换正在出声的那条。
+     */
+    private fun attachPodcastNextIfReady(candidate: TrackRow, url: String) {
+        val ui = _ui.value
+        val current = ui.currentTrack ?: return
+        val next = ui.peekNextTrack ?: return
+        if (candidate.id != next.id || candidate.id == current.id) return
+        if (!isPodcastTrack(current.id) || !isPodcastTrack(next.id)) return
+        if (url.isBlank()) return
+        if (exoPlayer.mediaItemCount == 0) return
+        if (exoPlayer.currentMediaItem?.mediaId != current.id.toString()) return
+        val desired = next.id.toString()
+        val upcoming = exoPlayer.currentMediaItemIndex + 1
+        if (upcoming < exoPlayer.mediaItemCount &&
+            exoPlayer.getMediaItemAt(upcoming).mediaId == desired
+        ) {
+            preloadedPodcastNextId = next.id
+            return
+        }
+        while (exoPlayer.mediaItemCount > exoPlayer.currentMediaItemIndex + 1) {
+            exoPlayer.removeMediaItem(exoPlayer.mediaItemCount - 1)
+        }
+        exoPlayer.addMediaItem(buildMediaItem(next, url))
+        preloadedPodcastNextId = next.id
+    }
+
+    /** 下一期已经在播放器里缓冲过，就直接切过去，不再重新解析地址。 */
+    private fun playPreloadedPodcastNext(index: Int): Boolean {
+        val ui = _ui.value
+        val track = ui.queue.getOrNull(index) ?: return false
+        if (!isPodcastTrack(track.id)) return false
+        if (exoPlayer.mediaItemCount < 2) return false
+        val upcoming = exoPlayer.currentMediaItemIndex + 1
+        if (upcoming >= exoPlayer.mediaItemCount) return false
+        if (exoPlayer.getMediaItemAt(upcoming).mediaId != track.id.toString()) return false
+        if (sleepTimer?.onLeavingTrack() == true) return true
+        rememberShuffleStep(index)
+        listenReporter.flushIfTrackChanged(track.id)
+        _ui.update {
+            it.copy(
+                index = index,
+                loadPending = false,
+                buffering = exoPlayer.playbackState != Player.STATE_READY,
+                hasQueue = true,
+                error = null,
+                positionMs = 0L,
+                durationMs = track.durationMs.coerceAtLeast(0L),
+                playWhenReady = true,
+            )
+        }
+        preloadedPodcastNextId = 0L
+        exoPlayer.seekToNextMediaItem()
+        exoPlayer.playWhenReady = true
+        trimPodcastPlaylistToCurrent()
+        onTrackCommitted(track)
+        refreshPeeksAndPrefetch()
+        persistSnapshot()
+        loadLyricsAsync(track, sessionRepository.session.value?.cookie.orEmpty())
+        return true
+    }
+
+    /** 播到结尾时播放器自己进了预加载的下一期，把队列下标对齐过去。 */
+    private fun adoptPlayingPodcastItem(mediaItem: MediaItem?) {
+        val id = mediaItem?.mediaId?.toLongOrNull() ?: return
+        if (!isPodcastTrack(id)) return
+        val ui = _ui.value
+        if (ui.currentTrack?.id == id) return
+        val index = ui.queue.indexOfFirst { it.id == id }
+        if (index < 0) return
+        val track = ui.queue[index]
+        rememberShuffleStep(index)
+        listenReporter.flushIfTrackChanged(track.id)
+        _ui.update {
+            it.copy(
+                index = index,
+                loadPending = false,
+                buffering = false,
+                hasQueue = true,
+                error = null,
+                positionMs = 0L,
+                durationMs = track.durationMs.coerceAtLeast(0L),
+                playWhenReady = exoPlayer.playWhenReady,
+            )
+        }
+        preloadedPodcastNextId = 0L
+        trimPodcastPlaylistToCurrent()
+        onTrackCommitted(track)
+        refreshPeeksAndPrefetch()
+        persistSnapshot()
+        loadLyricsAsync(track, sessionRepository.session.value?.cookie.orEmpty())
+    }
+
+    private fun trimPodcastPlaylistToCurrent() {
+        val current = exoPlayer.currentMediaItemIndex
+        if (current > 0) exoPlayer.removeMediaItems(0, current)
+    }
+
+    private fun rememberShuffleStep(index: Int) {
+        val fromIndex = _ui.value.index
+        if (playbackMode == PlaybackMode.SHUFFLE &&
+            fromIndex >= 0 &&
+            fromIndex != index &&
+            fromIndex in _ui.value.queue.indices
+        ) {
+            shuffleHistory.addLast(fromIndex)
+            while (shuffleHistory.size > MAX_SHUFFLE_HISTORY) {
+                shuffleHistory.removeFirst()
             }
         }
     }
@@ -1624,6 +1861,7 @@ class PlaylistCoordinator(
                 withContext(Dispatchers.Main) {
                     if (_ui.value.currentTrack?.id != loadGen) return@withContext
                     // 直接替换当前 MediaItem，通知原地更新，不经历「无曲目 → 撤通知」
+                    preloadedPodcastNextId = 0L
                     exoPlayer.setMediaItem(buildMediaItem(track, url), startPos)
                     applyRepeatMode()
                     exoPlayer.prepare()
@@ -1631,6 +1869,7 @@ class PlaylistCoordinator(
                 }
                 if (_ui.value.currentTrack?.id != loadGen) return@launch
                 if (!isRetry && resumePlayWhenReady) {
+                    onTrackCommitted(track)
                     maybeNoticeCacheAccel(track, url)
                 }
                 persistSnapshot()
@@ -1818,7 +2057,17 @@ class PlaylistCoordinator(
         lyricLoadFor = track.id
         lyricJob = scope.launch {
             val pack = lyricRepository.loadBestEffort(track.id, cookie, track)
-            if (pack.original.isEmpty() || !lyricsMayBindTo(track.id)) return@launch
+            if (pack.original.isEmpty()) {
+                _ui.update { cur ->
+                    if (cur.lyricTrackId == track.id && cur.lyricLines.isEmpty()) {
+                        cur.copy(lyricMissing = true)
+                    } else {
+                        cur
+                    }
+                }
+                return@launch
+            }
+            if (!lyricsMayBindTo(track.id)) return@launch
             _ui.update { cur ->
                 if (!lyricsMayBindTo(track.id)) cur
                 else cur.withLyricPack(pack, track.id)

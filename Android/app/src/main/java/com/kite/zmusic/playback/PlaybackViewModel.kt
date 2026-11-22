@@ -71,10 +71,9 @@ class PlaybackViewModel(
     fun startIntelligence(
         songId: Long,
         playlistId: Long,
-        playlistTitle: String? = null,
         startSongId: Long = songId,
         onStarted: () -> Unit = {},
-    ) = bridge.startIntelligence(songId, playlistId, playlistTitle, startSongId, onStarted)
+    ) = bridge.startIntelligence(songId, playlistId, startSongId, onStarted)
 
     fun startIntelligenceFromContext(onStarted: () -> Unit = {}) =
         bridge.startIntelligenceFromContext(onStarted)

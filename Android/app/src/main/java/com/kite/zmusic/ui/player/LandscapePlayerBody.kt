@@ -4,10 +4,7 @@ package com.kite.zmusic.ui.player
 
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -16,64 +13,30 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.Crossfade
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.CubicBezierEasing
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.gestures.animateScrollBy
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.ScrollableDefaults
-import androidx.compose.foundation.gestures.scrollBy
-import androidx.compose.foundation.gestures.waitForUpOrCancellation
-import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.requiredSize
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.layout.wrapContentHeight
-import androidx.compose.foundation.layout.wrapContentWidth
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.mutableStateSetOf
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.snapshots.SnapshotStateSet
@@ -82,11 +45,8 @@ import kotlinx.coroutines.flow.map
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -94,56 +54,34 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.withFrameMillis
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.zIndex
-import androidx.compose.ui.composed
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
-import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.boundsInRoot
-import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInRoot
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
@@ -154,26 +92,17 @@ import com.kite.zmusic.plugin.PluginSurfaces
 import com.kite.zmusic.plugin.PluginUiTarget
 import com.kite.zmusic.data.LandscapePlayerPageType
 import com.kite.zmusic.data.LrcLine
-import com.kite.zmusic.data.LrcParser
 import com.kite.zmusic.data.LyricRoleStyle
-import com.kite.zmusic.data.NcmJson
-import com.kite.zmusic.data.NcmLibraryParse
 import com.kite.zmusic.data.PlayerBackgroundPreset
 import com.kite.zmusic.data.PlayerDisplayPrefs
-import com.kite.zmusic.data.PlayerDisplayPrefsStore
-import com.kite.zmusic.data.PlaylistTrackLoader
 import com.kite.zmusic.data.TitleAlignMode
 import com.kite.zmusic.data.TitleLineStyle
 import com.kite.zmusic.data.TrackRow
 import com.kite.zmusic.data.VinylColorStyle
-import com.kite.zmusic.playback.AudioSpectrumBands
 import com.kite.zmusic.playback.PlaybackNotice
-import com.kite.zmusic.playback.PlaybackUiState
 import com.kite.zmusic.playback.PlaybackMode
 import com.kite.zmusic.playback.mergePlaylistQueue
-import com.kite.zmusic.ui.common.UrlImage
 import com.kite.zmusic.ui.main.MainPalette
-import com.kite.zmusic.ui.notice.showIslandNotice
 import com.kyant.backdrop.backdrops.LayerBackdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
 import dev.chrisbanes.haze.HazeState
@@ -181,18 +110,9 @@ import dev.chrisbanes.haze.HazeStyle
 import dev.chrisbanes.haze.HazeTint
 import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.hazeSource
-import dev.chrisbanes.haze.rememberHazeState
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.yield
-import kotlin.math.abs
-import kotlin.math.cos
-import kotlin.math.roundToInt
-import kotlin.math.sin
 import androidx.compose.ui.unit.lerp as lerpDp
 import com.kite.zmusic.i18n.t
 
@@ -318,7 +238,14 @@ private fun LandscapePageTypeSwitchMask() {
 internal fun LandscapePlayerBody(
     track: TrackRow,
     lines: List<LrcLine>,
+    modifier: Modifier = Modifier,
     lyricCompanions: List<LrcLine?> = emptyList(),
+    /** 为 false 表示 [lines] 还是上一首的（新歌歌词未绑定）。 */
+    lyricsOnTrack: Boolean = true,
+    /** 这首已确认没有歌词（[lines] 为空不一定是没有，也可能还在加载）。 */
+    lyricsMissing: Boolean = false,
+    /** 同一首播完回到开头时加一，专注模式右侧歌词再滚一屏。 */
+    lyricReplayEpoch: Int = 0,
     originalOnTop: Boolean = true,
     showCompanionOnOthers: Boolean = true,
     positionMs: Long,
@@ -359,7 +286,6 @@ internal fun LandscapePlayerBody(
     onPlayQueueIndex: (Int) -> Unit,
     onMoveQueue: (from: Int, to: Int) -> Unit = { _, _ -> },
     onNeedQueueThrough: (Int) -> Unit = {},
-    modifier: Modifier = Modifier,
     notice: PlaybackNotice? = null,
     transportWakeToken: Int = 0,
 ) {
@@ -467,8 +393,11 @@ internal fun LandscapePlayerBody(
     val dynamicPage = landscapePage == LandscapePlayerPageType.Dynamic
     // 影院临时丢弃，displayed() 目前不会走到这一支；舞台调用保留。
     val cinemaPage = landscapePage == LandscapePlayerPageType.Cinema
-    LaunchedEffect(dynamicPage, cinemaPage) {
-        if (!dynamicPage && !cinemaPage) return@LaunchedEffect
+    val moviePage = landscapePage == LandscapePlayerPageType.Movie
+    /** 整屏接管的舞台：没有黑胶和侧栏，底栏铺满压暗。 */
+    val stageTakeover = cinemaPage || moviePage
+    LaunchedEffect(dynamicPage, stageTakeover) {
+        if (!dynamicPage && !stageTakeover) return@LaunchedEffect
         if (vinylSongPickOpen || pickerVinylCentered) {
             vinylSongPickOpen = false
             pickerVinylCentered = false
@@ -655,14 +584,24 @@ internal fun LandscapePlayerBody(
             vinylSongPickOpen
 
     LaunchedEffect(track.id) {
+        // 换歌：选句收起，旧词从当前位置滚走
         if (lyricSelectOpen) {
             lyricSelectSelected.clear()
+            lyricSelectOpen = false
+            lyricSelectOutsideArmed = false
         }
         if (!hazePanelsOpen()) return@LaunchedEffect
         delay(64)
         hazeNonce++
         delay(280)
         hazeNonce++
+    }
+    LaunchedEffect(lyricReplayEpoch) {
+        // 同一首回到开头：只收起选句，磨砂面板不用重挂
+        if (!lyricSelectOpen) return@LaunchedEffect
+        lyricSelectSelected.clear()
+        lyricSelectOpen = false
+        lyricSelectOutsideArmed = false
     }
 
     var mediaWasLoading by remember { mutableStateOf(loadPending || buffering) }
@@ -1127,7 +1066,8 @@ internal fun LandscapePlayerBody(
         controlsVisible = false
         scoreCoverExpanded = false
         scoreOpenGeneration++
-        scoreVinylCentered = true
+        // 黑胶隐藏时不居中：盘面不在，也不做这段位移动画
+        scoreVinylCentered = displayPrefs.landscapeVinylVisible
         scoreOpen = true
     }
 
@@ -1172,6 +1112,7 @@ internal fun LandscapePlayerBody(
     }
 
     fun openVinylColorEditor() {
+        if (!displayPrefs.landscapeVinylVisible) return
         // 收回设置与播放条（忽略常显）；保留黑胶 X，Y 由编辑态强制垂直居中
         if (lyricSelectOpen || scoreOpen || scoreVinylCentered ||
             lyricStyleEditorOpen || titleStyleEditorOpen ||
@@ -1224,6 +1165,7 @@ internal fun LandscapePlayerBody(
     }
 
     fun openVinylSongPick() {
+        if (!displayPrefs.landscapeVinylVisible) return
         if (!displayPrefs.vinylSongPickEnabled) return
         if (vinylSongPickOpen || pickerVinylCentered) return
         if (editorVinylCentered || vinylColorEditorOpen || lyricSelectOpen || settingsOpen ||
@@ -1644,7 +1586,27 @@ internal fun LandscapePlayerBody(
                 .hazeSource(state = settingsHazeState, zIndex = 1f)
                 .graphicsLayer { clip = false },
         ) {
-        if (cinemaPage) {
+        if (moviePage) {
+            LandscapeMovieStage(
+                track = track,
+                lines = lines,
+                lyricCompanions = lyricCompanions,
+                originalOnTop = originalOnTop,
+                positionMs = positionMs,
+                durationMs = durationMs,
+                clockRunning = isPlaying && playWhenReady && !buffering && !loadPending &&
+                    !sliderDragging,
+                dotShapes = stagePrefs.movieDotShapes,
+                spectrumPulse = stagePrefs.movieSpectrumPulse,
+                upcomingLines = stagePrefs.movieUpcomingLines,
+                transportRevealT = chromeVisualT,
+                chromeSidePad = chromeSidePad,
+                chromeTopPad = songMetaTopPad,
+                customBg = landscapeCustomBg,
+                customBgProgress = landscapeCustomBgProgress,
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else if (cinemaPage) {
             LandscapeCinemaStage(
                 track = track,
                 lines = lines,
@@ -1652,7 +1614,6 @@ internal fun LandscapePlayerBody(
                 originalOnTop = originalOnTop,
                 showCompanionOnOthers = showCompanionOnOthers,
                 positionMs = positionMs,
-                durationMs = durationMs,
                 isPlaying = isPlaying,
                 playWhenReady = playWhenReady,
                 buffering = buffering,
@@ -1666,14 +1627,9 @@ internal fun LandscapePlayerBody(
                 lyricPlayingStyle = stagePrefs.lyricPlayingStyle,
                 lyricPlayedStyle = stagePrefs.lyricPlayedStyle,
                 lyricUnplayedStyle = stagePrefs.lyricUnplayedStyle,
-                titleNameColor = stagePrefs.titleNameColor(),
-                titleArtistColor = stagePrefs.titleSourceColor(),
-                titleNameFontScale = stagePrefs.titleNameStyle.sanitizedFontScale(),
-                titleArtistFontScale = stagePrefs.titleSourceStyle.sanitizedFontScale(),
                 onSeek = { ms ->
                     onSeek(ms.coerceIn(0L, durationMs.coerceAtLeast(0L)))
                 },
-                onArtistClick = onArtistClick,
                 onTogglePlay = {
                     if (!controlsLocked) onTogglePlay()
                 },
@@ -1836,6 +1792,8 @@ internal fun LandscapePlayerBody(
                     centerFromLeft + radius + 6.dp.toPx()
                 }
 
+                val showVinyl = stagePrefs.landscapeVinylVisible
+
                 @Composable
                 fun VinylDisc(mod: Modifier) {
                     val destPlate = stagePrefs.vinylPlateColors()
@@ -1851,10 +1809,10 @@ internal fun LandscapePlayerBody(
                         track = track,
                         peekNext = peekNextTrack,
                         peekPrev = peekPrevTrack,
-                        spinning = isPlaying && !transportBuffering && !vinylBusy &&
+                        spinning = showVinyl && isPlaying && !transportBuffering && !vinylBusy &&
                             scoreFlight == null && !vinylSongPickOpen,
                         direction = vinylSkipDir,
-                        gesturesEnabled = !settingsOpen && !forceVinylYCentered &&
+                        gesturesEnabled = showVinyl && !settingsOpen && !forceVinylYCentered &&
                             !scoreOpen && scoreFlight == null &&
                             !lyricStyleEditorOpen && !titleStyleEditorOpen &&
                             !backgroundEditorOpen &&
@@ -1938,76 +1896,42 @@ internal fun LandscapePlayerBody(
                                 .offset(x = ox, y = oy + vinylShiftY)
                                 .graphicsLayer {
                                     clip = false
-                                    alpha = pickMainAlpha
+                                    // 只藏盘面：尺寸和偏移照旧，左栏和歌词位置不动
+                                    alpha = if (showVinyl) pickMainAlpha else 0f
                                 }
                                 .requiredSize(vinylVisualSide)
                                 .then(
-                                    Modifier.vinylLightTapGestures(
-                                        onLongPress = {
-                                            pluginEngine.handleSurfaceLongPress(
-                                                PluginSurfaces.PLAYER_COVER,
-                                                PluginUiTarget.track(track),
-                                                hostDefaultLabel = if (canLongPressPick) t("选择歌曲") else null,
-                                                onHostDefault = if (canLongPressPick) {
-                                                    { openVinylSongPick() }
-                                                } else {
-                                                    null
-                                                },
-                                            )
-                                        },
-                                    ),
+                                    if (showVinyl) {
+                                        Modifier.vinylLightTapGestures(
+                                            onLongPress = {
+                                                pluginEngine.handleSurfaceLongPress(
+                                                    PluginSurfaces.PLAYER_COVER,
+                                                    PluginUiTarget.track(track),
+                                                    hostDefaultLabel = if (canLongPressPick) t("选择歌曲") else null,
+                                                    onHostDefault = if (canLongPressPick) {
+                                                        { openVinylSongPick() }
+                                                    } else {
+                                                        null
+                                                    },
+                                                )
+                                            },
+                                        )
+                                    } else {
+                                        Modifier
+                                    },
                                 ),
                         )
                     }
                 }
             }
 
-            LandscapeProjectionLyrics(
+            LyricRollSwap(
+                trackId = track.id,
                 lines = lines,
                 companions = lyricCompanions,
-                originalOnTop = originalOnTop,
-                showCompanionOnOthers = showCompanionOnOthers,
-                positionMs = if (lyricStyleSnapshot != null) {
-                    lyricStyleFrozenPositionMs
-                } else {
-                    positionMs
-                },
-                trackDurationMs = durationMs,
-                lineSpacingDp = stagePrefs.lyricLineSpacingDp,
-                playedCount = stagePrefs.lyricPlayedCount,
-                upcomingCount = stagePrefs.lyricUpcomingCount,
-                offsetXDp = stagePrefs.lyricOffsetXDp,
-                dynamicLyrics = stagePrefs.dynamicLyrics,
-                vinylLeftInset = vinylLeftInset,
-                onSeekToMs = { ms ->
-                    onSeek(ms.coerceIn(0L, durationMs.coerceAtLeast(0L)))
-                    if (displayPrefs.lyricTapAutoPlay && !playWhenReady) {
-                        onTogglePlay()
-                    }
-                },
-                resumeScrollToken = lyricResumeToken,
-                selectProgress = lyricSelectT,
-                selectGeom = lyricSelectGeom,
-                lyricsColStartDp = lyricsColStart,
-                selectedIndices = lyricSelectSelected,
-                onToggleSelect = { index ->
-                    if (index in lyricSelectSelected) {
-                        lyricSelectSelected.remove(index)
-                    } else {
-                        lyricSelectSelected.add(index)
-                    }
-                },
-                onLongPressLine = { index -> openLyricSelect(index) },
-                onBandCenterPx = null,
-                selectHazeState = settingsHazeState,
-                selectOpen = lyricSelectOpen,
-                playingStyle = stagePrefs.lyricPlayingStyle,
-                playedStyle = stagePrefs.lyricPlayedStyle,
-                unplayedStyle = stagePrefs.lyricUnplayedStyle,
-                onLyricBandCoords = { lyricsBandCoords = it },
-                scrollFrozen = lyricStyleSnapshot != null,
-                clockRunning = isPlaying && playWhenReady && !buffering && !loadPending &&
-                    !sliderDragging && lyricStyleSnapshot == null,
+                onTrack = lyricsOnTrack,
+                missing = lyricsMissing,
+                replayEpoch = lyricReplayEpoch,
                 modifier = Modifier
                     .weight(0.64f)
                     .fillMaxHeight()
@@ -2016,7 +1940,66 @@ internal fun LandscapePlayerBody(
                         alpha = liveLyricAlpha * pickUiFade
                     }
                     .padding(start = 0.dp, end = 4.dp),
-            )
+            ) { set, leaving, shift ->
+                if (!set.ready) return@LyricRollSwap
+                val livePositionMs = if (lyricStyleSnapshot != null) {
+                    lyricStyleFrozenPositionMs
+                } else {
+                    positionMs
+                }
+                LandscapeProjectionLyrics(
+                    lines = set.lines,
+                    companions = set.companions,
+                    originalOnTop = originalOnTop,
+                    showCompanionOnOthers = showCompanionOnOthers,
+                    positionMs = rememberHeldWhile(livePositionMs, leaving),
+                    trackDurationMs = rememberHeldWhile(durationMs, leaving),
+                    lineSpacingDp = stagePrefs.lyricLineSpacingDp,
+                    playedCount = stagePrefs.lyricPlayedCount,
+                    upcomingCount = stagePrefs.lyricUpcomingCount,
+                    offsetXDp = stagePrefs.lyricOffsetXDp,
+                    dynamicLyrics = stagePrefs.dynamicLyrics,
+                    vinylLeftInset = vinylLeftInset,
+                    onSeekToMs = { ms ->
+                        if (!leaving) {
+                            onSeek(ms.coerceIn(0L, durationMs.coerceAtLeast(0L)))
+                            if (displayPrefs.lyricTapAutoPlay && !playWhenReady) {
+                                onTogglePlay()
+                            }
+                        }
+                    },
+                    resumeScrollToken = rememberHeldWhile(lyricResumeToken, leaving),
+                    selectProgress = lyricSelectT,
+                    selectGeom = lyricSelectGeom,
+                    lyricsColStartDp = lyricsColStart,
+                    selectedIndices = lyricSelectSelected,
+                    onToggleSelect = if (leaving) {
+                        null
+                    } else {
+                        { index ->
+                            if (index in lyricSelectSelected) {
+                                lyricSelectSelected.remove(index)
+                            } else {
+                                lyricSelectSelected.add(index)
+                            }
+                        }
+                    },
+                    onLongPressLine = if (leaving) null else { index -> openLyricSelect(index) },
+                    onBandCenterPx = null,
+                    selectHazeState = settingsHazeState,
+                    selectOpen = lyricSelectOpen,
+                    playingStyle = stagePrefs.lyricPlayingStyle,
+                    playedStyle = stagePrefs.lyricPlayedStyle,
+                    unplayedStyle = stagePrefs.lyricUnplayedStyle,
+                    onLyricBandCoords = if (leaving) null else { coords -> lyricsBandCoords = coords },
+                    scrollFrozen = leaving || lyricStyleSnapshot != null,
+                    clockRunning = !leaving && isPlaying && playWhenReady && !buffering &&
+                        !loadPending && !sliderDragging && lyricStyleSnapshot == null,
+                    sliderDragging = !leaving && sliderDragging,
+                    rollShift = shift,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
         }
 
         // 标题信息层：歌名 / 歌手；水平对齐可切换且可打断
@@ -2046,7 +2029,7 @@ internal fun LandscapePlayerBody(
         } // 专注构图
         } // hazeSource：仅播放内容作磨砂源（chrome 提到叠层之上，避免被 OutsideDismiss 盖住）
 
-        if (!dynamicPage && !cinemaPage && danmakuLayerActive && track.id > 0L) {
+        if (!dynamicPage && !stageTakeover && danmakuLayerActive && track.id > 0L) {
             LandscapeDanmakuOverlay(
                 songId = track.id,
                 density = stagePrefs.danmakuDensity,
@@ -2179,7 +2162,14 @@ internal fun LandscapePlayerBody(
                         currentIndex = queueIndex,
                         plateColors = stagePrefs.vinylPlateColors(),
                         onPlayTrack = { idx, center, sizePx ->
-                            startScoreFlight(idx, center, sizePx)
+                            if (stagePrefs.landscapeVinylVisible) {
+                                startScoreFlight(idx, center, sizePx)
+                            } else if (idx != queueIndex) {
+                                onPlayQueueIndex(idx)
+                                closeScore()
+                            } else {
+                                closeScore()
+                            }
                         },
                         onMoveQueue = onMoveQueue,
                         openGeneration = scoreOpenGeneration,
@@ -2317,10 +2307,8 @@ internal fun LandscapePlayerBody(
             )
             TitleStyleEditorOverlay(
                 draftName = draftTitleName,
-                draftArtist = draftTitleArtist,
                 draftSource = draftTitleSource,
                 onDraftNameChange = { draftTitleName = it },
-                onDraftArtistChange = { draftTitleArtist = it },
                 onDraftSourceChange = { draftTitleSource = it },
                 hazeState = settingsHazeState,
                 progress = titleStyleT,
@@ -2334,7 +2322,6 @@ internal fun LandscapePlayerBody(
             TitleStyleCloneLayer(
                 snapshot = titleSnap,
                 draftName = draftTitleName,
-                draftArtist = draftTitleArtist,
                 draftSource = draftTitleSource,
                 progress = titleStyleT,
                 targetSlot = titleRestSlot,
@@ -2463,13 +2450,13 @@ internal fun LandscapePlayerBody(
                 ?: 16f
             val transportBottomPad = when {
                 dynamicPage -> 0.dp
-                cinemaPage -> 0.dp
+                stageTakeover -> 0.dp
                 transportDocked -> 0.dp
                 else -> insetDp.dp
             }
             val transportShape = when {
                 dynamicPage -> RectangleShape
-                cinemaPage -> RectangleShape
+                stageTakeover -> RectangleShape
                 transportDocked -> RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp)
                 else -> RoundedCornerShape(14.dp)
             }
@@ -2488,7 +2475,7 @@ internal fun LandscapePlayerBody(
                 Modifier
                     .fillMaxWidth()
                     .then(
-                        if (cinemaPage) {
+                        if (stageTakeover) {
                             Modifier.padding(bottom = navBottom)
                         } else {
                             Modifier
@@ -2496,7 +2483,7 @@ internal fun LandscapePlayerBody(
                     )
                     .then(
                         when {
-                            cinemaPage -> Modifier
+                            stageTakeover -> Modifier
                             dynamicPage -> Modifier.height(dynamicTransportH)
                             else -> Modifier.padding(
                                 start = chromeSidePad,
@@ -2508,7 +2495,7 @@ internal fun LandscapePlayerBody(
                     .clip(transportShape)
                     .then(
                         when {
-                            cinemaPage -> Modifier.background(
+                            stageTakeover -> Modifier.background(
                                 Brush.verticalGradient(
                                     0f to Color.Transparent,
                                     0.28f to Color(0xAA05070B),
@@ -2529,17 +2516,17 @@ internal fun LandscapePlayerBody(
                         onClick = { revealControls() },
                     )
                     .padding(
-                        start = if (cinemaPage) 12.dp else 14.dp,
-                        end = if (cinemaPage) 12.dp else 14.dp,
+                        start = if (stageTakeover) 12.dp else 14.dp,
+                        end = if (stageTakeover) 12.dp else 14.dp,
                     )
                     .padding(
                         top = when {
-                            cinemaPage -> 6.dp
+                            stageTakeover -> 6.dp
                             dynamicPage -> 4.dp
                             else -> 8.dp
                         },
                         bottom = when {
-                            cinemaPage -> 6.dp
+                            stageTakeover -> 6.dp
                             dynamicPage -> 2.dp + navBottom
                             else -> 8.dp + navBottom
                         },
@@ -2601,7 +2588,7 @@ internal fun LandscapePlayerBody(
                     portraitSlim = false,
                     landscapeDense = true,
                     onLightSurface = dynamicPage,
-                    onOpenScore = if (dynamicPage || cinemaPage) {
+                    onOpenScore = if (dynamicPage || stageTakeover) {
                         null
                     } else {
                         { if (!controlsLocked) openScore() }

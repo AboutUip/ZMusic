@@ -12,7 +12,11 @@ import com.kite.zmusic.data.PersistentPlaybackStore
 import com.kite.zmusic.data.PrivacyStore
 import com.kite.zmusic.data.IgnoreStatusBarStore
 import com.kite.zmusic.data.PlaybackChromeStore
+import com.kite.zmusic.data.AppModeStore
 import com.kite.zmusic.data.LandscapeModeStore
+import com.kite.zmusic.data.NcmPodcastClient
+import com.kite.zmusic.data.PodcastPlayMemory
+import com.kite.zmusic.data.PodcastSessionCache
 import com.kite.zmusic.data.PredictiveBackStore
 import com.kite.zmusic.data.MiniQuickSkipStore
 import com.kite.zmusic.data.SplashAccelStore
@@ -35,6 +39,7 @@ import com.kite.zmusic.data.PersonalFmModeStore
 import com.kite.zmusic.data.PlaylistCollectionRepository
 import com.kite.zmusic.data.PlaylistEditor
 import com.kite.zmusic.data.PlaylistTracksCache
+import com.kite.zmusic.data.RecentPlayStore
 import com.kite.zmusic.data.SearchHistoryRepository
 import com.kite.zmusic.data.SessionRepository
 import com.kite.zmusic.data.platform.CustomPlaySourceClient
@@ -70,6 +75,7 @@ import com.kite.zmusic.data.UserSpaceBackgroundStore
 import com.kite.zmusic.data.xaiop.OkHttpXaiop
 import com.kite.zmusic.playback.DeviceLinkMonitor
 import com.kite.zmusic.playback.MvPlayback
+import com.kite.zmusic.playback.ModePlayback
 import com.kite.zmusic.playback.PlaybackBridge
 import com.kite.zmusic.playback.AudioOutputController
 import com.kite.zmusic.plugin.PluginDebugDrop
@@ -121,6 +127,10 @@ class AppContainer(app: Application) {
     val privacyStore = PrivacyStore(app)
     val predictiveBackStore = PredictiveBackStore(app)
     val landscapeModeStore = LandscapeModeStore(app)
+    val appModeStore = AppModeStore(app)
+    val podcastPlayMemory = PodcastPlayMemory(app)
+    val podcastClient = NcmPodcastClient(httpClient)
+    val podcastSessionCache = PodcastSessionCache()
     val ignoreStatusBarStore = IgnoreStatusBarStore(app)
     val playbackChromeStore = PlaybackChromeStore(app)
     val splashAccelStore = SplashAccelStore(app)
@@ -142,6 +152,11 @@ class AppContainer(app: Application) {
         musicPlatformStore,
         qishuiCatalog,
         openMusicCatalog,
+    )
+    val modePlayback = ModePlayback(
+        context = app,
+        bridge = playbackBridge,
+        isPodcastTrack = { id -> podcastPlayMemory.contains(id) },
     )
     val likedPlaylistRepository = LikedPlaylistRepository(
         app,
@@ -230,7 +245,14 @@ class AppContainer(app: Application) {
         likedPlaylistRepository,
         libraryHomeRepository,
     )
-    val mvPlayback = MvPlayback(app, sessionRepository, playbackBridge, ncmUserClient)
+    val recentPlayStore = RecentPlayStore(app)
+    val mvPlayback = MvPlayback(
+        app,
+        sessionRepository,
+        playbackBridge,
+        ncmUserClient,
+        onMvPlayed = { recentPlayStore.recordMv(it) },
+    )
     val songRepository = SongRepository(ncmUserClient, songWikiCache)
     val catalogRepository = CatalogRepository(ncmUserClient, personalFmModeStore)
     val commentsRepository = CommentsRepository(

@@ -2,6 +2,9 @@ package com.kite.zmusic.ui.search
 
 import android.content.Context
 import android.view.inputmethod.InputMethodManager
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -53,8 +56,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
@@ -114,9 +119,8 @@ fun SearchScreen(
     onOpenMv: (Long, String, String?, String?) -> Unit,
     onOpenArtist: (SearchArtistHit) -> Unit,
     onOpenUser: (SearchUserHit) -> Unit,
-    onHint: (String) -> Unit,
-    isTop: Boolean = true,
     modifier: Modifier = Modifier,
+    isTop: Boolean = true,
 ) {
     val app = LocalContext.current.applicationContext as ZMusicApplication
     val vm: SearchViewModel = viewModel(
@@ -287,12 +291,18 @@ private fun SearchField(
     onSearch: () -> Unit,
     onClear: () -> Unit,
     focusRequester: FocusRequester,
-    canFocus: Boolean = true,
     modifier: Modifier = Modifier,
+    canFocus: Boolean = true,
 ) {
     val showLeadingSearch = phase != SearchPhase.Suggest
     val showTrailingSearch = phase == SearchPhase.Suggest && value.isNotBlank()
     val showTrailingClear = phase == SearchPhase.Results
+    val leading by animateFloatAsState(
+        targetValue = if (showLeadingSearch) 1f else 0f,
+        animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
+        label = "searchLeading",
+    )
+    val leadingSlot = 26.dp
     Row(
         modifier
             .fillMaxWidth()
@@ -302,14 +312,22 @@ private fun SearchField(
             .padding(horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (showLeadingSearch) {
-            Icon(
-                imageVector = ZIcons.Search,
-                contentDescription = null,
-                tint = MainPalette.Secondary,
-                modifier = Modifier.size(18.dp),
-            )
-            Spacer(Modifier.width(8.dp))
+        if (leading > 0f) {
+            Box(
+                Modifier
+                    .width(leadingSlot * leading)
+                    .clipToBounds(),
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                Icon(
+                    imageVector = ZIcons.Search,
+                    contentDescription = null,
+                    tint = MainPalette.Secondary,
+                    modifier = Modifier
+                        .graphicsLayer { translationX = (leading - 1f) * leadingSlot.toPx() }
+                        .size(18.dp),
+                )
+            }
         }
         BasicTextField(
             value = value,

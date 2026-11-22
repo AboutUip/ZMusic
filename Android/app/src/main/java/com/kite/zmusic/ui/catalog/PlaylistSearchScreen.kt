@@ -31,7 +31,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -39,7 +38,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -72,10 +70,10 @@ fun PlaylistSearchScreen(
     onPlayTracks: (List<TrackRow>, Int, Long?, String?) -> Unit,
     playingTrackId: Long,
     isPlaying: Boolean,
+    modifier: Modifier = Modifier,
     playingSourceId: Long = 0L,
     isTop: Boolean = true,
     onOpenArtist: ((Long, String, String?) -> Unit)? = null,
-    modifier: Modifier = Modifier,
 ) {
     val app = LocalContext.current.applicationContext as ZMusicApplication
     val vm: PlaylistSearchViewModel = viewModel(
@@ -95,7 +93,6 @@ fun PlaylistSearchScreen(
     val focus = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
     val searchFocus = remember { FocusRequester() }
-    val scope = rememberCoroutineScope()
     var moreTrack by remember { mutableStateOf<TrackRow?>(null) }
     val canRemove = overlay.heart || overlay.owned
 
@@ -301,8 +298,8 @@ private fun PlaylistSearchField(
     onSearch: () -> Unit,
     onClear: () -> Unit,
     focusRequester: FocusRequester,
-    canFocus: Boolean = true,
     modifier: Modifier = Modifier,
+    canFocus: Boolean = true,
 ) {
     Row(
         modifier

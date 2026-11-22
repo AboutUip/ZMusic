@@ -33,7 +33,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -63,7 +62,9 @@ import com.kite.zmusic.ui.catalog.TrackOverflowMenu
 import com.kite.zmusic.ui.catalog.isPlaybackCurrent
 import com.kite.zmusic.ui.catalog.launchTrackDownload
 import com.kite.zmusic.ui.common.GlassAlertDialog
+import com.kite.zmusic.ui.common.LocalImagePreview
 import com.kite.zmusic.ui.common.UrlImage
+import com.kite.zmusic.ui.common.openImagePreview
 import com.kite.zmusic.ui.common.ZPullRefresh
 import com.kite.zmusic.ui.chrome.chromePage
 import com.kite.zmusic.ui.icons.ZIcons
@@ -104,7 +105,6 @@ fun ArtistScreen(
     )
     LaunchedEffect(overlay.id) { vm.load() }
     val ui by vm.ui.collectAsStateWithLifecycle()
-    val scope = rememberCoroutineScope()
     var moreTrack by remember { mutableStateOf<TrackRow?>(null) }
     var confirmUnfollow by remember { mutableStateOf(false) }
     var bioExpanded by remember(overlay.id) { mutableStateOf(false) }
@@ -344,6 +344,7 @@ private fun ArtistHeader(
     onPlayAll: () -> Unit,
     onFollow: () -> Unit,
 ) {
+    val preview = LocalImagePreview.current
     val stats = remember(
         ui.musicSize,
         ui.albumSize,
@@ -376,7 +377,14 @@ private fun ArtistHeader(
             UrlImage(
                 url = ui.coverUrl,
                 contentDescription = ui.name,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clickable(
+                        enabled = !ui.coverUrl.isNullOrBlank(),
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = { openImagePreview(preview, ui.coverUrl) },
+                    ),
                 contentScale = ContentScale.Crop,
             )
         }

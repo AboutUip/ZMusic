@@ -31,8 +31,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -40,7 +38,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredHeight
-import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -126,7 +123,9 @@ import com.kite.zmusic.ui.common.GlassActionSheet
 import com.kite.zmusic.ui.common.GlassAlertDialog
 import com.kite.zmusic.ui.common.GlassPromptField
 import com.kite.zmusic.ui.common.GlassSheetAction
+import com.kite.zmusic.ui.common.LocalImagePreview
 import com.kite.zmusic.ui.common.UrlImage
+import com.kite.zmusic.ui.common.openImagePreview
 import com.kite.zmusic.ui.common.UrlImageCache
 import com.kite.zmusic.ui.common.rememberUrlImageBitmap
 import com.kite.zmusic.ui.icons.ZIcons
@@ -1116,8 +1115,8 @@ private fun ProfileSheetBlend(modifier: Modifier = Modifier) {
 @Composable
 internal fun ProfileFixedBackground(
     backgroundUrl: String?,
-    localPath: String? = null,
     modifier: Modifier = Modifier,
+    localPath: String? = null,
     ignoreChrome: Boolean = false,
 ) {
     val painted = !ignoreChrome && LocalChromeWallpaperPainted.current
@@ -1147,67 +1146,6 @@ internal fun ProfileFixedBackground(
                 },
             ),
     )
-}
-
-@Composable
-private fun ProfileHeroBlock(
-    profile: UserProfileBrief?,
-    loading: Boolean,
-    padH: Dp,
-    bottomInset: Dp,
-    fillHeight: Boolean,
-    spaceProgress: Float = 0f,
-    customBgPath: String? = null,
-    onAvatarPositioned: (Offset, Float) -> Unit = { _, _ -> },
-    modifier: Modifier = Modifier,
-) {
-    val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val screenH = LocalConfiguration.current.screenHeightDp.dp
-    val heroHeight = if (fillHeight) {
-        0.dp
-    } else {
-        statusTop + maxOf(400.dp, screenH * 0.46f)
-    }
-    val hasPhoto = !customBgPath.isNullOrBlank() || !profile?.backgroundUrl.isNullOrBlank()
-
-    Box(
-        modifier
-            .then(
-                if (fillHeight) Modifier.fillMaxHeight() else Modifier.height(heroHeight),
-            )
-            .clipToBounds(),
-    ) {
-        ProfileFixedBackground(
-            backgroundUrl = profile?.backgroundUrl,
-            localPath = customBgPath,
-            modifier = Modifier.fillMaxSize(),
-        )
-        ProfileIdentity(
-            profile = profile,
-            loading = loading,
-            onPhoto = hasPhoto,
-            fade = (1f - spaceProgress).coerceIn(0f, 1f),
-            hideAvatar = spaceProgress > SpaceAvatarHandoffProgress,
-            showSpaceHint = true,
-            onOpenFollows = {},
-            avatarModifier = Modifier.onGloballyPositioned { coords ->
-                if (spaceProgress <= SpaceAvatarHandoffProgress) {
-                    onAvatarPositioned(
-                        coords.positionInWindow(),
-                        coords.size.width.toFloat(),
-                    )
-                }
-            },
-            modifier = Modifier
-                .fillMaxSize()
-                .statusBarsPadding()
-                .padding(
-                    start = padH,
-                    end = padH,
-                    bottom = if (fillHeight) bottomInset.coerceAtLeast(20.dp) else 16.dp,
-                ),
-        )
-    }
 }
 
 @Composable
@@ -1610,6 +1548,7 @@ internal fun ProfileAvatar(
             else -> shownUrl = next
         }
     }
+    val preview = LocalImagePreview.current
     Box(
         modifier
             .size(size + hang)
@@ -1622,7 +1561,13 @@ internal fun ProfileAvatar(
                 .border(2.dp, ring, CircleShape)
                 .padding(3.dp)
                 .clip(CircleShape)
-                .background(MainPalette.Placeholder),
+                .background(MainPalette.Placeholder)
+                .clickable(
+                    enabled = !shownUrl.isNullOrBlank(),
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = { openImagePreview(preview, shownUrl) },
+                ),
             contentAlignment = Alignment.Center,
         ) {
             val url = shownUrl
@@ -1862,8 +1807,8 @@ private fun LibraryPlaylistBody(
 @Composable
 private fun CollectionViewMoreChip(
     onClick: () -> Unit,
-    enabled: Boolean = true,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
 ) {
     Text(
         text = t("查看更多"),

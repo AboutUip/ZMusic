@@ -15,7 +15,6 @@ import android.text.TextPaint
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -44,7 +43,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -259,9 +257,9 @@ private fun posterCoverPalette(tone: PosterCoverTone): PosterCoverPalette = when
         titleArgb = 0xFFF4F0E8.toInt(),
         artistArgb = 0xFFB8B0A4.toInt(),
         lyricArgb = 0xEBFFF4F0E8.toInt(),
-        emptyArgb = 0x66B8B0A4.toInt(),
+        emptyArgb = 0x66B8B0A4,
         sigArgb = 0xC7D4C4A8.toInt(),
-        ruleArgb = 0x59D4C4A8.toInt(),
+        ruleArgb = 0x59D4C4A8,
         inkArgb = 0xFF0B0C0F.toInt(),
         veilTopArgb = 0xCC0B0C0F.toInt(),
         veilMidArgb = 0xE60B0C0F.toInt(),
@@ -282,9 +280,9 @@ private fun posterCoverPalette(tone: PosterCoverTone): PosterCoverPalette = when
         titleArgb = 0xFF1A1510.toInt(),
         artistArgb = 0xFF6E6458.toInt(),
         lyricArgb = 0xEB1A1510.toInt(),
-        emptyArgb = 0x666E6458.toInt(),
+        emptyArgb = 0x666E6458,
         sigArgb = 0xC78B7355.toInt(),
-        ruleArgb = 0x598B7355.toInt(),
+        ruleArgb = 0x598B7355,
         inkArgb = 0xFFF3EEE4.toInt(),
         veilTopArgb = 0xE6F3EEE4.toInt(),
         veilMidArgb = 0xF2F3EEE4.toInt(),
@@ -302,9 +300,9 @@ fun PosterCoverPresetCard(
     lyricLines: List<String>,
     showTime: Boolean,
     signature: String,
+    modifier: Modifier = Modifier,
     tone: PosterCoverTone = PosterCoverTone.Dark,
     timeText: String = rememberPosterTimeText(),
-    modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     val palette = remember(tone) { posterCoverPalette(tone) }
@@ -739,7 +737,7 @@ private fun drawPosterCoverPlan(
     val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeWidth = (w * 0.0025f).coerceAtLeast(2f)
-        color = if (tone == PosterCoverTone.Dark) 0x33F4F0E8.toInt() else 0x331A1510.toInt()
+        color = if (tone == PosterCoverTone.Dark) 0x33F4F0E8 else 0x331A1510
     }
     canvas.drawRoundRect(plan.coverRect, w * 0.032f, w * 0.032f, stroke)
 

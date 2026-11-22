@@ -273,7 +273,7 @@ private fun DrawScope.drawPaper(point: (Float, Float) -> Offset, s: Float, ink: 
         close()
     }
     listOf(0.30f to 0f, 0.44f to -3f, 0.58f to 2f, 0.72f to 6f).forEach { (x, deg) ->
-        drawFinger(point(x, 0.46f), s * 0.12f, s * 0.40f, deg.toFloat(), ink)
+        drawFinger(point(x, 0.46f), s * 0.12f, s * 0.40f, deg, ink)
     }
     drawFinger(point(0.22f, 0.58f), s * 0.13f, s * 0.28f, -48f, ink)
     drawPath(palm, ink)

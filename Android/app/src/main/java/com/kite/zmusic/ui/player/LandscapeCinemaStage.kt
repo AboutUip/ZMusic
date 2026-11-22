@@ -62,7 +62,6 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kite.zmusic.ZMusicApplication
 import com.kite.zmusic.data.LrcLine
@@ -89,7 +88,6 @@ internal fun LandscapeCinemaStage(
     originalOnTop: Boolean,
     showCompanionOnOthers: Boolean,
     positionMs: Long,
-    durationMs: Long,
     isPlaying: Boolean,
     playWhenReady: Boolean,
     buffering: Boolean,
@@ -101,12 +99,7 @@ internal fun LandscapeCinemaStage(
     lyricPlayingStyle: LyricRoleStyle,
     lyricPlayedStyle: LyricRoleStyle,
     lyricUnplayedStyle: LyricRoleStyle,
-    titleNameColor: Color,
-    titleArtistColor: Color,
-    titleNameFontScale: Float,
-    titleArtistFontScale: Float,
     onSeek: (Long) -> Unit,
-    onArtistClick: (() -> Unit)?,
     onTogglePlay: () -> Unit,
     transportRevealT: Float,
     transportReserve: Dp,
@@ -212,8 +205,8 @@ internal fun LandscapeCinemaStage(
         val widthPx = with(density) { maxWidth.toPx() }
         val heightPx = with(density) { maxHeight.toPx() }
         val reservePx = with(density) { transportReserve.toPx() }
-        val board = remember(widthPx, heightPx, reservePx, lines.size) {
-            buildLyricBoard(widthPx, heightPx, reservePx, lines.size)
+        val board = remember(widthPx, lines.size) {
+            buildLyricBoard(widthPx, lines.size)
         }
         val camera = shownCamera()
         val anchor = Offset(widthPx * FrameX, (heightPx - reservePx) * FrameY)
@@ -846,8 +839,6 @@ private fun playbackLyricCursor(lines: List<LrcLine>, positionMs: Long, motion: 
 
 private fun buildLyricBoard(
     width: Float,
-    height: Float,
-    reservePx: Float,
     lineCount: Int,
 ): LyricBoard {
     val edge = width * 1.12f

@@ -124,6 +124,70 @@ class LyricPlaybackAlignTest {
     }
 
     @Test
+    fun repeatOneFromTheEndCountsAsAnotherPlay() {
+        assertTrue(
+            LyricPlaybackAlign.sameTrackLooped(
+                repeatOne = true,
+                previousMs = 200_000L,
+                nextMs = 0L,
+                durationMs = 210_000L,
+            ),
+        )
+        assertTrue(
+            LyricPlaybackAlign.sameTrackLooped(
+                repeatOne = true,
+                previousMs = 2_400L,
+                nextMs = 40L,
+                durationMs = 3_000L,
+            ),
+        )
+    }
+
+    @Test
+    fun otherJumpsAreNotALoopRestart() {
+        assertFalse(
+            LyricPlaybackAlign.sameTrackLooped(
+                repeatOne = false,
+                previousMs = 200_000L,
+                nextMs = 0L,
+                durationMs = 210_000L,
+            ),
+        )
+        assertFalse(
+            LyricPlaybackAlign.sameTrackLooped(
+                repeatOne = true,
+                previousMs = 20_000L,
+                nextMs = 0L,
+                durationMs = 210_000L,
+            ),
+        )
+        assertFalse(
+            LyricPlaybackAlign.sameTrackLooped(
+                repeatOne = true,
+                previousMs = 200_000L,
+                nextMs = 30_000L,
+                durationMs = 210_000L,
+            ),
+        )
+        assertFalse(
+            LyricPlaybackAlign.sameTrackLooped(
+                repeatOne = true,
+                previousMs = 5_000L,
+                nextMs = 4_000L,
+                durationMs = 210_000L,
+            ),
+        )
+        assertFalse(
+            LyricPlaybackAlign.sameTrackLooped(
+                repeatOne = true,
+                previousMs = 0L,
+                nextMs = 0L,
+                durationMs = 210_000L,
+            ),
+        )
+    }
+
+    @Test
     fun clearingRemembersThePlayingSongAndDropsThePreviousLines() {
         val cleared = PlaybackUiState(
             lyricTrackId = 5L,

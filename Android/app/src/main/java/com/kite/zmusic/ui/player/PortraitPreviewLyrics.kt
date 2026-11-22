@@ -42,11 +42,12 @@ import kotlin.math.floor
 /**
  * 竖屏进度条上方的预览歌词（叠在黑胶区底部）。
  * [fancy] 开启：切句整列上移（下一句滑进播放位，其余行顺势更新），并尊重逐字渲染。
- * 关闭：无切句动画，强制整句。首次出现 / 切歌重建时直接亮起，不滚句。
+ * 关闭：无切句动画，强制整句。首次出现时直接亮起，不滚句；换歌整屏滚动见 [LyricRollSwap]。
  */
 @Composable
 internal fun PortraitPreviewLyrics(
     lines: List<LrcLine>,
+    modifier: Modifier = Modifier,
     companions: List<LrcLine?> = emptyList(),
     originalOnTop: Boolean = true,
     showCompanionOnOthers: Boolean = true,
@@ -63,7 +64,8 @@ internal fun PortraitPreviewLyrics(
     lineSpacingDp: Float,
     onOpenLyrics: () -> Unit,
     clockRunning: Boolean = false,
-    modifier: Modifier = Modifier,
+    /** 换歌滚动的平移量（视口高为单位），见 [LyricRollSwap]。 */
+    rollShift: () -> Float = NoLyricRoll,
 ) {
     if (lines.isEmpty()) return
     val lyricClock = rememberSmoothedLyricPositionMs(positionMs, clockRunning)
@@ -144,7 +146,7 @@ internal fun PortraitPreviewLyrics(
             positionMs = positionMs,
             durationMs = durationMs,
             clockRunning = clockRunning,
-            modifier = rootMod,
+            modifier = rootMod.lyricRollShift(rollShift),
         )
         return@CompositionLocalProvider
     }
@@ -196,7 +198,9 @@ internal fun PortraitPreviewLyrics(
             ),
         )
     }
-    val visualFocus = focusAnim.value
+    // 换歌滚动按整屏行数下移，沿用切句的槽位淡入淡出；滚动中新旧两套只画各自那一屏
+    val roll = rollShift()
+    val visualFocus = focusAnim.value - roll * showCount
     val start = floor(visualFocus.toDouble()).toInt() - 1
     val end = ceil(visualFocus.toDouble()).toInt() + showCount
     val live = lyricIsLive(lines, animActive, focus)
@@ -241,6 +245,7 @@ internal fun PortraitPreviewLyrics(
     ) {
         for (index in start..end) {
             if (index == focus) continue
+            if (roll != 0f && (index < focus || index >= focus + showCount)) continue
             val line = lines.getOrNull(index) ?: continue
             val text = line.text.trim()
             if (text.isEmpty()) continue

@@ -148,6 +148,7 @@ internal fun LandscapeDynamicStage(
     peekPrev: TrackRow?,
     /** 播放条等外部切歌方向；封面手势自己会先落定，避免再播一遍。 */
     skipDirection: VinylSkipDirection,
+    modifier: Modifier = Modifier,
     gesturesEnabled: Boolean = true,
     onSkipNext: () -> Unit,
     onSkipPrev: () -> Unit,
@@ -167,7 +168,6 @@ internal fun LandscapeDynamicStage(
     clockRunning: Boolean = false,
     customBg: PlayerBackgroundPreset? = null,
     customBgProgress: Float = 0f,
-    modifier: Modifier = Modifier,
 ) {
     val density = LocalDensity.current
 
@@ -878,8 +878,8 @@ private fun coverExitArc(t: Float, exitX: Float, exitY: Float): Offset {
 private fun LandscapeDynamicMetaRow(
     icon: ImageVector,
     text: String,
-    onClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -1251,11 +1251,11 @@ private fun LandscapeDynamicFanLine(
     originalOnTop: Boolean,
     offset: Float,
     density: Float,
+    modifier: Modifier = Modifier,
     isPlayingLine: Boolean = false,
     isBrowseCenter: Boolean = false,
     style: LyricRoleStyle = LyricRoleStyle.DynamicUnplayedDefault,
     builtinArgb: Int = LyricRoleStyle.DynamicUnplayedDefault.preset0Argb,
-    modifier: Modifier = Modifier,
 ) {
     val absD = abs(offset)
     val blurDp = when {

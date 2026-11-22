@@ -86,7 +86,6 @@ internal fun LoginLandscapeHost(
     onMethod: (LoginMethod) -> Unit,
     onQrVisible: (Boolean) -> Unit,
     onLoggedIn: () -> Unit,
-    onNavigateBack: () -> Unit,
     onOpenRegister: () -> Unit,
     registerOpen: Boolean,
     registerVm: RegisterViewModel,

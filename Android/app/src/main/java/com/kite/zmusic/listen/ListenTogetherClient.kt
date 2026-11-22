@@ -155,7 +155,6 @@ class ListenTogetherClient(
             immediate.newCall(
                 request("POST", "/invites/${enc(id)}/decline", JSONObject().put("today", today)),
             ).execute().use { parseObject(it.body?.string().orEmpty()) }
-            Unit
         }
 
     private suspend fun mutate(method: String, path: String, body: JSONObject?): ListenRoomSnapshot =

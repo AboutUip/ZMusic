@@ -123,6 +123,22 @@ open class PagedCommunityCatalog<T>(
         return page.entries
     }
 
+    /**
+     * 按页拉完整份目录，不改当前列表分页。某一页失败则返回 null。
+     * 页数到 [maxPages] 仍未结束时，返回已经拿到的记录。
+     */
+    suspend fun loadEntire(maxPages: Int = 40): List<T>? {
+        var acc = emptyList<T>()
+        var page = 1
+        while (page <= maxPages) {
+            val fetched = fetchRange(page) ?: return null
+            acc = merge(acc, fetched.entries)
+            if (!fetched.more || fetched.entries.isEmpty()) return acc
+            page += 1
+        }
+        return acc
+    }
+
     suspend fun refreshSearch(query: String): List<T>? {
         val q = normalizeQuery(query)
         if (q.isEmpty()) {

@@ -2,146 +2,72 @@
 
 package com.kite.zmusic.ui.player
 
-import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.SizeTransform
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.Crossfade
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
-import androidx.compose.animation.core.CubicBezierEasing
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.gestures.animateScrollBy
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.ScrollableDefaults
-import androidx.compose.foundation.gestures.scrollBy
-import androidx.compose.foundation.gestures.waitForUpOrCancellation
-import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.calculateEndPadding
-import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.layout.wrapContentHeight
-import androidx.compose.foundation.layout.wrapContentWidth
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.runtime.derivedStateOf
-import androidx.compose.runtime.mutableStateSetOf
-import androidx.compose.runtime.snapshotFlow
-import androidx.compose.runtime.snapshots.SnapshotStateSet
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
-import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.withFrameMillis
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.zIndex
-import androidx.compose.ui.composed
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.PointerInputChange
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.RectangleShape
-import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.LayoutCoordinates
-import androidx.compose.ui.layout.boundsInRoot
-import androidx.compose.ui.layout.layout
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.withLink
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -151,43 +77,16 @@ import com.kite.zmusic.ZMusicApplication
 import com.kite.zmusic.plugin.PluginSurfaces
 import com.kite.zmusic.plugin.PluginUiTarget
 import com.kite.zmusic.data.LrcLine
-import com.kite.zmusic.data.LrcParser
-import com.kite.zmusic.data.LyricRoleStyle
-import com.kite.zmusic.data.NcmJson
-import com.kite.zmusic.data.NcmLibraryParse
 import com.kite.zmusic.data.PlaybackChromeMode
 import com.kite.zmusic.data.PlayerDisplayPrefs
-import com.kite.zmusic.data.PlayerDisplayPrefsStore
-import com.kite.zmusic.data.PlaylistTrackLoader
-import com.kite.zmusic.data.TitleAlignMode
-import com.kite.zmusic.data.TitleLineStyle
+import com.kite.zmusic.data.PortraitArtistPlacement
+import com.kite.zmusic.data.TrackArtist
 import com.kite.zmusic.data.TrackRow
-import com.kite.zmusic.data.VinylColorStyle
-import com.kite.zmusic.playback.AudioSpectrumBands
-import com.kite.zmusic.playback.PlaybackNotice
-import com.kite.zmusic.playback.PlaybackUiState
 import com.kite.zmusic.playback.PlaybackMode
-import com.kite.zmusic.playback.mergePlaylistQueue
-import com.kite.zmusic.ui.common.UrlImage
+import com.kite.zmusic.ui.artist.portraitArtistTokens
 import com.kite.zmusic.ui.notice.showIslandNotice
 import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.HazeStyle
-import dev.chrisbanes.haze.HazeTint
-import dev.chrisbanes.haze.hazeEffect
-import dev.chrisbanes.haze.hazeSource
-import dev.chrisbanes.haze.rememberHazeState
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeoutOrNull
-import kotlinx.coroutines.yield
-import kotlin.math.abs
-import kotlin.math.cos
-import kotlin.math.roundToInt
-import kotlin.math.sin
-import androidx.compose.ui.unit.lerp as lerpDp
 import com.kite.zmusic.i18n.t
 import com.kyant.backdrop.backdrops.LayerBackdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
@@ -233,7 +132,14 @@ internal data class PortraitLyricOverlay(
 internal fun PortraitPlayerBody(
     track: TrackRow,
     lines: List<LrcLine>,
+    modifier: Modifier = Modifier,
     lyricCompanions: List<LrcLine?> = emptyList(),
+    /** 为 false 表示 [lines] 还是上一首的（新歌歌词未绑定）。 */
+    lyricsOnTrack: Boolean = true,
+    /** 这首已确认没有歌词（[lines] 为空不一定是没有，也可能还在加载）。 */
+    lyricsMissing: Boolean = false,
+    /** 同一首播完回到开头时加一，预览词和歌词页再滚一屏。 */
+    lyricReplayEpoch: Int = 0,
     positionMs: Long,
     seekPositionMs: Long,
     lyricsExpanded: Boolean,
@@ -256,6 +162,7 @@ internal fun PortraitPlayerBody(
     onSliderChange: (Float) -> Unit,
     onSliderDragEnd: (Float) -> Unit,
     onDismiss: () -> Unit,
+    onOpenArtist: (TrackArtist) -> Unit = {},
     dismissSwipeThresholdPx: Float,
     sheets: PortraitPlayerSheetChrome = PortraitPlayerSheetChrome(),
     displayPrefs: PlayerDisplayPrefs = PlayerDisplayPrefs(),
@@ -265,7 +172,6 @@ internal fun PortraitPlayerBody(
     lyric: PortraitLyricOverlay = PortraitLyricOverlay(),
     hazeState: HazeState? = null,
     playerLiquidBackdrop: LayerBackdrop? = null,
-    modifier: Modifier = Modifier,
 ) {
     val onOpenMore = sheets.onOpenMore
     val onOpenScore = sheets.onOpenScore
@@ -329,7 +235,12 @@ internal fun PortraitPlayerBody(
     val selectBarReserve = 48.dp + 16.dp + navBottom.coerceAtLeast(12.dp)
     var transportReserve by remember { mutableStateOf(200.dp) }
     var topChromeH by remember { mutableStateOf(64.dp) }
-    val topReserve = 56.dp * chromeT
+    val portraitArtists = if (displayPrefs.portraitArtistVisible) {
+        track.portraitArtistTokens()
+    } else {
+        emptyList()
+    }
+    val topReserve = (if (portraitArtists.isNotEmpty()) topChromeH else 56.dp) * chromeT
     val bottomReserve = androidx.compose.ui.unit.lerp(selectBarReserve, transportReserve, chromeT)
     val selectUiActive = lyricSelectOpen || selectT > 0.001f
     val autoClearEnabled = displayPrefs.portraitLyricAutoClear
@@ -483,7 +394,10 @@ internal fun PortraitPlayerBody(
                             },
                     ) {
                         PortraitPlayerTopBar(
-                            trackName = track.name,
+                            track = track,
+                            artists = portraitArtists,
+                            artistPlacement = displayPrefs.portraitArtistPlacement,
+                            onOpenArtist = onOpenArtist,
                             onDismiss = onDismiss,
                             showFmMode = playbackFmActive,
                             fmModeCovered = fmIconCovered,
@@ -575,15 +489,24 @@ internal fun PortraitPlayerBody(
                                     .padding(horizontal = 8.dp)
                                     .padding(bottom = 2.dp),
                             ) {
-                                key(track.id) {
+                                LyricRollSwap(
+                                    trackId = track.id,
+                                    lines = lines,
+                                    companions = lyricCompanions,
+                                    onTrack = lyricsOnTrack,
+                                    missing = lyricsMissing,
+                                    replayEpoch = lyricReplayEpoch,
+                                    contentAlignment = Alignment.BottomCenter,
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) { set, leaving, shift ->
                                     PortraitPreviewLyrics(
-                                        lines = lines,
-                                        companions = lyricCompanions,
+                                        lines = set.lines,
+                                        companions = set.companions,
                                         originalOnTop = displayPrefs.portraitLyricOriginalOnTop,
                                         showCompanionOnOthers =
                                             displayPrefs.portraitLyricOthersShowTranslation,
-                                        positionMs = positionMs,
-                                        durationMs = durationMs,
+                                        positionMs = rememberHeldWhile(positionMs, leaving),
+                                        durationMs = rememberHeldWhile(durationMs, leaving),
                                         count = displayPrefs.portraitPreviewLyricCount,
                                         playingArgb = displayPrefs.portraitPreviewLyricPlayingArgb,
                                         upcomingArgb = displayPrefs.portraitPreviewLyricUpcomingArgb,
@@ -594,8 +517,9 @@ internal fun PortraitPlayerBody(
                                         offsetYDp = displayPrefs.portraitPreviewLyricOffsetYDp,
                                         lineSpacingDp = displayPrefs.portraitPreviewLyricLineSpacingDp,
                                         onOpenLyrics = onOpenLyrics,
-                                        clockRunning = isPlaying && playWhenReady &&
+                                        clockRunning = !leaving && isPlaying && playWhenReady &&
                                             !buffering && !sliderDragging,
+                                        rollShift = shift,
                                         modifier = Modifier.fillMaxWidth(),
                                     )
                                 }
@@ -620,39 +544,13 @@ internal fun PortraitPlayerBody(
                                     ),
                             )
                         }
-                        PortraitCinemaLyrics(
+                        LyricRollSwap(
+                            trackId = track.id,
                             lines = lines,
                             companions = lyricCompanions,
-                            originalOnTop = displayPrefs.portraitLyricOriginalOnTop,
-                            showCompanionOnOthers =
-                                displayPrefs.portraitLyricOthersShowTranslation,
-                            positionMs = frozenLyricPositionMs ?: positionMs,
-                            trackDurationMs = durationMs,
-                            playingStyle = displayPrefs.lyricPlayingStyle,
-                            playedStyle = displayPrefs.lyricPlayedStyle,
-                            unplayedStyle = displayPrefs.lyricUnplayedStyle,
-                            playedCount = displayPrefs.lyricPlayedCount,
-                            upcomingCount = displayPrefs.lyricUpcomingCount,
-                            lineSpacingDp = displayPrefs.lyricLineSpacingDp,
-                            offsetYDp = lyricOffsetAnim,
-                            contentAlpha = lyricContentAlpha,
-                            selectProgress = selectT,
-                            selectOpen = lyricSelectOpen,
-                            selectedIndices = lyricSelectSelected,
-                            onToggleSelect = onLyricSelectToggle,
-                            onLongPressLine = { onLyricSelectLongPress?.invoke() },
-                            resumeScrollToken = lyricSelectResumeToken,
-                            onResumeScrollConsumed = onLyricSelectResumeConsumed,
-                            onSeekToMs = { ms ->
-                                onSeek(ms.coerceIn(0L, durationMs.coerceAtLeast(0L)))
-                                if (displayPrefs.lyricTapAutoPlay && !playWhenReady) {
-                                    onTogglePlay()
-                                }
-                            },
-                            onCollapse = { onLyricBlankTap() },
-                            onBandCoords = onLyricBandCoords,
-                            clockRunning = isPlaying && playWhenReady && !buffering &&
-                                !sliderDragging && frozenLyricPositionMs == null,
+                            onTrack = lyricsOnTrack,
+                            missing = lyricsMissing,
+                            replayEpoch = lyricReplayEpoch,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .fillMaxHeight()
@@ -672,7 +570,48 @@ internal fun PortraitPlayerBody(
                                         Modifier
                                     },
                                 ),
-                        )
+                        ) { set, leaving, shift ->
+                            if (!set.ready) return@LyricRollSwap
+                            PortraitCinemaLyrics(
+                                lines = set.lines,
+                                companions = set.companions,
+                                originalOnTop = displayPrefs.portraitLyricOriginalOnTop,
+                                showCompanionOnOthers =
+                                    displayPrefs.portraitLyricOthersShowTranslation,
+                                positionMs = rememberHeldWhile(frozenLyricPositionMs ?: positionMs, leaving),
+                                trackDurationMs = rememberHeldWhile(durationMs, leaving),
+                                playingStyle = displayPrefs.lyricPlayingStyle,
+                                playedStyle = displayPrefs.lyricPlayedStyle,
+                                unplayedStyle = displayPrefs.lyricUnplayedStyle,
+                                playedCount = displayPrefs.lyricPlayedCount,
+                                upcomingCount = displayPrefs.lyricUpcomingCount,
+                                lineSpacingDp = displayPrefs.lyricLineSpacingDp,
+                                offsetYDp = lyricOffsetAnim,
+                                contentAlpha = lyricContentAlpha,
+                                selectProgress = selectT,
+                                selectOpen = lyricSelectOpen,
+                                selectedIndices = lyricSelectSelected,
+                                onToggleSelect = if (leaving) null else onLyricSelectToggle,
+                                onLongPressLine = if (leaving) null else { _ -> onLyricSelectLongPress?.invoke() },
+                                resumeScrollToken = rememberHeldWhile(lyricSelectResumeToken, leaving),
+                                onResumeScrollConsumed = if (leaving) null else onLyricSelectResumeConsumed,
+                                onSeekToMs = { ms ->
+                                    if (!leaving) {
+                                        onSeek(ms.coerceIn(0L, durationMs.coerceAtLeast(0L)))
+                                        if (displayPrefs.lyricTapAutoPlay && !playWhenReady) {
+                                            onTogglePlay()
+                                        }
+                                    }
+                                },
+                                onCollapse = { onLyricBlankTap() },
+                                onBandCoords = if (leaving) null else onLyricBandCoords,
+                                clockRunning = !leaving && isPlaying && playWhenReady && !buffering &&
+                                    !sliderDragging && frozenLyricPositionMs == null,
+                                sliderDragging = !leaving && sliderDragging,
+                                rollShift = shift,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
                     }
                 }
             }
@@ -762,7 +701,10 @@ internal fun PortraitPlayerBody(
                     },
             ) {
                 PortraitPlayerTopBar(
-                    trackName = track.name,
+                    track = track,
+                    artists = portraitArtists,
+                    artistPlacement = displayPrefs.portraitArtistPlacement,
+                    onOpenArtist = onOpenArtist,
                     onDismiss = onDismiss,
                     showFmMode = playbackFmActive,
                     fmModeCovered = fmIconCovered,
@@ -866,7 +808,10 @@ internal fun PortraitPlayerBody(
 
 @Composable
 private fun PortraitPlayerTopBar(
-    trackName: String,
+    track: TrackRow,
+    artists: List<TrackArtist>,
+    artistPlacement: PortraitArtistPlacement,
+    onOpenArtist: (TrackArtist) -> Unit,
     onDismiss: () -> Unit,
     showFmMode: Boolean = false,
     onFmModeClick: (Rect) -> Unit = {},
@@ -885,22 +830,12 @@ private fun PortraitPlayerTopBar(
             onClick = onDismiss,
             chromeBackground = false,
         )
-        Text(
-            text = trackName,
-            style = TextStyle(
-                color = LyricCurrent,
-                fontFamily = FontFamily.SansSerif,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 19.sp,
-                letterSpacing = 0.2.sp,
-                textAlign = TextAlign.Start,
-            ),
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier
-                .weight(1f)
-                .playerExpandAnchor(PlayerExpandSlot.FullTitle)
-                .playerExpandHideFull(),
+        PortraitPlayerTitle(
+            name = track.name,
+            artists = artists,
+            placement = artistPlacement,
+            onOpenArtist = onOpenArtist,
+            modifier = Modifier.weight(1f),
         )
         if (showFmMode) {
             NowPlayingFmModeButton(
@@ -921,6 +856,185 @@ private fun PortraitPlayerTopBar(
                 }
             },
         )
+    }
+}
+
+@Composable
+private fun PortraitPlayerTitle(
+    name: String,
+    artists: List<TrackArtist>,
+    placement: PortraitArtistPlacement,
+    onOpenArtist: (TrackArtist) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val titleStyle = TextStyle(
+        color = LyricCurrent,
+        fontFamily = FontFamily.SansSerif,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 19.sp,
+        letterSpacing = 0.2.sp,
+        textAlign = TextAlign.Start,
+    )
+    val shown = artists.isNotEmpty()
+    AnimatedContent(
+        targetState = placement to shown,
+        modifier = modifier.playerExpandHideFull(),
+        contentAlignment = Alignment.TopStart,
+        transitionSpec = {
+            val move = tween<IntOffset>(360, easing = FastOutSlowInEasing)
+            val dropping = targetState.second &&
+                targetState.first == PortraitArtistPlacement.Below &&
+                initialState.second &&
+                initialState.first == PortraitArtistPlacement.Append
+            val rising = targetState.second &&
+                targetState.first == PortraitArtistPlacement.Append &&
+                initialState.second &&
+                initialState.first == PortraitArtistPlacement.Below
+            val enterFrom: (Int) -> Int = { height ->
+                when {
+                    dropping -> -height / 4
+                    rising -> height / 3
+                    targetState.second && !initialState.second -> height / 4
+                    else -> -height / 5
+                }
+            }
+            val exitTo: (Int) -> Int = { height ->
+                when {
+                    dropping -> height / 3
+                    rising -> -height / 4
+                    initialState.second && !targetState.second -> -height / 4
+                    else -> height / 5
+                }
+            }
+            val transform = (
+                fadeIn(tween(320, easing = FastOutSlowInEasing)) +
+                    slideInVertically(move, enterFrom)
+                ) togetherWith (
+                fadeOut(tween(220, easing = FastOutSlowInEasing)) +
+                    slideOutVertically(move, exitTo)
+                ) using SizeTransform(clip = false) { _, _ ->
+                tween(360, easing = FastOutSlowInEasing)
+            }
+            transform.targetContentZIndex = 1f
+            transform
+        },
+        label = "portraitArtistPlace",
+    ) { (mode, visible) ->
+        PortraitPlayerTitleFrame(
+            name = name,
+            artists = if (visible) artists else emptyList(),
+            placement = mode,
+            onOpenArtist = onOpenArtist,
+            titleStyle = titleStyle,
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}
+
+@Composable
+private fun PortraitPlayerTitleFrame(
+    name: String,
+    artists: List<TrackArtist>,
+    placement: PortraitArtistPlacement,
+    onOpenArtist: (TrackArtist) -> Unit,
+    titleStyle: TextStyle,
+    modifier: Modifier = Modifier,
+) {
+    if (artists.isEmpty()) {
+        Text(
+            text = name,
+            style = titleStyle,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = modifier.playerExpandAnchor(PlayerExpandSlot.FullTitle),
+        )
+        return
+    }
+    val artistColor = LyricCurrent.copy(alpha = 0.78f)
+    val dotColor = LyricCurrent.copy(alpha = 0.45f)
+    when (placement) {
+        PortraitArtistPlacement.Append -> {
+            Text(
+                text = buildAnnotatedString {
+                    append(name)
+                    withStyle(SpanStyle(color = dotColor)) { append(" · ") }
+                    appendPortraitArtists(
+                        artists = artists,
+                        style = SpanStyle(
+                            color = artistColor,
+                            fontWeight = FontWeight.Medium,
+                        ),
+                        onOpen = onOpenArtist,
+                    )
+                },
+                style = titleStyle,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = modifier.playerExpandAnchor(PlayerExpandSlot.FullTitle),
+            )
+        }
+        PortraitArtistPlacement.Below -> {
+            Column(modifier) {
+                Text(
+                    text = name,
+                    style = titleStyle,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .playerExpandAnchor(PlayerExpandSlot.FullTitle),
+                )
+                Text(
+                    text = buildAnnotatedString {
+                        appendPortraitArtists(
+                            artists = artists,
+                            style = SpanStyle(
+                                color = artistColor,
+                                fontWeight = FontWeight.Medium,
+                            ),
+                            onOpen = onOpenArtist,
+                        )
+                    },
+                    style = TextStyle(
+                        color = artistColor,
+                        fontFamily = FontFamily.SansSerif,
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 13.sp,
+                        letterSpacing = 0.15.sp,
+                    ),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 1.dp),
+                )
+            }
+        }
+    }
+}
+
+private fun AnnotatedString.Builder.appendPortraitArtists(
+    artists: List<TrackArtist>,
+    style: SpanStyle,
+    onOpen: (TrackArtist) -> Unit,
+) {
+    val separator = style.copy(color = style.color.copy(alpha = 0.45f))
+    artists.forEachIndexed { index, artist ->
+        if (index > 0) {
+            withStyle(separator) { append(" / ") }
+        }
+        withLink(
+            LinkAnnotation.Clickable(
+                tag = "portrait-artist-$index-${artist.id}",
+                styles = TextLinkStyles(
+                    style = style,
+                    pressedStyle = style.copy(color = style.color.copy(alpha = 0.4f)),
+                ),
+                linkInteractionListener = { onOpen(artist) },
+            ),
+        ) {
+            append(artist.name)
+        }
     }
 }
 

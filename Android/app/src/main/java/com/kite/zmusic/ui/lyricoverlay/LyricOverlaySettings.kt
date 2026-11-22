@@ -81,9 +81,9 @@ internal fun LyricOverlaySettingsPanel(
     prefs: LyricOverlayPrefs,
     onChange: (LyricOverlayPrefs) -> Unit,
     onCenterHorizontally: () -> Unit,
+    modifier: Modifier = Modifier,
     compact: Boolean = false,
     landscape: Boolean = false,
-    modifier: Modifier = Modifier,
 ) {
     val switchColors = SwitchDefaults.colors(
         checkedThumbColor = Color.White,

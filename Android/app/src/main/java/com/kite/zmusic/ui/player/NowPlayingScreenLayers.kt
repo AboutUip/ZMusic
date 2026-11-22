@@ -4,13 +4,11 @@ package com.kite.zmusic.ui.player
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector1D
-import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
@@ -67,7 +65,6 @@ import com.kite.zmusic.playback.PlaybackUiState
 import com.kite.zmusic.ui.main.LocalChromeBackdrop
 import com.kite.zmusic.ui.main.LocalChromeGlassStyle
 import com.kite.zmusic.ui.notice.showIslandNotice
-import com.kite.zmusic.ui.theme.TextTheme
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberCombinedBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
@@ -102,6 +99,7 @@ internal fun NowPlayingScreenLayers(
     onSeek: (Long) -> Unit,
     onDismiss: () -> Unit,
     onOpenArtist: (() -> Unit)?,
+    onOpenPortraitArtist: (com.kite.zmusic.data.TrackArtist) -> Unit = {},
     onOpenUser: (Long, String, String?) -> Unit = { _, _, _ -> },
     onPlayInsertSong: (Long) -> Unit = {},
     onOpenPlaylist: (Long, String, String?) -> Unit = { _, _, _ -> },
@@ -376,6 +374,7 @@ internal fun NowPlayingScreenLayers(
         )
 
         }
+        val lyricsOnTrack = state.lyricTrackId <= 0L || state.lyricTrackId == track.id
         val playerColumn = @Composable {
         Column(
             Modifier
@@ -407,6 +406,9 @@ internal fun NowPlayingScreenLayers(
                     track = track,
                     lines = lyricLines,
                     lyricCompanions = lyricCompanions,
+                    lyricsOnTrack = lyricsOnTrack,
+                    lyricsMissing = state.lyricMissing,
+                    lyricReplayEpoch = state.lyricReplayEpoch,
                     originalOnTop = portraitDisplayPrefs.portraitLyricOriginalOnTop,
                     showCompanionOnOthers =
                         portraitDisplayPrefs.portraitLyricOthersShowTranslation,
@@ -465,6 +467,9 @@ internal fun NowPlayingScreenLayers(
                     track = track,
                     lines = lyricLines,
                     lyricCompanions = lyricCompanions,
+                    lyricsOnTrack = lyricsOnTrack,
+                    lyricsMissing = state.lyricMissing,
+                    lyricReplayEpoch = state.lyricReplayEpoch,
                     positionMs = lyricPos,
                     seekPositionMs = displayPos,
                     lyricsExpanded = portraitLyricsOpen,
@@ -499,6 +504,7 @@ internal fun NowPlayingScreenLayers(
                         onSeek(v.toLong().coerceIn(0L, state.durationMs))
                     },
                     onDismiss = onDismiss,
+                    onOpenArtist = onOpenPortraitArtist,
                     dismissSwipeThresholdPx = dismissSwipeThresholdPx,
                     sheets = PortraitPlayerSheetChrome(
                         settingsOpen = portraitSettingsOpen,
@@ -833,7 +839,6 @@ internal fun NowPlayingScreenLayers(
                 val sheetHPx = maxSheetH * (2f / 3f)
                 val sheetHDp = with(density) { sheetHPx.toDp() }
                 PortraitListenTogetherSheet(
-                    onClose = { closePortraitListen() },
                     onNeedLogin = { requestPortraitListen() },
                     onScanJoin = openCommunityScan,
                     hazeState = settingsHazeState,

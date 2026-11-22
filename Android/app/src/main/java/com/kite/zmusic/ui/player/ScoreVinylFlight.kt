@@ -53,10 +53,10 @@ fun ScoreVinylFlightLayer(
     fullCover: Boolean,
     centerRadiusFrac: Float,
     outerScale: Float,
+    modifier: Modifier = Modifier,
     showOuterPlate: Boolean = true,
     onCoverTarget: () -> Unit,
     onFinished: () -> Unit,
-    modifier: Modifier = Modifier,
 ) {
     val density = LocalDensity.current
     val progress = remember(flight) { Animatable(0f) }

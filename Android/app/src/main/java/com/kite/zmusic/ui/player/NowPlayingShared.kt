@@ -2,185 +2,53 @@
 
 package com.kite.zmusic.ui.player
 
-import androidx.activity.compose.BackHandler
-import androidx.activity.compose.LocalActivity
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.AnimationVector1D
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.Crossfade
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.ScrollableDefaults
-import androidx.compose.foundation.gestures.scrollBy
-import androidx.compose.foundation.gestures.waitForUpOrCancellation
-import androidx.compose.ui.input.pointer.util.VelocityTracker
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxScope
-import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.WindowInsetsSides
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.calculateEndPadding
-import androidx.compose.foundation.layout.calculateStartPadding
-import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.only
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.layout.wrapContentHeight
-import androidx.compose.foundation.layout.wrapContentWidth
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.runtime.derivedStateOf
-import androidx.compose.runtime.mutableStateSetOf
 import androidx.compose.runtime.snapshotFlow
-import androidx.compose.runtime.snapshots.SnapshotStateSet
 import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.distinctUntilChanged
-import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameMillis
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.zIndex
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.RectangleShape
-import androidx.compose.ui.graphics.Shadow
-import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.LayoutCoordinates
-import androidx.compose.ui.layout.boundsInRoot
-import androidx.compose.ui.layout.layout
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInRoot
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontStyle
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
 import com.kite.zmusic.ZMusicApplication
-import com.kite.zmusic.data.LrcLine
-import com.kite.zmusic.data.LrcParser
-import com.kite.zmusic.data.LyricRoleStyle
-import com.kite.zmusic.data.NcmJson
-import com.kite.zmusic.data.NcmLibraryParse
-import com.kite.zmusic.data.PlayerDisplayPrefs
-import com.kite.zmusic.data.PlayerDisplayPrefsStore
-import com.kite.zmusic.data.PlaylistTrackLoader
-import com.kite.zmusic.data.TitleAlignMode
-import com.kite.zmusic.data.TitleLineStyle
-import com.kite.zmusic.data.TrackRow
-import com.kite.zmusic.data.VinylColorStyle
 import com.kite.zmusic.playback.AudioSpectrumBands
-import com.kite.zmusic.playback.PlaybackNotice
-import com.kite.zmusic.playback.PlaybackUiState
-import com.kite.zmusic.playback.PlaybackMode
-import com.kite.zmusic.playback.mergePlaylistQueue
-import com.kite.zmusic.ui.common.UrlImage
-import com.kite.zmusic.ui.notice.showIslandNotice
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeStyle
 import dev.chrisbanes.haze.HazeTint
 import dev.chrisbanes.haze.hazeEffect
-import dev.chrisbanes.haze.hazeSource
-import dev.chrisbanes.haze.rememberHazeState
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
-import kotlinx.coroutines.yield
 import kotlin.math.abs
 import kotlin.math.cos
-import kotlin.math.roundToInt
 import kotlin.math.sin
-import androidx.compose.ui.unit.lerp as lerpDp
 
 
 /**
@@ -420,12 +288,8 @@ internal fun Modifier.consumeUnclaimedVerticalDrag(): Modifier = pointerInput(Un
     }
 }
 
-internal val MistTop = Color(0xFF120A18)
-internal val MistMid = Color(0xFF1C1428)
-internal val MistBottom = Color(0xFF0A1420)
 internal val LyricCurrent = Color(0xFFF2EDE6)
 internal val LyricDim = Color(0xFF7A8899)
-internal val AccentRose = Color(0xFFE8B4BC)
 internal val CyanSoft = Color(0xFF6FD4D4)
 /** 浏览视觉中心：两色中值，偏亮灰白（横/竖屏共用） */
 internal val LyricBrowseSelect = lerp(Color(0xFFF8FAFC), Color(0xFFDCE6F0), 0.5f)
@@ -434,9 +298,6 @@ internal val OrbGlowPink = Color(0xFFE8A0C8)
 internal val OrbGlowBlue = Color(0xFF6EB8FF)
 internal val OrbGlowPurple = Color(0xFFB8A0FF)
 internal val OrbGlowPeach = Color(0xFFFFC9A8)
-internal val GlassStroke = Color.White.copy(alpha = 0.16f)
-internal val GlassHi = Color.White.copy(alpha = 0.14f)
-internal val GlassLo = Color.White.copy(alpha = 0.045f)
 
 /** 竖屏歌词阅读罩：全屏低透光磨砂（兼容任意自定义背景，避免局部卡片割裂） */
 internal fun portraitLyricReadingGlassStyle(veilStrength: Float): HazeStyle {
@@ -466,8 +327,8 @@ internal fun Color.scaledAlpha(factor: Float): Color =
 internal fun PortraitLyricReadingVeil(
     progress: Float,
     hazeState: HazeState?,
-    transparency: Float = 0f,
     modifier: Modifier = Modifier,
+    transparency: Float = 0f,
 ) {
     val t = progress.coerceIn(0f, 1f)
     if (t <= 0.001f) return
@@ -791,27 +652,4 @@ internal fun GeminiOrbsBackdrop(
             alpha = (0.18f * baseScale + 0.22f * ambience + 0.34f * glow).coerceIn(0f, 0.72f),
         )
     }
-}
-
-@Composable
-internal fun GlassPanel(
-    modifier: Modifier = Modifier,
-    compact: Boolean = false,
-    content: @Composable ColumnScope.() -> Unit,
-) {
-    Column(
-        modifier
-            .clip(RoundedCornerShape(if (compact) 18.dp else 24.dp))
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(GlassHi, GlassLo),
-                ),
-            )
-            .border(1.dp, GlassStroke, RoundedCornerShape(if (compact) 18.dp else 24.dp))
-            .padding(
-                horizontal = if (compact) 12.dp else 18.dp,
-                vertical = if (compact) 8.dp else 16.dp,
-            ),
-        content = content,
-    )
 }

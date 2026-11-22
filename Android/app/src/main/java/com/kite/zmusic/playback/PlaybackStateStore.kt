@@ -3,14 +3,15 @@ package com.kite.zmusic.playback
 import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
-import com.kite.zmusic.data.TrackRow
 import org.json.JSONArray
-import org.json.JSONObject
 
-/** 唯一播放队列持久化（迷你条恢复 / 续播元数据）。 */
-class PlaybackStateStore(context: Context) {
+/** 播放队列持久化（迷你条恢复 / 续播元数据）。默认同一个文件；音乐和播客另各存一份。 */
+class PlaybackStateStore(
+    context: Context,
+    prefsName: String = PREFS,
+) {
     private val prefs: SharedPreferences =
-        context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        context.applicationContext.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
 
     fun save(state: PlaybackUiState) {
         if (state.queue.isEmpty() || state.index < 0) {
@@ -31,11 +32,12 @@ class PlaybackStateStore(context: Context) {
                 .putString(KEY_SOURCE_TITLE, state.sourcePlaylistTitle)
                 .putBoolean(KEY_FM, state.fmActive)
                 .putBoolean(KEY_INTEL, state.intelligenceActive)
+                .putBoolean(KEY_PLAY, state.playWhenReady)
                 .apply()
         }.onFailure { Log.w(TAG, "save failed", it) }
     }
 
-    fun load(): PlaybackUiState? {
+    fun load(restorePlayIntent: Boolean = false): PlaybackUiState? {
         val raw = prefs.getString(KEY_QUEUE, null) ?: return null
         return runCatching {
             val arr = JSONArray(raw)
@@ -47,10 +49,12 @@ class PlaybackStateStore(context: Context) {
                 }
             }
             val index = prefs.getInt(KEY_INDEX, 0).coerceIn(0, queue.lastIndex)
+            val play = restorePlayIntent && prefs.getBoolean(KEY_PLAY, false)
             PlaybackUiState(
                 queue = queue,
                 index = index,
                 isPlaying = false,
+                playWhenReady = play,
                 buffering = false,
                 playbackMode = intToMode(prefs.getInt(KEY_MODE, 0)),
                 positionMs = prefs.getLong(KEY_POSITION, 0L),
@@ -94,5 +98,6 @@ class PlaybackStateStore(context: Context) {
         private const val KEY_SOURCE_TITLE = "source_title"
         private const val KEY_FM = "fm_active"
         private const val KEY_INTEL = "intelligence_active"
+        private const val KEY_PLAY = "play_when_ready"
     }
 }

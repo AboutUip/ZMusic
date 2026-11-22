@@ -874,7 +874,7 @@ open class CatalogViewModel(
             val cookie = sessionRepository.session.value?.cookie.orEmpty()
             try {
                 val (page, songsErr) = catalog.artistSongs(artistId, cookie, limit = 50, offset = 0)
-                var songs = page.songs
+                val songs = page.songs
                 val more = page.hasMore
                 val total = page.total
                 val tracks = songs.ifEmpty {

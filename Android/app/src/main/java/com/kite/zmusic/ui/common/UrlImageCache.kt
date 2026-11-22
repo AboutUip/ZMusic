@@ -124,6 +124,25 @@ object UrlImageCache {
         trimDiskLocked(context.applicationContext)
     }
 
+    /** 原图字节：本地地址直读，网络图优先磁盘缓存，没有再下载并写入缓存。 */
+    suspend fun loadBytes(context: Context, url: String): ByteArray? = withContext(Dispatchers.IO) {
+        val key = normalizeKey(url) ?: return@withContext null
+        if (isLocalMediaUri(key)) return@withContext readLocalBytes(context, key)
+        val file = diskFile(context, key)
+        if (file.isFile && file.length() > 0L) {
+            val cached = runCatching { file.readBytes() }.getOrNull()
+            if (cached != null && cached.isNotEmpty()) return@withContext cached
+        }
+        val bytes = runCatching {
+            client.newCall(imageRequest(key)).execute().use { resp ->
+                if (!resp.isSuccessful) null else resp.body?.bytes()?.takeIf { it.isNotEmpty() }
+            }
+        }.getOrNull() ?: return@withContext null
+        runCatching { file.writeBytes(bytes) }
+        trimDiskLocked(context.applicationContext)
+        bytes
+    }
+
     private fun trimDiskLocked(context: Context) {
         val dir = File(context.cacheDir, "zmusic_image_cache")
         if (!dir.isDirectory) return

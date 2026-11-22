@@ -58,6 +58,7 @@ fun <T> CommunityCatalogScaffold(
     emptySearchMessage: String,
     contentBottomInset: Dp,
     modifier: Modifier = Modifier,
+    header: (@Composable () -> Unit)? = null,
     itemKey: (T) -> String,
     itemContent: @Composable (T) -> Unit,
 ) {
@@ -115,6 +116,9 @@ fun <T> CommunityCatalogScaffold(
                 contentPadding = PaddingValues(bottom = contentBottomInset + 24.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
+                if (header != null) {
+                    item(key = "catalog-header") { header() }
+                }
                 when {
                     !ui.ready && !ui.failed -> {
                         item(key = "catalog-wait") {

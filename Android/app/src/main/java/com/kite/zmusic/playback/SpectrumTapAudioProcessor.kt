@@ -150,7 +150,6 @@ class SpectrumTapAudioProcessor(
 
         // 时域：最近 hop 窗 RMS + LPF 能量（鼓点主力）
         var tdE = 0f
-        var bassE = 0f
         val tdLen = HOP.coerceAtMost(FFT_SIZE)
         // 用当前 LPF 的瞬时近似：对 ring 末段做短窗
         for (i in 0 until tdLen) {
@@ -158,7 +157,7 @@ class SpectrumTapAudioProcessor(
             tdE += newest * newest
         }
         val tdRms = sqrt(tdE / tdLen.coerceAtLeast(1))
-        bassE = absLpfEnergy()
+        val bassE = absLpfEnergy()
 
         // 绝对标定（经验增益）；不做「相对峰值归一」
         val rawBass = squash(bassE * 14f + tdRms * 3.5f + fftLow * 6f)
@@ -209,7 +208,7 @@ class SpectrumTapAudioProcessor(
     /** 环形缓冲末段的低通能量近似。 */
     private fun absLpfEnergy(): Float {
         // 用状态 lpf 的 |y|；再扫一小段确认瞬态
-        var e = lpf * lpf
+        val e = lpf * lpf
         val n = (HOP / 2).coerceAtLeast(8)
         var acc = 0f
         for (i in 0 until n) {

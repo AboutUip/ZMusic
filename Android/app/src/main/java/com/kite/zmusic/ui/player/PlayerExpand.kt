@@ -73,6 +73,8 @@ internal data class PlayerExpandLook(
     val stageDest: Color = TextTheme.PlayerStage,
     /** 动态页白框不透明度。1 为实心，0 为透出虚化封面。 */
     val coverFrameAlpha: Float = 1f,
+    /** 专注页关掉黑胶时，飞层不再画盘面。 */
+    val showVinyl: Boolean = true,
 ) {
     companion object {
         fun from(prefs: PlayerDisplayPrefs, landscape: Boolean): PlayerExpandLook {
@@ -81,7 +83,8 @@ internal data class PlayerExpandLook(
             val squareCover = landscape &&
                 landscapePage == LandscapePlayerPageType.Dynamic
             val cinema = landscape &&
-                landscapePage == LandscapePlayerPageType.Cinema
+                (landscapePage == LandscapePlayerPageType.Cinema ||
+                    landscapePage == LandscapePlayerPageType.Movie)
             val titleMul = if (squareCover) {
                 25f / 13f
             } else if (landscape) {
@@ -121,6 +124,9 @@ internal data class PlayerExpandLook(
                 } else {
                     1f
                 },
+                showVinyl = !landscape ||
+                    landscapePage != LandscapePlayerPageType.Focus ||
+                    prefs.landscapeVinylVisible,
             )
         }
     }
@@ -763,13 +769,6 @@ internal fun flightCenterTranslation(src: Rect, dest: Rect, t: Float): Offset {
     return Offset(cx - src.width / 2f, cy - src.height / 2f)
 }
 
-internal fun coverRectInVinyl(vinyl: Rect): Rect {
-    val side = minOf(vinyl.width, vinyl.height) * VinylCoverFrac
-    val cx = vinyl.center.x
-    val cy = vinyl.center.y
-    val h = side / 2f
-    return Rect(cx - h, cy - h, cx + h, cy + h)
-}
 
 internal fun vinylRectFromCover(cover: Rect): Rect {
     val side = minOf(cover.width, cover.height) / VinylCoverFrac.coerceAtLeast(0.01f)

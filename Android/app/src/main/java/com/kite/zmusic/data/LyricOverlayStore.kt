@@ -26,7 +26,7 @@ data class LyricOverlayPrefs(
     val lyricBackground: Boolean = false,
     val playedColorArgb: Int = 0x99FFFFFF.toInt(),
     val currentColorArgb: Int = 0xFFFFFFFF.toInt(),
-    val upcomingColorArgb: Int = 0x66FFFFFF.toInt(),
+    val upcomingColorArgb: Int = 0x66FFFFFF,
     val fontSizeSp: Float = 16f,
     /** 有译文时显示翻译。默认开启，避免播放页开了翻译悬浮窗仍只显示原文。 */
     val preferTranslation: Boolean = true,
@@ -103,7 +103,7 @@ class LyricOverlayStore(context: Context) {
             lyricBackground = prefs.getBoolean(KEY_LYRIC_BG, false),
             playedColorArgb = prefs.getInt(KEY_COLOR_PLAYED, 0x99FFFFFF.toInt()),
             currentColorArgb = prefs.getInt(KEY_COLOR_CURRENT, 0xFFFFFFFF.toInt()),
-            upcomingColorArgb = prefs.getInt(KEY_COLOR_UPCOMING, 0x66FFFFFF.toInt()),
+            upcomingColorArgb = prefs.getInt(KEY_COLOR_UPCOMING, 0x66FFFFFF),
             fontSizeSp = prefs.getFloat(KEY_FONT, 16f),
             preferTranslation = prefs.getBoolean(KEY_TRANS, true),
             translationCoexist = prefs.getBoolean(KEY_TRANS_COEXIST, true),

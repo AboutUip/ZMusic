@@ -3,7 +3,9 @@
 package com.kite.zmusic.ui.player
 
 import android.annotation.SuppressLint
+import androidx.compose.material3.ExperimentalMaterial3Api
 import android.graphics.Color as AndroidColor
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -42,7 +44,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -89,6 +90,7 @@ import androidx.compose.ui.unit.sp
 import com.kite.zmusic.data.DanmakuRegion
 import com.kite.zmusic.data.LandscapePlayerPageType
 import com.kite.zmusic.data.PlayerDisplayPrefs
+import com.kite.zmusic.data.PortraitArtistPlacement
 import com.kite.zmusic.data.PreviewLyricAlign
 import com.kite.zmusic.data.TitleAlignMode
 import com.kite.zmusic.data.VinylColorStyle
@@ -922,6 +924,28 @@ fun NowPlayingSettingsSheet(
                         .verticalScroll(scrollState, enabled = previewKey == null),
                     verticalArrangement = Arrangement.spacedBy(18.dp),
                 ) {
+                    SettingsCategory(title = t("歌手"), titleAlpha = dim) {
+                        SettingsAlpha(dim) {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                SettingsSwitchRow(
+                                    title = t("竖屏显示歌手"),
+                                    subtitle = t("在竖屏播放页显示当前歌手，点击进入对应歌手页"),
+                                    checked = prefs.portraitArtistVisible,
+                                    colors = switchColors,
+                                    onCheckedChange = {
+                                        onPrefsChange(prefs.copy(portraitArtistVisible = it))
+                                    },
+                                )
+                                SettingsPortraitArtistPlaceRow(
+                                    selected = prefs.portraitArtistPlacement,
+                                    enabled = prefs.portraitArtistVisible,
+                                    onSelect = {
+                                        onPrefsChange(prefs.copy(portraitArtistPlacement = it))
+                                    },
+                                )
+                            }
+                        }
+                    }
                     SettingsCategory(title = t("氛围"), titleAlpha = dim) {
                         SettingsAlpha(dim) {
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1638,11 +1662,22 @@ fun NowPlayingSettingsSheet(
                                     onPrefsChange(prefs.copy(transportBottomInsetDp = it))
                                 },
                             )
+                            val vinylShown = prefs.landscapeVinylVisible
+                            SettingsSwitchRow(
+                                title = t("显示黑胶"),
+                                subtitle = t("关闭后只隐藏黑胶和相关动画，布局不变"),
+                                checked = vinylShown,
+                                colors = switchColors,
+                                onCheckedChange = {
+                                    onPrefsChange(prefs.copy(landscapeVinylVisible = it))
+                                },
+                            )
                             SettingsSwitchRow(
                                 title = t("黑胶选歌"),
                                 subtitle = t("横屏长按黑胶进入扑克牌式选歌"),
                                 checked = prefs.vinylSongPickEnabled,
                                 colors = switchColors,
+                                enabled = vinylShown,
                                 onCheckedChange = {
                                     onPrefsChange(prefs.copy(vinylSongPickEnabled = it))
                                 },
@@ -1652,6 +1687,7 @@ fun NowPlayingSettingsSheet(
                                 subtitle = t("垂直对齐屏幕中心，忽略垂直偏移"),
                                 checked = prefs.vinylAbsoluteCenter,
                                 colors = switchColors,
+                                enabled = vinylShown,
                                 onCheckedChange = {
                                     onPrefsChange(prefs.copy(vinylAbsoluteCenter = it))
                                 },
@@ -1662,6 +1698,7 @@ fun NowPlayingSettingsSheet(
                                 subtitle = t("显示封面周围的黑胶盘面"),
                                 checked = outerOn,
                                 colors = switchColors,
+                                enabled = vinylShown,
                                 onCheckedChange = {
                                     onPrefsChange(prefs.copy(vinylOuterEnabled = it))
                                 },
@@ -1675,7 +1712,7 @@ fun NowPlayingSettingsSheet(
                                 },
                                 checked = prefs.vinylFullCover,
                                 colors = switchColors,
-                                enabled = outerOn,
+                                enabled = vinylShown && outerOn,
                                 onCheckedChange = {
                                     onPrefsChange(prefs.copy(vinylFullCover = it))
                                 },
@@ -1686,6 +1723,7 @@ fun NowPlayingSettingsSheet(
                                 value = prefs.vinylSpinSpeed,
                                 valueRange = PlayerDisplayPrefs.VINYL_SPIN_SPEED_MIN..
                                     PlayerDisplayPrefs.VINYL_SPIN_SPEED_MAX,
+                                enabled = vinylShown,
                                 onValueChange = {
                                     onPrefsChange(prefs.copy(vinylSpinSpeed = it))
                                 },
@@ -1696,6 +1734,7 @@ fun NowPlayingSettingsSheet(
                                 value = prefs.vinylSizeScale,
                                 valueRange = PlayerDisplayPrefs.VINYL_SIZE_SCALE_MIN..
                                     PlayerDisplayPrefs.VINYL_SIZE_SCALE_MAX,
+                                enabled = vinylShown,
                                 onValueChange = { onPrefsChange(prefs.copy(vinylSizeScale = it)) },
                             )
                             SettingsSliderRow(
@@ -1704,7 +1743,7 @@ fun NowPlayingSettingsSheet(
                                 value = prefs.vinylOuterScale,
                                 valueRange = PlayerDisplayPrefs.VINYL_OUTER_SCALE_MIN..
                                     PlayerDisplayPrefs.VINYL_OUTER_SCALE_MAX,
-                                enabled = outerOn,
+                                enabled = vinylShown && outerOn,
                                 onValueChange = { onPrefsChange(prefs.copy(vinylOuterScale = it)) },
                             )
                             SettingsSliderRow(
@@ -1716,14 +1755,14 @@ fun NowPlayingSettingsSheet(
                                 value = prefs.vinylCenterRadiusFrac,
                                 valueRange = PlayerDisplayPrefs.VINYL_CENTER_RADIUS_MIN..
                                     PlayerDisplayPrefs.VINYL_CENTER_RADIUS_MAX,
-                                enabled = outerOn && !prefs.vinylFullCover,
+                                enabled = vinylShown && outerOn && !prefs.vinylFullCover,
                                 onValueChange = {
                                     onPrefsChange(prefs.copy(vinylCenterRadiusFrac = it))
                                 },
                             )
                             SettingsVinylColorRow(
                                 prefs = prefs,
-                                enabled = outerOn,
+                                enabled = vinylShown && outerOn,
                                 onPrefsChange = onPrefsChange,
                                 onOpenCustomEditor = onOpenVinylColorEditor,
                             )
@@ -1733,6 +1772,7 @@ fun NowPlayingSettingsSheet(
                                 value = prefs.vinylGestureDamping,
                                 valueRange = PlayerDisplayPrefs.VINYL_GESTURE_DAMPING_MIN..
                                     PlayerDisplayPrefs.VINYL_GESTURE_DAMPING_MAX,
+                                enabled = vinylShown,
                                 onValueChange = {
                                     onPrefsChange(prefs.copy(vinylGestureDamping = it))
                                 },
@@ -1743,6 +1783,7 @@ fun NowPlayingSettingsSheet(
                                 value = prefs.vinylOffsetXDp,
                                 valueRange = PlayerDisplayPrefs.VINYL_OFFSET_MIN..
                                     PlayerDisplayPrefs.VINYL_OFFSET_MAX,
+                                enabled = vinylShown,
                                 onValueChange = { onPrefsChange(prefs.copy(vinylOffsetXDp = it)) },
                             )
                             SettingsSliderRow(
@@ -1751,7 +1792,7 @@ fun NowPlayingSettingsSheet(
                                 value = prefs.vinylOffsetYDp,
                                 valueRange = PlayerDisplayPrefs.VINYL_OFFSET_Y_MIN..
                                     PlayerDisplayPrefs.VINYL_OFFSET_Y_MAX,
-                                enabled = !prefs.vinylAbsoluteCenter,
+                                enabled = vinylShown && !prefs.vinylAbsoluteCenter,
                                 onValueChange = { onPrefsChange(prefs.copy(vinylOffsetYDp = it)) },
                             )
                         }
@@ -1841,6 +1882,69 @@ fun NowPlayingSettingsSheet(
                                     onPreviewDrag(SettingsPreviewKey.DynamicCoverOffsetX, it)
                                 },
                             )
+                        }
+                    }
+                } else if (prefs.landscapePageType.displayed() == LandscapePlayerPageType.Movie) {
+                    SettingsCategory(title = t("电影"), titleAlpha = dim) {
+                        SettingsAlpha(dim) {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                SettingsSwitchRow(
+                                    title = t("自定义背景"),
+                                    subtitle = t("开启后可配置并启用全屏沉浸背景"),
+                                    checked = prefs.customBackgroundEnabled,
+                                    colors = switchColors,
+                                    onCheckedChange = {
+                                        onPrefsChange(prefs.copy(customBackgroundEnabled = it))
+                                    },
+                                )
+                                SettingsActionRow(
+                                    title = t("背景调控"),
+                                    subtitle = if (prefs.customBackgroundEnabled) {
+                                        t("5 预设 · 图片 / GIF / 静音视频")
+                                    } else {
+                                        t("先开启自定义背景")
+                                    },
+                                    actionLabel = t("编辑"),
+                                    enabled = prefs.customBackgroundEnabled,
+                                    onClick = onOpenCustomBackgroundEditor,
+                                )
+                                SettingsSwitchRow(
+                                    title = t("3D 点阵"),
+                                    subtitle = t("点阵立方体、圆柱和棱锥散落在镜头前后，随运镜产生纵深"),
+                                    checked = prefs.movieDotShapes,
+                                    colors = switchColors,
+                                    onCheckedChange = {
+                                        onPrefsChange(prefs.copy(movieDotShapes = it))
+                                    },
+                                )
+                                SettingsSwitchRow(
+                                    title = t("随节拍律动"),
+                                    subtitle = t("背景、点阵和高亮字跟随低频与高频轻轻呼吸"),
+                                    checked = prefs.movieSpectrumPulse,
+                                    colors = switchColors,
+                                    onCheckedChange = {
+                                        onPrefsChange(prefs.copy(movieSpectrumPulse = it))
+                                    },
+                                )
+                                SettingsSwitchRow(
+                                    title = t("底部预告歌词"),
+                                    subtitle = t("画面底部用小字预告接下来两句"),
+                                    checked = prefs.movieUpcomingLines,
+                                    colors = switchColors,
+                                    onCheckedChange = {
+                                        onPrefsChange(prefs.copy(movieUpcomingLines = it))
+                                    },
+                                )
+                                Text(
+                                    text = t("歌词摆在三维空间里，换句时镜头推到下一句前面 · 背景沿用专注模式的自定义背景 · 点击屏幕呼出控制栏"),
+                                    style = TextStyle(
+                                        color = LocalSettingsChrome.current.hint,
+                                        fontSize = 12.sp,
+                                        lineHeight = 17.sp,
+                                    ),
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                                )
+                            }
                         }
                     }
                 } else {
@@ -2152,6 +2256,7 @@ private fun SettingsLandscapePageTypeRow(
             LandscapePlayerPageType.Focus -> t("专注")
             LandscapePlayerPageType.Dynamic -> t("动态")
             LandscapePlayerPageType.Cinema -> t("影院")
+            LandscapePlayerPageType.Movie -> t("电影")
         }
     }
     val selectedIndex = modes.indexOf(selected).coerceAtLeast(0)
@@ -2185,7 +2290,7 @@ private fun SettingsLandscapePageTypeRow(
         )
         Spacer(Modifier.height(2.dp))
         Text(
-            text = t("专注黑胶或动态景深 · 滑动或点选"),
+            text = t("专注黑胶、动态景深或电影字幕 · 滑动或点选"),
             style = TextStyle(
                 color = chrome.hint,
                 fontFamily = FontFamily.SansSerif,
@@ -2977,6 +3082,145 @@ private fun SettingsPreviewHueBar(
                 center = Offset(x, size.height / 2f),
                 style = Stroke(width = 2.5f),
             )
+        }
+    }
+}
+
+@Composable
+private fun SettingsPortraitArtistPlaceRow(
+    selected: PortraitArtistPlacement,
+    enabled: Boolean,
+    onSelect: (PortraitArtistPlacement) -> Unit,
+) {
+    val chrome = LocalSettingsChrome.current
+    val enT by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (enabled) 1f else 0.40f,
+        animationSpec = tween(280, easing = FastOutSlowInEasing),
+        label = "portraitArtistPlaceEn",
+    )
+    val options = listOf(
+        PortraitArtistPlacement.Below to t("歌名下方"),
+        PortraitArtistPlacement.Append to t("歌名末尾"),
+    )
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .graphicsLayer { alpha = enT }
+            .clip(RowShape)
+            .background(chrome.rowBg)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+    ) {
+        Text(
+            text = t("歌手显示位置"),
+            style = TextStyle(
+                color = chrome.label,
+                fontFamily = FontFamily.SansSerif,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = if (chrome.light) 15.sp else 14.sp,
+                shadow = chrome.titleShadow,
+            ),
+        )
+        Spacer(Modifier.height(2.dp))
+        Text(
+            text = if (enabled) {
+                t("默认在歌名正下方；也可接到末尾，用 · 隔开")
+            } else {
+                t("先开启竖屏显示歌手")
+            },
+            style = TextStyle(
+                color = chrome.hint,
+                fontFamily = if (chrome.light) FontFamily.SansSerif else FontFamily.Monospace,
+                fontSize = if (chrome.light) 12.sp else 9.sp,
+                letterSpacing = if (chrome.light) 0.sp else 0.3.sp,
+                lineHeight = if (chrome.light) 16.sp else 12.sp,
+                shadow = chrome.titleShadow,
+            ),
+        )
+        Spacer(Modifier.height(10.dp))
+        val selectedIndex = options.indexOfFirst { it.first == selected }.coerceAtLeast(0)
+        val indicator by androidx.compose.animation.core.animateFloatAsState(
+            targetValue = selectedIndex.toFloat(),
+            animationSpec = spring(dampingRatio = 0.78f, stiffness = 380f),
+            label = "portraitArtistPlaceThumb",
+        )
+        val gap = 8.dp
+        BoxWithConstraints(Modifier.fillMaxWidth().height(36.dp)) {
+            val segment = (maxWidth - gap * (options.size - 1)) / options.size
+            Row(
+                Modifier.fillMaxSize(),
+                horizontalArrangement = Arrangement.spacedBy(gap),
+            ) {
+                options.forEach { (mode, _) ->
+                    Box(
+                        Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(MainPalette.TrackOff)
+                            .clickable(
+                                enabled = enabled,
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = { onSelect(mode) },
+                            ),
+                    )
+                }
+            }
+            Box(
+                Modifier
+                    .offset {
+                        val step = (segment + gap).toPx()
+                        IntOffset((step * indicator).roundToInt(), 0)
+                    }
+                    .width(segment)
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(
+                        if (enabled) {
+                            MainPalette.Accent.copy(alpha = 0.22f)
+                        } else {
+                            Color.Transparent
+                        },
+                    ),
+            )
+            Row(
+                Modifier.fillMaxSize(),
+                horizontalArrangement = Arrangement.spacedBy(gap),
+            ) {
+                options.forEach { (mode, label) ->
+                    val active = selected == mode
+                    val labelColor by animateColorAsState(
+                        targetValue = if (active && enabled) MainPalette.Accent else chrome.hint,
+                        animationSpec = tween(280, easing = FastOutSlowInEasing),
+                        label = "portraitArtistPlaceLabel",
+                    )
+                    Box(
+                        Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .clickable(
+                                enabled = enabled,
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = { onSelect(mode) },
+                            )
+                            .padding(horizontal = 4.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = label,
+                            style = TextStyle(
+                                color = labelColor,
+                                fontFamily = FontFamily.SansSerif,
+                                fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
+                                fontSize = 12.sp,
+                                textAlign = TextAlign.Center,
+                            ),
+                            maxLines = 1,
+                        )
+                    }
+                }
+            }
         }
     }
 }

@@ -70,7 +70,10 @@ class BetterNcmAndroidBridge(
         }
     }
 
-    fun openFile(filter: String, initialDir: String): String {
+    fun openFile(
+        filter: String,
+        @Suppress("UNUSED_PARAMETER") initialDir: String,
+    ): String {
         val launcher = fileLauncher ?: return ""
         val host = activity ?: return ""
         if (host.isDestroyed) return ""
@@ -98,7 +101,7 @@ class BetterNcmAndroidBridge(
         if (script.isEmpty()) return
         val host = activity ?: return
         host.runOnUiThread {
-            val view = views.getOrPut(pluginId) { createView(host, pluginId) }
+            val view = views.getOrPut(pluginId) { createView(host) }
             view.evaluateJavascript(script, null)
         }
     }
@@ -113,7 +116,7 @@ class BetterNcmAndroidBridge(
     }
 
     @SuppressLint("SetJavaScriptEnabled")
-    private fun createView(host: Activity, pluginId: String): WebView {
+    private fun createView(host: Activity): WebView {
         val view = WebView(host)
         val settings = view.settings
         settings.javaScriptEnabled = true

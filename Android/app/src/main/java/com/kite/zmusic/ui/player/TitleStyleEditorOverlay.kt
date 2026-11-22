@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -207,10 +206,8 @@ private fun titleStyleMorphT(progress: Float): Float {
 @Composable
 fun TitleStyleEditorOverlay(
     draftName: TitleLineStyle,
-    draftArtist: TitleLineStyle,
     draftSource: TitleLineStyle,
     onDraftNameChange: (TitleLineStyle) -> Unit,
-    onDraftArtistChange: (TitleLineStyle) -> Unit,
     onDraftSourceChange: (TitleLineStyle) -> Unit,
     hazeState: HazeState,
     progress: Float,
@@ -404,13 +401,12 @@ fun TitleStyleEditorOverlay(
 fun TitleStyleCloneLayer(
     snapshot: TitleStyleSnapshot,
     draftName: TitleLineStyle,
-    draftArtist: TitleLineStyle,
     draftSource: TitleLineStyle,
     progress: Float,
     targetSlot: TitleStylePreviewSlot?,
+    modifier: Modifier = Modifier,
     uiScale: Float = 1f,
     contentAlpha: Float = 1f,
-    modifier: Modifier = Modifier,
 ) {
     val alpha = contentAlpha.coerceIn(0f, 1f)
     if (alpha <= 0.001f) return

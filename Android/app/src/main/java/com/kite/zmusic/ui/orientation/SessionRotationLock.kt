@@ -22,6 +22,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kite.zmusic.ZMusicApplication
+import com.kite.zmusic.data.OrientationLock
 
 /**
  * 主动竖→横时同步钉住蒙版（不延后改方向）。
@@ -71,6 +72,12 @@ object SessionRotationLockStore {
     }
 
     fun toggle(activity: Activity?) = setLocked(activity, !locked)
+
+    /** 清掉会话钉，不改 [Activity.requestedOrientation]。持久方向锁接着写入自己的方向。 */
+    fun relinquish() {
+        locked = false
+        lockedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+    }
 
     /**
      * 系统旋转锁定开启时：「确定旋转」——立刻改方向。
@@ -178,6 +185,13 @@ fun rememberLandscapeModeEnabled(): Boolean {
     val app = LocalContext.current.applicationContext as? ZMusicApplication ?: return true
     val enabled by app.landscapeModeStore.enabled.collectAsStateWithLifecycle()
     return enabled
+}
+
+@Composable
+fun rememberOrientationLock(): OrientationLock {
+    val app = LocalContext.current.applicationContext as? ZMusicApplication ?: return OrientationLock.Auto
+    val lock by app.landscapeModeStore.orientationLock.collectAsStateWithLifecycle()
+    return lock
 }
 
 /**

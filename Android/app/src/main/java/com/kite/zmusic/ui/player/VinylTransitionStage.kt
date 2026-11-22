@@ -129,9 +129,9 @@ fun VinylTransitionStage(
     gesturesEnabled: Boolean,
     onTransitionRunningChange: (Boolean) -> Unit,
     onCommitSkip: (VinylSkipDirection) -> Unit,
+    modifier: Modifier = Modifier,
     /** 当前落定展示的黑胶曲目（含手势已提交、播放状态尚未重组时） */
     onSettledTrackChange: (TrackRow) -> Unit = {},
-    modifier: Modifier = Modifier,
     fullCover: Boolean = false,
     /**
      * 中心黑胶半径（相对整体大小 = 100% 的基准盘）：封面中心挖孔外缘；
@@ -956,9 +956,9 @@ internal fun VinylDiscFace(
     fullCover: Boolean,
     centerRadiusFrac: Float,
     outerScale: Float,
+    modifier: Modifier = Modifier,
     showOuterPlate: Boolean = true,
     plateColors: VinylPlateColors,
-    modifier: Modifier = Modifier,
     spinGen: Int = 0,
     /** 与 spinGen 同源；动画帧内同步读取，不依赖重组后的 rememberUpdatedState */
     spinEpoch: IntArray? = null,

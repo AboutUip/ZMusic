@@ -49,6 +49,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kite.zmusic.plugin.PluginDebugProbe
+import com.kite.zmusic.ui.home.homeStageHorizontalContent
 import com.kite.zmusic.ui.icons.ZIcons
 import com.kite.zmusic.ui.theme.TextTheme
 import com.kyant.backdrop.Backdrop
@@ -79,6 +80,7 @@ fun FloatingTabDock(
 
     Row(
         modifier
+            .homeStageHorizontalContent()
             .widthIn(
                 min = if (landscape) 280.dp else 248.dp,
                 max = when {

@@ -1,19 +1,27 @@
 package com.kite.zmusic.ui.settings
 
+import android.app.Activity
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import androidx.activity.compose.LocalActivity
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -23,6 +31,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -34,6 +43,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
@@ -44,12 +55,19 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
@@ -75,6 +93,7 @@ import com.kite.zmusic.BuildConfig
 import com.kite.zmusic.R
 import com.kite.zmusic.ZMusicApplication
 import com.kite.zmusic.data.AppAppearance
+import com.kite.zmusic.data.OrientationLock
 import com.kite.zmusic.data.ChromeGlassStyle
 import com.kite.zmusic.data.LongLyricRender
 import com.kite.zmusic.data.LyricWordRender
@@ -98,6 +117,7 @@ import com.kite.zmusic.ui.chrome.chromePage
 import com.kite.zmusic.ui.chrome.LocalWallpaperViewport
 import com.kite.zmusic.ui.common.predictiveBackLayer
 import com.kite.zmusic.ui.common.rememberPredictiveBackUi
+import com.kite.zmusic.ui.orientation.OrientationLockApplier
 import com.kite.zmusic.ui.main.LandscapeCoverEnter
 import com.kite.zmusic.ui.main.LandscapeCoverExit
 import com.kite.zmusic.ui.main.LocalWallpaperItemChrome
@@ -105,13 +125,21 @@ import com.kite.zmusic.ui.main.MainPalette
 import com.kite.zmusic.ui.main.wallpaperItemChrome
 import com.kite.zmusic.ui.notice.showIslandNotice
 import com.kite.zmusic.ui.player.LongLyricSettingsPage
+import com.kite.zmusic.ui.player.LyricMotionSettingsPage
 import com.kite.zmusic.ui.player.WordLyricSettingsPage
+import com.kite.zmusic.ui.player.lyricMotionLabel
+import com.kite.zmusic.ui.player.lyricMotionListSubtitle
 import com.kite.zmusic.ui.server.CommunityServerViewModel
 import com.kite.zmusic.ui.server.CommunityServerViewModelFactory
 import com.kite.zmusic.ui.server.ServerConfigViewModel
 import com.kite.zmusic.ui.server.ServerConfigViewModelFactory
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+
+enum class SettingsAudience {
+    Music,
+    Podcast,
+}
 
 private const val AboutGithubUrl = "https://github.com/AboutUip/ZMusic"
 private const val AboutQqGroupId = "1015814598"
@@ -125,8 +153,11 @@ fun SettingsScreen(
     onBack: () -> Unit,
     onLogout: () -> Unit,
     modifier: Modifier = Modifier,
+    audience: SettingsAudience = SettingsAudience.Music,
 ) {
+    val podcastAudience = audience == SettingsAudience.Podcast
     val context = LocalContext.current
+    val activity = LocalActivity.current ?: context as? Activity
     val landscape = LocalConfiguration.current.orientation ==
         android.content.res.Configuration.ORIENTATION_LANDSCAPE
     val serverConfig = remember { ServerConfigRepository(context.applicationContext) }
@@ -192,6 +223,7 @@ fun SettingsScreen(
     val realtimeCacheVisible = remember { MutableTransitionState(false) }
     val wordLyricVisible = remember { MutableTransitionState(false) }
     val longLyricVisible = remember { MutableTransitionState(false) }
+    val lyricMotionVisible = remember { MutableTransitionState(false) }
     val predictiveBackVisible = remember { MutableTransitionState(false) }
     val splashAccelVisible = remember { MutableTransitionState(false) }
     val quickSkipVisible = remember { MutableTransitionState(false) }
@@ -235,6 +267,7 @@ fun SettingsScreen(
         (context.applicationContext as ZMusicApplication).landscapeModeStore
     }
     val landscapeMode by landscapeModeStore.enabled.collectAsStateWithLifecycle()
+    val orientationLock by landscapeModeStore.orientationLock.collectAsStateWithLifecycle()
     val ignoreStatusBarStore = remember { app.ignoreStatusBarStore }
     val ignoreStatusBar by ignoreStatusBarStore.enabled.collectAsStateWithLifecycle()
     val playbackChromeStore = remember { app.playbackChromeStore }
@@ -256,6 +289,8 @@ fun SettingsScreen(
     }
     val lyricWordRender by lyricRenderStore.wordRender.collectAsStateWithLifecycle()
     val longLyric by lyricRenderStore.longLine.collectAsStateWithLifecycle()
+    val lyricEnterMotion by lyricRenderStore.enterMotion.collectAsStateWithLifecycle()
+    val lyricExitMotion by lyricRenderStore.exitMotion.collectAsStateWithLifecycle()
     val glassStore = remember {
         (context.applicationContext as ZMusicApplication).chromeGlassStore
     }
@@ -276,6 +311,8 @@ fun SettingsScreen(
     var glassDraft by remember { mutableStateOf(glassStyle) }
     var confirmGlassLeave by remember { mutableStateOf(false) }
     var showAppreciate by remember { mutableStateOf(false) }
+    var appreciateAlipay by remember { mutableStateOf(false) }
+    var settingsQuery by remember { mutableStateOf("") }
     var legalKind by remember { mutableStateOf<AboutLegalKind?>(null) }
     val legalVisible = remember { MutableTransitionState(false) }
     val reveal = remember { Animatable(0f) }
@@ -317,7 +354,12 @@ fun SettingsScreen(
     Box(
         modifier
             .fillMaxSize()
-            .chromePage(),
+            .chromePage()
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = {},
+            ),
     ) {
         Column(
             Modifier
@@ -328,6 +370,13 @@ fun SettingsScreen(
                 title = t("设置"),
                 onBack = onBack,
             )
+            SettingsQueryField(
+                query = settingsQuery,
+                onQueryChange = { settingsQuery = it },
+                modifier = Modifier
+                    .padding(horizontal = 20.dp)
+                    .padding(top = 2.dp, bottom = 6.dp),
+            )
             Column(
                 Modifier
                     .weight(1f)
@@ -337,515 +386,492 @@ fun SettingsScreen(
                     .padding(bottom = contentBottomInset + 16.dp),
             ) {
                 Spacer(Modifier.height(8.dp))
-                SettingsGroup(
-                    title = t("扩展"),
-                    reveal = reveal.value,
-                    delay = 0f,
-                ) {
-                    SettingsRow(
-                        title = t("客户端平台"),
-                        subtitle = platformLabel(platform),
-                        icon = ZIcons.Extension,
-                        tint = Color(0xFF2F6FED),
-                        onClick = { platformVisible.targetState = true },
+                val extensionItems = if (podcastAudience) {
+                    emptyList()
+                } else {
+                    listOf(
+                        SettingsIndexItem(
+                            key = "platform",
+                            title = t("客户端平台"),
+                            subtitle = platformLabel(platform),
+                            icon = ZIcons.Extension,
+                            tint = Color(0xFF2F6FED),
+                            keywords = t("音源 网易 汽水"),
+                            onClick = { platformVisible.targetState = true },
+                        ),
                     )
                 }
-                Spacer(Modifier.height(16.dp))
-                SettingsGroup(
-                    title = t("连接"),
-                    reveal = reveal.value,
-                    delay = 0f,
-                ) {
-                    SettingsRow(
-                        title = t("服务器"),
-                        subtitle = endpointLabel,
-                        icon = ZIcons.Server,
-                        tint = Color(0xFF5070F0),
-                        onClick = {
-                            vm.reloadFromStore()
-                            editServer = true
-                        },
+                val connectionItems = buildList {
+                    add(
+                        SettingsIndexItem(
+                            key = "music-server",
+                            title = t("音乐服务器"),
+                            subtitle = endpointLabel,
+                            icon = ZIcons.Server,
+                            tint = Color(0xFF5070F0),
+                            keywords = t("接口 地址"),
+                            onClick = {
+                                vm.reloadFromStore()
+                                editServer = true
+                            },
+                        ),
                     )
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(start = 62.dp)
-                            .height(0.5.dp)
-                            .background(MainPalette.Hairline),
+                    add(
+                        SettingsIndexItem(
+                            key = "community-server",
+                            title = t("社区服务器"),
+                            subtitle = communityLabel,
+                            icon = ZIcons.Handshake,
+                            tint = Color(0xFF6B5CE7),
+                            keywords = t("社区"),
+                            onClick = {
+                                communityVm.reloadFromStore()
+                                editCommunity = true
+                            },
+                        ),
                     )
-                    SettingsRow(
-                        title = t("社区服务器"),
-                        subtitle = communityLabel,
-                        icon = ZIcons.Handshake,
-                        tint = Color(0xFF6B5CE7),
-                        onClick = {
-                            communityVm.reloadFromStore()
-                            editCommunity = true
-                        },
-                    )
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(start = 62.dp)
-                            .height(0.5.dp)
-                            .background(MainPalette.Hairline),
-                    )
-                    SettingsRow(
-                        title = t("UApiPro"),
-                        subtitle = uapiProSubtitle,
-                        icon = ZIcons.Extension,
-                        tint = Color(0xFF0EA5A0),
-                        onClick = {
-                            uapiProSaveToken = 0
-                            uapiProVisible.targetState = true
-                        },
-                    )
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(start = 62.dp)
-                            .height(0.5.dp)
-                            .background(MainPalette.Hairline),
-                    )
-                    SettingsRow(
-                        title = t("BetterNCM"),
-                        subtitle = betterNcmSubtitle,
-                        icon = ZIcons.Workshop,
-                        tint = Color(0xFF7C5CBF),
-                        onClick = {
-                            betterNcmSaveToken = 0
-                            betterNcmVisible.targetState = true
-                        },
-                    )
-                }
-                Spacer(Modifier.height(22.dp))
-                SettingsGroup(
-                    title = t("播放"),
-                    reveal = reveal.value,
-                    delay = 0.08f,
-                ) {
-                    SettingsRow(
-                        title = t("音源默认质量"),
-                        subtitle = "${audioQuality.title} · ${audioQuality.caption}",
-                        icon = ZIcons.GraphicEq,
-                        tint = Color(0xFFB08D57),
-                        onClick = { qualityVisible.targetState = true },
-                    )
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(start = 62.dp)
-                            .height(0.5.dp)
-                            .background(MainPalette.Hairline),
-                    )
-                    SettingsRow(
-                        title = t("持续播放"),
-                        subtitle = if (persistentPlayback) {
-                            t("已开启 · 与其他应用同时出声")
-                        } else {
-                            t("已关闭 · 按系统规则让出")
-                        },
-                        icon = ZIcons.Headset,
-                        tint = Color(0xFF2E9B6B),
-                        onClick = { persistentPlaybackVisible.targetState = true },
-                    )
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(start = 62.dp)
-                            .height(0.5.dp)
-                            .background(MainPalette.Hairline),
-                    )
-                    SettingsRow(
-                        title = t("逐字歌词"),
-                        subtitle = when (lyricWordRender) {
-                            LyricWordRender.Word -> t("按字渲染 · 需歌曲提供逐字歌词")
-                            LyricWordRender.Width -> t("按字宽渲染 · 需歌曲提供逐字歌词")
-                            LyricWordRender.Line -> t("按行渲染")
-                        },
-                        icon = ZIcons.Lyrics,
-                        tint = Color(0xFF5B8DEF),
-                        onClick = { wordLyricVisible.targetState = true },
-                    )
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(start = 62.dp)
-                            .height(0.5.dp)
-                            .background(MainPalette.Hairline),
-                    )
-                    SettingsRow(
-                        title = t("长歌词渲染"),
-                        subtitle = if (longLyric == LongLyricRender.Horizontal) {
-                            t("水平自然滚动")
-                        } else {
-                            t("换行渲染")
-                        },
-                        icon = ZIcons.SwapHoriz,
-                        tint = Color(0xFF3AAFA9),
-                        onClick = { longLyricVisible.targetState = true },
-                    )
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(start = 62.dp)
-                            .height(0.5.dp)
-                            .background(MainPalette.Hairline),
-                    )
-                    SettingsRow(
-                        title = t("快速切歌"),
-                        subtitle = quickSkipSubtitle(miniQuickSkip),
-                        icon = ZIcons.SkipNext,
-                        tint = Color(0xFFC45C7A),
-                        onClick = { quickSkipVisible.targetState = true },
-                    )
-                }
-                Spacer(Modifier.height(22.dp))
-                SettingsGroup(
-                    title = t("缓存"),
-                    reveal = reveal.value,
-                    delay = 0.12f,
-                ) {
-                    SettingsRow(
-                        title = t("下载加速"),
-                        subtitle = if (downloadAccel) {
-                            t("已开启 · 命中本机缓存则跳过网络")
-                        } else {
-                            t("已关闭 · 始终按音质在线拉取")
-                        },
-                        icon = ZIcons.Speed,
-                        tint = Color(0xFF3D9B8F),
-                        onClick = { cacheVisible.targetState = true },
-                    )
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(start = 62.dp)
-                            .height(0.5.dp)
-                            .background(MainPalette.Hairline),
-                    )
-                    SettingsRow(
-                        title = t("实时缓存"),
-                        subtitle = if (realtimeCachePrefs.enabled) {
-                            t("已开启 · %s模式", realtimeCachePrefs.mode.title)
-                        } else {
-                            t("已关闭 · 不采样不走本地缓存")
-                        },
-                        icon = ZIcons.Storage,
-                        tint = Color(0xFF5070F0),
-                        onClick = { realtimeCacheVisible.targetState = true },
-                    )
-                }
-                Spacer(Modifier.height(22.dp))
-                SettingsGroup(
-                    title = t("主题"),
-                    reveal = reveal.value,
-                    delay = 0.14f,
-                ) {
-                    SettingsRow(
-                        title = t("语言"),
-                        subtitle = if (languageChoice == LanguageChoice.Auto) {
-                            t("自动 · %s", language.nativeName)
-                        } else {
-                            language.nativeName
-                        },
-                        icon = ZIcons.Translate,
-                        tint = Color(0xFF3D8BFF),
-                        onClick = { languageVisible.targetState = true },
-                    )
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(start = 62.dp)
-                            .height(0.5.dp)
-                            .background(MainPalette.Hairline),
-                    )
-                    SettingsRow(
-                        title = t("外观"),
-                        subtitle = appearance.subtitle,
-                        icon = ZIcons.DarkMode,
-                        tint = Color(0xFF6B7CFF),
-                        onClick = { appearanceVisible.targetState = true },
-                    )
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(start = 62.dp)
-                            .height(0.5.dp)
-                            .background(MainPalette.Hairline),
-                    )
-                    SettingsRow(
-                        title = t("液态玻璃样式"),
-                        subtitle = glassStyle.settingsSubtitle,
-                        icon = ZIcons.BlurOn,
-                        tint = Color(0xFF2BB3B0),
-                        onClick = {
-                            glassDraft = glassStore.current()
-                            glassVisible.targetState = true
-                        },
-                    )
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(start = 62.dp)
-                            .height(0.5.dp)
-                            .background(MainPalette.Hairline),
-                    )
-                    SettingsRow(
-                        title = t("自定义背景"),
-                        subtitle = wallpaper.settingsSubtitle,
-                        icon = ZIcons.Wallpaper,
-                        tint = Color(0xFF8B6BFF),
-                        onClick = { wallpaperVisible.targetState = true },
-                    )
-                }
-                Spacer(Modifier.height(22.dp))
-                SettingsGroup(
-                    title = t("应用"),
-                    reveal = reveal.value,
-                    delay = 0.20f,
-                ) {
-                    SettingsRow(
-                        title = t("权限"),
-                        subtitle = permissionSnapshot.subtitle,
-                        icon = ZIcons.Security,
-                        tint = Color(0xFF5E5CE6),
-                        onClick = { permissionsVisible.targetState = true },
-                    )
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(start = 62.dp)
-                            .height(0.5.dp)
-                            .background(MainPalette.Hairline),
-                    )
-                    SettingsRow(
-                        title = t("隐私"),
-                        subtitle = if (songUnlockGray) {
-                            t("歌曲解灰已开启")
-                        } else {
-                            t("默认关闭敏感能力")
-                        },
-                        icon = ZIcons.Lock,
-                        tint = Color(0xFF8E4EC6),
-                        onClick = { privacyVisible.targetState = true },
-                    )
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(start = 62.dp)
-                            .height(0.5.dp)
-                            .background(MainPalette.Hairline),
-                    )
-                    SettingsRow(
-                        title = t("预测性返回"),
-                        subtitle = if (predictiveBack) {
-                            t("已开启 · 侧滑跟手预览")
-                        } else {
-                            t("已关闭 · 返回不跟手（默认）")
-                        },
-                        icon = ZIcons.Swipe,
-                        tint = Color(0xFF3D7CFF),
-                        onClick = { predictiveBackVisible.targetState = true },
-                    )
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(start = 62.dp)
-                            .height(0.5.dp)
-                            .background(MainPalette.Hairline),
-                    )
-                    SettingsRow(
-                        title = t("加速启动动画"),
-                        subtitle = splashAccelSubtitle(splashAccel),
-                        icon = ZIcons.Speed,
-                        tint = Color(0xFFE07A3D),
-                        onClick = { splashAccelVisible.targetState = true },
-                    )
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(start = 62.dp)
-                            .height(0.5.dp)
-                            .background(MainPalette.Hairline),
-                    )
-                    SettingsRow(
-                        title = t("横屏模式"),
-                        subtitle = landscapeModeSubtitle(landscapeMode),
-                        icon = ZIcons.ScreenRotation,
-                        tint = Color(0xFF4A8FA8),
-                        onClick = { landscapeModeVisible.targetState = true },
-                    )
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(start = 62.dp)
-                            .height(0.5.dp)
-                            .background(MainPalette.Hairline),
-                    )
-                    SettingsRow(
-                        title = t("忽略状态栏"),
-                        subtitle = ignoreStatusBarSubtitle(ignoreStatusBar),
-                        icon = ZIcons.Fullscreen,
-                        tint = Color(0xFF5C6BC0),
-                        onClick = { ignoreStatusBarVisible.targetState = true },
-                    )
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(start = 62.dp)
-                            .height(0.5.dp)
-                            .background(MainPalette.Hairline),
-                    )
-                    SettingsRow(
-                        title = t("播放组件模式"),
-                        subtitle = playbackChromeSubtitle(playbackChrome),
-                        icon = ZIcons.MusicNote,
-                        tint = Color(0xFFE07A5F),
-                        onClick = { playbackChromeVisible.targetState = true },
-                    )
-                }
-                if (pluginSettingRows.isNotEmpty()) {
-                    Spacer(Modifier.height(22.dp))
-                    SettingsGroup(
-                        title = t("插件"),
-                        reveal = reveal.value,
-                        delay = 0.24f,
-                    ) {
-                        pluginSettingRows.forEachIndexed { index, entry ->
-                            if (index > 0) {
-                                Box(
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .padding(start = 62.dp)
-                                        .height(0.5.dp)
-                                        .background(MainPalette.Hairline),
-                                )
-                            }
-                            SettingsRow(
-                                title = entry.title,
-                                subtitle = entry.subtitle?.takeIf { it.isNotBlank() } ?: entry.pluginName,
-                                icon = com.kite.zmusic.ui.plugin.pluginUiIcon(entry.icon),
-                                tint = entry.accent?.let { com.kite.zmusic.ui.theme.parseThemeColor(it) }
-                                    ?: Color(0xFF5E5CE6),
+                    if (!podcastAudience) {
+                        add(
+                            SettingsIndexItem(
+                                key = "uapipro",
+                                title = t("UApiPro"),
+                                subtitle = uapiProSubtitle,
+                                icon = ZIcons.Extension,
+                                tint = Color(0xFF0EA5A0),
+                                keywords = t("翻译"),
                                 onClick = {
-                                    app.pluginEngine.ui.activateSlot(entry.pluginId, entry.slot, entry.id)
+                                    uapiProSaveToken = 0
+                                    uapiProVisible.targetState = true
                                 },
-                            )
-                        }
+                            ),
+                        )
+                        add(
+                            SettingsIndexItem(
+                                key = "betterncm",
+                                title = t("BetterNCM"),
+                                subtitle = betterNcmSubtitle,
+                                icon = ZIcons.Workshop,
+                                tint = Color(0xFF7C5CBF),
+                                keywords = t("插件市场"),
+                                onClick = {
+                                    betterNcmSaveToken = 0
+                                    betterNcmVisible.targetState = true
+                                },
+                            ),
+                        )
                     }
                 }
-                Spacer(Modifier.height(22.dp))
-                SettingsGroup(
-                    title = "ZMusic",
-                    reveal = reveal.value,
-                    delay = 0.26f,
-                ) {
-                    SettingsRow(
-                        title = t("关于"),
-                        subtitle = t("版本、开发者与协议"),
-                        icon = ZIcons.Info,
-                        tint = Color(0xFF5B7CFA),
-                        onClick = { aboutVisible.targetState = true },
-                    )
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(start = 62.dp)
-                            .height(0.5.dp)
-                            .background(MainPalette.Hairline),
-                    )
-                    SettingsRow(
-                        title = t("更新日志"),
-                        subtitle = t("按版本查阅更新预览"),
-                        icon = ZIcons.History,
-                        tint = Color(0xFF2A9D8F),
-                        onClick = { changelogVisible.targetState = true },
-                    )
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(start = 62.dp)
-                            .height(0.5.dp)
-                            .background(MainPalette.Hairline),
-                    )
-                    SettingsRow(
-                        title = t("参与测试计划"),
-                        subtitle = testPlanSubtitle(testPlan),
-                        icon = ZIcons.Science,
-                        tint = Color(0xFFC9A227),
-                        onClick = { testPlanVisible.targetState = true },
-                    )
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(start = 62.dp)
-                            .height(0.5.dp)
-                            .background(MainPalette.Hairline),
-                    )
-                    SettingsRow(
-                        title = t("插件引擎调试"),
-                        subtitle = pluginEngineDebugSubtitle(pluginEngineDebug),
-                        icon = ZIcons.BugReport,
-                        tint = Color(0xFF7B6B9E),
-                        onClick = { pluginEngineDebugVisible.targetState = true },
-                    )
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(start = 62.dp)
-                            .height(0.5.dp)
-                            .background(MainPalette.Hairline),
-                    )
-                    SettingsRow(
-                        title = t("赞赏"),
-                        subtitle = t("请小萱喝一口热乎的"),
-                        icon = ZIcons.Favorite,
-                        tint = Color(0xFFE85D75),
-                        onClick = { showAppreciate = true },
-                    )
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(start = 62.dp)
-                            .height(0.5.dp)
-                            .background(MainPalette.Hairline),
-                    )
-                    SettingsRow(
-                        title = t("赞助名单"),
-                        subtitle = t("谢谢投喂的人"),
-                        icon = ZIcons.Sponsor,
-                        tint = Color(0xFFE0A85C),
-                        onClick = { sponsorVisible.targetState = true },
-                    )
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(start = 62.dp)
-                            .height(0.5.dp)
-                            .background(MainPalette.Hairline),
-                    )
-                    SettingsRow(
-                        title = t("赞助商"),
-                        subtitle = t("支持本应用的伙伴"),
-                        icon = ZIcons.Handshake,
-                        tint = Color(0xFF3478F6),
-                        onClick = { partnersVisible.targetState = true },
+                val playbackItems = if (podcastAudience) {
+                    emptyList()
+                } else {
+                    listOf(
+                        SettingsIndexItem(
+                            key = "quality",
+                            title = t("音源默认质量"),
+                            subtitle = "${audioQuality.title} · ${audioQuality.caption}",
+                            icon = ZIcons.GraphicEq,
+                            tint = Color(0xFFB08D57),
+                            keywords = t("音质"),
+                            onClick = { qualityVisible.targetState = true },
+                        ),
+                        SettingsIndexItem(
+                            key = "persistent",
+                            title = t("持续播放"),
+                            subtitle = if (persistentPlayback) {
+                                t("已开启 · 与其他应用同时出声")
+                            } else {
+                                t("已关闭 · 按系统规则让出")
+                            },
+                            icon = ZIcons.Headset,
+                            tint = Color(0xFF2E9B6B),
+                            keywords = t("后台"),
+                            onClick = { persistentPlaybackVisible.targetState = true },
+                        ),
+                        SettingsIndexItem(
+                            key = "word-lyric",
+                            title = t("逐字歌词"),
+                            subtitle = when (lyricWordRender) {
+                                LyricWordRender.Word -> t("按字渲染 · 需歌曲提供逐字歌词")
+                                LyricWordRender.Width -> t("按字宽渲染 · 需歌曲提供逐字歌词")
+                                LyricWordRender.Line -> t("按行渲染")
+                            },
+                            icon = ZIcons.Lyrics,
+                            tint = Color(0xFF5B8DEF),
+                            keywords = t("歌词"),
+                            onClick = { wordLyricVisible.targetState = true },
+                        ),
+                        SettingsIndexItem(
+                            key = "long-lyric",
+                            title = t("长歌词渲染"),
+                            subtitle = if (longLyric == LongLyricRender.Horizontal) {
+                                t("水平自然滚动")
+                            } else {
+                                t("换行渲染")
+                            },
+                            icon = ZIcons.SwapHoriz,
+                            tint = Color(0xFF3AAFA9),
+                            keywords = t("歌词"),
+                            onClick = { longLyricVisible.targetState = true },
+                        ),
+                        SettingsIndexItem(
+                            key = "lyric-motion",
+                            title = t("歌词效果"),
+                            subtitle = lyricMotionListSubtitle(lyricEnterMotion, lyricExitMotion),
+                            icon = ZIcons.Lyrics,
+                            tint = Color(0xFF8E6AD8),
+                            keywords = t("入场 离场 粒子飘散"),
+                            onClick = { lyricMotionVisible.targetState = true },
+                        ),
+                        SettingsIndexItem(
+                            key = "quick-skip",
+                            title = t("快速切歌"),
+                            subtitle = quickSkipSubtitle(miniQuickSkip),
+                            icon = ZIcons.SkipNext,
+                            tint = Color(0xFFC45C7A),
+                            keywords = t("切歌"),
+                            onClick = { quickSkipVisible.targetState = true },
+                        ),
                     )
                 }
-                Spacer(Modifier.height(22.dp))
-                SettingsGroup(
-                    title = t("账号"),
-                    reveal = reveal.value,
-                    delay = 0.34f,
+                val cacheItems = if (podcastAudience) {
+                    emptyList()
+                } else {
+                    listOf(
+                        SettingsIndexItem(
+                            key = "download-accel",
+                            title = t("下载加速"),
+                            subtitle = if (downloadAccel) {
+                                t("已开启 · 命中本机缓存则跳过网络")
+                            } else {
+                                t("已关闭 · 始终按音质在线拉取")
+                            },
+                            icon = ZIcons.Speed,
+                            tint = Color(0xFF3D9B8F),
+                            keywords = t("缓存"),
+                            onClick = { cacheVisible.targetState = true },
+                        ),
+                        SettingsIndexItem(
+                            key = "realtime-cache",
+                            title = t("实时缓存"),
+                            subtitle = if (realtimeCachePrefs.enabled) {
+                                t("已开启 · %s模式", realtimeCachePrefs.mode.title)
+                            } else {
+                                t("已关闭 · 不采样不走本地缓存")
+                            },
+                            icon = ZIcons.Storage,
+                            tint = Color(0xFF5070F0),
+                            keywords = t("缓存"),
+                            onClick = { realtimeCacheVisible.targetState = true },
+                        ),
+                    )
+                }
+                val themeItems = buildList {
+                    add(
+                        SettingsIndexItem(
+                            key = "language",
+                            title = t("语言"),
+                            subtitle = if (languageChoice == LanguageChoice.Auto) {
+                                t("自动 · %s", language.nativeName)
+                            } else {
+                                language.nativeName
+                            },
+                            icon = ZIcons.Translate,
+                            tint = Color(0xFF3D8BFF),
+                            keywords = t("翻译 中文"),
+                            onClick = { languageVisible.targetState = true },
+                        ),
+                    )
+                    add(
+                        SettingsIndexItem(
+                            key = "appearance",
+                            title = t("外观"),
+                            subtitle = appearance.subtitle,
+                            icon = ZIcons.DarkMode,
+                            tint = Color(0xFF6B7CFF),
+                            keywords = t("深色 浅色 主题 夜间"),
+                            onClick = { appearanceVisible.targetState = true },
+                        ),
+                    )
+                    add(
+                        SettingsIndexItem(
+                            key = "glass",
+                            title = t("液态玻璃样式"),
+                            subtitle = glassStyle.settingsSubtitle,
+                            icon = ZIcons.BlurOn,
+                            tint = Color(0xFF2BB3B0),
+                            keywords = t("模糊 玻璃 透明"),
+                            onClick = {
+                                glassDraft = glassStore.current()
+                                glassVisible.targetState = true
+                            },
+                        ),
+                    )
+                    if (!podcastAudience) {
+                        add(
+                            SettingsIndexItem(
+                                key = "wallpaper",
+                                title = t("自定义背景"),
+                                subtitle = wallpaper.settingsSubtitle,
+                                icon = ZIcons.Wallpaper,
+                                tint = Color(0xFF8B6BFF),
+                                keywords = t("壁纸"),
+                                onClick = { wallpaperVisible.targetState = true },
+                            ),
+                        )
+                    }
+                }
+                val appItems = buildList {
+                    add(
+                        SettingsIndexItem(
+                            key = "permissions",
+                            title = t("权限"),
+                            subtitle = permissionSnapshot.subtitle,
+                            icon = ZIcons.Security,
+                            tint = Color(0xFF5E5CE6),
+                            onClick = { permissionsVisible.targetState = true },
+                        ),
+                    )
+                    if (!podcastAudience) {
+                        add(
+                            SettingsIndexItem(
+                                key = "privacy",
+                                title = t("隐私"),
+                                subtitle = if (songUnlockGray) {
+                                    t("歌曲解灰已开启")
+                                } else {
+                                    t("默认关闭敏感能力")
+                                },
+                                icon = ZIcons.Lock,
+                                tint = Color(0xFF8E4EC6),
+                                keywords = t("解灰"),
+                                onClick = { privacyVisible.targetState = true },
+                            ),
+                        )
+                        add(
+                            SettingsIndexItem(
+                                key = "predictive-back",
+                                title = t("预测性返回"),
+                                subtitle = if (predictiveBack) {
+                                    t("已开启 · 侧滑跟手预览")
+                                } else {
+                                    t("已关闭 · 返回不跟手（默认）")
+                                },
+                                icon = ZIcons.Swipe,
+                                tint = Color(0xFF3D7CFF),
+                                keywords = t("手势 返回"),
+                                onClick = { predictiveBackVisible.targetState = true },
+                            ),
+                        )
+                    }
+                    add(
+                        SettingsIndexItem(
+                            key = "splash",
+                            title = t("加速启动动画"),
+                            subtitle = splashAccelSubtitle(splashAccel),
+                            icon = ZIcons.Speed,
+                            tint = Color(0xFFE07A3D),
+                            keywords = t("启动"),
+                            onClick = { splashAccelVisible.targetState = true },
+                        ),
+                    )
+                    add(
+                        SettingsIndexItem(
+                            key = "landscape",
+                            title = t("横屏模式"),
+                            subtitle = landscapeModeSubtitle(landscapeMode, orientationLock),
+                            icon = ZIcons.ScreenRotation,
+                            tint = Color(0xFF4A8FA8),
+                            keywords = t("旋转 方向 锁定 竖屏"),
+                            onClick = { landscapeModeVisible.targetState = true },
+                        ),
+                    )
+                    add(
+                        SettingsIndexItem(
+                            key = "status-bar",
+                            title = t("忽略状态栏"),
+                            subtitle = ignoreStatusBarSubtitle(ignoreStatusBar),
+                            icon = ZIcons.Fullscreen,
+                            tint = Color(0xFF5C6BC0),
+                            keywords = t("全屏 沉浸"),
+                            onClick = { ignoreStatusBarVisible.targetState = true },
+                        ),
+                    )
+                    if (!podcastAudience) {
+                        add(
+                            SettingsIndexItem(
+                                key = "playback-chrome",
+                                title = t("播放组件模式"),
+                                subtitle = playbackChromeSubtitle(playbackChrome),
+                                icon = ZIcons.MusicNote,
+                                tint = Color(0xFFE07A5F),
+                                keywords = t("灵动岛 播放条"),
+                                onClick = { playbackChromeVisible.targetState = true },
+                            ),
+                        )
+                    }
+                }
+                val pluginItems = if (podcastAudience) {
+                    emptyList()
+                } else {
+                    pluginSettingRows.map { entry ->
+                        SettingsIndexItem(
+                            key = "${entry.pluginId}:${entry.id}",
+                            title = entry.title,
+                            subtitle = entry.subtitle?.takeIf { it.isNotBlank() } ?: entry.pluginName,
+                            icon = com.kite.zmusic.ui.plugin.pluginUiIcon(entry.icon),
+                            tint = entry.accent?.let { com.kite.zmusic.ui.theme.parseThemeColor(it) }
+                                ?: Color(0xFF5E5CE6),
+                            keywords = entry.pluginName,
+                            onClick = {
+                                app.pluginEngine.ui.activateSlot(entry.pluginId, entry.slot, entry.id)
+                            },
+                        )
+                    }
+                }
+                val aboutItems = buildList {
+                    add(
+                        SettingsIndexItem(
+                            key = "about",
+                            title = t("关于"),
+                            subtitle = t("版本、开发者与协议"),
+                            icon = ZIcons.Info,
+                            tint = Color(0xFF5B7CFA),
+                            onClick = { aboutVisible.targetState = true },
+                        ),
+                    )
+                    add(
+                        SettingsIndexItem(
+                            key = "changelog",
+                            title = t("更新日志"),
+                            subtitle = t("按版本查阅更新预览"),
+                            icon = ZIcons.History,
+                            tint = Color(0xFF2A9D8F),
+                            keywords = t("版本"),
+                            onClick = { changelogVisible.targetState = true },
+                        ),
+                    )
+                    add(
+                        SettingsIndexItem(
+                            key = "test-plan",
+                            title = t("参与测试计划"),
+                            subtitle = testPlanSubtitle(testPlan),
+                            icon = ZIcons.Science,
+                            tint = Color(0xFFC9A227),
+                            keywords = t("测试"),
+                            onClick = { testPlanVisible.targetState = true },
+                        ),
+                    )
+                    if (!podcastAudience) {
+                        add(
+                            SettingsIndexItem(
+                                key = "plugin-debug",
+                                title = t("插件引擎调试"),
+                                subtitle = pluginEngineDebugSubtitle(pluginEngineDebug),
+                                icon = ZIcons.BugReport,
+                                tint = Color(0xFF7B6B9E),
+                                keywords = t("调试"),
+                                onClick = { pluginEngineDebugVisible.targetState = true },
+                            ),
+                        )
+                    }
+                    add(
+                        SettingsIndexItem(
+                            key = "appreciate",
+                            title = t("赞赏"),
+                            subtitle = t("请小萱喝一口热乎的"),
+                            icon = ZIcons.Favorite,
+                            tint = Color(0xFFE85D75),
+                            onClick = {
+                                appreciateAlipay = false
+                                showAppreciate = true
+                            },
+                        ),
+                    )
+                    add(
+                        SettingsIndexItem(
+                            key = "sponsors",
+                            title = t("赞助名单"),
+                            subtitle = t("谢谢投喂的人"),
+                            icon = ZIcons.Sponsor,
+                            tint = Color(0xFFE0A85C),
+                            onClick = { sponsorVisible.targetState = true },
+                        ),
+                    )
+                    add(
+                        SettingsIndexItem(
+                            key = "partners",
+                            title = t("赞助商"),
+                            subtitle = t("支持本应用的伙伴"),
+                            icon = ZIcons.Handshake,
+                            tint = Color(0xFF3478F6),
+                            onClick = { partnersVisible.targetState = true },
+                        ),
+                    )
+                }
+                val accountItems = if (podcastAudience) {
+                    emptyList()
+                } else {
+                    listOf(
+                        SettingsIndexItem(
+                            key = "logout",
+                            title = t("退出登录"),
+                            subtitle = t("当前账号会退出，播放也会停止"),
+                            icon = ZIcons.Logout,
+                            tint = MainPalette.Accent,
+                            keywords = t("注销 账号"),
+                            destructive = true,
+                            onClick = { confirmLogout = true },
+                        ),
+                    )
+                }
+                val settingsGroups = buildList {
+                    if (extensionItems.isNotEmpty()) {
+                        add(SettingsIndexGroup(t("扩展"), 0f, 0.dp, extensionItems))
+                    }
+                    add(
+                        SettingsIndexGroup(
+                            t("连接"),
+                            0f,
+                            if (extensionItems.isNotEmpty()) 16.dp else 0.dp,
+                            connectionItems,
+                        ),
+                    )
+                    if (playbackItems.isNotEmpty()) {
+                        add(SettingsIndexGroup(t("播放"), 0.08f, 22.dp, playbackItems))
+                    }
+                    if (cacheItems.isNotEmpty()) {
+                        add(SettingsIndexGroup(t("缓存"), 0.12f, 22.dp, cacheItems))
+                    }
+                    add(SettingsIndexGroup(t("主题"), 0.14f, 22.dp, themeItems))
+                    add(SettingsIndexGroup(t("应用"), 0.20f, 22.dp, appItems))
+                    if (pluginItems.isNotEmpty()) {
+                        add(SettingsIndexGroup(t("插件"), 0.24f, 22.dp, pluginItems))
+                    }
+                    add(SettingsIndexGroup("ZMusic", 0.26f, 22.dp, aboutItems))
+                    if (accountItems.isNotEmpty()) {
+                        add(SettingsIndexGroup(t("账号"), 0.34f, 22.dp, accountItems))
+                    }
+                }
+                val settingsQueryTrimmed = settingsQuery.trim()
+                val settingsAnyHit = settingsQueryTrimmed.isEmpty() || settingsGroups.any { group ->
+                    group.title.contains(settingsQueryTrimmed, ignoreCase = true) ||
+                        group.items.any { it.matches(settingsQueryTrimmed) }
+                }
+                AnimatedVisibility(
+                    visible = settingsQueryTrimmed.isNotEmpty() && !settingsAnyHit,
+                    enter = settingsIndexEnter(),
+                    exit = settingsIndexExit(),
                 ) {
-                    SettingsRow(
-                        title = t("退出登录"),
-                        subtitle = t("当前账号会退出，播放也会停止"),
-                        icon = ZIcons.Logout,
-                        tint = MainPalette.Accent,
-                        destructive = true,
-                        onClick = { confirmLogout = true },
+                    SettingsQueryEmpty()
+                }
+                for (group in settingsGroups) {
+                    SettingsIndexedGroup(
+                        title = group.title,
+                        reveal = reveal.value,
+                        delay = group.delay,
+                        query = settingsQuery,
+                        topGap = group.topGap,
+                        items = group.items,
                     )
                 }
             }
@@ -998,6 +1024,29 @@ fun SettingsScreen(
                             t("已切换到换行渲染")
                         },
                     )
+                },
+                contentBottomInset = contentBottomInset,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        SettingsDrillHost(
+            visibleState = lyricMotionVisible,
+            landscape = landscape,
+            title = t("歌词效果"),
+            onBack = { lyricMotionVisible.targetState = false },
+        ) {
+            LyricMotionSettingsPage(
+                enter = lyricEnterMotion,
+                exit = lyricExitMotion,
+                onEnterChange = { next ->
+                    if (next == lyricEnterMotion) return@LyricMotionSettingsPage
+                    lyricRenderStore.setEnterMotion(next)
+                    context.showIslandNotice(t("歌词入场已改为%s", lyricMotionLabel(next)))
+                },
+                onExitChange = { next ->
+                    if (next == lyricExitMotion) return@LyricMotionSettingsPage
+                    lyricRenderStore.setExitMotion(next)
+                    context.showIslandNotice(t("歌词离场已改为%s", lyricMotionLabel(next)))
                 },
                 contentBottomInset = contentBottomInset,
                 modifier = Modifier.fillMaxSize(),
@@ -1351,12 +1400,27 @@ fun SettingsScreen(
             LandscapeModeSettingsPage(
                 enabled = landscapeMode,
                 onEnabledChange = { next ->
+                    if (orientationLock != OrientationLock.Auto) return@LandscapeModeSettingsPage
                     if (next == landscapeMode) return@LandscapeModeSettingsPage
                     landscapeModeStore.setEnabled(next)
                     context.showIslandNotice(
                         if (next) t("已开启横屏模式") else t("已关闭横屏模式"),
                     )
                 },
+                orientationLock = orientationLock,
+                onOrientationLockChange = { next ->
+                    if (next == orientationLock) return@LandscapeModeSettingsPage
+                    landscapeModeStore.setOrientationLock(next)
+                    activity?.let { OrientationLockApplier.apply(it, next) }
+                    context.showIslandNotice(
+                        when (next) {
+                            OrientationLock.Auto -> t("方向已恢复自动")
+                            OrientationLock.Portrait -> t("已锁定竖屏")
+                            OrientationLock.Landscape -> t("已锁定横屏")
+                        },
+                    )
+                },
+                showOrientationLock = !podcastAudience,
                 contentBottomInset = contentBottomInset,
                 modifier = Modifier.fillMaxSize(),
             )
@@ -1445,7 +1509,7 @@ fun SettingsScreen(
 
     if (editServer) {
         GlassAlertDialog(
-            title = t("服务器"),
+            title = t("音乐服务器"),
             message = t("测试通过后才会保存"),
             confirmLabel = t("保存"),
             confirmEnabled = !vm.busy,
@@ -1601,7 +1665,7 @@ fun SettingsScreen(
     if (showAppreciate) {
         GlassAlertDialog(
             title = t("感谢投喂小小萱哦～"),
-            message = t("扫一扫这份微信赞赏码，就像把热乎的奶茶递到小萱手边。不投喂也没关系，你愿意听，他就已经很开心了。"),
+            message = t("微信或支付宝扫一扫，就像把热乎的奶茶递到小萱手边。不投喂也没关系，你愿意听，他就已经很开心了。"),
             confirmLabel = t("收下这份心意"),
             cancelLabel = null,
             onConfirm = { showAppreciate = false },
@@ -1609,9 +1673,35 @@ fun SettingsScreen(
             extraContent = {
                 val landscape = LocalConfiguration.current.orientation ==
                     android.content.res.Configuration.ORIENTATION_LANDSCAPE
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                ) {
+                    AppreciateChannel(
+                        label = t("微信"),
+                        selected = !appreciateAlipay,
+                        onClick = { appreciateAlipay = false },
+                    )
+                    AppreciateChannel(
+                        label = t("支付宝"),
+                        selected = appreciateAlipay,
+                        onClick = { appreciateAlipay = true },
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
                 Image(
-                    painter = painterResource(R.drawable.img_wechat_appreciate),
-                    contentDescription = t("小萱baibai 的微信赞赏码"),
+                    painter = painterResource(
+                        if (appreciateAlipay) {
+                            R.drawable.img_alipay_appreciate
+                        } else {
+                            R.drawable.img_wechat_appreciate
+                        },
+                    ),
+                    contentDescription = if (appreciateAlipay) {
+                        t("小萱baibai 的支付宝收款码")
+                    } else {
+                        t("小萱baibai 的微信赞赏码")
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(max = if (landscape) 148.dp else 260.dp)
@@ -1634,6 +1724,29 @@ fun SettingsScreen(
             onDismiss = { closeGlassPage() },
         )
     }
+}
+
+@Composable
+private fun AppreciateChannel(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    Text(
+        text = label,
+        color = if (selected) Color.White else MainPalette.Ink,
+        fontSize = 13.sp,
+        fontWeight = FontWeight.SemiBold,
+        modifier = Modifier
+            .clip(RoundedCornerShape(999.dp))
+            .background(if (selected) MainPalette.Accent else MainPalette.TrackOff)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick,
+            )
+            .padding(horizontal = 14.dp, vertical = 6.dp),
+    )
 }
 
 @Composable
@@ -1998,6 +2111,202 @@ private fun SettingsTopBar(
                     fontWeight = FontWeight.SemiBold,
                 ),
             )
+        }
+    }
+}
+
+private class SettingsIndexItem(
+    val key: String,
+    val title: String,
+    val subtitle: String,
+    val icon: ImageVector,
+    val tint: Color,
+    val keywords: String = "",
+    val destructive: Boolean = false,
+    val onClick: () -> Unit,
+) {
+    fun matches(query: String): Boolean =
+        title.contains(query, ignoreCase = true) ||
+            subtitle.contains(query, ignoreCase = true) ||
+            keywords.contains(query, ignoreCase = true)
+}
+
+private class SettingsIndexGroup(
+    val title: String,
+    val delay: Float,
+    val topGap: Dp,
+    val items: List<SettingsIndexItem>,
+)
+
+private fun settingsIndexEnter() =
+    fadeIn(tween(160, easing = FastOutSlowInEasing)) +
+        expandVertically(tween(220, easing = FastOutSlowInEasing), expandFrom = Alignment.Top) +
+        slideInVertically(tween(220, easing = FastOutSlowInEasing)) { -it / 4 }
+
+private fun settingsIndexExit() =
+    fadeOut(tween(140, easing = FastOutSlowInEasing)) +
+        shrinkVertically(tween(220, easing = FastOutSlowInEasing), shrinkTowards = Alignment.Top) +
+        slideOutVertically(tween(220, easing = FastOutSlowInEasing)) { -it / 4 }
+
+@Composable
+private fun SettingsQueryField(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val focusManager = LocalFocusManager.current
+    val focusRequester = remember { FocusRequester() }
+    Row(
+        modifier
+            .fillMaxWidth()
+            .height(44.dp)
+            .wallpaperItemChrome(RoundedCornerShape(14.dp))
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = { focusRequester.requestFocus() },
+            )
+            .padding(horizontal = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = ZIcons.Search,
+            contentDescription = null,
+            tint = MainPalette.Secondary,
+            modifier = Modifier.size(18.dp),
+        )
+        Spacer(Modifier.width(8.dp))
+        BasicTextField(
+            value = query,
+            onValueChange = onQueryChange,
+            singleLine = true,
+            textStyle = TextStyle(color = MainPalette.Ink, fontSize = 15.sp),
+            cursorBrush = SolidColor(MainPalette.Accent),
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+            keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() }),
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxHeight()
+                .focusRequester(focusRequester),
+            decorationBox = { inner ->
+                Box(contentAlignment = Alignment.CenterStart) {
+                    if (query.isEmpty()) {
+                        Text(
+                            text = t("搜索设置"),
+                            style = TextStyle(color = MainPalette.Hint, fontSize = 15.sp),
+                        )
+                    }
+                    inner()
+                }
+            },
+        )
+        AnimatedVisibility(
+            visible = query.isNotEmpty(),
+            enter = fadeIn(tween(120)) + expandHorizontally(tween(160, easing = FastOutSlowInEasing)),
+            exit = fadeOut(tween(100)) + shrinkHorizontally(tween(140, easing = FastOutSlowInEasing)),
+        ) {
+            Box(
+                Modifier
+                    .padding(start = 4.dp)
+                    .size(28.dp)
+                    .clip(CircleShape)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = { onQueryChange("") },
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = ZIcons.Close,
+                    contentDescription = t("清除"),
+                    tint = MainPalette.Secondary,
+                    modifier = Modifier.size(16.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsQueryEmpty() {
+    Text(
+        text = t("没有匹配的设置"),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 4.dp, vertical = 28.dp),
+        textAlign = TextAlign.Center,
+        style = TextStyle(
+            color = MainPalette.Secondary,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Medium,
+        ),
+    )
+}
+
+@Composable
+private fun SettingsHairline() {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .padding(start = 62.dp)
+            .height(0.5.dp)
+            .background(MainPalette.Hairline),
+    )
+}
+
+@Composable
+private fun SettingsIndexedGroup(
+    title: String,
+    reveal: Float,
+    delay: Float,
+    query: String,
+    topGap: Dp,
+    items: List<SettingsIndexItem>,
+) {
+    if (items.isEmpty()) return
+    val focusManager = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
+    val trimmed = query.trim()
+    val groupHit = trimmed.isNotEmpty() && title.contains(trimmed, ignoreCase = true)
+    val matched = items.map { item ->
+        trimmed.isEmpty() || groupHit || item.matches(trimmed)
+    }
+    AnimatedVisibility(
+        visible = matched.any { it },
+        enter = settingsIndexEnter(),
+        exit = settingsIndexExit(),
+    ) {
+        Column(Modifier.fillMaxWidth()) {
+            if (topGap > 0.dp) Spacer(Modifier.height(topGap))
+            SettingsGroup(title = title, reveal = reveal, delay = delay) {
+                for (index in items.indices) {
+                    val item = items[index]
+                    key(item.key) {
+                        AnimatedVisibility(
+                            visible = matched[index],
+                            enter = settingsIndexEnter(),
+                            exit = settingsIndexExit(),
+                        ) {
+                            Column(Modifier.fillMaxWidth()) {
+                                if (matched.take(index).any { it }) SettingsHairline()
+                                SettingsRow(
+                                    title = item.title,
+                                    subtitle = item.subtitle,
+                                    icon = item.icon,
+                                    tint = item.tint,
+                                    destructive = item.destructive,
+                                    onClick = {
+                                        focusManager.clearFocus(force = true)
+                                        keyboard?.hide()
+                                        item.onClick()
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

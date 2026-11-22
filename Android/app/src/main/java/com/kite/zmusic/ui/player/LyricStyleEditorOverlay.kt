@@ -22,7 +22,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -486,9 +485,9 @@ fun LyricStyleCloneLayer(
     draftUnplayed: LyricRoleStyle,
     progress: Float,
     targetSlot: LyricStylePreviewSlot?,
+    modifier: Modifier = Modifier,
     uiScale: Float = 1f,
     contentAlpha: Float = 1f,
-    modifier: Modifier = Modifier,
 ) {
     val alpha = contentAlpha.coerceIn(0f, 1f)
     if (alpha <= 0.001f) return
@@ -928,11 +927,11 @@ private fun LyricStyleCloneContent(
     /** 与真歌词相同的视觉行距（已含 uiScale） */
     contentLineSpacing: Dp,
     contentPad: Dp,
+    modifier: Modifier = Modifier,
     playingDefaultArgb: Int = LyricRoleStyle.DEFAULT_PLAYING_ARGB,
     playedDefaultArgb: Int = LyricRoleStyle.DEFAULT_PLAYED_ARGB,
     unplayedDefaultArgb: Int = LyricRoleStyle.DEFAULT_UNPLAYED_ARGB,
     lightSurface: Boolean = false,
-    modifier: Modifier = Modifier,
 ) {
     val lines = snapshot.lines
     val focus = snapshot.focusIndex.coerceIn(0, (lines.size - 1).coerceAtLeast(0))

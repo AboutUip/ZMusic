@@ -71,11 +71,10 @@ private val ListenCardShape = RoundedCornerShape(14.dp)
 
 @Composable
 internal fun PortraitListenTogetherSheet(
-    onClose: () -> Unit,
     onNeedLogin: () -> Unit,
     onScanJoin: () -> Unit,
-    hazeState: HazeState? = null,
     modifier: Modifier = Modifier,
+    hazeState: HazeState? = null,
 ) {
     val context = LocalContext.current
     val app = context.applicationContext as ZMusicApplication

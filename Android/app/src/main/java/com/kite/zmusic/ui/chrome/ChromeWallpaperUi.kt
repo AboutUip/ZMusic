@@ -61,7 +61,7 @@ fun chromeWallpaperSurface(
         MainOverlay.ProfileEdit -> ChromeWallpaperSurface.Profile
         MainOverlay.Search, MainOverlay.CreativeWorkshop -> ChromeWallpaperSurface.Search
         MainOverlay.Daily, MainOverlay.Fm, MainOverlay.Charts, MainOverlay.AnnualReport,
-        MainOverlay.CachedSongs,
+        MainOverlay.CachedSongs, MainOverlay.RecentPlay, is MainOverlay.RecentPlaySearch,
         MainOverlay.CloudDisk, MainOverlay.CloudDiskSearch, is MainOverlay.CloudMatch,
         ->
             ChromeWallpaperSurface.Playlist

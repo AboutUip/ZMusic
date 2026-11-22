@@ -537,7 +537,7 @@ class ListenTogetherController(
         val roomId = room.id
         historyJob = scope.launch {
             try {
-            var allowOlder = older
+            val allowOlder = older
             var guard = 0
             while (isActive && guard++ < 40) {
                 if (!isActive) return@launch

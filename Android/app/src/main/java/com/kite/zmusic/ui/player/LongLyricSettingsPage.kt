@@ -49,8 +49,8 @@ private const val SampleLine = "晚风把整段没说完的话都吹到了街对
 internal fun LongLyricSettingsPage(
     mode: LongLyricRender,
     onModeChange: (LongLyricRender) -> Unit,
-    contentBottomInset: Dp = 0.dp,
     modifier: Modifier = Modifier,
+    contentBottomInset: Dp = 0.dp,
 ) {
     Column(
         modifier

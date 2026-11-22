@@ -11,15 +11,18 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -42,6 +45,9 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerId
+import androidx.compose.ui.input.pointer.PointerInputChange
+import androidx.compose.ui.input.pointer.changedToDown
 import androidx.compose.ui.input.pointer.changedToUp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
@@ -72,6 +78,32 @@ internal class HomeStagePose {
 }
 
 internal val LocalHomeStagePose = staticCompositionLocalOf<HomeStagePose?> { null }
+
+/** 模式切换时只淡右侧景片。1 是完全可见。侧栏不读这个值。 */
+internal val LocalHomeStageContentReveal = staticCompositionLocalOf { 1f }
+
+/**
+ * 舞台包住整套主壳之后，二楼锁、播客播放页和「现在能不能拉开」都从壳里写回来。
+ * 壳在舞台里面，舞台自己读不到那些 CompositionLocal。
+ */
+internal class HomeStageGate {
+    var floorLocked by mutableStateOf(false)
+
+    /**
+     * 导航还能不能往回翻。
+     * 能往回翻时，向右拖交给导航去上一栏。
+     * 已经停在第一栏时为 false，向右拖拉开模式面板。
+     * 播放页或叠层挡住时写成 true，避免把翻页手势收走。
+     */
+    var navCanScrollBackward by mutableStateOf(false)
+    var closeSignal by mutableIntStateOf(0)
+
+    fun requestClose() {
+        closeSignal++
+    }
+}
+
+internal val LocalHomeStageGate = staticCompositionLocalOf<HomeStageGate?> { null }
 
 internal fun Modifier.homeStageFollow(pose: HomeStagePose?, densityScale: Float): Modifier {
     if (pose == null || pose.progress <= 0.001f) return this
@@ -187,8 +219,10 @@ internal fun homeStageDragAxis(totalX: Float, totalY: Float, slopPx: Float): Boo
 }
 
 /**
- * 未决定时返回 null。关上时向右拖拉出侧栏，向左拖留给底栏翻页。
- * 拉开之后两个方向都跟主页走。
+ * 未决定时返回 null。
+ * 侧栏已经拉开时，两个方向都跟侧栏走。
+ * 关上时，导航还能往回翻，水平拖都留给导航。
+ * 已经在第一栏：向右拖拉开模式面板，向左拖留给导航去下一栏。
  * 水平滚动的子组件要先滚，见 [homeStageYieldsToHorizontalChild]。
  */
 internal fun homeStageClaimsDrag(
@@ -196,10 +230,12 @@ internal fun homeStageClaimsDrag(
     totalX: Float,
     totalY: Float,
     slopPx: Float,
+    navCanScrollBackward: Boolean = false,
 ): Boolean? {
     val horizontal = homeStageDragAxis(totalX, totalY, slopPx) ?: return null
     if (!horizontal) return false
     if (progress > 0.02f) return true
+    if (navCanScrollBackward) return false
     return totalX > 0f
 }
 
@@ -207,8 +243,34 @@ internal fun homeStageClaimsDrag(
 internal fun homeStageYieldsToHorizontalChild(progress: Float, onHorizontalChild: Boolean): Boolean =
     progress <= 0.02f && onHorizontalChild
 
+/**
+ * 这次按下是不是轮播或横滑列表认领的那一次。
+ * 只比对指针和按下时刻。轮播手势被掐掉后留下的旧认领，不能算到下一次按下上。
+ */
+internal fun homeStageOwnsHorizontalPointer(
+    activePointerId: Long?,
+    activeDownUptimeMillis: Long,
+    pointerId: Long,
+    downUptimeMillis: Long,
+): Boolean = activePointerId == pointerId && activeDownUptimeMillis == downUptimeMillis
+
 private class HomeStageHorizontalTouch {
-    var holding: Boolean = false
+    private var pointerId: Long? = null
+    private var downUptimeMillis: Long = Long.MIN_VALUE
+
+    fun claims(id: PointerId, uptimeMillis: Long): Boolean =
+        homeStageOwnsHorizontalPointer(pointerId, downUptimeMillis, id.value, uptimeMillis)
+
+    fun claim(id: PointerId, uptimeMillis: Long) {
+        pointerId = id.value
+        downUptimeMillis = uptimeMillis
+    }
+
+    fun release(id: PointerId, uptimeMillis: Long) {
+        if (!claims(id, uptimeMillis)) return
+        pointerId = null
+        downUptimeMillis = Long.MIN_VALUE
+    }
 }
 
 private val LocalHomeStageDrawer = staticCompositionLocalOf { false }
@@ -217,6 +279,7 @@ private val LocalHomeStageHorizontalTouch = staticCompositionLocalOf<HomeStageHo
 
 /**
  * 标在本身能横向滚的组件上。按下时告诉侧栏：这次手势归这里。
+ * 认领绑在这一根手指的按下时刻上，手势被掐掉也只会留下过期记录。
  * 底栏翻页也会消费水平拖，不能靠「有没有被消费」来判断，否则侧栏永远打不开。
  */
 internal fun Modifier.homeStageHorizontalContent(): Modifier = composed {
@@ -227,7 +290,7 @@ internal fun Modifier.homeStageHorizontalContent(): Modifier = composed {
                 requireUnconsumed = false,
                 pass = PointerEventPass.Initial,
             )
-            touch.holding = true
+            touch.claim(down.id, down.uptimeMillis)
             try {
                 val slop = viewConfiguration.touchSlop
                 var totalX = 0f
@@ -235,8 +298,14 @@ internal fun Modifier.homeStageHorizontalContent(): Modifier = composed {
                 var horizontal: Boolean? = null
                 while (true) {
                     val event = awaitPointerEvent(PointerEventPass.Final)
-                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                    if (change.changedToUp()) break
+                    val change = event.changes.firstOrNull { it.id == down.id }
+                    if (change == null || change.changedToUp()) {
+                        val fresh = event.changes.firstOrNull { next ->
+                            next.id != down.id && next.changedToDown()
+                        }
+                        if (fresh != null) touch.claim(fresh.id, fresh.uptimeMillis)
+                        break
+                    }
                     val delta = change.positionChangeIgnoreConsumed()
                     totalX += delta.x
                     totalY += delta.y
@@ -250,7 +319,7 @@ internal fun Modifier.homeStageHorizontalContent(): Modifier = composed {
                     change.consume()
                 }
             } finally {
-                touch.holding = false
+                touch.release(down.id, down.uptimeMillis)
             }
         }
     }
@@ -288,12 +357,13 @@ private class HomeStageCavityShape(
 }
 
 /**
- * 竖屏主页：手指向右拖，主页退成舞台景片，左侧空出液态光球。
- * 横屏不包这一层。
+ * 手指向右拖，当前主壳退成舞台景片，左侧空出模式面板。
+ * 面板内容按完全展开的宽度排版，窗口变窄时只裁掉看不见的部分。
  */
 @Composable
 internal fun HomeStageDrawer(
     modifier: Modifier = Modifier,
+    sidebar: @Composable () -> Unit = {},
     content: @Composable () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -301,9 +371,17 @@ internal fun HomeStageDrawer(
     val densityScale = density.density
     val pagerBlock = LocalHomeStagePagerBlock.current
     val pose = LocalHomeStagePose.current
-    val floorLocked = LocalMainFloorLocked.current
+    val gate = LocalHomeStageGate.current
+    val reveal = LocalHomeStageContentReveal.current
+    val floorLocked = LocalMainFloorLocked.current || gate?.floorLocked == true
     val anim = remember { Animatable(0f) }
     var dragProgress by remember { mutableStateOf<Float?>(null) }
+    LaunchedEffect(gate?.closeSignal) {
+        val signal = gate?.closeSignal ?: 0
+        if (signal == 0) return@LaunchedEffect
+        dragProgress = null
+        anim.animateTo(0f, HomeStageSpring)
+    }
     var widthPx by remember { mutableFloatStateOf(0f) }
     var heightPx by remember { mutableFloatStateOf(0f) }
     val widthHolder = remember { floatArrayOf(0f) }
@@ -323,7 +401,7 @@ internal fun HomeStageDrawer(
     val horizontalTouch = remember { HomeStageHorizontalTouch() }
     var horizontalChildGesture by remember { mutableStateOf(false) }
     SideEffect {
-        pagerBlock?.blocked = progress > 0.001f || horizontalChildGesture
+        pagerBlock?.blocked = progress > 0.02f || horizontalChildGesture
         pose?.progress = progress
         pose?.translationX = frame.pageTranslationX
         pose?.scale = frame.pageScale
@@ -361,67 +439,89 @@ internal fun HomeStageDrawer(
                 if (floorLocked) return@pointerInput
                 val slop = viewConfiguration.touchSlop
                 awaitEachGesture {
-                    val down = awaitFirstDown(
+                    var down = awaitFirstDown(
                         requireUnconsumed = false,
                         pass = PointerEventPass.Initial,
                     )
-                    val origin = dragProgress ?: anim.value
-                    val downFinal = awaitPointerEvent(PointerEventPass.Final)
-                    val downChange = downFinal.changes.firstOrNull { it.id == down.id }
-                    if (downChange == null || downChange.changedToUp()) return@awaitEachGesture
-                    if (homeStageYieldsToHorizontalChild(origin, horizontalTouch.holding)) {
-                        horizontalChildGesture = true
-                        try {
-                            while (true) {
-                                val rest = awaitPointerEvent(PointerEventPass.Final)
-                                val resting = rest.changes.firstOrNull { it.id == down.id } ?: break
-                                if (resting.changedToUp()) break
+                    var alreadySawDown = false
+                    while (true) {
+                        val origin = dragProgress ?: anim.value
+                        if (!alreadySawDown) {
+                            val downFinal = awaitPointerEvent(PointerEventPass.Final)
+                            val downChange = downFinal.changes.firstOrNull { it.id == down.id }
+                            if (downChange == null || downChange.changedToUp()) return@awaitEachGesture
+                        }
+                        alreadySawDown = false
+                        if (homeStageYieldsToHorizontalChild(
+                                origin,
+                                horizontalTouch.claims(down.id, down.uptimeMillis),
+                            )
+                        ) {
+                            horizontalChildGesture = true
+                            val replaced = try {
+                                val nextDown: PointerInputChange?
+                                while (true) {
+                                    val rest = awaitPointerEvent(PointerEventPass.Final)
+                                    val resting = rest.changes.firstOrNull { it.id == down.id }
+                                    if (resting == null || resting.changedToUp()) {
+                                        nextDown = rest.changes.firstOrNull { change ->
+                                            change.id != down.id && change.changedToDown()
+                                        }
+                                        break
+                                    }
+                                }
+                                nextDown
+                            } finally {
+                                horizontalChildGesture = false
                             }
-                        } finally {
-                            horizontalChildGesture = false
+                            if (replaced == null) return@awaitEachGesture
+                            down = replaced
+                            alreadySawDown = true
+                            continue
+                        }
+                        var totalX = 0f
+                        var totalY = 0f
+                        var claimed: Boolean? = null
+                        val tracker = VelocityTracker()
+                        tracker.addPosition(down.uptimeMillis, down.position)
+                        while (true) {
+                            val event = awaitPointerEvent(PointerEventPass.Initial)
+                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                            if (change.changedToUp()) {
+                                if (claimed == true) {
+                                    val velocityX = tracker.calculateVelocity().x
+                                    val settled = dragProgress ?: anim.value
+                                    val open = homeStageSettlesOpen(settled, velocityX)
+                                    scope.launch {
+                                        anim.snapTo(settled)
+                                        dragProgress = null
+                                        anim.animateTo(if (open) 1f else 0f, HomeStageSpring)
+                                    }
+                                    change.consume()
+                                }
+                                break
+                            }
+                            if (change.isConsumed && claimed != true) break
+                            val delta = change.positionChangeIgnoreConsumed()
+                            totalX += delta.x
+                            totalY += delta.y
+                            if (claimed == null) {
+                                claimed = homeStageClaimsDrag(
+                                    progress = origin,
+                                    totalX = totalX,
+                                    totalY = totalY,
+                                    slopPx = slop,
+                                    navCanScrollBackward = gate?.navCanScrollBackward == true,
+                                )
+                                if (claimed == false) break
+                                if (claimed == null) continue
+                                pagerBlock?.blocked = true
+                            }
+                            change.consume()
+                            tracker.addPosition(change.uptimeMillis, change.position)
+                            dragProgress = homeStageProgressForDelta(origin, totalX, widthHolder[0])
                         }
                         return@awaitEachGesture
-                    }
-                    var totalX = 0f
-                    var totalY = 0f
-                    var claimed: Boolean? = null
-                    val tracker = VelocityTracker()
-                    tracker.addPosition(down.uptimeMillis, down.position)
-                    while (true) {
-                        val event = awaitPointerEvent(PointerEventPass.Initial)
-                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                        if (change.changedToUp()) {
-                            if (claimed == true) {
-                                val velocityX = tracker.calculateVelocity().x
-                                val settled = dragProgress ?: anim.value
-                                val open = homeStageSettlesOpen(settled, velocityX)
-                                scope.launch {
-                                    anim.snapTo(settled)
-                                    dragProgress = null
-                                    anim.animateTo(if (open) 1f else 0f, HomeStageSpring)
-                                }
-                                change.consume()
-                            }
-                            break
-                        }
-                        if (change.isConsumed && claimed != true) break
-                        val delta = change.positionChangeIgnoreConsumed()
-                        totalX += delta.x
-                        totalY += delta.y
-                        if (claimed == null) {
-                            claimed = homeStageClaimsDrag(
-                                progress = origin,
-                                totalX = totalX,
-                                totalY = totalY,
-                                slopPx = slop,
-                            )
-                            if (claimed == false) break
-                            if (claimed == null) continue
-                            pagerBlock?.blocked = true
-                        }
-                        change.consume()
-                        tracker.addPosition(change.uptimeMillis, change.position)
-                        dragProgress = homeStageProgressForDelta(origin, totalX, widthHolder[0])
                     }
                 }
             },
@@ -442,6 +542,7 @@ internal fun HomeStageDrawer(
                 )
             }
             if (side.width > 2f) {
+                val openSide = homeStageSidebarRect(1f, widthPx, heightPx, sideBleedPx)
                 Box(
                     Modifier
                         .offset { IntOffset(side.left.roundToInt(), side.top.roundToInt()) }
@@ -459,6 +560,16 @@ internal fun HomeStageDrawer(
                         motionEnabled = true,
                         idleGlow = 0.92f,
                     )
+                    Box(
+                        Modifier
+                            .offset {
+                                IntOffset((openSide.left - side.left).roundToInt(), 0)
+                            }
+                            .requiredWidth(with(density) { openSide.width.toDp() })
+                            .fillMaxHeight(),
+                    ) {
+                        sidebar()
+                    }
                     Box(
                         Modifier
                             .fillMaxHeight()
@@ -487,6 +598,7 @@ internal fun HomeStageDrawer(
                     shape = RoundedCornerShape(frame.cornerPx.toDp())
                     clip = progress > 0.02f
                     shadowElevation = frame.shadowPx
+                    alpha = reveal
                 },
         ) {
             CompositionLocalProvider(
@@ -494,6 +606,24 @@ internal fun HomeStageDrawer(
                 LocalHomeStageHorizontalTouch provides horizontalTouch,
             ) {
                 content()
+            }
+            if (reveal < 0.98f) {
+                Box(
+                    Modifier
+                        .matchParentSize()
+                        .pointerInput(Unit) {
+                            awaitEachGesture {
+                                val down = awaitFirstDown(requireUnconsumed = false)
+                                down.consume()
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                    change.consume()
+                                    if (change.changedToUp()) break
+                                }
+                            }
+                        },
+                )
             }
             if (progress > 0.04f) {
                 Box(

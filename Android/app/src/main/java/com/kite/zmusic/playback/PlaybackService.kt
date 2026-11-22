@@ -76,9 +76,11 @@ class PlaybackService : MediaSessionService() {
             customPlaySource = app.customPlaySourceClient,
             audioOutputController = app.audioOutputController,
             fmModeStore = app.personalFmModeStore,
+            onTrackCommitted = { app.recentPlayStore.recordSong(it) },
             onClearAndStopService = {
                 pauseAllPlayersAndStopSelf()
             },
+            isPodcastTrack = { app.podcastPlayMemory.contains(it) },
         )
         coordinator = coord
         bridge.attachCoordinator(coord)

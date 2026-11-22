@@ -45,7 +45,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
@@ -118,6 +117,7 @@ fun ScoreSheetOverlay(
     currentIndex: Int,
     plateColors: VinylPlateColors,
     onPlayTrack: (index: Int, vinylCenterRoot: Offset, vinylSizePx: Float) -> Unit,
+    modifier: Modifier = Modifier,
     onMoveQueue: (from: Int, to: Int) -> Unit = { _, _ -> },
     openGeneration: Int,
     onApproachEnd: (lastVisibleIndex: Int) -> Unit = {},
@@ -125,7 +125,6 @@ fun ScoreSheetOverlay(
     hazeNonce: Int = 0,
     /** 黑胶居中完成前先纯色底，避免磨砂首帧采到错误源。 */
     enableRealtimeHaze: Boolean = true,
-    modifier: Modifier = Modifier,
 ) {
     // 网格实际列数：仅在实底遮挡下跳变
     var gridExpanded by remember(openGeneration) { mutableStateOf(coverExpanded) }
@@ -798,82 +797,6 @@ private fun scoreGridFirstVisibleIndex(
     return count - 1
 }
 
-/**
- * 静止态按行推算可见区间；morph 中取 2 列与 4 列可见并集（加大 overscan），
- * 避免 O(n) 全表扫描。
- */
-private fun scoreGridVisibleIndices(
-    count: Int,
-    expandT: Float,
-    cell2: Float,
-    cell4: Float,
-    gapPx: Float,
-    scrollY: Float,
-    viewportH: Float,
-    overscan: Float,
-): List<Int> {
-    if (count <= 0) return emptyList()
-    if (expandT <= 0.001f) {
-        return scoreGridVisibleInFixedColumns(
-            columns = 2,
-            cellPx = cell2,
-            gapPx = gapPx,
-            scrollY = scrollY,
-            viewportH = viewportH,
-            overscan = overscan,
-            count = count,
-        )
-    }
-    if (expandT >= 0.999f) {
-        return scoreGridVisibleInFixedColumns(
-            columns = 4,
-            cellPx = cell4,
-            gapPx = gapPx,
-            scrollY = scrollY,
-            viewportH = viewportH,
-            overscan = overscan,
-            count = count,
-        )
-    }
-    val a = scoreGridVisibleInFixedColumns(
-        columns = 2,
-        cellPx = cell2,
-        gapPx = gapPx,
-        scrollY = scrollY,
-        viewportH = viewportH,
-        overscan = overscan,
-        count = count,
-    )
-    val b = scoreGridVisibleInFixedColumns(
-        columns = 4,
-        cellPx = cell4,
-        gapPx = gapPx,
-        scrollY = scrollY,
-        viewportH = viewportH,
-        overscan = overscan,
-        count = count,
-    )
-    if (a.isEmpty()) return b
-    if (b.isEmpty()) return a
-    // 有序归并去重
-    return buildList(a.size + b.size) {
-        var i = 0
-        var j = 0
-        while (i < a.size || j < b.size) {
-            when {
-                i >= a.size -> add(b[j++])
-                j >= b.size -> add(a[i++])
-                a[i] < b[j] -> add(a[i++])
-                b[j] < a[i] -> add(b[j++])
-                else -> {
-                    add(a[i])
-                    i++
-                    j++
-                }
-            }
-        }
-    }
-}
 
 private data class ScoreDragSettle(val from: Int, val to: Int, val id: Long)
 

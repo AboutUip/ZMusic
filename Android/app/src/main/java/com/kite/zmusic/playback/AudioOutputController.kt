@@ -98,7 +98,7 @@ class AudioOutputController(
             AudioOutputDevice(
                 id = info.id,
                 type = info.type,
-                address = info.address.orEmpty(),
+                address = info.address,
                 name = product.ifBlank { audioOutputFallbackName(info.type) },
             )
         }

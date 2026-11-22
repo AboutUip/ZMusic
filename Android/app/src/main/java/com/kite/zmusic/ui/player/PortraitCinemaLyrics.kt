@@ -32,6 +32,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -63,8 +64,10 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
+import androidx.compose.ui.zIndex
 import com.kite.zmusic.data.LongLyricRender
 import com.kite.zmusic.data.LrcLine
+import com.kite.zmusic.data.LyricMotion
 import com.kite.zmusic.data.LyricRoleStyle
 import com.kite.zmusic.data.PlayerDisplayPrefs
 import com.kite.zmusic.data.karaokeWords
@@ -93,6 +96,7 @@ private val PortraitSelectSelectedTextFallback = Color(0xFFFFFFFF)
 @Composable
 fun PortraitCinemaLyrics(
     lines: List<LrcLine>,
+    modifier: Modifier = Modifier,
     companions: List<LrcLine?> = emptyList(),
     originalOnTop: Boolean = true,
     showCompanionOnOthers: Boolean = true,
@@ -121,11 +125,24 @@ fun PortraitCinemaLyrics(
     onBandCoords: ((LayoutCoordinates) -> Unit)? = null,
     /** 为 false 时逐字钉在 [positionMs]，不按墙钟往前唱（暂停 / 缓冲 / 拖动）。 */
     clockRunning: Boolean = false,
-    modifier: Modifier = Modifier,
+    /** 拖动播放进度条。算滚动：出现用凝聚，松手后再消散已播放。 */
+    sliderDragging: Boolean = false,
+    /** 换歌滚动的平移量（视口高为单位），见 [LyricRollSwap]。 */
+    rollShift: () -> Float = NoLyricRoll,
 ) {
     val contentA = contentAlpha.coerceIn(0f, 1f)
     val offsetYBase = offsetYDp
         .coerceIn(PlayerDisplayPrefs.LYRIC_OFFSET_MIN, PlayerDisplayPrefs.LYRIC_OFFSET_MAX)
+    val playedN = playedCount.coerceIn(
+        PlayerDisplayPrefs.LYRIC_AROUND_MIN,
+        PlayerDisplayPrefs.PORTRAIT_LYRIC_AROUND_MAX,
+    )
+    val upcomingN = upcomingCount.coerceIn(
+        PlayerDisplayPrefs.LYRIC_AROUND_MIN,
+        PlayerDisplayPrefs.PORTRAIT_LYRIC_AROUND_MAX,
+    )
+    val visibleCount = (playedN + 1 + upcomingN).coerceAtLeast(1)
+    val slotHeight = lyricSlotHeight(playingStyle, playedStyle, unplayedStyle, lineSpacingDp)
     if (lines.isEmpty()) {
         Box(
             modifier
@@ -139,16 +156,25 @@ fun PortraitCinemaLyrics(
                 ),
             contentAlignment = Alignment.Center,
         ) {
-            Text(
-                text = t("暂无逐行歌词"),
-                style = TextStyle(
-                    color = PortraitLyricFallbackDim.copy(alpha = 0.38f),
-                    fontFamily = FontFamily.SansSerif,
-                    fontStyle = FontStyle.Italic,
-                    fontSize = 14.sp,
-                    textAlign = TextAlign.Center,
-                ),
-            )
+            // 占位在播放行：与歌词同一块视口，换歌时跟着一起滚
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(slotHeight * visibleCount)
+                    .lyricRollShift(rollShift),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = t("暂无逐行歌词"),
+                    style = TextStyle(
+                        color = PortraitLyricFallbackDim.copy(alpha = 0.38f),
+                        fontFamily = FontFamily.SansSerif,
+                        fontStyle = FontStyle.Italic,
+                        fontSize = 14.sp,
+                        textAlign = TextAlign.Center,
+                    ),
+                )
+            }
         }
         return
     }
@@ -178,22 +204,12 @@ fun PortraitCinemaLyrics(
         label = "portraitLyricEmphasis",
     )
 
-    val playedN = playedCount.coerceIn(
-        PlayerDisplayPrefs.LYRIC_AROUND_MIN,
-        PlayerDisplayPrefs.PORTRAIT_LYRIC_AROUND_MAX,
-    )
-    val upcomingN = upcomingCount.coerceIn(
-        PlayerDisplayPrefs.LYRIC_AROUND_MIN,
-        PlayerDisplayPrefs.PORTRAIT_LYRIC_AROUND_MAX,
-    )
-    val visibleCount = (playedN + 1 + upcomingN).coerceAtLeast(1)
     val playFs = playingStyle.sanitizedFontScale()
     val playedFs = playedStyle.sanitizedFontScale()
     val unplayedFs = unplayedStyle.sanitizedFontScale()
     val linePad = lineSpacingDp
         .coerceIn(PlayerDisplayPrefs.LINE_SPACING_MIN, PlayerDisplayPrefs.LINE_SPACING_MAX)
         .dp
-    val slotHeight = maxOf(38f * playFs, 26f * playedFs, 26f * unplayedFs).dp + linePad * 2
     val anyCompanion = companions.any { it != null }
     val playingDual = anyCompanion
     val othersDual = anyCompanion && showCompanionOnOthers
@@ -263,6 +279,44 @@ fun PortraitCinemaLyrics(
     val browseCenterIndex by remember {
         derivedStateOf { listState.browseCenterLyricIndex(visualPlayFocus) }
     }
+    val particleExit = rememberLyricExitMotion() == LyricMotion.Scatter
+    var lyricSeekTarget by remember { mutableIntStateOf(-1) }
+    var lyricSeekTick by remember { mutableIntStateOf(0) }
+    var lyricSeekIndices by remember { mutableStateOf(IntArray(0)) }
+    val particleVisibleKey by remember {
+        derivedStateOf {
+            val items = listState.layoutInfo.visibleItemsInfo
+            (items.firstOrNull()?.index ?: -1) * 10000 + (items.lastOrNull()?.index ?: -1)
+        }
+    }
+    val particleVisibleIndices = remember(particleVisibleKey) {
+        listState.layoutInfo.visibleItemsInfo.map { it.index }.toIntArray()
+    }
+    val viewportSettled by remember {
+        derivedStateOf { !sliderDragging && !dragSession && !listState.isScrollInProgress }
+    }
+    val particleCore by remember { derivedStateOf { listState.fullyVisibleLyricSpan() } }
+    val particleCursor = rememberLyricParticleTokens(
+        enabled = particleExit,
+        playFocus = visualPlayFocus,
+        browsing = browsing,
+        dragSession = dragSession,
+        sliderDragging = sliderDragging,
+        browseCenter = browseCenterIndex,
+        selectFrozen = selectFrozen,
+        lineCount = lines.size,
+        songKey = lyricParticleSongKey(lines),
+        window = playedN + upcomingN,
+        upcomingLines = upcomingN,
+        seekTarget = lyricSeekTarget,
+        seekTick = lyricSeekTick,
+        visibleIndices = particleVisibleIndices,
+        visibleKey = particleVisibleKey,
+        viewportSettled = viewportSettled,
+        coreFirst = particleCore.first,
+        coreLast = particleCore.last,
+    )
+    val particleTokens = particleCursor.tokens
 
     CompositionLocalProvider(LocalLyricSweepSync provides sweepSync) {
     BoxWithConstraints(
@@ -332,6 +386,11 @@ fun PortraitCinemaLyrics(
                 return
             }
             val line = lines.getOrNull(center) ?: return
+            if (particleExit) {
+                lyricSeekIndices = listState.layoutInfo.visibleItemsInfo.map { it.index }.toIntArray()
+                lyricSeekTarget = center
+                lyricSeekTick++
+            }
             browsing = false
             dragSession = false
             scope.launch { scrollToCenteredIndex(center, animated = true) }
@@ -364,11 +423,11 @@ fun PortraitCinemaLyrics(
                 }
         }
 
-        LaunchedEffect(playFocus, browsing, lines.size, centerPadPx, dragSession, selectFrozen) {
+        LaunchedEffect(playFocus, browsing, lines.size, centerPadPx, dragSession, selectFrozen, sliderDragging) {
             if (selectFrozen) return@LaunchedEffect
             if (!browsing && !dragSession) {
-                // 进歌词页 / 仅 pad 变化：直接落在播放行。切句才跟滚动画。
-                val animate = lastFollowedFocus >= 0 && lastFollowedFocus != playFocus
+                // 拖进度条时直接落到当前句，不做逐句跟滚动画。
+                val animate = !sliderDragging && lastFollowedFocus >= 0 && lastFollowedFocus != playFocus
                 scrollToCenteredIndex(
                     playFocus,
                     animated = animate,
@@ -554,11 +613,22 @@ fun PortraitCinemaLyrics(
                 }
                 .consumeUnclaimedVerticalDrag(),
         ) {
+            val particleFollow = particleExit && !browsing && !dragSession && !sliderDragging && !selectFrozen
+            Box(Modifier.fillMaxSize()) {
             LazyColumn(
                 state = listState,
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = hPad),
+                    .lyricRollShift(rollShift)
+                    .padding(horizontal = hPad)
+                    .lyricConcealPast(
+                        particleFollow && !particleCursor.showingLeadIn &&
+                            particleCursor.scatterQueue.isEmpty() &&
+                            particleCursor.tokens.none { (line, token) ->
+                                token > 0 && particleCursor.settled[line] != token
+                            },
+                        slotHeightPx.toFloat(),
+                    ),
                 contentPadding = PaddingValues(vertical = centerPad),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 userScrollEnabled = (browsing || selectInteractive) && !dragSession,
@@ -567,13 +637,14 @@ fun PortraitCinemaLyrics(
                     items = lines,
                     key = { index, line -> "${line.timeMs}_$index" },
                 ) { index, line ->
-                    val isPlayingLine = index == visualPlayFocus
+                    val isFocusSlot = index == visualPlayFocus
+                    val isPlayingLine = isFocusSlot && particleCursor.playingStyleReady
                     val companion = when {
                         isPlayingLine -> companions.getOrNull(index)
                         showCompanionOnOthers -> companions.getOrNull(index)
                         else -> null
                     }
-                    val itemSlot = if (isPlayingLine) playSlotHeight else sideSlotHeight
+                    val itemSlot = if (isFocusSlot) playSlotHeight else sideSlotHeight
                     val isBrowseCenter =
                         (browsing || dragSession) &&
                             !selectMorphing &&
@@ -588,11 +659,46 @@ fun PortraitCinemaLyrics(
                     val selected = selectMorphing && index in selectedIndices
                     val lineIx = remember(index) { MutableInteractionSource() }
 
+                    val particleToken = if (selectMorphing) 0 else particleTokens[index] ?: 0
+                    val browseFx = particleExit && particleCursor.browseFx && !selectMorphing
+                    val particleScatter = particleToken > 0
+                    val samplePlaying = (particleScatter && !browseFx) || isPlayingLine
+                    val particlePlayed = played || (particleScatter && !browseFx)
+                    val particleStyle = if (samplePlaying) {
+                        playingStyle
+                    } else if (particlePlayed) {
+                        playedStyle
+                    } else {
+                        unplayedStyle
+                    }
+                    val particleRole = if (samplePlaying) {
+                        LyricStyleRole.Playing
+                    } else if (particlePlayed) {
+                        LyricStyleRole.Played
+                    } else {
+                        LyricStyleRole.Unplayed
+                    }
+                    val particleFs = if (samplePlaying) {
+                        playFs
+                    } else if (particlePlayed) {
+                        playedFs
+                    } else {
+                        unplayedFs
+                    }
+                    val sampleTranslation = if (samplePlaying) {
+                        companions.getOrNull(index)
+                    } else {
+                        companion
+                    }
+                    val samplePair = orderedLyricPair(line, sampleTranslation, originalOnTop)
                     Box(
                         Modifier
                             .fillMaxWidth()
+                            .zIndex(if (particleToken != 0) 1f else 0f)
                             .then(
                                 if (selectMorphing) {
+                                    Modifier.height(itemSlot)
+                                } else if (particleExit) {
                                     Modifier.height(itemSlot)
                                 } else {
                                     Modifier
@@ -767,22 +873,113 @@ fun PortraitCinemaLyrics(
                         }
 
                         // 跟滚样式 ↔ 选句方块：按 selectT 交叉淡化，禁止阈值硬切
-                        if (selectMorphing) {
-                            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                                if (selectT < 0.995f) {
-                                    Box(Modifier.fillMaxWidth().alpha(1f - selectT)) {
-                                        FollowBody()
+                        @Composable
+                        fun LineFaces() {
+                            if (selectMorphing) {
+                                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                                    if (selectT < 0.995f) {
+                                        Box(Modifier.fillMaxWidth().alpha(1f - selectT)) {
+                                            FollowBody()
+                                        }
+                                    }
+                                    Box(Modifier.fillMaxWidth().alpha(selectT)) {
+                                        SelectBody()
                                     }
                                 }
-                                Box(Modifier.fillMaxWidth().alpha(selectT)) {
-                                    SelectBody()
+                            } else {
+                                FollowBody()
+                            }
+                        }
+                        val lyricScroll = browsing || dragSession
+                        val gathering = particleToken < 0 && index !in particleCursor.gathered
+                        val scattering = particleToken > 0 && particleCursor.settled[index] != particleToken
+                        val pendingGather = particleExit && !gathering && !scattering &&
+                            index !in particleCursor.gathered &&
+                            (browseFx || (lyricScroll && index != visualPlayFocus))
+                        val seekHold = !lyricScroll && lyricSeekTarget >= 0 && index < lyricSeekTarget &&
+                            lyricSeekIndices.any { it == index } &&
+                            particleToken <= 0 && !scattering
+                        val keptText = !browseFx &&
+                            particleCursor.surface != LyricSeekSurface.Scattered &&
+                            (index >= particleCursor.textFloor || isFocusSlot) &&
+                            particleToken <= 0 &&
+                            !gathering
+                        val finishedLine = particleExit && !lyricScroll && !browseFx && played && !isFocusSlot &&
+                            !selectMorphing && !scattering && !seekHold && !keptText
+                        when {
+                            particleCursor.surface == LyricSeekSurface.Scattered -> {
+                                Box(Modifier.fillMaxWidth().height(itemSlot))
+                            }
+                            keptText -> LineFaces()
+                            gathering -> {
+                                key(particleToken) {
+                                    LyricParticleSlot(
+                                        token = particleToken,
+                                        primary = samplePair.first.text,
+                                        secondary = samplePair.second?.text,
+                                        color = particleStyle.resolvedColorFor(particleRole),
+                                        fontSizeSp = if (isBrowseCenter) 16f * unplayedFs else 15f * particleFs,
+                                        lineHeightSp = 24f * if (isBrowseCenter) unplayedFs else particleFs,
+                                        fontWeight = particleStyle.resolvedFontWeight(particleRole),
+                                        fontStyle = particleStyle.resolvedFontStyle(),
+                                        letterSpacingSp = 0.25f,
+                                        secondaryScale = 0.88f,
+                                        horizontalPadding = 10.dp,
+                                        gatherDuration = when {
+                                            browseFx -> LyricBrowseGatherMs
+                                            particleCursor.seekGather -> 340L
+                                            else -> 600L
+                                        },
+                                        onGatherSettled = { particleCursor.finishGather(index) },
+                                        modifier = Modifier.fillMaxWidth().height(itemSlot),
+                                    ) {
+                                        LineFaces()
+                                    }
                                 }
                             }
-                        } else {
-                            FollowBody()
+                            pendingGather -> {
+                                Box(Modifier.fillMaxWidth().height(itemSlot))
+                            }
+                            scattering -> {
+                                key(particleToken) {
+                                    LyricParticleSlot(
+                                        token = particleToken,
+                                        primary = samplePair.first.text,
+                                        secondary = samplePair.second?.text,
+                                        color = particleStyle.resolvedColorFor(particleRole),
+                                        fontSizeSp = when {
+                                            isPlayingLine -> 22f * playFs
+                                            isBrowseCenter -> 16f * unplayedFs
+                                            else -> 15f * particleFs
+                                        },
+                                        lineHeightSp = when {
+                                            isPlayingLine -> 32f * playFs
+                                            isBrowseCenter -> 24f * unplayedFs
+                                            else -> 24f * particleFs
+                                        },
+                                        fontWeight = particleStyle.resolvedFontWeight(particleRole),
+                                        fontStyle = particleStyle.resolvedFontStyle(),
+                                        letterSpacingSp = if (isPlayingLine) 0.2f else 0.25f,
+                                        secondaryScale = if (isPlayingLine) 0.82f else 0.88f,
+                                        horizontalPadding = 10.dp,
+                                        scatterDuration = if (browseFx) LyricBrowseScatterMs else 920L,
+                                        modifier = Modifier.fillMaxWidth().height(itemSlot),
+                                    ) {
+                                        LineFaces()
+                                    }
+                                }
+                            }
+                            browseFx || seekHold || lyricScroll -> LineFaces()
+                            finishedLine -> {
+                                Box(Modifier.fillMaxWidth().graphicsLayer { alpha = 0f }) {
+                                    LineFaces()
+                                }
+                            }
+                            else -> LineFaces()
                         }
                     }
                 }
+            }
             }
         }
     }
